@@ -27,7 +27,10 @@ class RateLimiter:
 
         
     def got429(self, iters=0):
-        waitTime = self.period * iters/5
+        waitTime = self.period * iters/4 + 1
+        if iters == 1:
+            waitTime = self.period * 4
+
         print(f"[{self.name}] Received 429 \"Too Many Requests\". Waiting for {waitTime} seconds...")
         time.sleep(waitTime)   # Exponential backoff
 

@@ -9,7 +9,7 @@ from data.ratelimiter import RateLimiter
 
 class CompanyProfile:
     def __init__(self, ticker, yfData, fhData):
-        self.symbol = ticker
+        self.ticker = ticker
         self.prettyName = yfData.get("displayName", ticker)
         self.fullName = yfData.get("longName", ticker)
         self.website = yfData.get("website", "")
@@ -23,7 +23,7 @@ class CompanyProfile:
 
     def toDict(self):
         return {
-            "symbol": self.symbol,
+            "ticker": self.ticker,
             "prettyName": self.prettyName,
             "fullName": self.fullName,
             "website": self.website,
@@ -36,7 +36,7 @@ class CompanyProfile:
         }
     
     def __str__(self):
-        s = f"""Company Profile for {self.prettyName} ({self.symbol}):
+        s = f"""Company Profile for {self.prettyName} ({self.ticker}):
 Full Name: {self.fullName}
 Website: {self.website}
 Industry: {self.industry}
@@ -49,15 +49,15 @@ Logo URL: {self.logo}
         return s
     
     def shortStr(self):
-        return f"{self.prettyName} ({self.symbol}) - {self.industry} in {self.sector}, IPOed on {self.ipoText}"
+        return f"{self.prettyName} ({self.ticker}) - {self.industry} in {self.sector}, IPOed on {self.ipoText}"
         
 
 
 class DescriptionClient:
     def __init__(self, finnhubApiKey):
         self.finnhubClient = finnhub.Client(api_key=finnhubApiKey)
-        self.yahooLimiter = RateLimiter(300, 60)  # 30 calls per min
-        self.finnhubLimiter = RateLimiter(600, 60)  # 60 calls per min
+        self.yahooLimiter = RateLimiter("yahooDescription", 300, 60)  # 30 calls per min
+        self.finnhubLimiter = RateLimiter("finnhubDescription", 600, 60)  # 60 calls per min
 
 
     def getYahooInfo(self, ticker):
@@ -74,7 +74,8 @@ class DescriptionClient:
                 iters += 1
                 if "429" in str(e):
                     self.yahooLimiter.got429(iters)
-                    
+
+        print(f"FAILED to fetch Yahoo info for {ticker} after 10 attempts!") 
         return {}
 
     def getFinnhubInfo(self, ticker):
@@ -83,7 +84,7 @@ class DescriptionClient:
 
         while iters < 10:
             try:
-                info = self.finnhubClient.company_profile2(symbol=ticker)
+                info = self.finnhubClient.company_profile2(ticker=ticker)
                 return info
             
             except Exception as e:
@@ -91,6 +92,7 @@ class DescriptionClient:
                 if "429" in str(e):
                     self.finnhubLimiter.got429(iters)
 
+        print(f"FAILED to fetch Finnhub info for {ticker} after 10 attempts!")
         return {}
             
 

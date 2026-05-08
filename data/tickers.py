@@ -23,14 +23,14 @@ class TickerClient:
 
     def formatEntry(self, ticker):
         return {
-            "symbol": ticker["symbol"],
+            "ticker": ticker["symbol"],
             "description": ticker["description"],
             "exchange": ticker["mic"],
             "type": ticker["type"]
         }
 
 
-    def getFormattedTickersForExchange(self, allTickers, exchange: Exchange):
+    def getFormattedSecuritiesForExchange(self, allTickers, exchange: Exchange):
         tickers = []
 
         if exchange == Exchange.ETF:
