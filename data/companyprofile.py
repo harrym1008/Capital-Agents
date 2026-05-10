@@ -74,6 +74,8 @@ class DescriptionClient:
                 iters += 1
                 if "429" in str(e):
                     self.yahooLimiter.got429(iters)
+                else:
+                    self.yahooLimiter.non429Error(e)
 
         print(f"FAILED to fetch Yahoo info for {ticker} after 10 attempts!") 
         return {}
@@ -91,6 +93,8 @@ class DescriptionClient:
                 iters += 1
                 if "429" in str(e):
                     self.finnhubLimiter.got429(iters)
+                else:
+                    self.finnhubLimiter.non429Error(e)
 
         print(f"FAILED to fetch Finnhub info for {ticker} after 10 attempts!")
         return {}

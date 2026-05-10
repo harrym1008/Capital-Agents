@@ -43,6 +43,8 @@ class DailyPriceClient:
                 iters += 1
                 if "429" in str(e):
                     self.yfLimiter.got429(iters)
+                else:
+                    self.yfLimiter.non429Error(e)
 
         print(f"FAILED to fetch daily prices for {ticker} after 10 attempts!")
         return pd.DataFrame(), 0.0

@@ -28,7 +28,7 @@ if __name__ == "__main__":
     for (exchange, securitiesList) in [(Exchange.NYSE, nyseSecurities), (Exchange.NASDAQ, nasdaqSecurities)]:  # , (Exchange.ETF, etfTickers)]:
         print(f"\n{exchange} Securities:")
         profile = []
-        for security in securitiesList[:5]:
+        for security in securitiesList[:16]:
             ticker = security["ticker"]
             description = descriptionClient.getDescription(ticker)
             prices, latestClosePrice = dailyPriceClient.getDailyPrices(ticker)

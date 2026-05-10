@@ -34,3 +34,7 @@ class RateLimiter:
         print(f"[{self.name}] Received 429 \"Too Many Requests\". Waiting for {waitTime} seconds...")
         time.sleep(waitTime)   # Exponential backoff
 
+
+    def non429Error(self, e):
+        print(f"[{self.name}] Received non-429 error - {e.__class__.__name__}: {e}. Waiting for 15 seconds before retrying...")
+        time.sleep(15)
