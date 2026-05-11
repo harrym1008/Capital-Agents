@@ -388,6 +388,6 @@ class MarketSimulation:
     
 
     def prettyPrintAllPortfolios(self):
-        from marketsim.prettysim import prettyPrintPortfolio
+        from simulation.prettysim import prettyPrintPortfolio
         for user in self.users:
             prettyPrintPortfolio(self, user)
