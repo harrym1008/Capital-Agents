@@ -1,9 +1,9 @@
 import os
 import json
 
-from data.tickers import TickerClient, Exchange
-from data.companyprofile import DescriptionClient, CompanyProfile
-from data.dailyprices import DailyPriceClient
+from collectors.tickers import TickerClient, Exchange
+from collectors.companyprofile import DescriptionClient, CompanyProfile
+from collectors.dailyprices import DailyPriceClient
 
 
 

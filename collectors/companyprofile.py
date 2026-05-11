@@ -4,7 +4,7 @@ from datetime import datetime
 import yfinance as yf
 import finnhub
 
-from data.ratelimiter import RateLimiter
+from collectors.ratelimiter import RateLimiter
 
 
 class CompanyProfile:
@@ -31,7 +31,8 @@ class CompanyProfile:
             "sector": self.sector,
             "summary": self.summary,
             "shares": self.shares,
-            "ipo": self.ipoText,
+            "ipoText": self.ipoText,
+            "ipoTs": self.ipoTs,
             "logo": self.logo
         }
     

@@ -1,8 +1,8 @@
 import os
 
-from marketsim.simulation import MarketSimulation
-from marketsim.orders import MarketOrder, StopOrder, LimitOrder, StopLimitOrder, OrderSide
-from marketsim.prettysim import prettyPrintPortfolio, ANSI, ordinal
+from simulation.marketsim import MarketSimulation
+from simulation.orders import MarketOrder, StopOrder, LimitOrder, StopLimitOrder, OrderSide
+from simulation.prettysim import prettyPrintPortfolio, ANSI, ordinal
 
 
 if __name__ == "__main__":

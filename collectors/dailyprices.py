@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import yfinance as yf
 
-from data.ratelimiter import RateLimiter
+from collectors.ratelimiter import RateLimiter
 
 NY_TZ = pytz.timezone("America/New_York")
 

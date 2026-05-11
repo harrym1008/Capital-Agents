@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from data.dailynews import NewsClient
+from collectors.dailynews import NewsClient
 
 def main():
     load_dotenv()

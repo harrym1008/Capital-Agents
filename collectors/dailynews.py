@@ -7,7 +7,7 @@ import requests
 # from alpaca.data.historical.news import NewsClient as AlpacaNewsClient
 # from alpaca.data.requests import NewsRequest as AlpacaNewsRequest
 
-from data.ratelimiter import RateLimiter
+from collectors.ratelimiter import RateLimiter
 
 
 class NewsClient:
