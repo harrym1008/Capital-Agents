@@ -2,7 +2,7 @@
 import exchange_calendars as xcals
 
 
-class CalendarClient:
+class MarketCalendar:
     def __init__(self, startDate, endDate):
         self.nyseCalendar = xcals.get_calendar("XNYS")
         

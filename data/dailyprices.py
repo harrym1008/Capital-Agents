@@ -27,6 +27,9 @@ class DailyPriceClient:
             try:
                 tickerObj = yf.Ticker(ticker)
                 priceDf = tickerObj.history(interval="1d", start=self.startDate)
+                
+                # Round all price values to the nearest 1/100 of a cent
+                priceDf = priceDf.round(4)
 
                 # Make sure to ignore the most recent price if it's before market close time, it is not the close price
                 latestCompletedDate = self.nyReferenceTime.date()
@@ -38,6 +41,34 @@ class DailyPriceClient:
                     latestClosePrice = closedPrices["Close"].iloc[-1]
                     closedPrices["ticker"] = ticker
                     return closedPrices, latestClosePrice
+                    
+            except Exception as e:
+                iters += 1
+                if "429" in str(e):
+                    self.yfLimiter.got429(iters)
+                else:
+                    self.yfLimiter.non429Error(e)
+
+        print(f"FAILED to fetch daily prices for {ticker} after 10 attempts!")
+        return pd.DataFrame(), 0.0
+    
+
+    def getDailyPricesForRange(self, ticker, startDate, endDate):
+        iters = 0
+        self.yfLimiter.wait()
+
+        while iters < 10:
+            try:
+                tickerObj = yf.Ticker(ticker)
+                priceDf = tickerObj.history(interval="1d", start=startDate, end=endDate+timedelta(days=1))
+                
+                # Round all price values to the nearest 1/100 of a cent
+                priceDf = priceDf.round(4)
+
+                if not priceDf.empty:
+                    latestClosePrice = priceDf["Close"].iloc[-1]
+                    priceDf["ticker"] = ticker
+                    return priceDf, latestClosePrice
                     
             except Exception as e:
                 iters += 1
