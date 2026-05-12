@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from collectors.dailynews import NewsClient
+from collectors.ratelimiter import GlobalRateLimiters
 
 def main():
     load_dotenv()
@@ -12,25 +13,14 @@ def main():
         print("Error: ALPACA_API_KEY or ALPACA_API_SECRET not found in environment.")
         return
 
-    client = NewsClient(api_key, api_secret)
+    if input("ARE YOU SURE? This will download ALL news articles from 2016 to 2026 and WILL take over FIVE hours! (yes/no) ").lower() != "yes":
+        print("Aborting.")
+        return
 
-    tickers = ["AAPL", "NVDA", "WMT", "SNAP"]
+    client = NewsClient(api_key, api_secret, "2016-01-01", "2026-04-30", GlobalRateLimiters())
+    client.massDownloadNews()
 
-    for ticker in tickers:
-        print(f"Fetching news for {ticker}...")
-        try:
-            news_articles = client.getNews(ticker, printProgress=True)
-            print(f"Successfully fetched {len(news_articles)} articles.")
-            
-            if news_articles:
-                print("First article sample:")
-                first_article = news_articles[0]
-                print(f"Timestamp: {first_article.get('created_at', 'N/A')}")
-                print(f"Headline: {first_article.get('headline', 'N/A')}")
-            else:
-                print("No news articles found.")
-        except Exception as e:
-            print(f"An error occurred during the test for {ticker}: {e}")
+
 
 if __name__ == "__main__":
     main()
