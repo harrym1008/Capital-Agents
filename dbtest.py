@@ -4,15 +4,17 @@ import json
 from collectors.tickers import TickerClient, Exchange
 from collectors.companyprofile import DescriptionClient, CompanyProfile
 from collectors.dailyprices import DailyPriceClient
+from collectors.ratelimiter import GlobalRateLimiters
 
 
 
 if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv()
+    rateLimiters = GlobalRateLimiters()
     tickerClient = TickerClient(os.getenv("FINNHUB_API_KEY"))
-    descriptionClient = DescriptionClient(os.getenv("FINNHUB_API_KEY"))
-    dailyPriceClient = DailyPriceClient()
+    descriptionClient = DescriptionClient(os.getenv("FINNHUB_API_KEY"), rateLimiters)
+    dailyPriceClient = DailyPriceClient("2020-01-01", rateLimiters)
 
     allSecurities = tickerClient.getAllTickers()
     nyseSecurities = tickerClient.getFormattedSecuritiesForExchange(allSecurities, Exchange.NYSE)

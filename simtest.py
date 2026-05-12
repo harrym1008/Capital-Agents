@@ -6,7 +6,7 @@ from simulation.prettysim import prettyPrintPortfolio, ANSI, ordinal
 
 
 if __name__ == "__main__":
-    sim = MarketSimulation("2018-01-01", "2026-5-9")
+    sim = MarketSimulation("2018-01-01", "2026-05-09")
     sim.initialiseUsers(["NVDA", "SNDK", "RYCEY", "MNTS", "SPY", "MU", "INTC"], testingRun=True)    
 
     for i in range(100001):

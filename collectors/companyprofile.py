@@ -4,7 +4,7 @@ from datetime import datetime
 import yfinance as yf
 import finnhub
 
-from collectors.ratelimiter import RateLimiter
+from collectors.ratelimiter import GlobalRateLimiters
 
 
 class CompanyProfile:
@@ -55,10 +55,10 @@ Logo URL: {self.logo}
 
 
 class DescriptionClient:
-    def __init__(self, finnhubApiKey):
+    def __init__(self, finnhubApiKey, rateLimiterDatabase: GlobalRateLimiters):
         self.finnhubClient = finnhub.Client(api_key=finnhubApiKey)
-        self.yahooLimiter = RateLimiter("yahooDescription", 300, 60)  # 30 calls per min
-        self.finnhubLimiter = RateLimiter("finnhubDescription", 600, 60)  # 60 calls per min
+        self.yahooLimiter = rateLimiterDatabase.yFinanceLimiter
+        self.finnhubLimiter = rateLimiterDatabase.finnhubLimiter
 
 
     def getYahooInfo(self, ticker):

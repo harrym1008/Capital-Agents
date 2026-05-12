@@ -4,17 +4,16 @@ from datetime import datetime, timedelta
 import pandas as pd
 import yfinance as yf
 
-from collectors.ratelimiter import RateLimiter
+from collectors.ratelimiter import GlobalRateLimiters
 
 NY_TZ = pytz.timezone("America/New_York")
 
 
 class DailyPriceClient:
-    def __init__(self, startDate="2020-01-01"):
+    def __init__(self, startDate, rateLimiterDatabase: GlobalRateLimiters):
         self.startDate = startDate
-        self.yfLimiter = RateLimiter("dailyPrices", 30, 60)  # 30 calls per min
-        # Yahoo finance has no specific rate limit, hopefully 30 calls per min is safe.
-        
+        self.yfLimiter = rateLimiterDatabase.yFinanceLimiter
+
         self.nyReferenceTime = datetime.now(NY_TZ)
         self.marketCloseTime = self.nyReferenceTime.replace(hour=16, minute=2, second=0, microsecond=0)
                             # Add 2 minutes buffer to ensure market data is settled

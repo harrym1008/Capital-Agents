@@ -1,4 +1,5 @@
 from collectors.alpaca.alpacaclient import AlpacaStockPricesClient
+from collectors.ratelimiter import GlobalRateLimiters
 
 if __name__ == "__main__":
     import os
@@ -8,7 +9,8 @@ if __name__ == "__main__":
     apiKey = os.getenv("ALPACA_API_KEY")
     apiSecret = os.getenv("ALPACA_API_SECRET")
 
-    client = AlpacaStockPricesClient(apiKey, apiSecret, "2016-01-01", "2026-04-30")
+    globalRateLimiters = GlobalRateLimiters()
+    client = AlpacaStockPricesClient(apiKey, apiSecret, "2016-01-01", "2026-04-30", globalRateLimiters)
     tickers = ["NVDA", "AAPL", "MSFT", "GOOG", "AMZN", "META", "TSLA", "BRK.B", "JPM", "JNJ", 
                "V", "PG", "UNH", "HD", "MA", "DIS", "NVDA", "PYPL", "BAC", "ADBE", "CMCSA", 
                "NFLX", "INTC", "TMO", "PFE", "CSCO", "PEP", "XOM", "KO", "ABT", "CVX",

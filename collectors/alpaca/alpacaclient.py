@@ -1,7 +1,7 @@
 
 import pandas as pd
 
-from collectors.ratelimiter import RateLimiter
+from collectors.ratelimiter import GlobalRateLimiters
 
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.historical.corporate_actions import CorporateActionsClient
@@ -11,11 +11,10 @@ from alpaca.data.timeframe import TimeFrame
 
 
 class AlpacaStockPricesClient:
-    def __init__(self, apiKey, apiSecret, startDate, endDate):
+    def __init__(self, apiKey, apiSecret, startDate, endDate, rateLimiterDatabase: GlobalRateLimiters):
         self.dailyPricesClient = StockHistoricalDataClient(apiKey, apiSecret)
         self.corporateActionsClient = CorporateActionsClient(apiKey, apiSecret)
-
-        self.rateLimiter = RateLimiter("alpaca", 200, 60)   # Alpaca free allows 200 requests per minute
+        self.rateLimiter = rateLimiterDatabase.alpacaLimiter
 
         self.startDate = startDate
         self.endDate = endDate

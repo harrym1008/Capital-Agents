@@ -3,9 +3,10 @@ from datetime import datetime, timedelta
 
 from collectors.dailyprices import DailyPriceClient
 from collectors.mktcalendar import MarketCalendar 
+from collectors.ratelimiter import GlobalRateLimiters
 
 from simulation.orders import Order, MarketOrder, LimitOrder, StopOrder, StopLimitOrder, OrderSide, OrderStatus
-from simulation.portfolio import Portfolio, Position
+from simulation.portfolio import Portfolio
 
 
 class ExecutionTime(Enum):
@@ -36,7 +37,7 @@ class MarketSimulation:
         self.started = False
 
         self.marketCalendar = MarketCalendar(self.startDate, self.endDate)
-        self.dailyPriceClient = DailyPriceClient()
+        self.dailyPriceClient = DailyPriceClient(self.startDate, GlobalRateLimiters())
         self.tickerPricesCache = {}
 
         self.users = []             # Set of all users in the simulation
