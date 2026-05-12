@@ -45,7 +45,7 @@ class NewsClient:
         if os.path.exists(parquetPath):
             os.remove(parquetPath)
         
-        batchSize = 100
+        batchSize = 2000
         
         batchBuffer = []
         batchCount = 0

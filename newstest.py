@@ -13,7 +13,7 @@ def main():
         print("Error: ALPACA_API_KEY or ALPACA_API_SECRET not found in environment.")
         return
 
-    if input("ARE YOU SURE? This will download ALL news articles from 2016 to 2026 and WILL take over FIVE hours! (yes/no) ").lower() != "yes":
+    if input("ARE YOU SURE? This will download ALL news articles from 1 Jan 2016 to 30 Apr 2026 and WILL take MULTIPLE HOURS! (yes/no) ").lower() != "yes":
         print("Aborting.")
         return
 
