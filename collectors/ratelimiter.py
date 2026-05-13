@@ -1,4 +1,5 @@
 import time
+import threading
 
 
 class RateLimiter:
@@ -8,22 +9,29 @@ class RateLimiter:
         self.period = period
         self.callInterval = period / maxCalls
         self.lastCallTime = 0
+        self.nextAllowedTime = 0
+        self.lock = threading.Lock()
     
 
     def wait(self):
-        currentTime = time.time()
-        
-        if self.lastCallTime == 0:
-            self.lastCallTime = currentTime
-            return
-        
-        elapsedTime = currentTime - self.lastCallTime
-        if elapsedTime < self.callInterval:
-            timeToWait = self.callInterval - elapsedTime
-            time.sleep(timeToWait)
+        with self.lock:
+            currentTime = time.time()
 
-        time.sleep(0.05)
-        self.lastCallTime = time.time()
+            if currentTime < self.nextAllowedTime:
+                time.sleep(self.nextAllowedTime - currentTime)
+                currentTime = time.time()
+            
+            if self.lastCallTime == 0:
+                self.lastCallTime = currentTime
+                return
+            
+            elapsedTime = currentTime - self.lastCallTime
+            if elapsedTime < self.callInterval:
+                timeToWait = self.callInterval - elapsedTime
+                time.sleep(timeToWait)
+
+            time.sleep(0.05)
+            self.lastCallTime = time.time()
 
         
     def got429(self, iters=0):
@@ -32,6 +40,10 @@ class RateLimiter:
             waitTime = self.period * (iters - 9)
 
         print(f"[{self.name}] Received 429 \"Too Many Requests\". Waiting for {waitTime} seconds...")
+        with self.lock:
+            backoffUntil = time.time() + waitTime
+            if backoffUntil > self.nextAllowedTime:
+                self.nextAllowedTime = backoffUntil
         time.sleep(waitTime)   # Exponential backoff
 
 
