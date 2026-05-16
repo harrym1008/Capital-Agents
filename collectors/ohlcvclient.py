@@ -57,7 +57,7 @@ class SingleTickerDataCollector:
         if not latestNameCheck:
             return False, None, None, None
         
-        self.addSplitFactorColumn(priceDf, actions["splits"])
+        self.addCorpDataToDf(priceDf, actions)
 
         return True, priceDf, ipoDate, actions
 
@@ -106,10 +106,17 @@ class SingleTickerDataCollector:
         return df, ipoDate        
 
 
-    def collectCorporateActions(self, timeRange, df, ticker=None):
+    def collectCorporateActions(self, timeRange, df, nameChangeRerun=None):
+        if nameChangeRerun is None:
+            ticker = self.ticker
+            ignoredNextTickers = []
+        else:
+            ticker = nameChangeRerun[0]
+            ignoredNextTickers = nameChangeRerun[1]
+        
         collectStart, collectEnd = timeRange
         request = CorporateActionsRequest(
-            symbols=[self.ticker if not ticker else ticker],
+            symbols=[ticker],
             start=collectStart,
             end=collectEnd,
             types=[
@@ -217,8 +224,8 @@ class SingleTickerDataCollector:
                 "date": spinOff.ex_date.strftime("%Y-%m-%d"),
                 "newTicker": spinOff.new_symbol,
                 "newRate": spinOff.new_rate,
-                "sourceTicker": spinOff.old_symbol,
-                "sourceRate": spinOff.old_rate
+                "sourceTicker": spinOff.source_symbol,
+                "sourceRate": spinOff.source_rate
             })
 
         for removal in data.get("worthless_removals", []):
@@ -242,40 +249,73 @@ class SingleTickerDataCollector:
         for restructure in actions["restructures"]:
             if restructure["type"] == CorporateActionsType.NAME_CHANGE:
                 nameHasChanged = True
-                if restructure["oldTicker"] == self.ticker:
+                if restructure["oldTicker"] == ticker and restructure["newTicker"] not in ignoredNextTickers:
                     return False, []
                 
+
+        
         # If this point is reached, this ticker is the most recent name. If there are other name changes, must work backwards
         if nameHasChanged:
+            mergedActions = {
+                "splits": [],
+                "dividends": [],
+                "mergers": [],
+                "restructures": []
+            }
             for restructure in actions["restructures"]:
                 if restructure["type"] == CorporateActionsType.NAME_CHANGE:
-                    if restructure["newTicker"] == self.ticker:
+                    if restructure["newTicker"] == ticker:
                         # Need to recollect corporate actions for old ticker, to get any splits/dividends that would affect historical prices
-                        latestNameCheck, oldActions = self.collectCorporateActions(timeRange, df, ticker=restructure["oldTicker"])
+                        rerunTicker = restructure["oldTicker"]
+                        latestNameCheck, oldActions = self.collectCorporateActions(timeRange, df, 
+                                                            nameChangeRerun=(rerunTicker, ignoredNextTickers + [ticker]))
                                                 
                         # Merge splits and dividends from old ticker into current actions
-                        actions["splits"].extend(oldActions.get("splits", []))
-                        actions["dividends"].extend(oldActions.get("dividends", []))
+                        for key in mergedActions:
+                            mergedActions[key].extend(oldActions.get(key, []))
 
+            for key in actions:
+                actions[key].extend(mergedActions[key])
+
+            # Remove duplicate name changes
+            seenNameChanges = set()
+            uniqueRestructures = []
+            for restructure in actions["restructures"]:
+                if restructure["type"] == CorporateActionsType.NAME_CHANGE:
+                    nameChangeKey = (restructure["oldTicker"], restructure["newTicker"])
+                    if nameChangeKey not in seenNameChanges:
+                        seenNameChanges.add(nameChangeKey)
+                        uniqueRestructures.append(restructure)
+                else:
+                    uniqueRestructures.append(restructure)
+            actions["restructures"] = uniqueRestructures
 
         return True, actions
 
 
-    def addSplitFactorColumn(self, df, splitActions):
+    def addCorpDataToDf(self, df, actions):
         # Add split factor column to adjust historical prices for splits
         df["splitFactor"] = 1.0
+        df["corpActionToday"] = False
 
-        for action in splitActions:
+        for action in actions["splits"]:
             exDate = pd.Timestamp(action["date"], tz=NEW_YORK)
-            if action["type"] == CorporateActionsType.FORWARD_SPLIT:
-                factor = action["newRate"] / action["oldRate"]
-            else:   # Reverse split
-                factor = action["oldRate"] / action["newRate"]
+            factor = action["oldRate"] / action["newRate"]
 
             df.loc[df["date"] < exDate, "splitFactor"] *= factor
 
-        return df
+            # NaN the prices on the ex-date (Alpaca data is inaccurate)
+            # Example: NVDA high at $195 on 2024-06-10 on day of 10:1 split, 
+            # but should be around $123
+            df.loc[df["date"] == exDate, ["open", "high", "low", "close", "vwap"]] = pd.NA
 
+        for actionList in actions.values():
+            for action in actionList:
+                exDate = pd.Timestamp(action["date"], tz=NEW_YORK)
+                df.loc[df["date"] == exDate, "corpActionToday"] = True
+
+        return df
+    
 
 
 
@@ -308,8 +348,6 @@ def threadWorker(ticker, exchange, startDate, endDate, delistDate, priceClient, 
         json.dump(actions, f, indent=4, default=str)
     
     return True, ticker, ipoDate
-
-
 
 
 

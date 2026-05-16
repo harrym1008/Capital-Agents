@@ -9,7 +9,7 @@ import financedatabase as fd
     
 from collectors.mktcalendar import MarketCalendar
 from collectors.ratelimiter import GlobalRateLimiters
-from collectors.constants import IPO_BEFORE_START_DATE
+from collectors.constants import IPO_BEFORE_START_DATE, NEW_YORK
 
 
 def makeSectorOrIndustryKey(text):
@@ -119,8 +119,10 @@ class TickerDataClient:
                         # Active is False, but there is no delist date.... default to treating it as delisted
                         # print(f"Warning: Ticker {historicalTickers[exchange][i]['ticker']} is marked as inactive but has no delist date.") 
                         deleteTicker = True
-                    else:                
-                        deleteTicker = datetime.strptime(delistDateStr, "%Y-%m-%dT%H:%M:%SZ") < self.startDate
+                    else:
+                        delistTs = pd.Timestamp(delistDateStr, tz="UTC").tz_convert(NEW_YORK)
+                        startTs = pd.Timestamp(self.startDate)
+                        deleteTicker = delistTs < startTs
                     if deleteTicker:
                         historicalTickers[exchange].pop(i)
 
@@ -157,7 +159,7 @@ class TickerDataClient:
         def formatDelistDate(row):
             if pd.isna(row.get("delisted_utc")):
                 return pd.NA
-            delistDate = datetime.strptime(row["delisted_utc"], "%Y-%m-%dT%H:%M:%SZ")
+            delistDate = pd.Timestamp(row["delisted_utc"], tz="UTC").tz_convert(NEW_YORK)
             return getPreviousTradingDay(delistDate, calendar)
         finalDf["delistDate"] = finalDf.apply(formatDelistDate, axis=1)
 
@@ -190,12 +192,3 @@ class TickerDataClient:
 
         if os.path.exists("all_tickers.parquet"):
             os.remove("all_tickers.parquet")
-
-    
-
-if __name__ == "__main__":
-    startDate = datetime(2016, 1, 1)
-    endDate = datetime(2026, 4, 30)
-
-    client = TickerDataClient(startDate, endDate)
-    client.massTickerDownloadWithData()

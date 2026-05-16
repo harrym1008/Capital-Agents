@@ -37,6 +37,24 @@ def main():
     )
 
 
+    threadWorker(
+        "TWTR", "XNAS", START_DATE_STR, END_DATE_STR, None, 
+        client.priceClient, client.corpActionsClient, client.limiters.alpacaLimiter
+    )
+
+
+    threadWorker(
+        "NVDA", "XNAS", START_DATE_STR, END_DATE_STR, None, 
+        client.priceClient, client.corpActionsClient, client.limiters.alpacaLimiter
+    )
+
+
+    threadWorker(
+        "SNDK", "XNAS", START_DATE_STR, END_DATE_STR, None, 
+        client.priceClient, client.corpActionsClient, client.limiters.alpacaLimiter
+    )
+
+
     # client.massDownload(True)
 
 
