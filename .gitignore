@@ -181,8 +181,16 @@ cython_debug/
 .cursorindexingignore
 
 
+.roo/
+
 # For CapitalAgents specifically
 docs/
 
+_old/
+
+data/archive/
 data/newsbatches/
-data/news.parquet
+data/*.parquet
+data/ohlcv_nyse/
+data/ohlcv_nasdaq/
+

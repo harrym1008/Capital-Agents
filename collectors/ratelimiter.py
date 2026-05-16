@@ -58,3 +58,4 @@ class GlobalRateLimiters:
         self.yFinanceLimiter = RateLimiter("yfinance", 100, 60)     # Not an official limit, but should be safe
         self.alpacaLimiter = RateLimiter("alpaca", 200, 60)         # Alpaca free allows 200 requests per minute
         self.finnhubLimiter = RateLimiter("finnhub", 60, 60)        # Finnhub free allows 60 requests per minute
+        self.massiveLimiter = RateLimiter("massive", 5, 60)         # Massive API allows 5 requests per minute
