@@ -22,9 +22,7 @@ from collectors.constants import *
 
 NYSE_DIRECTORY = "data/ohlcv_nyse/"
 NASDAQ_DIRECTORY = "data/ohlcv_nasdaq/"
-
-OHLC_FILE_OUTPUT = "{}_ohlcv.parquet"
-ACTIONS_FILE_OUTPUT = "{}_actions.json"
+OHLC_FILE_OUTPUT = "{}.parquet"
 
 
 
@@ -55,7 +53,7 @@ class SingleTickerDataCollector:
         priceDf, ipoDate = self.collectPriceData(timeRange)
         latestNameCheck, actions = self.collectCorporateActions(timeRange, priceDf)
         if not latestNameCheck:
-            return False, None, None, None
+            return False, pd.DataFrame(), IPO_BEFORE_START_DATE, {}
         
         self.addCorpDataToDf(priceDf, actions)
 
@@ -318,7 +316,6 @@ class SingleTickerDataCollector:
     
 
 
-
 def threadWorker(ticker, exchange, startDate, endDate, delistDate, priceClient, corpActionsClient, limiter):
     collector = SingleTickerDataCollector(
         ticker=ticker,
@@ -332,7 +329,7 @@ def threadWorker(ticker, exchange, startDate, endDate, delistDate, priceClient, 
     )
     passed, priceDf, ipoDate, actions = collector.collect()
     if not passed:
-        return False
+        return False, None, IPO_BEFORE_START_DATE, None
 
     if exchange == "XNAS":
         baseDir = NASDAQ_DIRECTORY
@@ -340,14 +337,34 @@ def threadWorker(ticker, exchange, startDate, endDate, delistDate, priceClient, 
         baseDir = NYSE_DIRECTORY
 
     parquetPath = os.path.join(baseDir, OHLC_FILE_OUTPUT.format(ticker))
-    jsonPath = os.path.join(baseDir, ACTIONS_FILE_OUTPUT.format(ticker))
-
     priceDf.to_parquet(parquetPath, index=False)
 
-    with open(jsonPath, "w") as f:
-        json.dump(actions, f, indent=4, default=str)
+    actionRows = []
+
+    for actionList in actions.values():
+        for action in actionList:
+            actionRows.append({
+                "date": action.get("date"),
+                "ticker": ticker,
+                "exchange": exchange,
+                "actionType": action.get("type").value,
+
+                "oldRate": action.get("oldRate"),
+                "newRate": action.get("newRate"),
+                "rate": action.get("rate"),
+                "special": action.get("special"),
+                "acquireeTicker": action.get("acquireeTicker"),
+                "acquireeRate": action.get("acquireeRate"),
+                "acquirerTicker": action.get("acquirerTicker"),
+                "acquirerRate": action.get("acquirerRate"),
+                "cashRate": action.get("cashRate"),
+                "oldTicker": action.get("oldTicker"),
+                "newTicker": action.get("newTicker"),
+                "sourceTicker": action.get("sourceTicker"),
+                "sourceRate": action.get("sourceRate"),
+            })
     
-    return True, ticker, ipoDate
+    return True, ticker, ipoDate, actionRows
 
 
 
@@ -360,12 +377,14 @@ class OHLCVDataClient:
         self.alpacaApiSecret = os.getenv("ALPACA_API_SECRET")
         self.massiveApiKey = os.getenv("MASSIVE_API_KEY")
 
+        self.testedTickers = []
         self.startDate = startDate
         self.endDate = endDate
         self.limiters = rateLimiterDatabase if rateLimiterDatabase else GlobalRateLimiters()
 
         self.priceClient = StockHistoricalDataClient(self.alpacaApiKey, self.alpacaApiSecret)
         self.corpActionsClient = CorporateActionsClient(self.alpacaApiKey, self.alpacaApiSecret)
+
 
 
     def massDownload(self, updateIpoDates=False):
@@ -375,26 +394,29 @@ class OHLCVDataClient:
             raise FileNotFoundError(f"Cannot find {tickersPath}")
         
         tickersDf = pd.read_parquet(tickersPath)
-        totalTickers = len(tickersDf)
+        totalTickers = len(tickersDf) if not self.testedTickers else len(self.testedTickers)
 
 
         tickerRows = []
         for idx, row in tickersDf.iterrows():
+            if self.testedTickers and row["ticker"] not in self.testedTickers:
+                continue
+
             tickerRows.append({
                 "ticker": row["ticker"],
                 "exchange": row["exchange"],
-                "startDate": self.startDate.strftime("%Y-%m-%d"),
-                "endDate": self.endDate.strftime("%Y-%m-%d"),
+                "startDate": self.startDate,
+                "endDate": self.endDate,
                 "delistDate": row["delistDate"] if not pd.isna(row["delistDate"]) else None,
                 "rowIdx": idx
             })
-
         
-        results = {}
+        ipoResults = {}
+        allActionRows = []
         resultsLock = threading.Lock()
         completed = 0
         errors = 0
-
+        skipped = 0
 
         print(f"\nBeginning mass download of OHLCV data for {totalTickers} tickers...\n")
         pbar = tqdm(
@@ -406,33 +428,29 @@ class OHLCVDataClient:
         )
 
         def downloadAndTrack(item):
-            nonlocal completed, errors
+            nonlocal completed, errors, skipped
             try:
-                passed, ticker, ipoDate = threadWorker(
+                passed, ticker, ipoDate, actionRows = threadWorker(
                     item["ticker"], item["exchange"], item["startDate"], item["endDate"], item["delistDate"],
                     self.priceClient, self.corpActionsClient, self.limiters.alpacaLimiter
                 )
 
-                if not passed:
-                    with resultsLock:
-                        completed += 1
-                        results[item["rowIndex"]] = None
-                        pbar.set_postfix_str(f"{ticker:>5} was intentionally skipped")
-                        pbar.update(1)
-                    return
-
                 with resultsLock:
-                    completed += 1
-                    results[item["rowIdx"]] = ipoDate
-                    pbar.set_postfix_str(f"{ticker:>5}, {errors} errors so far")
+                    if not passed:
+                        skipped += 1
+                        pbar.set_postfix_str(f"{ticker:>5} was intentionally skipped")
+                    else:
+                        completed += 1
+                        ipoResults[item["rowIdx"]] = ipoDate
+                        allActionRows.extend(actionRows)
+                        pbar.set_postfix_str(f"{ticker:>5}, {errors} errors so far")
                     pbar.update(1)
 
             except Exception as e:
                 with resultsLock:
                     errors += 1
-                    results[item["rowIndex"]] = None
                     print(f"  Error downloading data for {item['ticker']}: {e}\n")
-                    pbar.set_postfix_str(f"ERROR: {ticker:>5} - {e}")
+                    pbar.set_postfix_str(f"ERROR: {ticker:>5}")
                     pbar.update(1)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
@@ -442,9 +460,19 @@ class OHLCVDataClient:
         pbar.close()
 
 
+        # Export all corporate actions to one parquet file
+        actionsDf = pd.DataFrame(allActionRows)
+        # actionsDf["date"] = pd.to_datetime(actionsDf["date"])
+        actionsDf.sort_values(by=["date", "exchange", "ticker", "actionType"], ascending=True, inplace=True)
+
+        actionsOutputPath = "data/corpactions.parquet"
+        actionsDf.to_parquet(actionsOutputPath, index=False)
+        print(f"\nSaved corporate actions data for {len(actionsDf)} actions to {actionsOutputPath}.")
+
+
         if updateIpoDates:
-            for idx, ipoDate in results.items():
-                tickersDf.at[idx, "ipoDate"] = ipoDate
+            for idx, ipoDate in ipoResults.items():
+                tickersDf.at[idx, "ipoDate"] = ipoDate.strftime("%Y-%m-%d")
 
             tickersDf.to_parquet(tickersPath, index=False)
             print(f"\nUpdated IPO dates for {completed} tickers and saved to {tickersPath}.")
