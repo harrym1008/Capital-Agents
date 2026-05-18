@@ -9,7 +9,7 @@ import financedatabase as fd
     
 from collectors.mktcalendar import MarketCalendar
 from collectors.ratelimiter import GlobalRateLimiters
-from collectors.constants import IPO_BEFORE_START_DATE, NEW_YORK
+from collectors.constants import *
 
 
 def makeSectorOrIndustryKey(text):
@@ -39,6 +39,20 @@ def getPreviousTradingDay(delistedUtcTs, calendar):
         if dayStr in calendar.openDays:
             return dayStr
         
+
+def getSecurityScore(row):
+    name = str(row["name"]).lower()
+    ticker = str(row["ticker"]).lower()
+    
+    # Prefer common stock
+    if any(term in name for term in GOOD_SECURITY_TERMS):
+        return 1
+
+    # Strongly punish obvious non common stock securities
+    if any(term in name for term in BAD_SECURITY_TERMS):
+        return -len(ticker)     # In the case of multiple bad terms, prefer the shorter ticker
+    
+    return 0     
 
 
 class TickerDataClient:
@@ -144,15 +158,15 @@ class TickerDataClient:
         fdbDf = fdbDf.drop(columns=["exchange"])        # Prevent conflict with exchange column from Massive API
 
         # Merge names, prefer fdb names
-        finalDf = pd.merge(allTickersDf, fdbDf, left_on="ticker", right_on="symbol", how="left")
+        df = pd.merge(allTickersDf, fdbDf, left_on="ticker", right_on="symbol", how="left")
 
-        finalDf["name"] = finalDf["name_y"].fillna(finalDf["name_x"])
-        finalDf.drop(columns=["name_x", "name_y", "symbol"], inplace=True, errors="ignore")
+        df["name"] = df["name_y"].fillna(df["name_x"])
+        df.drop(columns=["name_x", "name_y", "symbol"], inplace=True, errors="ignore")
 
         # Active --> listed
-        finalDf["listed"] = finalDf["active"].fillna(False)
+        df["listed"] = df["active"].fillna(False)
         # Default IPO date for all ticker... updated when OHLCV is downloaded
-        finalDf["ipoDate"] = IPO_BEFORE_START_DATE.strftime("%Y-%m-%d")    
+        df["ipoDate"] = IPO_BEFORE_START_DATE.strftime("%Y-%m-%d")    
         
         # Format delist date to the trading day before Massive says 
         # Massive returns the first day the stock is not trading, I want the last day it trades
@@ -161,18 +175,18 @@ class TickerDataClient:
                 return pd.NA
             delistDate = pd.Timestamp(row["delisted_utc"], tz="UTC").tz_convert(NEW_YORK)
             return getPreviousTradingDay(delistDate, calendar)
-        finalDf["delistDate"] = finalDf.apply(formatDelistDate, axis=1)
+        df["delistDate"] = df.apply(formatDelistDate, axis=1)
 
         # Pretty sector and industry keys for easier grouping and analysis later
-        finalDf["sector"] = finalDf["sector"].apply(makeSectorOrIndustryKey)
-        finalDf["industry"] = finalDf["industry"].apply(makeSectorOrIndustryKey)
+        df["sector"] = df["sector"].apply(makeSectorOrIndustryKey)
+        df["industry"] = df["industry"].apply(makeSectorOrIndustryKey)
 
         # Final other textual elements                               Regex = start string, 0 or more whitepace, end of string
-        finalDf[["website", "summary"]] = finalDf[["website", "summary"]].replace(r"^\s*$", pd.NA, regex=True).fillna("unknown")
-        finalDf["cik"] = finalDf["cik"].fillna("unknown")
-        finalDf["isin"] = finalDf["isin"].fillna("unknown")
+        df[["website", "summary"]] = df[["website", "summary"]].replace(r"^\s*$", pd.NA, regex=True).fillna("unknown")
+        df["cik"] = df["cik"].fillna("unknown")
+        df["isin"] = df["isin"].fillna("unknown")
 
-        finalDf = finalDf[[
+        df = df[[
             "ticker",
             "name",
             "exchange",
@@ -186,7 +200,36 @@ class TickerDataClient:
             "cik",
             "isin"
         ]]
-        finalDf = finalDf.sort_values(["exchange", "ticker"]).reset_index(drop=True)
+
+
+        # Filter out some tickers based on their shared CIK, using the security score
+        knownCikDf = df[df["cik"] != "unknown"]      
+        unknownCikDf = df[df["cik"] == "unknown"] 
+        rowsToKeep = []
+
+        # Filter out of tickers with known CIKs
+        for cik, group in knownCikDf.groupby("cik"):
+            group = group.copy()
+
+            group["secscore"] = group.apply(getSecurityScore, axis=1)
+            validRows = group[group["secscore"] >= 0]
+
+            if len(validRows) > 0:
+                rowsToKeep.append(validRows)
+            else:
+                bestRow = group.sort_values(["secscore", "ticker"], ascending=[False, True]).head(1)
+                rowsToKeep.append(bestRow)
+
+
+        for _, row in unknownCikDf.iterrows():
+            if getSecurityScore(row) >= 0:
+                rowsToKeep.append(pd.DataFrame([row]))
+
+
+        filteredDf = pd.concat(rowsToKeep, ignore_index=True)
+        filteredDf.drop(columns=["secscore"], errors="ignore", inplace=True)
+
+        finalDf = filteredDf.sort_values(["exchange", "ticker"]).reset_index(drop=True)
         finalDf.to_parquet("data/tickers.parquet", index=False)
         print(f"Saved final ticker metadata to data/tickers.parquet with {len(finalDf):,} tickers.")
 
