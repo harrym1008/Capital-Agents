@@ -229,7 +229,7 @@ class TickerDataClient:
         filteredDf = pd.concat(rowsToKeep, ignore_index=True)
         filteredDf.drop(columns=["secscore"], errors="ignore", inplace=True)
 
-        finalDf = filteredDf.sort_values(["exchange", "ticker"]).reset_index(drop=True)
+        finalDf = filteredDf.sort_values(["ticker", "name"]).reset_index(drop=True)
         finalDf.to_parquet("data/tickers.parquet", index=False)
         print(f"Saved final ticker metadata to data/tickers.parquet with {len(finalDf):,} tickers.")
 

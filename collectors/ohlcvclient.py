@@ -53,7 +53,7 @@ class SingleTickerDataCollector:
         priceDf, ipoDate = self.collectPriceData(timeRange)
         latestNameCheck, actions = self.collectCorporateActions(timeRange, priceDf)
         if not latestNameCheck:
-            return False, pd.DataFrame(), IPO_BEFORE_START_DATE, {}
+            return False, pd.DataFrame(), IPO_BEFORE_START_DATE, {type_: [] for type_ in ["splits", "dividends", "mergers", "restructures"]}
         
         self.addCorpDataToDf(priceDf, actions)
 
@@ -90,7 +90,7 @@ class SingleTickerDataCollector:
         df = priceData.df
         
         if df.empty:
-            return pd.DataFrame(), None, {}
+            return pd.DataFrame(), IPO_BEFORE_START_DATE
         
         df = df.reset_index()
         df.rename(columns={"timestamp": "date", "symbol": "ticker   "}, inplace=True)
@@ -100,7 +100,7 @@ class SingleTickerDataCollector:
         ipoDate = df["date"].min()
         if ipoDate <= FIRST_TRAD_DAY_AFTER_START:
             ipoDate = IPO_BEFORE_START_DATE
-
+        
         return df, ipoDate        
 
 
@@ -243,13 +243,28 @@ class SingleTickerDataCollector:
 
 
         # if there are any name changes: FIRST CHECK that this ticker is the most recent
+        # Also filter out stale name changes from different securities that reused this ticker
         nameHasChanged = False
+        staleNameChanges = []
         for restructure in actions["restructures"]:
             if restructure["type"] == CorporateActionsType.NAME_CHANGE:
                 nameHasChanged = True
                 if restructure["oldTicker"] == ticker and restructure["newTicker"] not in ignoredNextTickers:
+                    # Guard against ticker symbol reuse (e.g. AACI was used by 3 different
+                    # companies). Alpaca returns ALL name changes for a symbol, including ones
+                    # from different securities that previously used the same ticker.
+                    # If we have price data AFTER this supposed rename date, the rename clearly
+                    # doesn't belong to this security - skip it, don't discard the whole ticker.
+                    changeDateTs = pd.Timestamp(restructure["date"], tz=NEW_YORK)
+                    if not df.empty and (df["date"] > changeDateTs).any():
+                        staleNameChanges.append(restructure)
+                        continue
                     return False, []
-                
+
+        # Remove stale name changes so the recursive pass below doesn't follow them
+        if staleNameChanges:
+            actions["restructures"] = [r for r in actions["restructures"] if r not in staleNameChanges]
+            nameHasChanged = any(r["type"] == CorporateActionsType.NAME_CHANGE for r in actions["restructures"])
 
         
         # If this point is reached, this ticker is the most recent name. If there are other name changes, must work backwards
@@ -329,7 +344,7 @@ def threadWorker(ticker, exchange, startDate, endDate, delistDate, priceClient, 
     )
     passed, priceDf, ipoDate, actions = collector.collect()
     if not passed:
-        return False, None, IPO_BEFORE_START_DATE, None
+        return False, ticker, IPO_BEFORE_START_DATE, None
 
     if exchange == "XNAS":
         baseDir = NASDAQ_DIRECTORY
@@ -387,8 +402,13 @@ class OHLCVDataClient:
 
 
 
-    def massDownload(self, updateIpoDates=False):
+    def massDownload(self, updateIpoDates=False, threads=8):
         tickersPath = "data/tickers.parquet"
+
+        for directory in [NYSE_DIRECTORY, NASDAQ_DIRECTORY]:
+            for filename in os.listdir(directory):
+                if filename.endswith(".parquet"):
+                    os.remove(os.path.join(directory, filename))
 
         if not os.path.exists(tickersPath):
             raise FileNotFoundError(f"Cannot find {tickersPath}")
@@ -417,56 +437,108 @@ class OHLCVDataClient:
         completed = 0
         errors = 0
         skipped = 0
+        exportInterval = 200
+        lastExportCount = 0
 
         print(f"\nBeginning mass download of OHLCV data for {totalTickers} tickers...\n")
         pbar = tqdm(
             total=totalTickers,
             desc="Downloading OHLCV for all tickers",
-            smoothing=0.8,
+            smoothing=0.1,
             # bar_format="{desc}| {percentage:3.2f}% |{bar}| [{elapsed} elapsed, {remaining} remaining] ",
-            colour="green"
+            colour="green",
+            dynamic_ncols=True            
         )
 
+        skippedTickers = []
+        failedTickers = []
+
         def downloadAndTrack(item):
-            nonlocal completed, errors, skipped
-            try:
-                passed, ticker, ipoDate, actionRows = threadWorker(
-                    item["ticker"], item["exchange"], item["startDate"], item["endDate"], item["delistDate"],
-                    self.priceClient, self.corpActionsClient, self.limiters.alpacaLimiter
-                )
+            nonlocal completed, errors, skipped, lastExportCount
+            exportSnapshot = None
+            # try:
+            passed, ticker, ipoDate, actionRows = threadWorker(
+                item["ticker"], item["exchange"], item["startDate"], item["endDate"], item["delistDate"],
+                self.priceClient, self.corpActionsClient, self.limiters.alpacaLimiter
+            )
 
-                with resultsLock:
-                    if not passed:
-                        skipped += 1
-                        pbar.set_postfix_str(f"{ticker:>5} was intentionally skipped")
-                    else:
-                        completed += 1
-                        ipoResults[item["rowIdx"]] = ipoDate
-                        allActionRows.extend(actionRows)
-                        pbar.set_postfix_str(f"{ticker:>5}, {errors} errors so far")
-                    pbar.update(1)
+            with resultsLock:
+                if not passed:
+                    skipped += 1
+                    skippedTickers.append(item["ticker"])
+                    pbar.set_postfix_str(f"{ticker:>5} was intentionally skipped")
+                else:
+                    completed += 1
+                    ipoResults[item["rowIdx"]] = ipoDate
+                    allActionRows.extend(actionRows)
+                    pbar.set_postfix_str(f"{ticker:>5}, {errors} errors so far")
+                pbar.update(1)
 
-            except Exception as e:
-                with resultsLock:
-                    errors += 1
-                    print(f"  Error downloading data for {item['ticker']}: {e}\n")
-                    pbar.set_postfix_str(f"ERROR: {ticker:>5}")
-                    pbar.update(1)
+                processed = completed + skipped + errors
+                if processed - lastExportCount >= exportInterval:
+                    lastExportCount = processed
+                    exportSnapshot = list(allActionRows)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-            futures = [executor.submit(downloadAndTrack, item) for item in tickerRows]
-            concurrent.futures.wait(futures)
+            if exportSnapshot is not None:
+                exportActions(exportSnapshot)
+
+            # except Exception as e:
+            #     with resultsLock:
+            #         errors += 1
+            #         failedTickers.append(item["ticker"])
+            #         print(f"  Error downloading data for {item['ticker']}: {e}\n")
+            #         pbar.set_postfix_str(f"ERROR: {ticker:>5}")
+            #         pbar.update(1)
+
+
+        def exportActions(actionRows=None):
+            rows = allActionRows if actionRows is None else actionRows
+            columns = [
+                "date",
+                "ticker",
+                "exchange",
+                "actionType",
+                "oldRate",
+                "newRate",
+                "rate",
+                "special",
+                "acquireeTicker",
+                "acquireeRate",
+                "acquirerTicker",
+                "acquirerRate",
+                "cashRate",
+                "oldTicker",
+                "newTicker",
+                "sourceTicker",
+                "sourceRate",
+            ]
+            actionsDf = pd.DataFrame(rows).reindex(columns=columns)
+            actionsDf.sort_values(by=["date", "exchange", "ticker", "actionType"], ascending=True, inplace=True)
+            actionsOutputPath = "data/corpactions.parquet"
+            actionsDf.to_parquet(actionsOutputPath, index=False)
+            return actionsDf, actionsOutputPath
+
+
+
+        if threads <= 1:
+            for item in tickerRows:
+                downloadAndTrack(item)
+        else:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+                futures = [executor.submit(downloadAndTrack, item) for item in tickerRows]
+                concurrent.futures.wait(futures)
 
         pbar.close()
 
+        print(f"\nCompleted downloads for {completed} tickers with {errors} errors and {skipped} skipped.")
+        if skipped > 0:
+            print(f"Skipped tickers: {', '.join(skippedTickers)}")
+        if errors > 0:
+            print(f"Failed tickers: {', '.join(failedTickers)}")
+
 
         # Export all corporate actions to one parquet file
-        actionsDf = pd.DataFrame(allActionRows)
-        # actionsDf["date"] = pd.to_datetime(actionsDf["date"])
-        actionsDf.sort_values(by=["date", "exchange", "ticker", "actionType"], ascending=True, inplace=True)
-
-        actionsOutputPath = "data/corpactions.parquet"
-        actionsDf.to_parquet(actionsOutputPath, index=False)
+        actionsDf, actionsOutputPath = exportActions()
         print(f"\nSaved corporate actions data for {len(actionsDf)} actions to {actionsOutputPath}.")
 
 

@@ -94,9 +94,10 @@ class NewsClient:
         pbar = tqdm(
             total=endUnix - startUnix,
             desc="Fetching news articles",
-            smoothing=0.8,
+            smoothing=0.1,
             bar_format="{desc}| {percentage:3.2f}% |{bar}| [{elapsed} elapsed, {remaining} remaining] ",
-            colour="green"
+            colour="green",
+            dynamic_ncols=True
         )
 
         def refreshProgress(threadId, latestUnix):

@@ -1,0 +1,65 @@
+from collectors.ohlcvclient import OHLCVDataClient
+from collectors.tickerclient import TickerDataClient
+from collectors.newsclient import NewsClient
+from collectors.ratelimiter import GlobalRateLimiters
+from collectors.constants import *
+
+
+if __name__ == "__main__":
+    
+    print("=" * 60)
+    print("Mass Download Tool")
+    print("=" * 60, "\n")
+
+    downloading = {
+        "tickers": {
+            "confirm": input("Download tickers? (yes/no)        > ").lower() == "yes",
+            "desc": "All tickers (listed and delisted) from the NYSE and NASDAQ from 1 Jan 2016 to 30 Apr 2026"
+        },
+        "ohlcv": {
+            "confirm": input("Download OHLCV data? (yes/no)     > ").lower() == "yes",
+            "desc": "All daily OHLCV values, and corporate actions, from 1 Jan 2016 to 30 Apr 2026 for all tickers"
+        },
+        "news": {
+            "confirm": input("Download news articles? (yes/no)  > ").lower() == "yes",
+            "desc": "All news articles from 1 Jan 2016 to 30 Apr 2026"
+        }
+    }
+
+    if not any(downloading.values()):
+        print("Nothing to download. Aborting.")
+        exit()
+
+
+    print(f"\nConfirmation! The following will be deleted and redownloaded:")
+    for category, download in downloading.items():
+        if download["confirm"]:
+            print(f" - {download['desc']}")
+
+    print("\nThis WILL TAKE MULTIPLE HOURS!")
+    print("To confirm, type the following exactly: \"I wish to proceed.\"")
+
+    if input("> ") != "I wish to proceed.":
+        print("Aborting.")
+        exit()
+
+
+    print()
+    print( "=" * 60)
+    print("Starting downloads in 5 seconds...")
+    print("=" * 60, "\n")
+
+    import time
+    time.sleep(5)
+
+    if downloading["tickers"]["confirm"]:
+        tickerClient = TickerDataClient(START_DATE, END_DATE)
+        tickerClient.massTickerDownloadWithData()
+
+    if downloading["ohlcv"]["confirm"]:
+        ohlcvClient = OHLCVDataClient(START_DATE_STR, END_DATE_STR, GlobalRateLimiters())
+        ohlcvClient.massDownload(True, threads=4)
+
+    if downloading["news"]["confirm"]:
+        newsClient = NewsClient(START_DATE, END_DATE)
+        newsClient.threadedMassDownload()

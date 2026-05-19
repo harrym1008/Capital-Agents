@@ -14,3 +14,28 @@ END_DATE = pd.Timestamp(END_DATE_STR, tz=NEW_YORK)
 
 IPO_BEFORE_START_DATE = pd.Timestamp("2015-12-31", tz=NEW_YORK)
 
+
+
+BAD_SECURITY_TERMS = [
+    "warrant",
+    "right",
+    "unit",
+    "depositary",
+    "notes",
+    "note",
+    "senior",
+    "bond",
+    "etf",
+    "fund",
+    "trust preferred",
+    "income",
+    "series"
+]
+
+GOOD_SECURITY_TERMS = [
+    "common stock",
+    "common shares",
+    "ordinary shares",
+    "preferred units",
+]
+
