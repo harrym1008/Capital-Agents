@@ -1,4 +1,5 @@
 import json
+import requests
 import os
 import threading
 import time
@@ -8,6 +9,7 @@ from dotenv import load_dotenv
 
 from tqdm import tqdm
 import pandas as pd
+import numpy as np
 
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.historical.corporate_actions import CorporateActionsClient
@@ -28,42 +30,47 @@ OHLC_FILE_OUTPUT = "{}.parquet"
 
 # When delistDate is None, it means the stock is still trading as of endDate
 class SingleTickerDataCollector:
-    def __init__(self, ticker, exchange, startDate, endDate, delistDate, 
+    def __init__(self, ticker, exchange, cik, startDate, endDate, delistDate, 
                  priceClient: StockHistoricalDataClient, 
                  corpActionsClient: CorporateActionsClient, 
-                 alpacaLimiter: RateLimiter):
+                 alpacaLimiter: RateLimiter,
+                 edgarLimiter: RateLimiter):
         self.ticker = ticker
         self.exchange = exchange
+        self.cik = cik
         self.startDateStr = startDate
         self.endDateStr = endDate
         self.delistDateStr = delistDate
 
-        self.startDate = datetime.strptime(startDate, "%Y-%m-%d")
-        self.endDate = datetime.strptime(endDate, "%Y-%m-%d")
-        self.delistDate = datetime.strptime(delistDate, "%Y-%m-%d") if delistDate else None
+        self.startDate =  pd.Timestamp(startDate, tz=NEW_YORK)
+        self.endDate = pd.Timestamp(endDate, tz=NEW_YORK)
+        self.delistDate = pd.Timestamp(delistDate, tz=NEW_YORK) if delistDate else None
 
         self.priceClient = priceClient
         self.corpActionsClient = corpActionsClient
-        self.limiter = alpacaLimiter
+        self.alpacaLimiter = alpacaLimiter
+        self.edgarLimiter = edgarLimiter
 
 
     def collect(self):
         timeRange = self.getTimeRange()
         
-        priceDf, ipoDate = self.collectPriceData(timeRange)
-        latestNameCheck, actions = self.collectCorporateActions(timeRange, priceDf)
+        df, ipoDate = self.collectPriceData(timeRange)
+        latestNameCheck, actions = self.collectCorporateActions(timeRange, df)
         if not latestNameCheck:
-            return False, pd.DataFrame(), IPO_BEFORE_START_DATE, {type_: [] for type_ in ["splits", "dividends", "mergers", "restructures"]}
+            return False, pd.DataFrame(), IPO_BEFORE_START_DATE, \
+                {type_: [] for type_ in ["splits", "dividends", "mergers", "restructures"]}
         
-        self.addCorpDataToDf(priceDf, actions)
+        df = self.addCorpDataToDf(df, actions)
+        df = self.addOutstandingSharesToDf(df, actions)
 
-        return True, priceDf, ipoDate, actions
+        return True, df, ipoDate, actions
 
 
     def getTimeRange(self):
         collectStart = self.startDateStr
         if self.delistDate and self.delistDate < self.endDate:
-            collectEnd = self.delistDate.strftime("%Y-%m-%d")
+            collectEnd = self.delistDateStr
         else:
             collectEnd = self.endDateStr
 
@@ -85,7 +92,7 @@ class SingleTickerDataCollector:
             adjustment=Adjustment.RAW
         )
 
-        self.limiter.wait()
+        self.alpacaLimiter.wait()
         priceData = self.priceClient.get_stock_bars(priceRequest)
         df = priceData.df
         
@@ -93,7 +100,7 @@ class SingleTickerDataCollector:
             return pd.DataFrame(), IPO_BEFORE_START_DATE
         
         df = df.reset_index()
-        df.rename(columns={"timestamp": "date", "symbol": "ticker   "}, inplace=True)
+        df.rename(columns={"timestamp": "date", "symbol": "ticker"}, inplace=True)
         df["date"] = pd.to_datetime(df["date"])
         df = df[["date", "open", "high", "low", "close", "volume", "vwap"]]
 
@@ -136,7 +143,7 @@ class SingleTickerDataCollector:
             limit=1000
         )
                 
-        self.limiter.wait()
+        self.alpacaLimiter.wait()
         response = self.corpActionsClient.get_corporate_actions(request)
         data = response.data
 
@@ -320,7 +327,7 @@ class SingleTickerDataCollector:
             # NaN the prices on the ex-date (Alpaca data is inaccurate)
             # Example: NVDA high at $195 on 2024-06-10 on day of 10:1 split, 
             # but should be around $123
-            df.loc[df["date"] == exDate, ["open", "high", "low", "close", "vwap"]] = pd.NA
+            df.loc[df["date"] == exDate, ["open", "high", "low", "close", "volume", "vwap"]] = pd.NA
 
         for actionList in actions.values():
             for action in actionList:
@@ -330,17 +337,105 @@ class SingleTickerDataCollector:
         return df
     
 
+    def addOutstandingSharesToDf(self, df, actions):
+        cikPadded = self.cik.zfill(10)
+        url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cikPadded}.json"
+        headers = {"User-Agent": "CapitalAgents/1.0"}
 
-def threadWorker(ticker, exchange, startDate, endDate, delistDate, priceClient, corpActionsClient, limiter):
+        self.edgarLimiter.wait()
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+
+        data = response.json()
+        results = []
+        series = []
+
+        for namespace in ["dei", "us-gaap"]:
+            tagKey = "EntityCommonStockSharesOutstanding" if namespace == "dei" else "CommonStockSharesOutstanding"
+            try:
+                series = data["facts"][namespace][tagKey]["units"]["shares"]
+                break
+            except Exception:
+                continue
+
+        for entry in series:
+            period = pd.Timestamp(entry["filed"], tz=NEW_YORK)
+            if self.startDate <= period <= self.endDate:
+                results.append({
+                    "date": period,
+                    "outstandingShares": entry["val"]
+                })
+        
+        results.sort(key=lambda x: x["date"])
+        sharesDf = pd.DataFrame(results)
+
+        if sharesDf.empty:
+            return df
+        
+        df = df.merge(sharesDf, on="date", how="left")
+        # Forward fill first, then backfill (to fill it in before self.startDate)
+        df["outstandingShares"] = df["outstandingShares"].ffill()
+        df["outstandingShares"] = df["outstandingShares"].bfill()
+
+        # On price splits, outstanding shares must be multiplied by the split factor to reflect the change in shares outstanding
+        # until the next date with a split adjusted outstanding shares value
+        for action in actions["splits"]:
+            splitDate = pd.Timestamp(action["date"], tz=NEW_YORK)
+            factor = action["newRate"] / action["oldRate"]
+
+            # Find the next date 
+            nextDate = sharesDf[sharesDf["date"] > splitDate]["date"].min()
+
+            if nextDate is pd.NaT:
+                mask = df["date"] >= splitDate
+            else:
+                mask = (df["date"] >= splitDate) & (df["date"] < nextDate)
+
+            df.loc[mask, "outstandingShares"] *= factor
+
+
+        # Add formatted market cap column
+        def formatMarketCap(marketCap):
+            def clean(number):
+                if number >= 100:
+                    return f"{number:.0f}"
+                if number >= 10:
+                    return f"{number:.1f}"
+                return f"{number:.2f}"
+            
+            if pd.isna(marketCap):
+                return f"N/A"
+            elif marketCap >= 1e12:
+                return f"{clean(marketCap / 1_000_000_000_000)}tn"
+            elif marketCap >= 1e9:
+                return f"{clean(marketCap / 1_000_000_000)}bn"
+            elif marketCap >= 1e6:
+                return f"{clean(marketCap / 1_000_000)}mn"
+            elif marketCap >= 1e3:
+                return f"{clean(marketCap / 1_000)}k"
+            else:
+                return f"{clean(marketCap)}"
+
+        df["marketCapNumber"] = df["close"] * df["outstandingShares"]
+        df["marketCap"] = df["marketCapNumber"].map(formatMarketCap)
+        df.drop(columns=["marketCapNumber"], inplace=True)
+
+        return df      
+    
+
+    
+def threadWorker(ticker, exchange, cik, startDate, endDate, delistDate, priceClient, corpActionsClient, alpacaLimiter, edgarLimiter):
     collector = SingleTickerDataCollector(
         ticker=ticker,
         exchange=exchange,
+        cik=cik,
         startDate=startDate,
         endDate=endDate,
         delistDate=delistDate,
         priceClient=priceClient,
         corpActionsClient=corpActionsClient,
-        alpacaLimiter=limiter
+        alpacaLimiter=alpacaLimiter,
+        edgarLimiter=edgarLimiter
     )
     passed, priceDf, ipoDate, actions = collector.collect()
     if not passed:
@@ -425,6 +520,7 @@ class OHLCVDataClient:
             tickerRows.append({
                 "ticker": row["ticker"],
                 "exchange": row["exchange"],
+                "cik": row["cik"],
                 "startDate": self.startDate,
                 "endDate": self.endDate,
                 "delistDate": row["delistDate"] if not pd.isna(row["delistDate"]) else None,
@@ -458,8 +554,8 @@ class OHLCVDataClient:
             exportSnapshot = None
             # try:
             passed, ticker, ipoDate, actionRows = threadWorker(
-                item["ticker"], item["exchange"], item["startDate"], item["endDate"], item["delistDate"],
-                self.priceClient, self.corpActionsClient, self.limiters.alpacaLimiter
+                item["ticker"], item["exchange"], item["cik"], item["startDate"], item["endDate"], item["delistDate"],
+                self.priceClient, self.corpActionsClient, self.limiters.alpacaLimiter, self.limiters.edgarLimiter
             )
 
             with resultsLock:
@@ -517,7 +613,6 @@ class OHLCVDataClient:
             actionsOutputPath = "data/corpactions.parquet"
             actionsDf.to_parquet(actionsOutputPath, index=False)
             return actionsDf, actionsOutputPath
-
 
 
         if threads <= 1:

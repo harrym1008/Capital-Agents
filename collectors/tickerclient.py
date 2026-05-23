@@ -183,7 +183,7 @@ class TickerDataClient:
 
         # Final other textual elements                               Regex = start string, 0 or more whitepace, end of string
         df[["website", "summary"]] = df[["website", "summary"]].replace(r"^\s*$", pd.NA, regex=True).fillna("unknown")
-        df["cik"] = df["cik"].fillna("unknown")
+        df["cik"] = df["cik"].dropna()
         df["isin"] = df["isin"].fillna("unknown")
 
         df = df[[
@@ -202,13 +202,10 @@ class TickerDataClient:
         ]]
 
 
-        # Filter out some tickers based on their shared CIK, using the security score
-        knownCikDf = df[df["cik"] != "unknown"]      
-        unknownCikDf = df[df["cik"] == "unknown"] 
         rowsToKeep = []
 
-        # Filter out of tickers with known CIKs
-        for cik, group in knownCikDf.groupby("cik"):
+        # Filter out bad tickers that are not common stocks, but listed as such
+        for cik, group in df.groupby("cik"):
             group = group.copy()
 
             group["secscore"] = group.apply(getSecurityScore, axis=1)
@@ -220,10 +217,6 @@ class TickerDataClient:
                 bestRow = group.sort_values(["secscore", "ticker"], ascending=[False, True]).head(1)
                 rowsToKeep.append(bestRow)
 
-
-        for _, row in unknownCikDf.iterrows():
-            if getSecurityScore(row) >= 0:
-                rowsToKeep.append(pd.DataFrame([row]))
 
 
         filteredDf = pd.concat(rowsToKeep, ignore_index=True)
