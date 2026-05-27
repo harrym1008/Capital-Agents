@@ -18,16 +18,11 @@ from alpaca.data.enums import Adjustment, CorporateActionsType
 from alpaca.data.timeframe import TimeFrame
 
 from collectors.ratelimiter import GlobalRateLimiters, RateLimiter
-from collectors.constants import *
+from collectors.constants import FIRST_TRAD_DAY_AFTER_START, IPO_BEFORE_START_DATE, NEW_YORK, \
+                                 NYSE_DIRECTORY, NASDAQ_DIRECTORY, OHLC_FILE_OUTPUT, CORP_ACTIONS_OUTPUT, TICKER_CHANGES_OUTPUT
 
 
 
-NYSE_DIRECTORY = "data/ohlcv_nyse/"
-NASDAQ_DIRECTORY = "data/ohlcv_nasdaq/"
-OHLC_FILE_OUTPUT = "{}.parquet"
-
-CORP_ACTIONS_OUTPUT = "data/corpactions.parquet"
-TICKER_CHANGES_OUTPUT = "data/tickerchanges.parquet"
 
 
 

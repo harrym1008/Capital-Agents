@@ -9,7 +9,7 @@ import financedatabase as fd
     
 from collectors.mktcalendar import MarketCalendar
 from collectors.ratelimiter import GlobalRateLimiters
-from collectors.constants import *
+from collectors.constants import GOOD_SECURITY_TERMS, BAD_SECURITY_TERMS, IPO_BEFORE_START_DATE, NEW_YORK
 
 
 def makeSectorOrIndustryKey(text):

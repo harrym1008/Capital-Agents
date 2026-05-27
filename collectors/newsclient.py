@@ -13,12 +13,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from collectors.ratelimiter import GlobalRateLimiters
-
-NEWS_BATCHES_DIR = "data/newsbatches"
-NEWS_PARQUET_PATH = "data/news.parquet"
-NEWS_INDEX_PARQUET_PATH = "data/newsindex.parquet"
-BATCH_SIZE = 2000
-
+from collectors.constants import NEWS_BATCHES_DIR, NEWS_PARQUET_PATH, NEWS_INDEX_PARQUET_PATH, NEWS_BATCH_SIZE
 
 
 def cleanupArticleContent(rawContent):
@@ -111,7 +106,7 @@ class NewsClient:
                 maxUnix = max(threadProgress)
                 latestDate = datetime.fromtimestamp(maxUnix, tz=timezone.utc).strftime("%#d %B %Y")
                 pbar.set_description(
-                    f"({totalFetched} | {totalBatchCount * BATCH_SIZE}) {latestDate} | Fetching news articles"
+                    f"({totalFetched} | {totalBatchCount * NEWS_BATCH_SIZE}) {latestDate} | Fetching news articles"
                 )
                 pbar.n = progressValue
                 pbar.refresh()
@@ -180,7 +175,7 @@ class NewsClient:
                         nextPageToken = newsResponse.get("next_page_token", None)
                         pageSuccess = True
 
-                        if len(batchBuffer) >= BATCH_SIZE:
+                        if len(batchBuffer) >= NEWS_BATCH_SIZE:
                             df = pd.DataFrame(batchBuffer)
                             df["updated_at"] = pd.to_datetime(df["updated_at"])
 
