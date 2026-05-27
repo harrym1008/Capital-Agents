@@ -6,13 +6,19 @@ import threading
 import requests
 import re
 import html
-import pandas as pd
+import ast
 from dotenv import load_dotenv
+
+import pandas as pd
 from tqdm import tqdm
 
 from collectors.ratelimiter import GlobalRateLimiters
 
-NEWS_THREADS = 4
+NEWS_BATCHES_DIR = "data/newsbatches"
+NEWS_PARQUET_PATH = "data/news.parquet"
+NEWS_INDEX_PARQUET_PATH = "data/newsindex.parquet"
+BATCH_SIZE = 2000
+
 
 
 def cleanupArticleContent(rawContent):
@@ -56,23 +62,17 @@ class NewsClient:
         
 
 
-    def threadedMassDownload(self):
-        threadCount = NEWS_THREADS
-
-        batchesDir = "data/newsbatches"
-        parquetPath = "data/news.parquet"
-        os.makedirs(batchesDir, exist_ok=True)
-        os.makedirs(os.path.dirname(parquetPath), exist_ok=True)
+    def threadedMassDownload(self, threads=4):
+        os.makedirs(NEWS_BATCHES_DIR, exist_ok=True)
+        os.makedirs(os.path.dirname(NEWS_PARQUET_PATH), exist_ok=True)
 
         # Delete old files
-        if os.path.exists(batchesDir):
-            for filename in os.listdir(batchesDir):
-                os.remove(os.path.join(batchesDir, filename))
+        if os.path.exists(NEWS_BATCHES_DIR):
+            for filename in os.listdir(NEWS_BATCHES_DIR):
+                os.remove(os.path.join(NEWS_BATCHES_DIR, filename))
 
-        if os.path.exists(parquetPath):
-            os.remove(parquetPath)
-
-        batchSize = 2000
+        if os.path.exists(NEWS_PARQUET_PATH):
+            os.remove(NEWS_PARQUET_PATH)
 
         url = "https://data.alpaca.markets/v1beta1/news"
         headers = {
@@ -81,7 +81,7 @@ class NewsClient:
             "APCA-API-SECRET-KEY": self.apiSecret
         }
 
-        windows = splitDateRange(self.startDate, self.endDate, threadCount)
+        windows = splitDateRange(self.startDate, self.endDate, threads)
         threadStartUnix = [int(window[0].timestamp()) for window in windows]
         threadProgress = threadStartUnix.copy()
 
@@ -95,7 +95,7 @@ class NewsClient:
             total=endUnix - startUnix,
             desc="Fetching news articles",
             smoothing=0.1,
-            bar_format="{desc}| {percentage:3.2f}% |{bar}| [{elapsed} elapsed, {remaining} remaining] ",
+            bar_format="{desc} | {percentage:3.2f}% |{bar}| [{elapsed} elapsed, {remaining} remaining] ",
             colour="green",
             dynamic_ncols=True
         )
@@ -111,7 +111,7 @@ class NewsClient:
                 maxUnix = max(threadProgress)
                 latestDate = datetime.fromtimestamp(maxUnix, tz=timezone.utc).strftime("%#d %B %Y")
                 pbar.set_description(
-                    f"({totalFetched} | {totalBatchCount * batchSize}) {latestDate} | Fetching news articles"
+                    f"({totalFetched} | {totalBatchCount * BATCH_SIZE}) {latestDate} | Fetching news articles"
                 )
                 pbar.n = progressValue
                 pbar.refresh()
@@ -180,11 +180,11 @@ class NewsClient:
                         nextPageToken = newsResponse.get("next_page_token", None)
                         pageSuccess = True
 
-                        if len(batchBuffer) >= batchSize:
+                        if len(batchBuffer) >= BATCH_SIZE:
                             df = pd.DataFrame(batchBuffer)
                             df["updated_at"] = pd.to_datetime(df["updated_at"])
 
-                            batchFileName = f"{batchesDir}/news_{threadId}_{batchCount:03d}.parquet"
+                            batchFileName = f"{NEWS_BATCHES_DIR}/news_{threadId}_{batchCount:03d}.parquet"
                             df.to_parquet(batchFileName, engine="pyarrow", index=False)
 
                             batchCount += 1
@@ -210,7 +210,7 @@ class NewsClient:
                 df = pd.DataFrame(batchBuffer)
                 df["updated_at"] = pd.to_datetime(df["updated_at"])
 
-                batchFileName = f"{batchesDir}/news_{threadId}_{batchCount:03d}.parquet"
+                batchFileName = f"{NEWS_BATCHES_DIR}/news_{threadId}_{batchCount:03d}.parquet"
                 df.to_parquet(batchFileName, engine="pyarrow", index=False)
 
                 batchCount += 1
@@ -238,38 +238,79 @@ class NewsClient:
 
         print(f"\nRenaming batch files...")
         batchFiles = sorted([
-            f for f in os.listdir(batchesDir)
+            f for f in os.listdir(NEWS_BATCHES_DIR)
             if f.endswith(".parquet")
         ])
 
         tempFiles = []
         for index, filename in enumerate(batchFiles):
-            sourcePath = os.path.join(batchesDir, filename)
+            sourcePath = os.path.join(NEWS_BATCHES_DIR, filename)
             tempName = f"temp_{index:06d}.parquet"
-            tempPath = os.path.join(batchesDir, tempName)
+            tempPath = os.path.join(NEWS_BATCHES_DIR, tempName)
             os.rename(sourcePath, tempPath)
             tempFiles.append(tempPath)
 
         for index, tempPath in enumerate(tempFiles):
-            finalPath = os.path.join(batchesDir, f"news_{index:03d}.parquet")
+            finalPath = os.path.join(NEWS_BATCHES_DIR, f"news_{index:03d}.parquet")
             os.rename(tempPath, finalPath)
 
         # Consolidate all batch files into a single parquet file
-        print(f"\nConsolidating {totalBatchCount} batch files into {parquetPath}...")
+        print(f"\nConsolidating {totalBatchCount} batch files into {NEWS_PARQUET_PATH}...")
         batchFiles = sorted([
-            os.path.join(batchesDir, f)
-            for f in os.listdir(batchesDir)
+            os.path.join(NEWS_BATCHES_DIR, f)
+            for f in os.listdir(NEWS_BATCHES_DIR)
             if f.endswith(".parquet")
         ])
 
         if batchFiles:
             dfs = [pd.read_parquet(f, engine="pyarrow") for f in batchFiles]
             consolidatedDf = pd.concat(dfs, ignore_index=True)
-            consolidatedDf.to_parquet(parquetPath, engine="pyarrow", index=False)
-            print(f"Consolidated {len(consolidatedDf)} articles into {parquetPath}")
+            consolidatedDf.to_parquet(NEWS_PARQUET_PATH, engine="pyarrow", index=False)
+            print(f"Consolidated {len(consolidatedDf)} articles into {NEWS_PARQUET_PATH}")
         else:
             emptyDf = pd.DataFrame(columns=["id", "updated_at", "headline", "content", "author", "symbols"])
-            emptyDf.to_parquet(parquetPath, engine="pyarrow", index=False)
+            emptyDf.to_parquet(NEWS_PARQUET_PATH, engine="pyarrow", index=False)
             print("No articles to consolidate. Created empty parquet file.")
 
         return totalFetched, totalBatchCount
+
+
+    def buildInvertedIndex(self):
+        if not os.path.exists(NEWS_PARQUET_PATH):
+            print(f"Build {NEWS_PARQUET_PATH} first by running threadedMassDownload()")
+            return
+        
+        df = pd.read_parquet(NEWS_PARQUET_PATH, engine="pyarrow", columns=["id", "symbols"])
+        indices = {}
+    
+        pbar = tqdm(
+            total=len(df),
+            desc="Building inverted index",
+            smoothing=0.1,
+            bar_format="{desc} | {percentage:3.2f}% |{bar}| [{elapsed} elapsed, {remaining} remaining] ",
+            colour="green",
+            dynamic_ncols=True
+        )
+        
+        for row in df.itertuples(index=False):
+            articleId = row.id
+            symbolsStr = row.symbols
+            try:
+                symbolsList = ast.literal_eval(symbolsStr)
+            except:
+                symbolsList = []
+
+            for symbol in symbolsList:
+                if symbol not in indices:
+                    indices[symbol] = []
+                indices[symbol].append(articleId)
+
+            pbar.update(1)
+
+        pbar.close()
+        out = pd.DataFrame(
+            {"symbol": list(indices.keys()), "ids": list(indices.values())}
+        ).sort_values("symbol")
+
+        out.to_parquet(NEWS_INDEX_PARQUET_PATH, engine="pyarrow", index=False)
+        print(f"Built inverted index of {len(df)} articles with {len(out)} symbols into {NEWS_INDEX_PARQUET_PATH}.")

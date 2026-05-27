@@ -26,6 +26,9 @@ NYSE_DIRECTORY = "data/ohlcv_nyse/"
 NASDAQ_DIRECTORY = "data/ohlcv_nasdaq/"
 OHLC_FILE_OUTPUT = "{}.parquet"
 
+CORP_ACTIONS_OUTPUT = "data/corpactions.parquet"
+TICKER_CHANGES_OUTPUT = "data/tickerchanges.parquet"
+
 
 
 # When delistDate is None, it means the stock is still trading as of endDate
@@ -257,11 +260,7 @@ class SingleTickerDataCollector:
             if restructure["type"] == CorporateActionsType.NAME_CHANGE:
                 nameHasChanged = True
                 if restructure["oldTicker"] == ticker and restructure["newTicker"] not in ignoredNextTickers:
-                    # Guard against ticker symbol reuse (e.g. AACI was used by 3 different
-                    # companies). Alpaca returns ALL name changes for a symbol, including ones
-                    # from different securities that previously used the same ticker.
-                    # If we have price data AFTER this supposed rename date, the rename clearly
-                    # doesn't belong to this security - skip it, don't discard the whole ticker.
+                    # Prevent ticker reuse
                     changeDateTs = pd.Timestamp(restructure["date"], tz=NEW_YORK)
                     if not df.empty and (df["date"] > changeDateTs).any():
                         staleNameChanges.append(restructure)
@@ -310,6 +309,10 @@ class SingleTickerDataCollector:
                     uniqueRestructures.append(restructure)
             actions["restructures"] = uniqueRestructures
 
+            # Order all actions by their date
+            for key in actions:
+                actions[key].sort(key=lambda x: pd.Timestamp(x["date"], tz=NEW_YORK))
+
         return True, actions
 
 
@@ -350,26 +353,39 @@ class SingleTickerDataCollector:
         results = []
         series = []
 
-        for namespace in ["dei", "us-gaap"]:
-            tagKey = "EntityCommonStockSharesOutstanding" if namespace == "dei" else "CommonStockSharesOutstanding"
+        nameTagOutputs = {
+            ("dei", "EntityCommonStockSharesOutstanding"): None,
+            ("us-gaap", "WeightedAverageNumberOfDilutedSharesOutstanding"): None,
+            ("us-gaap", "WeightedAverageNumberOfSharesOutstandingBasic"): None,
+            # ("us-gaap", "PreferredStockSharesOutstanding"): None,      # These 2 give very sparse data...
+            # ("us-gaap", "PreferredStockSharesAuthorized"): None
+        }
+
+        for namespace, tagKey in nameTagOutputs:
             try:
                 series = data["facts"][namespace][tagKey]["units"]["shares"]
-                break
+                nameTagOutputs[(namespace, tagKey)] = series
             except Exception:
                 continue
 
-        for entry in series:
-            period = pd.Timestamp(entry["filed"], tz=NEW_YORK)
-            if self.startDate <= period <= self.endDate:
-                results.append({
-                    "date": period,
-                    "outstandingShares": entry["val"]
-                })
+        for series in nameTagOutputs.values():
+            if series is None:
+                continue
+
+            for entry in series:
+                period = pd.Timestamp(entry["filed"], tz=NEW_YORK)
+                if self.startDate <= period <= self.endDate:
+                    results.append({
+                        "date": period,
+                        "outstandingShares": entry["val"]
+                    })
         
         results.sort(key=lambda x: x["date"])
         sharesDf = pd.DataFrame(results)
 
         if sharesDf.empty:
+            df["outstandingShares"] = pd.NA
+            df["marketCap"] = pd.NA
             return df
         
         df = df.merge(sharesDf, on="date", how="left")
@@ -551,7 +567,7 @@ class OHLCVDataClient:
 
         def downloadAndTrack(item):
             nonlocal completed, errors, skipped, lastExportCount
-            exportSnapshot = None
+            exportAfter = False
             # try:
             passed, ticker, ipoDate, actionRows = threadWorker(
                 item["ticker"], item["exchange"], item["cik"], item["startDate"], item["endDate"], item["delistDate"],
@@ -568,51 +584,26 @@ class OHLCVDataClient:
                     ipoResults[item["rowIdx"]] = ipoDate
                     allActionRows.extend(actionRows)
                     pbar.set_postfix_str(f"{ticker:>5}, {errors} errors so far")
-                pbar.update(1)
 
                 processed = completed + skipped + errors
                 if processed - lastExportCount >= exportInterval:
                     lastExportCount = processed
-                    exportSnapshot = list(allActionRows)
+                    exportAfter = True
 
-            if exportSnapshot is not None:
-                exportActions(exportSnapshot)
-
-            # except Exception as e:
-            #     with resultsLock:
-            #         errors += 1
-            #         failedTickers.append(item["ticker"])
-            #         print(f"  Error downloading data for {item['ticker']}: {e}\n")
-            #         pbar.set_postfix_str(f"ERROR: {ticker:>5}")
-            #         pbar.update(1)
+            # Export outside the lock
+            pbar.update(1)
+            if exportAfter:
+                exportActions(allActionRows)
 
 
-        def exportActions(actionRows=None):
-            rows = allActionRows if actionRows is None else actionRows
-            columns = [
-                "date",
-                "ticker",
-                "exchange",
-                "actionType",
-                "oldRate",
-                "newRate",
-                "rate",
-                "special",
-                "acquireeTicker",
-                "acquireeRate",
-                "acquirerTicker",
-                "acquirerRate",
-                "cashRate",
-                "oldTicker",
-                "newTicker",
-                "sourceTicker",
-                "sourceRate",
-            ]
+        def exportActions(rows=None):
+            if not rows:
+                return pd.DataFrame()
+            columns = list(rows[0].keys())
             actionsDf = pd.DataFrame(rows).reindex(columns=columns)
             actionsDf.sort_values(by=["date", "exchange", "ticker", "actionType"], ascending=True, inplace=True)
-            actionsOutputPath = "data/corpactions.parquet"
-            actionsDf.to_parquet(actionsOutputPath, index=False)
-            return actionsDf, actionsOutputPath
+            actionsDf.to_parquet(CORP_ACTIONS_OUTPUT, index=False)
+            return actionsDf
 
 
         if threads <= 1:
@@ -633,8 +624,36 @@ class OHLCVDataClient:
 
 
         # Export all corporate actions to one parquet file
-        actionsDf, actionsOutputPath = exportActions()
-        print(f"\nSaved corporate actions data for {len(actionsDf)} actions to {actionsOutputPath}.")
+        actionsDf = exportActions(allActionRows)
+        print(f"Saved corporate actions data for {len(actionsDf)} actions to {CORP_ACTIONS_OUTPUT}.")
+
+
+        tickerChangeMap = {}
+        tickerChangeRows = []
+
+        # Work through all ticker changes and build a mapping from old ticker to new, given a date
+        for _, row in actionsDf.iterrows():
+            if row["actionType"] == CorporateActionsType.NAME_CHANGE.value:
+                changeDate = pd.Timestamp(row["date"], tz=NEW_YORK)
+                oldTicker = row["oldTicker"]
+                newTicker = row["newTicker"]
+
+                # If there are multiple name changes, the most recent one should take precedence
+                if oldTicker not in tickerChangeMap or changeDate > tickerChangeMap[oldTicker][1]:
+                    tickerChangeMap[oldTicker] = (newTicker, changeDate)
+        
+        # Export ticker changes to a parquet file
+        for oldTicker, (newTicker, changeDate) in tickerChangeMap.items():
+            tickerChangeRows.append({
+                "changeDate": changeDate,
+                "oldTicker": oldTicker,
+                "newTicker": newTicker
+            })
+
+        tickerChangesDf = pd.DataFrame(tickerChangeRows).reindex(columns=["changeDate", "oldTicker", "newTicker"])
+        tickerChangesDf.sort_values(by=["changeDate", "oldTicker"], ascending=True, inplace=True)
+        tickerChangesDf.to_parquet(TICKER_CHANGES_OUTPUT, index=False)
+        print(f"Saved {len(tickerChangesDf)} ticker changes data changes to {TICKER_CHANGES_OUTPUT}.")
 
 
         if updateIpoDates:
@@ -642,7 +661,8 @@ class OHLCVDataClient:
                 tickersDf.at[idx, "ipoDate"] = ipoDate.strftime("%Y-%m-%d")
 
             tickersDf.to_parquet(tickersPath, index=False)
-            print(f"\nUpdated IPO dates for {completed} tickers and saved to {tickersPath}.")
+            print(f"Updated IPO dates for {completed} tickers and saved to {tickersPath}.")
 
+        print()
 
     

@@ -81,37 +81,38 @@ class TickerDataClient:
             print("=" * 70)
             print("Fetching historical tickers from Massive API...")
 
-            for exchange in ["XNAS", "XNYS"]:
-                for status in [True, False]:
-                    lenBefore = len(historicalTickers[exchange])
-                    baseUrl = "https://api.massive.com/v3/reference/tickers"
-                    params = {
-                        "market": "stocks",
-                        "type": "CS",       # "Common Stock" only
-                        "exchange": exchange,
-                        "active": str(status).lower(),
-                        "sort": "ticker",
-                        "order": "asc",
-                        "limit": 1000,
-                        "apiKey": self.massiveApiKey
-                    }
+            for tickerType in ["CS", "ADRC"]:    # "Common Stock" and "American Depositary Receipt Common" only
+                for exchange in ["XNAS", "XNYS"]:
+                    for status in [True, False]:
+                        lenBefore = len(historicalTickers[exchange])
+                        baseUrl = "https://api.massive.com/v3/reference/tickers"
+                        params = {
+                            "market": "stocks",
+                            "type": tickerType,       
+                            "exchange": exchange,
+                            "active": str(status).lower(),
+                            "sort": "ticker",
+                            "order": "asc",
+                            "limit": 1000,
+                            "apiKey": self.massiveApiKey
+                        }
 
-                    while True:
-                        self.limiters.massiveLimiter.wait()
-                        response = requests.get(baseUrl, params=params).json()
-                        if "results" in response:
-                            historicalTickers[exchange].extend(response["results"])
+                        while True:
+                            self.limiters.massiveLimiter.wait()
+                            response = requests.get(baseUrl, params=params).json()
+                            if "results" in response:
+                                historicalTickers[exchange].extend(response["results"])
 
-                        if "next_url" in response:
-                            params = {"apiKey": self.massiveApiKey}
-                            baseUrl = response["next_url"]
+                            if "next_url" in response:
+                                params = {"apiKey": self.massiveApiKey}
+                                baseUrl = response["next_url"]
 
-                            print(f"\rFor {'listed' if status else 'delisted'} stocks on {'NASDAQ' if exchange == 'XNAS' else 'NYSE' \
-                                        }, fetched {len(historicalTickers[exchange]) - lenBefore} tickers so far...  ", end="")
-                        else:
-                            print(f"\rCompleted fetching {'listed' if status else 'delisted'} stocks on {'NASDAQ' if exchange == 'XNAS' else 'NYSE' \
-                                        }... got {len(historicalTickers[exchange]) - lenBefore:,} equities.        ")
-                            break
+                                print(f"\rFor {'listed' if status else 'delisted'} '{tickerType}' stocks on {'NASDAQ' if exchange == 'XNAS' else 'NYSE' \
+                                            }, fetched {len(historicalTickers[exchange]) - lenBefore} tickers so far...  ", end="")
+                            else:
+                                print(f"\rCompleted fetching {'listed' if status else 'delisted'} '{tickerType}' stocks on {'NASDAQ' if exchange == 'XNAS' else 'NYSE' \
+                                            }... got {len(historicalTickers[exchange]) - lenBefore:,} equities.        ")
+                                break
             
             print(f"Fetched:")
             print(f"    {len(historicalTickers['XNAS']):,} historical NASDAQ tickers")
@@ -123,20 +124,25 @@ class TickerDataClient:
 
             for exchange in ["XNAS", "XNYS"]:
                 for i in range(len(historicalTickers[exchange]) - 1, -1, -1):
-                    if historicalTickers[exchange][i]["active"]:        # Skip active tickers
+                    tickerData = historicalTickers[exchange][i]
+                    if tickerData["active"]:        # Skip active tickers
                         continue
 
                     deleteTicker = False
 
-                    delistDateStr = historicalTickers[exchange][i].get("delisted_utc", pd.NA)
+                    delistDateStr = tickerData.get("delisted_utc", pd.NA)
                     if pd.isna(delistDateStr):    
                         # Active is False, but there is no delist date.... default to treating it as delisted
-                        # print(f"Warning: Ticker {historicalTickers[exchange][i]['ticker']} is marked as inactive but has no delist date.") 
+                        # print(f"Warning: Ticker {tickerData['ticker']} is marked as inactive but has no delist date.") 
                         deleteTicker = True
                     else:
                         delistTs = pd.Timestamp(delistDateStr, tz="UTC").tz_convert(NEW_YORK)
                         startTs = pd.Timestamp(self.startDate)
                         deleteTicker = delistTs < startTs
+
+                    if tickerData["currency_name"] != "usd":        # Only concerned with USD stocks
+                        deleteTicker = True
+
                     if deleteTicker:
                         historicalTickers[exchange].pop(i)
 

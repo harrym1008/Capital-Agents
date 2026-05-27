@@ -52,14 +52,20 @@ if __name__ == "__main__":
     import time
     time.sleep(5)
 
+    limiters = GlobalRateLimiters()
+
     if downloading["tickers"]["confirm"]:
-        tickerClient = TickerDataClient(START_DATE, END_DATE)
+        tickerClient = TickerDataClient(START_DATE, END_DATE, limiters)
         tickerClient.massTickerDownloadWithData()
+        print(f"Completed downloading: {downloading['tickers']['desc']}\n")
 
     if downloading["ohlcv"]["confirm"]:
-        ohlcvClient = OHLCVDataClient(START_DATE_STR, END_DATE_STR, GlobalRateLimiters())
-        ohlcvClient.massDownload(True, threads=4)
+        ohlcvClient = OHLCVDataClient(START_DATE_STR, END_DATE_STR, limiters)
+        ohlcvClient.massDownload(True, threads=8)
+        print(f"Completed downloading: {downloading['ohlcv']['desc']}\n")
 
     if downloading["news"]["confirm"]:
-        newsClient = NewsClient(START_DATE, END_DATE)
-        newsClient.threadedMassDownload()
+        newsClient = NewsClient(START_DATE_STR, END_DATE_STR, limiters)
+        newsClient.threadedMassDownload(threads=8)
+        newsClient.buildInvertedIndex()
+        print(f"Completed downloading: {downloading['news']['desc']}\n")
