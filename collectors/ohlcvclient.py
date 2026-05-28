@@ -181,9 +181,9 @@ class SingleTickerDataCollector:
 
             actions["dividends"].append({
                 "type": CorporateActionsType.CASH_DIVIDEND,
-                "exDate": dividend.ex_date.strftime("%Y-%m-%d"),
-                "payDate": dividend.process_date.strftime("%Y-%m-%d"),
+                "date": dividend.ex_date.strftime("%Y-%m-%d"),      # "Date" = "Ex-dividend date"
                 "rate": dividend.rate,
+                "payDate": dividend.process_date.strftime("%Y-%m-%d"),
                 "special": dividend.special
             })
 
@@ -194,9 +194,9 @@ class SingleTickerDataCollector:
 
             actions["dividends"].append({
                 "type": CorporateActionsType.STOCK_DIVIDEND,
-                "exDate": dividend.ex_date.strftime("%Y-%m-%d"),
-                "payDate": dividend.process_date.strftime("%Y-%m-%d"),
+                "date": dividend.ex_date.strftime("%Y-%m-%d"),
                 "rate": dividend.rate,
+                "payDate": dividend.process_date.strftime("%Y-%m-%d"),
                 "special": False
             })
 
@@ -318,7 +318,7 @@ class SingleTickerDataCollector:
 
             # Order all actions by their date
             for key in actions:
-                actions[key].sort(key=lambda x: pd.Timestamp(x.get("date", x.get("exDate")), tz=NEW_YORK))
+                actions[key].sort(key=lambda x: pd.Timestamp(x["date"], tz=NEW_YORK))
 
         return True, actions
 
@@ -341,7 +341,7 @@ class SingleTickerDataCollector:
 
         for actionList in actions.values():
             for action in actionList:
-                exDate = pd.Timestamp(action.get("date", action.get("exDate")), tz=NEW_YORK)
+                exDate = pd.Timestamp(action["date"], tz=NEW_YORK)
                 df.loc[df["date"] == exDate, "corpActionToday"] = True
 
         return df
@@ -485,6 +485,7 @@ def threadWorker(ticker, exchange, cik, startDate, endDate, delistDate, priceCli
                 "oldRate": action.get("oldRate"),
                 "newRate": action.get("newRate"),
                 "rate": action.get("rate"),
+                "payDate": action.get("payDate"),
                 "special": action.get("special"),
                 "acquireeTicker": action.get("acquireeTicker"),
                 "acquireeRate": action.get("acquireeRate"),
