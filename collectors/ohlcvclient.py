@@ -172,18 +172,30 @@ class SingleTickerDataCollector:
         
         # Process cash dividends
         for dividend in data.get("cash_dividends", []):
+            # Alpaca's dividend data sometimes is incomplete, ex-date = process-date and missing record date.
+            # Ex-div date is always accurate, so use this and set the process date to 4 weeks after ex-date (if they are the same)
+            # Declaration date is always missing... so in the simulation, simulate announcement 3 weeks before ex-date
+
+            if dividend.ex_date == dividend.process_date:
+                dividend.process_date = dividend.ex_date + timedelta(weeks=4)            
+
             actions["dividends"].append({
                 "type": CorporateActionsType.CASH_DIVIDEND,
-                "date": dividend.ex_date.strftime("%Y-%m-%d"),
+                "exDate": dividend.ex_date.strftime("%Y-%m-%d"),
+                "payDate": dividend.process_date.strftime("%Y-%m-%d"),
                 "rate": dividend.rate,
                 "special": dividend.special
             })
 
-        # Process stock dividends
+        # Process stock dividends (do the same adjustment as cash dividends for missing process date and declaration date)
         for dividend in data.get("stock_dividends", []):
+            if dividend.ex_date == dividend.process_date:
+                dividend.process_date = dividend.ex_date + timedelta(weeks=4)    
+
             actions["dividends"].append({
                 "type": CorporateActionsType.STOCK_DIVIDEND,
-                "date": dividend.ex_date.strftime("%Y-%m-%d"),
+                "exDate": dividend.ex_date.strftime("%Y-%m-%d"),
+                "payDate": dividend.process_date.strftime("%Y-%m-%d"),
                 "rate": dividend.rate,
                 "special": False
             })
@@ -306,7 +318,7 @@ class SingleTickerDataCollector:
 
             # Order all actions by their date
             for key in actions:
-                actions[key].sort(key=lambda x: pd.Timestamp(x["date"], tz=NEW_YORK))
+                actions[key].sort(key=lambda x: pd.Timestamp(x.get("date", x.get("exDate")), tz=NEW_YORK))
 
         return True, actions
 
@@ -329,7 +341,7 @@ class SingleTickerDataCollector:
 
         for actionList in actions.values():
             for action in actionList:
-                exDate = pd.Timestamp(action["date"], tz=NEW_YORK)
+                exDate = pd.Timestamp(action.get("date", action.get("exDate")), tz=NEW_YORK)
                 df.loc[df["date"] == exDate, "corpActionToday"] = True
 
         return df

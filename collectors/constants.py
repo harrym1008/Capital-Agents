@@ -4,6 +4,7 @@ from dateutil import tz
 
 # General constants for the data collectors
 
+UTC = tz.gettz("UTC")
 NEW_YORK = tz.gettz("America/New_York")
 
 START_DATE_STR = "2016-01-01"
@@ -42,6 +43,10 @@ GOOD_SECURITY_TERMS = [
     "ordinary shares",
     "preferred units",
 ]
+
+ALL_TICKERS_FILE = "data/tickers.parquet"
+TEMP_TICKERS_FILE = "data/all_tickers.parquet"
+
 
 
 # For newsclient.py

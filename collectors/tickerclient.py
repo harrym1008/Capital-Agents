@@ -9,7 +9,9 @@ import financedatabase as fd
     
 from collectors.mktcalendar import MarketCalendar
 from collectors.ratelimiter import GlobalRateLimiters
-from collectors.constants import GOOD_SECURITY_TERMS, BAD_SECURITY_TERMS, IPO_BEFORE_START_DATE, NEW_YORK
+from collectors.constants import GOOD_SECURITY_TERMS, BAD_SECURITY_TERMS, IPO_BEFORE_START_DATE, NEW_YORK, \
+                                 ALL_TICKERS_FILE, TEMP_TICKERS_FILE           
+
 
 
 def makeSectorOrIndustryKey(text):
@@ -70,9 +72,9 @@ class TickerDataClient:
 
     
     def massTickerDownloadWithData(self):
-        if os.path.exists("all_tickers.parquet"):
-            allTickersDf = pd.read_parquet("all_tickers.parquet")
-            print(f"Loaded all_tickers.parquet with {len(allTickersDf):,} tickers.")
+        if os.path.exists(TEMP_TICKERS_FILE):
+            allTickersDf = pd.read_parquet(TEMP_TICKERS_FILE)
+            print(f"Loaded {TEMP_TICKERS_FILE} with {len(allTickersDf):,} tickers.")
 
         else:
             # Download all tickers (active and delisted) from Massive API
@@ -154,7 +156,7 @@ class TickerDataClient:
 
             allTickersDf.rename(columns={"primary_exchange": "exchange"}, inplace=True)
             # allTickersDf.rename(columns={"currency_name": "currency"}, inplace=True)
-            allTickersDf.to_parquet("all_tickers.parquet", index=False)
+            allTickersDf.to_parquet(TEMP_TICKERS_FILE, index=False)
 
         calendar = MarketCalendar(self.startDate.strftime("%Y-%m-%d"), self.endDate.strftime("%Y-%m-%d"))
 
@@ -229,8 +231,8 @@ class TickerDataClient:
         filteredDf.drop(columns=["secscore"], errors="ignore", inplace=True)
 
         finalDf = filteredDf.sort_values(["ticker", "name"]).reset_index(drop=True)
-        finalDf.to_parquet("data/tickers.parquet", index=False)
-        print(f"Saved final ticker metadata to data/tickers.parquet with {len(finalDf):,} tickers.")
+        finalDf.to_parquet(ALL_TICKERS_FILE, index=False)
+        print(f"Saved final ticker metadata to {ALL_TICKERS_FILE} with {len(finalDf):,} tickers.")
 
-        if os.path.exists("all_tickers.parquet"):
-            os.remove("all_tickers.parquet")
+        if os.path.exists(TEMP_TICKERS_FILE):
+            os.remove(TEMP_TICKERS_FILE)
