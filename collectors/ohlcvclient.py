@@ -23,9 +23,6 @@ from collectors.constants import FIRST_TRAD_DAY_AFTER_START, IPO_BEFORE_START_DA
 
 
 
-
-
-
 # When delistDate is None, it means the stock is still trading as of endDate
 class SingleTickerDataCollector:
     def __init__(self, ticker, exchange, cik, startDate, endDate, delistDate, 
@@ -357,15 +354,12 @@ class SingleTickerDataCollector:
         response.raise_for_status()
 
         data = response.json()
-        results = []
-        series = []
 
         nameTagOutputs = {
             ("dei", "EntityCommonStockSharesOutstanding"): None,
+            ("us-gaap", "CommonStockSharesOutstanding"): None,
             ("us-gaap", "WeightedAverageNumberOfDilutedSharesOutstanding"): None,
             ("us-gaap", "WeightedAverageNumberOfSharesOutstandingBasic"): None,
-            # ("us-gaap", "PreferredStockSharesOutstanding"): None,      # These 2 give very sparse data...
-            # ("us-gaap", "PreferredStockSharesAuthorized"): None
         }
 
         for namespace, tagKey in nameTagOutputs:
@@ -375,20 +369,38 @@ class SingleTickerDataCollector:
             except Exception:
                 continue
 
-        for series in nameTagOutputs.values():
-            if series is None:
-                continue
+        # Overwrite shares outstanding dates from least reliable to most reliable:
+        sharesByDate = {}
 
-            for entry in series:
+        # Least reliable: weighted average shares outstanding from US-GAAP
+        for key in [("us-gaap", "WeightedAverageNumberOfDilutedSharesOutstanding"),
+                     ("us-gaap", "WeightedAverageNumberOfSharesOutstandingBasic")]:
+            series = nameTagOutputs.get(key)
+            if series is not None:
+                for entry in series:
+                    period = pd.Timestamp(entry["filed"], tz=NEW_YORK)
+                    if self.startDate <= period <= self.endDate:
+                        sharesByDate[period] = entry["val"]
+
+        # Middle reliability: common stock shares outstanding from US-GAAP
+        csSeries = nameTagOutputs.get(("us-gaap", "CommonStockSharesOutstanding"))
+        if csSeries is not None:
+            for entry in csSeries:
                 period = pd.Timestamp(entry["filed"], tz=NEW_YORK)
                 if self.startDate <= period <= self.endDate:
-                    results.append({
-                        "date": period,
-                        "outstandingShares": entry["val"]
-                    })
-        
-        results.sort(key=lambda x: x["date"])
-        sharesDf = pd.DataFrame(results)
+                    sharesByDate[period] = entry["val"]
+
+        # Most reliable data is dei > EntityCommonStockSharesOutstanding
+        deiSeries = nameTagOutputs.get(("dei", "EntityCommonStockSharesOutstanding"))
+        if deiSeries is not None:
+            for entry in deiSeries:
+                period = pd.Timestamp(entry["filed"], tz=NEW_YORK)
+                if self.startDate <= period <= self.endDate:
+                    sharesByDate[period] = entry["val"]
+
+        results = [{"date": date, "outstandingShares": value}
+                   for date, value in sharesByDate.items()]        
+        sharesDf = pd.DataFrame(results) if results else pd.DataFrame()
 
         if sharesDf.empty:
             df["outstandingShares"] = pd.NA
