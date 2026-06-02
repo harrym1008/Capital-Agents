@@ -25,13 +25,14 @@ from collectors.constants import FIRST_TRAD_DAY_AFTER_START, IPO_BEFORE_START_DA
 
 # When delistDate is None, it means the stock is still trading as of endDate
 class SingleTickerDataCollector:
-    def __init__(self, ticker, exchange, cik, startDate, endDate, delistDate, 
+    def __init__(self, ticker, exchange, isAdrc, cik, startDate, endDate, delistDate, 
                  priceClient: StockHistoricalDataClient, 
                  corpActionsClient: CorporateActionsClient, 
                  alpacaLimiter: RateLimiter,
                  edgarLimiter: RateLimiter):
         self.ticker = ticker
         self.exchange = exchange
+        self.isAdrc = isAdrc
         self.cik = cik
         self.startDateStr = startDate
         self.endDateStr = endDate
@@ -345,6 +346,11 @@ class SingleTickerDataCollector:
     
 
     def addOutstandingSharesToDf(self, df, actions):
+        if self.isAdrc:
+            df["outstandingShares"] = pd.NA
+            df["marketCap"] = "N/A"
+            return df
+
         cikPadded = self.cik.zfill(10)
         url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cikPadded}.json"
         headers = {"User-Agent": "CapitalAgents/1.0"}
@@ -404,8 +410,7 @@ class SingleTickerDataCollector:
 
         if sharesDf.empty:
             df["outstandingShares"] = pd.NA
-            df["marketCap"] = pd.NA
-            return df
+            df["marketCap"] = "N/A"
         
         df = df.merge(sharesDf, on="date", how="left")
         # Forward fill first, then backfill (to fill it in before self.startDate)
@@ -459,10 +464,11 @@ class SingleTickerDataCollector:
     
 
     
-def threadWorker(ticker, exchange, cik, startDate, endDate, delistDate, priceClient, corpActionsClient, alpacaLimiter, edgarLimiter):
+def threadWorker(ticker, exchange, isAdrc, cik, startDate, endDate, delistDate, priceClient, corpActionsClient, alpacaLimiter, edgarLimiter):
     collector = SingleTickerDataCollector(
         ticker=ticker,
         exchange=exchange,
+        isAdrc=isAdrc,
         cik=cik,
         startDate=startDate,
         endDate=endDate,
@@ -556,6 +562,7 @@ class OHLCVDataClient:
             tickerRows.append({
                 "ticker": row["ticker"],
                 "exchange": row["exchange"],
+                "isAdrc": row["isAdrc"],
                 "cik": row["cik"],
                 "startDate": self.startDate,
                 "endDate": self.endDate,
@@ -590,7 +597,7 @@ class OHLCVDataClient:
             exportAfter = False
             # try:
             passed, ticker, ipoDate, actionRows = threadWorker(
-                item["ticker"], item["exchange"], item["cik"], item["startDate"], item["endDate"], item["delistDate"],
+                item["ticker"], item["exchange"], item["isAdrc"], item["cik"], item["startDate"], item["endDate"], item["delistDate"],
                 self.priceClient, self.corpActionsClient, self.limiters.alpacaLimiter, self.limiters.edgarLimiter
             )
 

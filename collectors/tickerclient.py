@@ -78,7 +78,7 @@ class TickerDataClient:
 
         else:
             # Download all tickers (active and delisted) from Massive API
-            historicalTickers = {"XNAS": [], "XNYS": []}
+            historicalTickers = {"XNAS": {"CS": [], "ADRC": []}, "XNYS": {"CS": [], "ADRC": []}}
 
             print("=" * 70)
             print("Fetching historical tickers from Massive API...")
@@ -86,7 +86,7 @@ class TickerDataClient:
             for tickerType in ["CS", "ADRC"]:    # "Common Stock" and "American Depositary Receipt Common" only
                 for exchange in ["XNAS", "XNYS"]:
                     for status in [True, False]:
-                        lenBefore = len(historicalTickers[exchange])
+                        lenBefore = len(historicalTickers[exchange][tickerType])
                         baseUrl = "https://api.massive.com/v3/reference/tickers"
                         params = {
                             "market": "stocks",
@@ -103,55 +103,58 @@ class TickerDataClient:
                             self.limiters.massiveLimiter.wait()
                             response = requests.get(baseUrl, params=params).json()
                             if "results" in response:
-                                historicalTickers[exchange].extend(response["results"])
+                                historicalTickers[exchange][tickerType].extend(response["results"])
 
                             if "next_url" in response:
                                 params = {"apiKey": self.massiveApiKey}
                                 baseUrl = response["next_url"]
 
                                 print(f"\rFor {'listed' if status else 'delisted'} '{tickerType}' stocks on {'NASDAQ' if exchange == 'XNAS' else 'NYSE' \
-                                            }, fetched {len(historicalTickers[exchange]) - lenBefore} tickers so far...  ", end="")
+                                            }, fetched {len(historicalTickers[exchange][tickerType]) - lenBefore} tickers so far...  ", end="")
                             else:
                                 print(f"\rCompleted fetching {'listed' if status else 'delisted'} '{tickerType}' stocks on {'NASDAQ' if exchange == 'XNAS' else 'NYSE' \
-                                            }... got {len(historicalTickers[exchange]) - lenBefore:,} equities.        ")
+                                            }... got {len(historicalTickers[exchange][tickerType]) - lenBefore:,} equities.        ")
                                 break
             
             print(f"Fetched:")
-            print(f"    {len(historicalTickers['XNAS']):,} historical NASDAQ tickers")
-            print(f"    {len(historicalTickers['XNYS']):,} historical NYSE tickers")
+            print(f"    {len(historicalTickers['XNAS']['CS']) + len(historicalTickers['XNAS']['ADRC']):,} historical NASDAQ tickers")
+            print(f"    {len(historicalTickers['XNYS']['CS']) + len(historicalTickers['XNYS']['ADRC']):,} historical NYSE tickers")
 
 
             # Do not have IPO dates yet
             # But tickers that were delisted before startDate are not relevant and can be removed
 
             for exchange in ["XNAS", "XNYS"]:
-                for i in range(len(historicalTickers[exchange]) - 1, -1, -1):
-                    tickerData = historicalTickers[exchange][i]
-                    if tickerData["active"]:        # Skip active tickers
-                        continue
+                for tickerType in ["CS", "ADRC"]:
+                    for i in range(len(historicalTickers[exchange][tickerType]) - 1, -1, -1):
+                        tickerData = historicalTickers[exchange][tickerType][i]
+                        tickerData["isAdrc"] = (tickerType == "ADRC")                           
 
-                    deleteTicker = False
+                        if tickerData["active"]:        # Skip active tickers
+                            continue
 
-                    delistDateStr = tickerData.get("delisted_utc", pd.NA)
-                    if pd.isna(delistDateStr):    
-                        # Active is False, but there is no delist date.... default to treating it as delisted
-                        # print(f"Warning: Ticker {tickerData['ticker']} is marked as inactive but has no delist date.") 
-                        deleteTicker = True
-                    else:
-                        delistTs = pd.Timestamp(delistDateStr, tz="UTC").tz_convert(NEW_YORK)
-                        startTs = pd.Timestamp(self.startDate)
-                        deleteTicker = delistTs < startTs
+                        deleteTicker = False
 
-                    if tickerData["currency_name"] != "usd":        # Only concerned with USD stocks
-                        deleteTicker = True
+                        delistDateStr = tickerData.get("delisted_utc", pd.NA)
+                        if pd.isna(delistDateStr):    
+                            # Active is False, but there is no delist date.... default to treating it as delisted
+                            # print(f"Warning: Ticker {tickerData['ticker']} is marked as inactive but has no delist date.") 
+                            deleteTicker = True
+                        else:
+                            delistTs = pd.Timestamp(delistDateStr, tz="UTC").tz_convert(NEW_YORK)
+                            startTs = pd.Timestamp(self.startDate)
+                            deleteTicker = delistTs < startTs
 
-                    if deleteTicker:
-                        historicalTickers[exchange].pop(i)
+                        if tickerData["currency_name"] != "usd":        # Only concerned with USD stocks
+                            deleteTicker = True
+
+                        if deleteTicker:
+                            historicalTickers[exchange][tickerType].pop(i)
 
 
             # Get metadata from Financedatabase for all tickers we got from Massive API
 
-            allTickersData = [ticker for exchange in historicalTickers for ticker in historicalTickers[exchange]]
+            allTickersData = [ticker for exchange in historicalTickers for tickerType in historicalTickers[exchange] for ticker in historicalTickers[exchange][tickerType]]
             allTickersDf = pd.DataFrame(allTickersData)
 
             allTickersDf.rename(columns={"primary_exchange": "exchange"}, inplace=True)
@@ -198,6 +201,7 @@ class TickerDataClient:
             "ticker",
             "name",
             "exchange",
+            "isAdrc",
             "listed",
             "ipoDate",
             "delistDate",
@@ -208,7 +212,6 @@ class TickerDataClient:
             "cik",
             "isin"
         ]]
-
 
         rowsToKeep = []
 
