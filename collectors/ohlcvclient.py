@@ -543,6 +543,9 @@ class OHLCVDataClient:
         tickersPath = "data/tickers.parquet"
 
         for directory in [NYSE_DIRECTORY, NASDAQ_DIRECTORY]:
+            if not os.path.exists(directory):
+                os.mkdir(directory)
+
             for filename in os.listdir(directory):
                 if filename.endswith(".parquet"):
                     os.remove(os.path.join(directory, filename))
