@@ -1,12 +1,13 @@
 from enum import Enum
-from datetime import datetime, timedelta
+from datetime import timedelta
 
-from collectors.dailyprices import DailyPriceClient
+import pandas as pd
+
+from dataquery.pricemgr import DailyPricesClient
 from collectors.mktcalendar import MarketCalendar 
-from collectors.ratelimiter import GlobalRateLimiters
-
+from collectors.constants import NEW_YORK
 from simulation.orders import Order, MarketOrder, LimitOrder, StopOrder, StopLimitOrder, OrderSide, OrderStatus
-from simulation.portfolio import Portfolio
+from simulation.portfolio import Position, Dividend, Portfolio
 
 
 class ExecutionTime(Enum):
@@ -31,20 +32,19 @@ class SegmentExecutionResult:
 
 class MarketSimulation:
     def __init__(self, startDate, endDate):
-        self.startDate = datetime.strptime(startDate, "%Y-%m-%d")
-        self.endDate = datetime.strptime(endDate, "%Y-%m-%d")
+        self.startDate = pd.Timestamp(startDate, tz=NEW_YORK)
+        self.endDate = pd.Timestamp(endDate, tz=NEW_YORK) - timedelta(days=1)    
         self.currentDate = self.startDate
         self.started = False
 
-        self.marketCalendar = MarketCalendar(self.startDate, self.endDate)
-        self.dailyPriceClient = DailyPriceClient(self.startDate, GlobalRateLimiters())
-        self.tickerPricesCache = {}
+        self.marketCalendar = MarketCalendar(startDate, endDate)
+        self.dailyPriceClient = DailyPricesClient(self.startDate, self.endDate)
 
-        self.users = []             # Set of all users in the simulation
-        self.userPortfolios = {}    # Maps user to their portfolios. The portfolio itself is a dict mapping ticker to Position
+        self.users: list[str] = []                          # Set of all users in the simulation
+        self.userPortfolios: dict[str, Portfolio] = {}      # Maps user to their portfolios. The portfolio itself is a dict mapping ticker to Position
         
-        self.pendingOrders = []     # Pending UserOrders that have not been filled yet
-        self.ordersArchive = []      # All UserOrders that have been processed (filled or failed)
+        self.pendingOrders: list[UserOrder] = []     # Pending UserOrders that have not been filled yet
+        self.ordersArchive: list[UserOrder] = []     # All UserOrders that have been processed (filled or failed)
 
 
     def initialiseUser(self, username, initialCash=1_000_000.0):
@@ -71,10 +71,10 @@ class MarketSimulation:
 
 
     def buildIntradayPath(self, ohlcData):
-        openPrice = ohlcData["Open"]
-        highPrice = ohlcData["High"]
-        lowPrice = ohlcData["Low"]
-        closePrice = ohlcData["Close"]
+        openPrice = ohlcData["open"]
+        highPrice = ohlcData["high"]
+        lowPrice = ohlcData["low"]
+        closePrice = ohlcData["close"]
 
         if abs(highPrice - openPrice) <= abs(lowPrice - openPrice):
             closer = highPrice
@@ -252,17 +252,10 @@ class MarketSimulation:
         return executedOrders, remainingOrders
     
 
-    def processDay(self, date, dateString):
+    def processDaysTrades(self, date):
         requiredTickers = set()
         for userOrder in self.pendingOrders:
             requiredTickers.add(userOrder.order.ticker)
-
-        # Fetch OHLC data for all required tickers
-        for ticker in requiredTickers:
-            if ticker not in self.tickerPricesCache:
-                df, latestClose = self.dailyPriceClient.getDailyPricesForRange(ticker, self.startDate, self.endDate)
-                if not df.empty:
-                    self.tickerPricesCache[ticker] = df
 
         # Process each pending order
         executedThisDay = []
@@ -270,11 +263,7 @@ class MarketSimulation:
 
         # Get the OHLC price data for this date
         for ticker in requiredTickers:
-            df = self.tickerPricesCache.get(ticker, None)
-            if df is None or dateString not in df.index:
-                continue
-
-            ohlc = df.loc[dateString]
+            ohlc = self.dailyPriceClient.getSingleDayTickerData(ticker, date)
             segments = self.buildIntradayPath(ohlc)
 
             for segmentStart, segmentEnd in segments:
@@ -309,6 +298,84 @@ class MarketSimulation:
         return self.marketCalendar.isOpenDay(dateString)
     
 
+
+    def processDaysCorporateActions(self, date):
+        todaysActions = self.dailyPriceClient.getSingleDayCorpActions(date)
+        dateNyTs = self.dailyPriceClient.timestampToNyDay(date)
+        
+        for portfolio in self.userPortfolios.values():
+            for _, action in todaysActions.iterrows():
+                ticker = action["ticker"]
+                if ticker not in portfolio.positions:
+                    continue
+
+                position = portfolio.positions[ticker]
+                actionType = action["actionType"]
+
+                if actionType in ["forward_split", "reverse_split"]:
+                    sharesMult = action["newRate"] / action["oldRate"]
+                    priceMult = action["oldRate"] / action["newRate"]
+                    position.quantity *= sharesMult
+                    position.averagePrice *= priceMult
+
+                    portfolio.addToLog(date, f"CorpAction: {ticker} {action['newRate']} stock split. Holding now: {position.quantity} @ ${position.averagePrice:.2f} avg.")
+
+                elif actionType in ["cash_dividend", "stock_divided"]:
+                    amount = action["rate"]
+                    payDate = action["payDate"]
+                    dividendType = Dividend.Type.CASH if actionType == "cash_dividend" else Dividend.Type.STOCK
+
+                    dividend = Dividend(ticker, amount, position.quantity, payDate, dividendType)
+                    portfolio.potentialDividends.append(dividend)
+
+                    if dividend.dividendType == Dividend.Type.CASH:
+                        portfolio.addToLog(date, f"CorpAction: {ticker} cash dividend ex-date reached - ${amount:.2f} per share. Will be paid on {payDate}.")
+                    else:
+                        portfolio.addToLog(date, f"CorpAction: {ticker} stock dividend ex-date reached - {amount} per share. Will be paid on {payDate}.")
+
+                # TODO: Handle spin-offs, mergers and name-changes
+
+                elif actionType == "worthless_removal":
+                    portfolio.addToLog(date, f"CorpAction: {ticker} removed from exchange due to worthlessness. Position liquidated in following order.")
+
+                    order = MarketOrder(ticker, OrderSide.SELL, quantity=-1)
+                    order.setFillParams(0.0, date)
+                    portfolio.executeTrade(order)
+
+
+        # Finally process dividends that are payable today
+
+        for portfolio in self.userPortfolios.values():
+            for dividend in portfolio.potentialDividends:
+
+                payDateNyTs = self.dailyPriceClient.timestampToNyDay(dividend.payDate)
+
+                if payDateNyTs == dateNyTs:
+                    paymentAmount, dividendType = dividend.calculateDividend()
+
+                    if paymentAmount == 0:
+                        continue        # All payable shares were sold
+
+                    if dividendType == Dividend.Type.CASH:
+                        portfolio.cash += paymentAmount
+                        portfolio.addToLog(date, f"DividendPayment: Received cash dividend for {dividend.ticker} - ${paymentAmount:.2f}.")
+
+                    else:   # Stock dividend
+                        position = portfolio.positions.get(dividend.ticker)
+                        if position is None:
+                            portfolio.positions[dividend.ticker] = Position(dividend.ticker, paymentAmount, 0)
+                        else:
+                            position.increasePosition(paymentAmount, 0)
+                        
+                   
+                elif payDateNyTs < dateNyTs:
+                    # Expired dividend
+                    portfolio.potentialDividends.remove(dividend)
+
+
+
+
+
     def runNextDay(self):
         if not self.started:
             self.started = True
@@ -325,7 +392,12 @@ class MarketSimulation:
                 return False
 
         self.currentDate = currentDate
-        self.processDay(currentDate, currentDate.strftime("%Y-%m-%d"))
+        
+        # First run the full day, and then at close, run the corporate actions
+        self.processDaysTrades(currentDate)
+        self.processDaysCorporateActions(currentDate)
+
+
         return True
     
 
@@ -333,24 +405,17 @@ class MarketSimulation:
         currentDate = self.endDate
         while not self.isTradingDay(currentDate):
             currentDate -= timedelta(days=1)
-        self.processDay(currentDate, currentDate.strftime("%Y-%m-%d"))
-
+        self.processDaysTrades(currentDate)
 
 
 
     def getCurrentPrice(self, ticker):
-        df = self.tickerPricesCache.get(ticker, None)
-        if df is None:
-            return None
-        
-        dateString = self.currentDate.strftime("%Y-%m-%d")
-        if dateString not in df.index:
-            return None
-        
-        ohlc = df.loc[dateString]
-        return ohlc["Close"]        # Use close price as the current price
+        ohlc = self.dailyPriceClient.getSingleDayTickerData(ticker, self.currentDate)
+        if ohlc is None:
+            return float("nan")
+        return ohlc["close"]        # Use close price as the current price
 
-        
+
 
     def getPortfolioValueAtCurrentDate(self, username):
         portfolio = self.userPortfolios.get(username, None)

@@ -34,10 +34,7 @@ class Order:
         
     def setSubmittedTimestamp(self, timestamp):
         self.submittedTimestamp = timestamp
-        
-    def shouldFill(self, currentPrice):
-        raise NotImplementedError("Use a subclass of 'Order', do not use 'Order' itself")
-    
+            
     def setFillParams(self, price, timestamp):
         self.fillPrice = price
         self.fillTimestamp = timestamp
@@ -45,10 +42,24 @@ class Order:
     def setOrderStatus(self, status):
         self.status = status
 
+    def getOrderString(self):
+        if self.fillPrice is None:
+            quantity = self.quantity if self.isQuantityBased else 1
+            cashValue = self.cashValue if not self.isQuantityBased else 1
+
+        if self.isQuantityBased:
+            quantity = self.quantity
+            cashValue = self.quantity * self.fillPrice
+        else:
+            quantity = self.cashValue / self.fillPrice
+            cashValue = self.cashValue
+
+        return f"*{self.status.value}* {self.__class__.__name__} {self.side.value} {quantity:.2f} {self.ticker} (cost basis: ${cashValue:.2f}) at ${self.fillPrice:.2f} per share"
+
 
 class MarketOrder(Order):
     pass
-    
+   
 
 class LimitOrder(Order):
     def __init__(self, ticker, quantity, side, limitPrice):

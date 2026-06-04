@@ -1,3 +1,4 @@
+from enum import Enum
 from simulation.orders import Order, OrderSide
 
 
@@ -33,13 +34,38 @@ class Position:
         self.quantity -= quantity
 
 
+# Dividends must be instantiated on the ex-dividend date
+class Dividend:
+    class Type(Enum):
+        CASH = 1
+        STOCK = 2
+
+    def __init__(self, ticker, amount, sharesHeldAtExDate, payDate, dividendType=Type.CASH):
+        self.ticker = ticker
+        self.amount = amount
+        self.payableShares = sharesHeldAtExDate
+        self.payDate = payDate
+        self.dividendType = dividendType
+
+
+    def calculateDividend(self):
+        return (self.amount * self.payableShares, self.dividendType)
+
 
 
 class Portfolio:
     def __init__(self, initialCash=1_000_000.0):
         self.startingCash = initialCash
         self.cash = initialCash
-        self.positions = {}
+        self.positions: dict[str, Position] = {}
+        self.potentialDividends: list[Dividend] = []
+
+        self.log = []
+
+
+    def addToLog(self, date, message):
+        self.log.append(f"[{date}] {message}")
+
 
     def executeTrade(self, order: Order):
         if order.isQuantityBased:
@@ -77,5 +103,5 @@ class Portfolio:
             if self.positions[order.ticker].quantity == 0:
                 del self.positions[order.ticker]     # Clean up empty positions
         
-        
+        self.addToLog(order.fillTimestamp, f"OrderExecuted: {order.getOrderString()}")
 
