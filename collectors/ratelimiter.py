@@ -59,4 +59,5 @@ class GlobalRateLimiters:
         self.alpacaLimiter = RateLimiter("alpaca", 200, 60)         # Alpaca free allows 200 requests per minute
         self.finnhubLimiter = RateLimiter("finnhub", 60, 60)        # Finnhub free allows 60 requests per minute
         self.massiveLimiter = RateLimiter("massive", 5, 60)         # Massive API allows 5 requests per minute
-        self.edgarLimiter = RateLimiter("edgar", 5, 1)             # No official limit, 5 reqs per second will be safe
+        self.edgarLimiter = RateLimiter("edgar", 5, 1)              # No official limit, 5 reqs per second will be safe
+        self.fredLimiter = RateLimiter("fred", 120, 60)             # FRED allows 120 requests per minute

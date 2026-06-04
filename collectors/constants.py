@@ -65,3 +65,8 @@ OHLC_FILE_OUTPUT = "{}.parquet"
 
 CORP_ACTIONS_OUTPUT = "data/corpactions.parquet"
 TICKER_CHANGES_OUTPUT = "data/tickerchanges.parquet"
+
+
+# For macroclient.py
+
+MACRO_DIRECTORY = "data/macro/"

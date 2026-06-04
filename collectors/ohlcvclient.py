@@ -18,7 +18,7 @@ from alpaca.data.enums import Adjustment, CorporateActionsType
 from alpaca.data.timeframe import TimeFrame
 
 from collectors.ratelimiter import GlobalRateLimiters, RateLimiter
-from collectors.constants import FIRST_TRAD_DAY_AFTER_START, IPO_BEFORE_START_DATE, NEW_YORK, \
+from collectors.constants import FIRST_TRAD_DAY_AFTER_START, IPO_BEFORE_START_DATE, NEW_YORK, ALL_TICKERS_FILE, \
                                  NYSE_DIRECTORY, NASDAQ_DIRECTORY, OHLC_FILE_OUTPUT, CORP_ACTIONS_OUTPUT, TICKER_CHANGES_OUTPUT
 
 
@@ -540,8 +540,6 @@ class OHLCVDataClient:
 
 
     def massDownload(self, updateIpoDates=False, threads=8):
-        tickersPath = "data/tickers.parquet"
-
         for directory in [NYSE_DIRECTORY, NASDAQ_DIRECTORY]:
             if not os.path.exists(directory):
                 os.mkdir(directory)
@@ -550,10 +548,10 @@ class OHLCVDataClient:
                 if filename.endswith(".parquet"):
                     os.remove(os.path.join(directory, filename))
 
-        if not os.path.exists(tickersPath):
-            raise FileNotFoundError(f"Cannot find {tickersPath}")
+        if not os.path.exists(ALL_TICKERS_FILE):
+            raise FileNotFoundError(f"Cannot find {ALL_TICKERS_FILE}")
         
-        tickersDf = pd.read_parquet(tickersPath)
+        tickersDf = pd.read_parquet(ALL_TICKERS_FILE)
         totalTickers = len(tickersDf) if not self.testedTickers else len(self.testedTickers)
 
 
@@ -690,8 +688,8 @@ class OHLCVDataClient:
             for idx, ipoDate in ipoResults.items():
                 tickersDf.at[idx, "ipoDate"] = ipoDate.strftime("%Y-%m-%d")
 
-            tickersDf.to_parquet(tickersPath, index=False)
-            print(f"Updated IPO dates for {completed} tickers and saved to {tickersPath}.")
+            tickersDf.to_parquet(ALL_TICKERS_FILE, index=False)
+            print(f"Updated IPO dates for {completed} tickers and saved to {ALL_TICKERS_FILE}.")
 
         print()
 

@@ -188,9 +188,5 @@ docs/
 
 _old/
 
-data/archive/
-data/newsbatches/
-data/*.parquet
-data/ohlcv_nyse/
-data/ohlcv_nasdaq/
+data/
 
