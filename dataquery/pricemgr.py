@@ -7,10 +7,10 @@ from dataquery.lrucache import LRUCache
 
 
 class DailyPricesClient:
-    def __init__(self, startDate: pd.Timestamp, endDate: pd.Timestamp, cacheSize=1024**3):
+    def __init__(self, startDate: pd.Timestamp, endDate: pd.Timestamp, cache=None, cacheSize=1024**3):
         self.startDate = startDate
         self.endDate = endDate
-        self.cache = LRUCache(cacheSize)
+        self.cache = LRUCache(cacheSize) if cache is None else cache
         self.tickersPaths = self.buildTickerIndex()
 
 

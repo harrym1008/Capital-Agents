@@ -320,7 +320,7 @@ class MarketSimulation:
 
                     portfolio.addToLog(date, f"CorpAction: {ticker} {action['newRate']} stock split. Holding now: {position.quantity} @ ${position.averagePrice:.2f} avg.")
 
-                elif actionType in ["cash_dividend", "stock_divided"]:
+                elif actionType in ["cash_dividend", "stock_dividend"]:
                     amount = action["rate"]
                     payDate = action["payDate"]
                     dividendType = Dividend.Type.CASH if actionType == "cash_dividend" else Dividend.Type.STOCK
@@ -333,7 +333,92 @@ class MarketSimulation:
                     else:
                         portfolio.addToLog(date, f"CorpAction: {ticker} stock dividend ex-date reached - {amount} per share. Will be paid on {payDate}.")
 
-                # TODO: Handle spin-offs, mergers and name-changes
+                elif actionType == "spin_off":
+                    sourceTicker = action["sourceTicker"]
+                    newTicker = action["newTicker"]
+                    if ticker == newTicker or ticker != sourceTicker:
+                        continue    # There are two copies of every spin-off action, only use the one where the new ticker is different from the old one
+
+                    spinoffRatio = action["newRate"] / action["sourceRate"]
+                    newShares = position.quantity * spinoffRatio
+
+                    if newShares > 0:
+                        newTickerPrice = self.getCurrentPrice(newTicker)
+                        if pd.isna(newTickerPrice):
+                            newTickerPrice = 0.0
+
+                        if newTicker not in portfolio.positions:
+                            portfolio.positions[newTicker] = Position(newTicker, newShares, newTickerPrice)
+                        else:
+                            portfolio.positions[newTicker].increasePosition(newShares, newTickerPrice)
+
+                    portfolio.addToLog(date, f"CorpAction: {sourceTicker} spin-off of {newTicker} executed (ratio: {action['newRate']}/{action['sourceRate']}). Received {newShares} shares of {newTicker}.")
+
+                elif actionType in ["cash_merger", "stock_merger", "stock_and_cash_merger"]:
+                    acquireeTicker = action["acquireeTicker"]
+                    if ticker != acquireeTicker:
+                        continue    # Only process the acquiree side of the merger action
+
+                    acquirerTicker = action["acquirerTicker"]
+                    if acquirerTicker is None:
+                        continue
+
+                    mergeQty = position.quantity
+                    if mergeQty <= 0:
+                        continue
+
+                    acquireeRate = action["acquireeRate"]
+
+                    cashPayout = 0.0
+                    stockPayout = 0.0
+
+                    if actionType == "cash_merger":
+                        cashPayout = mergeQty * action["rate"] / acquireeRate
+                    elif actionType == "stock_merger":
+                        stockPayout = mergeQty * action["acquirerRate"] / acquireeRate
+                    else:
+                        cashPayout = mergeQty * action["cashRate"] / acquireeRate
+                        stockPayout = mergeQty * action["acquirerRate"] / acquireeRate
+
+                    if cashPayout > 0:
+                        portfolio.cash += cashPayout
+
+                    if stockPayout > 0:
+                        acquirerPrice = self.getCurrentPrice(acquirerTicker)
+                        if pd.isna(acquirerPrice):
+                            acquirerPrice = 0.0
+
+                        if acquirerTicker not in portfolio.positions:
+                            portfolio.positions[acquirerTicker] = Position(acquirerTicker, stockPayout, acquirerPrice)
+                        else:
+                            portfolio.positions[acquirerTicker].increasePosition(stockPayout, acquirerPrice)
+
+                    del portfolio.positions[ticker]
+
+                    logMessage = f"CorpAction: {acquireeTicker} {actionType.replace('_', ' ')} executed into {acquirerTicker}."
+                    if cashPayout > 0 and stockPayout > 0:
+                        logMessage += f" Received ${cashPayout:.2f} and {stockPayout:.4f} shares."
+                    elif cashPayout > 0:
+                        logMessage += f" Received ${cashPayout:.2f}."
+                    elif stockPayout > 0:
+                        logMessage += f" Received {stockPayout:.4f} shares."
+                    portfolio.addToLog(date, logMessage)
+
+                elif actionType == "name_change":
+                    oldTicker = action["oldTicker"]
+                    newTicker = action["newTicker"]
+
+                    if ticker != oldTicker or oldTicker == newTicker:
+                        continue
+
+                    if newTicker in portfolio.positions:
+                        portfolio.positions[newTicker].increasePosition(position.quantity, position.averagePrice)
+                    else:
+                        portfolio.positions[newTicker] = Position(newTicker, position.quantity, position.averagePrice)
+
+                    del portfolio.positions[oldTicker]
+
+                    portfolio.addToLog(date, f"CorpAction: {oldTicker} name changed to {newTicker}. Position moved to {newTicker}.")
 
                 elif actionType == "worthless_removal":
                     portfolio.addToLog(date, f"CorpAction: {ticker} removed from exchange due to worthlessness. Position liquidated in following order.")
@@ -344,7 +429,6 @@ class MarketSimulation:
 
 
         # Finally process dividends that are payable today
-
         for portfolio in self.userPortfolios.values():
             for dividend in portfolio.potentialDividends:
 
