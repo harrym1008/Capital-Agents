@@ -3,7 +3,6 @@ from dateutil import tz
 
 
 # General constants for the data collectors
-
 UTC = tz.gettz("UTC")
 NEW_YORK = tz.gettz("America/New_York")
 
@@ -18,9 +17,10 @@ END_DATE = pd.Timestamp(END_DATE_STR, tz=NEW_YORK)
 
 IPO_BEFORE_START_DATE = pd.Timestamp("2015-12-31", tz=NEW_YORK)
 
+SEC_EDGAR_IDENTITY = "CapitalAgents/1.0 (hpmm1@student.london.ac.uk)"
+
 
 # For tickerclient.py
-
 BAD_SECURITY_TERMS = [
     "warrant",
     "right",
@@ -50,7 +50,6 @@ TEMP_TICKERS_FILE = "data/all_tickers.parquet"
 
 
 # For newsclient.py
-
 NEWS_BATCHES_DIR = "data/newsbatches"
 NEWS_PARQUET_PATH = "data/news.parquet"
 NEWS_INDEX_PARQUET_PATH = "data/newsindex.parquet"
@@ -58,7 +57,6 @@ NEWS_BATCH_SIZE = 2000
 
 
 # For ohlcvclient.py
-
 NYSE_DIRECTORY = "data/ohlcv_nyse/"
 NASDAQ_DIRECTORY = "data/ohlcv_nasdaq/"
 OHLC_FILE_OUTPUT = "{}.parquet"
@@ -68,5 +66,4 @@ TICKER_CHANGES_OUTPUT = "data/tickerchanges.parquet"
 
 
 # For macroclient.py
-
 MACRO_DIRECTORY = "data/macro/"

@@ -156,7 +156,7 @@ class MacroDataClient:
             df[targetCols[1:5]] = df[targetCols[1:5]].round(4)            
 
             # Backfill empty values
-            df[targetCols[1:5]] = df[targetCols[1:5]].fillna(method="ffill")
+            df[targetCols[1:5]] = df[targetCols[1:5]].ffill()
 
             parquetPath = os.path.join(MACRO_DIRECTORY, f"{name}.parquet")
             df.to_parquet(parquetPath, index=False)

@@ -18,8 +18,7 @@ from alpaca.data.enums import Adjustment, CorporateActionsType
 from alpaca.data.timeframe import TimeFrame
 
 from collectors.ratelimiter import GlobalRateLimiters, RateLimiter
-from collectors.constants import FIRST_TRAD_DAY_AFTER_START, IPO_BEFORE_START_DATE, NEW_YORK, ALL_TICKERS_FILE, \
-                                 NYSE_DIRECTORY, NASDAQ_DIRECTORY, OHLC_FILE_OUTPUT, CORP_ACTIONS_OUTPUT, TICKER_CHANGES_OUTPUT
+from collectors.constants import *
 
 
 
@@ -353,7 +352,7 @@ class SingleTickerDataCollector:
 
         cikPadded = self.cik.zfill(10)
         url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cikPadded}.json"
-        headers = {"User-Agent": "CapitalAgents/1.0"}
+        headers = {"User-Agent": SEC_EDGAR_IDENTITY}
 
         self.edgarLimiter.wait()
         response = requests.get(url, headers=headers)
