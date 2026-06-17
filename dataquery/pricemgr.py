@@ -1,17 +1,20 @@
 import os
 import pandas as pd
+import pyarrow.parquet as pq
 
 from collectors.constants import NYSE_DIRECTORY, NASDAQ_DIRECTORY, ALL_TICKERS_FILE, CORP_ACTIONS_OUTPUT, NEW_YORK, UTC
 from dataquery.lrucache import LRUCache
+from dataquery.tickermgr import TickerDataProvider, CompanyProfile
 
 
-
-class DailyPricesClient:
-    def __init__(self, startDate: pd.Timestamp, endDate: pd.Timestamp, cache=None, cacheSize=1024**3):
+class DailyPriceProvider:
+    def __init__(self, startDate: pd.Timestamp, endDate: pd.Timestamp, tickerDataProvider: TickerDataProvider, 
+                 cache=None, cacheSize=1024**3):
         self.startDate = startDate
         self.endDate = endDate
+        self.tickerDataProvider = tickerDataProvider
         self.cache = LRUCache(cacheSize) if cache is None else cache
-        self.tickersPaths = self.buildTickerIndex()
+        self.tickersPaths = self.buildTickerPathIndex()
 
 
     def timestampToNyDay(self, ts):
@@ -24,19 +27,45 @@ class DailyPricesClient:
 
 
     def getSingleDayTickerData(self, ticker, date):
+        # Check the stock is currently listed
+        if not self.tickerDataProvider.isTickerListed(ticker, date):
+            return None
+
         # Account for clocks changing (+/- 1 hour)
-        dfYear = self.getYear(ticker, date.year)
         dateNy = self.timestampToNyDay(date)
         
-        if dfYear.empty or dateNy not in dfYear.index:
+        dfYear = self.getYear(ticker, date.year)
+        if dateNy.dayofyear <= 7 and dateNy.year >= 2016:
+            dfPrevYear = self.getYear(ticker, dateNy.year - 1)
+            dfYear = pd.concat([dfPrevYear, dfYear]).sort_index()        
+        
+        if dfYear.empty:
             return None
         
-        row = dfYear.loc[dateNy]
+        if dateNy in dfYear.index:
+            row = dfYear.loc[dateNy]
+            return row.iloc[0] if isinstance(row, pd.DataFrame) else row
+        
+        # Look back up to 7 days to find the last available price data
+        validDates = dfYear.index[dfYear.index < dateNy]
+        if validDates.empty:
+            return None
+        
+        nearestDate = validDates.max()
+        if (dateNy - nearestDate).days > 7:
+            return None
+        
+        row = dfYear.loc[nearestDate]
         return row.iloc[0] if isinstance(row, pd.DataFrame) else row
         
 
 
     def getPeriodDailyTickerData(self, ticker, startDate: pd.Timestamp, endDate: pd.Timestamp):
+        # Check the stock is currently listed
+        if not self.tickerDataProvider.isTickerListed(ticker, startDate) and  \
+           not self.tickerDataProvider.isTickerListed(ticker, endDate):
+            return pd.DataFrame()
+        
         # Account for clocks changing (+/- 1 hour)
         startNy = self.timestampToNyDay(startDate)
         endNy = self.timestampToNyDay(endDate)
@@ -75,10 +104,17 @@ class DailyPricesClient:
             yearEndNY = self.endDate + pd.Timedelta(days=1)
 
         # Parquet files store dates in UTC; convert filter timestamps to match.
-        df = pd.read_parquet(path, filters=[
-            ("date", ">=", yearStartNY.tz_convert("UTC")), 
-            ("date", "<", yearEndNY.tz_convert("UTC"))
-        ])
+        try:
+            # Check the date column exists in the parquet file and filter by date range
+            if "date" not in pq.read_schema(path).names:
+                return pd.DataFrame()       # This fixes an issue with "FFFZ.parquet", who pulled out of IPO after submitting for it, and has no data
+
+            df = pd.read_parquet(path, engine="pyarrow", filters=[
+                ("date", ">=", yearStartNY.tz_convert("UTC")), 
+                ("date", "<", yearEndNY.tz_convert("UTC"))
+            ])
+        except:
+            return pd.DataFrame()
 
         dateCol = df["date"]
         if dateCol.dt.tz is None:
@@ -117,7 +153,7 @@ class DailyPricesClient:
 
 
 
-    def buildTickerIndex(self):
+    def buildTickerPathIndex(self):
         allTickersDf = pd.read_parquet(ALL_TICKERS_FILE)
 
         tickerPaths = {}

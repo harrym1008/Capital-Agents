@@ -1,5 +1,7 @@
 from enum import Enum
-from simulation.orders import Order, OrderSide
+import pandas as pd
+
+from simulation.orders import Order, OrderSide, OrderStatus
 
 
 class Position:
@@ -64,10 +66,14 @@ class Portfolio:
 
 
     def addToLog(self, date, message):
-        self.log.append(f"[{date}] {message}")
+        self.log.append(f"[{date.strftime('%Y-%m-%d')}] {message}")
 
 
     def executeTrade(self, order: Order):
+        if order.status != OrderStatus.FILLED or pd.isna(order.fillPrice):
+            self.addToLog(order.fillTimestamp, f"OrderFailed: {order.getOrderString()}")
+            return
+
         if order.isQuantityBased:
             if order.quantity == -1:
                 # -1 quantity means "liquidate entire position"

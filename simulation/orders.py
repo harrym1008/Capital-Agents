@@ -44,8 +44,10 @@ class Order:
 
     def getOrderString(self):
         if self.fillPrice is None:
-            quantity = self.quantity if self.isQuantityBased else 1
-            cashValue = self.cashValue if not self.isQuantityBased else 1
+            if self.isQuantityBased:
+                return f"*{self.status.value}* {self.__class__.__name__} {self.side.value} {self.quantity:.3f} shares of {self.ticker}"
+            else:
+                return f"*{self.status.value}* {self.__class__.__name__} {self.side.value} ${self.cashValue:.2f} worth of shares of {self.ticker}"
 
         if self.isQuantityBased:
             quantity = self.quantity
@@ -54,7 +56,7 @@ class Order:
             quantity = self.cashValue / self.fillPrice
             cashValue = self.cashValue
 
-        return f"*{self.status.value}* {self.__class__.__name__} {self.side.value} {quantity:.2f} {self.ticker} (cost basis: ${cashValue:.2f}) at ${self.fillPrice:.2f} per share"
+        return f"*{self.status.value}* {self.__class__.__name__} {self.side.value} {quantity:.3f} shares of {self.ticker}, ${self.fillPrice:.2f} each (totalling ${cashValue:.2f})"
 
 
 class MarketOrder(Order):
