@@ -4,10 +4,10 @@ from datetime import timedelta
 import pandas as pd
 import math
 
-from dataquery.pricemgr import DailyPriceProvider
-from collectors.mktcalendar import MarketCalendar 
+from dataquery.price_manager import DailyPriceProvider
+from collectors.market_calendar import MarketCalendar 
 from collectors.constants import NEW_YORK
-from dataquery.tickermgr import TickerDataProvider
+from dataquery.ticker_manager import TickerDataProvider
 from simulation.orders import Order, MarketOrder, LimitOrder, StopOrder, StopLimitOrder, OrderSide, OrderStatus
 from simulation.portfolio import Position, Dividend, Portfolio
 
@@ -619,6 +619,6 @@ class MarketSimulation:
     
 
     def prettyPrintAllPortfolios(self):
-        from simulation.prettysim import prettyPrintPortfolio
+        from simulation.pretty_print_sim import prettyPrintPortfolio
         for user in self.users:
             prettyPrintPortfolio(self, user)

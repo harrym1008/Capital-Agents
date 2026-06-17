@@ -17,7 +17,7 @@ from alpaca.data.requests import StockBarsRequest, CorporateActionsRequest
 from alpaca.data.enums import Adjustment, CorporateActionsType
 from alpaca.data.timeframe import TimeFrame
 
-from collectors.ratelimiter import GlobalRateLimiters, RateLimiter
+from collectors.rate_limiter import GlobalRateLimiters, RateLimiter
 from collectors.constants import *
 
 

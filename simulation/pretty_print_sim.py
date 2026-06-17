@@ -1,4 +1,4 @@
-from simulation.marketsim import MarketSimulation
+from simulation.market_sim import MarketSimulation
 from simulation.portfolio import Portfolio
 
 

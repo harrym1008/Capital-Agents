@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 import pandas as pd
 from tqdm import tqdm
 
-from collectors.ratelimiter import GlobalRateLimiters
+from collectors.rate_limiter import GlobalRateLimiters
 from collectors.constants import NEWS_BATCHES_DIR, NEWS_PARQUET_PATH, NEWS_INDEX_PARQUET_PATH, NEWS_BATCH_SIZE
 
 

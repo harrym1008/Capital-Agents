@@ -3,8 +3,8 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from collectors.constants import NYSE_DIRECTORY, NASDAQ_DIRECTORY, ALL_TICKERS_FILE, CORP_ACTIONS_OUTPUT, NEW_YORK, UTC
-from dataquery.lrucache import LRUCache
-from dataquery.tickermgr import TickerDataProvider, CompanyProfile
+from dataquery.lru_cache import LRUCache
+from dataquery.ticker_manager import TickerDataProvider, CompanyProfile
 
 
 class DailyPriceProvider:

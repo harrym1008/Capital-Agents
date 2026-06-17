@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from dotenv import load_dotenv
 
-from collectors.ratelimiter import GlobalRateLimiters
+from collectors.rate_limiter import GlobalRateLimiters
 from collectors.constants import MACRO_DIRECTORY
 
 

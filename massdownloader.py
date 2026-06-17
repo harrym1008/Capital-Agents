@@ -1,8 +1,8 @@
-from collectors.ohlcvclient import OHLCVDataClient
-from collectors.tickerclient import TickerDataClient
-from collectors.newsclient import NewsClient
-from collectors.macroclient import MacroDataClient
-from collectors.ratelimiter import GlobalRateLimiters
+from collectors.ohlcv_dl_client import OHLCVDataClient
+from collectors.ticker_client import TickerDataClient
+from collectors.news_dl_client import NewsClient
+from collectors.macro_dl_client import MacroDataClient
+from collectors.rate_limiter import GlobalRateLimiters
 from collectors.constants import *
 
 

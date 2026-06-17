@@ -3,7 +3,7 @@ import pandas as pd
 from dataclasses import dataclass
 
 from collectors.constants import NYSE_DIRECTORY, NASDAQ_DIRECTORY, ALL_TICKERS_FILE, CORP_ACTIONS_OUTPUT, NEW_YORK, UTC
-from dataquery.lrucache import LRUCache
+from dataquery.lru_cache import LRUCache
 
 
 @dataclass
