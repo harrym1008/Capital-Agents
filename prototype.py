@@ -1,16 +1,35 @@
 import json
 import time
+import math
+import os
+
+from dotenv import load_dotenv
+load_dotenv()
+
+from enum import Enum
 from typing import Callable, Any, Dict, List, Optional
+
 from openai import OpenAI
 
 from cli.ansi import ANSI
-from llm.llamacpp_args import LlamaCppModel
+from llm.llamacpp_args import LlamaCppModel, THINKING_BUDGET, SUMMARISE_THINK_BUDGET
 from llm.llamacpp_init import LlamaCppProcessInitiator, killExistingLlamaCppProcesses
 
 from llm.tools_registry import Tool, buildToolsRegistry
 from llm.agent_config import FinancialAgentConfig
-from llm.agent_prompts import buildSystemPrompt, getSystemPersona
+from llm.agent_prompts import buildResearcherSysPrompt, buildUiFormatSysPrompt, getSystemPersona
 
+
+class ResponsePrintMode(Enum):
+    FULL = "full"
+    ONLY_RESPONSE = "only_response"
+    SILENT = "silent"
+
+    def printThinking(self):
+        return self == ResponsePrintMode.FULL
+    
+    def printResponse(self):
+        return self in {ResponsePrintMode.FULL, ResponsePrintMode.ONLY_RESPONSE}
 
 
 class LlamaCppClient:
@@ -18,15 +37,14 @@ class LlamaCppClient:
         self.processInitiator = processInitiator
         self.openaiClient = OpenAI(base_url=self.processInitiator.apiUrl, api_key="abcd")
 
-
-    def handleResponseStream(self, responseStream, onlyPrintResponse: bool = False):
+    def handleResponseStream(self, 
+            responseStream, 
+            responsePrint: ResponsePrintMode = ResponsePrintMode.FULL):
+        
         fullContent = ""
         fullReasoning = ""
         toolCallsList = []
         isThinking = False
-
-        if onlyPrintResponse:
-            isThinking = False
         
         for chunk in responseStream:
             if not chunk.choices:
@@ -35,23 +53,25 @@ class LlamaCppClient:
 
             # 1. Capture reasoning content tokens
             reasoningChunk = getattr(delta, "reasoning_content", None)
-            if reasoningChunk and not onlyPrintResponse:
-                if not isThinking:
-                    print(f"\n{ANSI.DIM}[Thinking]: ", end="", flush=True)
-                    isThinking = True
-                print(reasoningChunk, end="", flush=True)
+            if reasoningChunk:
                 fullReasoning += reasoningChunk
+                if responsePrint.printThinking():
+                    if not isThinking:
+                        print(f"\n{ANSI.DIM}[Thinking]: ", end="", flush=True)
+                        isThinking = True
+                    print(reasoningChunk, end="", flush=True)
 
             # 2. Capture regular response text tokens
             contentChunk = getattr(delta, "content", None)
             if contentChunk:
-                if isThinking:
-                    print(f"\n{ANSI.RESET}[Response]: ", end="", flush=True)
-                    isThinking = False
-                elif fullContent == "":
-                    print("\n[Response]: ", end="", flush=True)
-                print(contentChunk, end="", flush=True)
                 fullContent += contentChunk
+                if responsePrint.printResponse():
+                    if isThinking:
+                        print(f"\n{ANSI.RESET}[Response]: ", end="", flush=True)
+                        isThinking = False
+                    elif fullContent == "":
+                        print("\n[Response]: ", end="", flush=True)
+                    print(contentChunk, end="", flush=True)
 
             # 3. Assemble fragmented tool call tokens as they arrive
             toolCallsChunk = getattr(delta, "tool_calls", None)
@@ -75,33 +95,49 @@ class LlamaCppClient:
                         if getattr(funcDelta, "arguments", None):
                             currentCall["function"]["arguments"] += funcDelta.arguments
 
-        if fullContent or fullReasoning:
+        if (fullContent and responsePrint.printResponse()) or (fullReasoning and responsePrint.printThinking()):
             print(ANSI.RESET)
+        else:
+            print(ANSI.RESET, end="")
 
         return fullContent, fullReasoning, toolCallsList
 
 
 
-    def runConversation(self, messageHistory: List[Dict[str, Any]], availableTools: Optional[List[Tool]] = None, onlyPrintResponse: bool = False):
+    def runConversation(self, 
+            messageHistory: List[Dict[str, Any]], 
+            availableTools: Optional[List[Tool]] = None, 
+            thinkingBudget: Optional[int] = None,
+            responsePrint: ResponsePrintMode = ResponsePrintMode.FULL
+        ):
         toolSchemas = [tool.getToolSchema() for tool in availableTools] if availableTools else []
         maxIterations = 12
         currentIteration = 0
+        accumulatedContent = ""
 
         while currentIteration < maxIterations:
             currentIteration += 1
 
+            extraBody = {}
+            if thinkingBudget is not None:
+                extraBody["thinking_budget_tokens"] = thinkingBudget
+
             responseStream = self.openaiClient.chat.completions.create(
                 model="model",
                 messages=messageHistory,
-                temperature=0.55,
+                temperature=0.5,
                 tools=toolSchemas,
                 tool_choice="auto" if toolSchemas else None,
-                stream=True
+                stream=True,
+                extra_body=extraBody
             )
-            content, reasoning, toolCallsList = self.handleResponseStream(responseStream, onlyPrintResponse=onlyPrintResponse)
+            content, reasoning, toolCallsList = self.handleResponseStream(responseStream, responsePrint)
+
+            if content and content.strip():
+                accumulatedContent += content + "\n"
 
             if not toolCallsList:
-                return content
+                return accumulatedContent.strip()
             
             assistantMessageDict = {
                 "role": "assistant",
@@ -143,15 +179,24 @@ class LlamaCppClient:
                     "content": stringResult
                 })
 
+        extraBody = {}
+        if thinkingBudget is not None:
+            extraBody["thinking_budget_tokens"] = thinkingBudget
+
         # If this code is reached, it means the maximum number of iterations was reached without a final response
         finalResponseStream = self.openaiClient.chat.completions.create(
             model="model",
             messages=messageHistory,
-            temperature=0.55,
-            stream=True
+            temperature=0.5,
+            stream=True,
+            extra_body=extraBody
         )
-        finalContent, _, _ = self.handleResponseStream(finalResponseStream, onlyPrintResponse=onlyPrintResponse)
-        return finalContent
+        finalContent, _, _ = self.handleResponseStream(finalResponseStream, responsePrint)
+        
+        if finalContent and finalContent.strip():
+            accumulatedContent += finalContent
+
+        return accumulatedContent.strip()
     
 
 class FinancialAgent:
@@ -164,18 +209,50 @@ class FinancialAgent:
         self.color = config.color
 
         self.config = config
-        self.systemPrompt = buildSystemPrompt(config, dateStr)
+        self.researcherSystemMessage = buildResearcherSysPrompt(config, dateStr)
+        self.uiFormatSystemMessage = buildUiFormatSysPrompt(config)
 
         self.messageHistory = [
-            {"role": "system", "content": self.systemPrompt}
+            {"role": "system", "content": self.researcherSystemMessage}
         ]
 
-    def analyseAndReply(self, incomingMessage: str, onlyPrintResponse: bool = False):
+    def executeInternalAnalysis(self, incomingMessage: str, responsePrint: ResponsePrintMode = ResponsePrintMode.FULL):
         self.messageHistory.append({"role": "user", "content": incomingMessage})
-        print(f"\n{self.color}{ANSI.BOLD}========== [{self.agentRole}] is analysing... =========={ANSI.RESET}", end="")
-        response = self.apiClient.runConversation(self.messageHistory, self.tools, onlyPrintResponse=onlyPrintResponse)
-        self.messageHistory.append({"role": "assistant", "content": response})
-        return response
+        print(f"\n{self.color}{ANSI.BOLD}========== [{self.agentRole}] is analyzing... =========={ANSI.RESET}", end="")
+        
+        rawAnalysis = self.apiClient.runConversation(self.messageHistory, self.tools, THINKING_BUDGET, responsePrint)
+        self.messageHistory.append({"role": "assistant", "content": rawAnalysis})
+        return rawAnalysis
+
+
+    def generateUiSummary(self, rawAnalysis: str, responsePrint: ResponsePrintMode = ResponsePrintMode.SILENT):
+        tempHistory = [
+            {"role": "system", "content": self.uiFormatSystemMessage},
+            {"role": "user", "content": f"Reformat the following raw analysis according to the instructions:\n\n{rawAnalysis}"}
+        ]
+
+        uiSummary = self.apiClient.runConversation(tempHistory, [], SUMMARISE_THINK_BUDGET, responsePrint)
+        return uiSummary
+
+
+    def analyseAndReply(self, 
+            incomingMessage: str, 
+            responsePrintRawAnalysis: ResponsePrintMode = ResponsePrintMode.FULL,
+            responsePrintUiSummary: ResponsePrintMode = ResponsePrintMode.SILENT
+        ):
+        generatingSummaryAdvisory = responsePrintUiSummary == ResponsePrintMode.SILENT and responsePrintRawAnalysis != ResponsePrintMode.SILENT
+        
+        rawAnalysis = self.executeInternalAnalysis(incomingMessage, responsePrintRawAnalysis)
+
+        if generatingSummaryAdvisory:
+            print(f"\n{self.color}{ANSI.BOLD}========== [{self.agentRole}] is generating UI summary... =========={ANSI.RESET}", end="\r")
+
+        uiSummary = self.generateUiSummary(rawAnalysis, responsePrintUiSummary)
+
+        if generatingSummaryAdvisory:
+            print(f"{self.color}{ANSI.BOLD}========== [{self.agentRole}] UI summary generation complete. =========={ANSI.RESET}\n")
+
+        return rawAnalysis, uiSummary
 
 
 
@@ -187,113 +264,135 @@ class BoardroomEngine:
         self.aggRiskAnalyst = agents.get("aggRiskAnalyst")
         self.consRiskAnalyst = agents.get("consRiskAnalyst")
         self.portManager = agents.get("portManager")
-        self.boardSummariser = agents.get("boardSummariser")
 
 
     def executeSingleEquityRating(self, targetTicker):
         print(f"\n{'='*70}\nStarting Live Boardroom Evaluation for: {targetTicker}\n{'='*70}")
         
+
+        def newPhaseHeader(phaseNumber, phaseName):
+            if phaseNumber == 0:
+                tempHeader = f"{phaseName}"
+            else:
+                tempHeader = f"Phase {phaseNumber}: {phaseName}"
+            tempHeader = f"{'|'*5} {tempHeader} {'|'*5}"
+            headerLength = len(tempHeader)
+            print(f"\n{ANSI.BOLD}{'-'*headerLength}\n{tempHeader}\n{'-'*headerLength}{ANSI.RESET}\n")
+
+
         # Phase 1: Macro Environment Analysis
-        print("\n--- Phase 1: Macro Environment Analysis ---")
-        macroSummary = self.macroAnalyst.analyseAndReply(
+        newPhaseHeader(1, "Macro Environment Analysis")
+        macroRaw, macroUiSummary = self.macroAnalyst.analyseAndReply(
             f"Current Phase: *PHASE 1* - Macro Environment Analysis\n"
             "Analyse the current macroeconomic environment and produce a concise summary under the rules marked for Phase 1."
         )
         
         # Phase 2: Specialist Research
-        print(f"\n--- Phase 2: Specialist Research on {targetTicker} ---")
+        newPhaseHeader(2, f"Specialist Research on {targetTicker}")
         researchPrompt = (
             f"Macroeconomic summary produced by the Macro Analyst:\n"
-            f"{macroSummary}\n\n"
+            f"{macroRaw}\n\n"
             f"Current Phase: *PHASE 2* - Specialist Research on {targetTicker}\n"
             f"You must conduct your research on this ticker: {targetTicker}, under the rules marked for Phase 2. "
         )
         
-        bullThesis = self.bullAnalyst.analyseAndReply(researchPrompt)        
-        bearThesis = self.bearAnalyst.analyseAndReply(researchPrompt)
+        bullThesisRaw, bullThesisUiSummary = self.bullAnalyst.analyseAndReply(researchPrompt)        
+        bearThesisRaw, bearThesisUiSummary = self.bearAnalyst.analyseAndReply(researchPrompt)
 
         # Phase 3: Senior Risk Debate
-        print(f"\n--- Phase 3 & 4: Senior Risk Debate & Analyst Defense ---")
-        debateContext = f"Bull Thesis:\n{bullThesis}\n\nBear Thesis:\n{bearThesis}"
-        
-        aggQuestions = self.aggRiskAnalyst.analyseAndReply(
-            f"Macroeconomic summary produced by the Macro Analyst:\n{macroSummary}\n\n"
+        newPhaseHeader(3, f"Senior Risk Debate on {targetTicker}")
+        aggQuestionsRaw, aggQuestionsUiSummary = self.aggRiskAnalyst.analyseAndReply(
+            f"Macroeconomic summary produced by the Macro Analyst:\n{macroRaw}\n\n"
             # f"Bullish Value Analyst's Thesis:\n{bullThesis}\n\n"
-            f"Bearish Value Analyst's Thesis:\n{bearThesis}\n\n"
+            f"Bearish Value Analyst's Thesis:\n{bearThesisRaw}\n\n"
             f"Current Phase: *PHASE 3* - Senior Risk Debate on {targetTicker}\n"
             f"Review the theses and targets for {targetTicker} and produce 2-3 questions challenging this thesis under the rules marked for Phase 3."
         )
         
-        consQuestions = self.consRiskAnalyst.analyseAndReply(
-            f"Macroeconomic summary produced by the Macro Analyst:\n{macroSummary}\n\n"
-            f"Bullish Value Analyst's Thesis:\n{bullThesis}\n\n"
+        consQuestionsRaw, consQuestionsUiSummary = self.consRiskAnalyst.analyseAndReply(
+            f"Macroeconomic summary produced by the Macro Analyst:\n{macroRaw}\n\n"
+            f"Bullish Value Analyst's Thesis:\n{bullThesisRaw}\n\n"
             # f"Bearish Value Analyst's Thesis:\n{bearThesis}\n\n"
             f"Current Phase: *PHASE 3* - Senior Risk Debate on {targetTicker}\n"
             f"Review the theses and targets for {targetTicker} and produce 2-3 questions challenging this thesis under the rules marked for Phase 3."
         )
         
         # Phase 4: Analyst Defense
-        bullDefense = self.bullAnalyst.analyseAndReply(
-            f"Questions posed by the Conservative Risk Analyst:\n{consQuestions}\n\n"
+        newPhaseHeader(4, f"Analyst Defense on {targetTicker}")
+        bullDefenseRaw, bullDefenseUiSummary = self.bullAnalyst.analyseAndReply(
+            f"Questions posed by the Conservative Risk Analyst:\n{consQuestionsRaw}\n\n"
             f"Current Phase: *PHASE 4* - Analyst Defense on {targetTicker}\n"
             f"Produce your response to these questions under the rules marked for Phase 4."
         )
-        bearDefense = self.bearAnalyst.analyseAndReply(
-            f"Questions posed by the Aggressive Risk Analyst:\n{aggQuestions}\n\n"
+        bearDefenseRaw, bearDefenseUiSummary = self.bearAnalyst.analyseAndReply(
+            f"Questions posed by the Aggressive Risk Analyst:\n{aggQuestionsRaw}\n\n"
             f"Current Phase: *PHASE 4* - Analyst Defense on {targetTicker}\n"
             f"Produce your response to these questions under the rules marked for Phase 4."
         )
 
         # Phase 5: Q&A Based Proposals
-        print(f"\n--- Phase 5: Q&A-Based Proposals ---")
-        aggProposal = self.aggRiskAnalyst.analyseAndReply(
-            f"Bearish Analyst's Response/Defense:\n{bearDefense}\n\n"
+        newPhaseHeader(5, f"Q&A-Based Proposals on {targetTicker}")
+        aggProposalRaw, aggProposalUiSummary = self.aggRiskAnalyst.analyseAndReply(
+            f"Bearish Analyst's Response/Defense:\n{bearDefenseRaw}\n\n"
             f"Current Phase: *PHASE 5* - Q&A-Based Proposals on {targetTicker}\n"
             f"Based on the defenses, make your final proposals with justification under the rules marked for Phase 5."
         )
-        consProposal = self.consRiskAnalyst.analyseAndReply(
-            f"Bullish Analyst's Response/Defense:\n{bullDefense}\n\n"
+        consProposalRaw, consProposalUiSummary = self.consRiskAnalyst.analyseAndReply(
+            f"Bullish Analyst's Response/Defense:\n{bullDefenseRaw}\n\n"
             f"Current Phase: *PHASE 5* - Q&A-Based Proposals on {targetTicker}\n"
             f"Based on the defenses, make your final proposals with justification under the rules marked for Phase 5."
         )
 
         # Phase 6: Final Executive Decision
-        print(f"\n--- Phase 6: Final Executive Decision ---")
+        newPhaseHeader(6, f"Final Executive Decision on {targetTicker}")
         managerPrompt = (
             f"Target Asset: {targetTicker}\n"
-            f"Macro Conditions:\n{macroSummary}\n\n"
-            f"Aggressive Allocation Case:\n{aggProposal}\n\n"
-            f"Conservative Allocation Case:\n{consProposal}\n\n"
+            f"Macro Conditions:\n{macroRaw}\n\n"
+            f"Aggressive Allocation Case:\n{aggProposalRaw}\n\n"
+            f"Conservative Allocation Case:\n{consProposalRaw}\n\n"
             f"Current Phase: *PHASE 6* - Final Executive Decision on {targetTicker}\n"
             f"Weigh up the arguments and make the final executive decision under the rules marked for Phase 6."
         )
-        finalDecision = self.portManager.analyseAndReply(managerPrompt)
+        finalDecisionRaw, finalDecisionUiSummary = self.portManager.analyseAndReply(managerPrompt)
         
-        # Phase 7: Executive Boardroom Summarization
-        print(f"\n\n\n--- Phase 7: Executive Boardroom Summarization ---\n\n\n")
-        summaryPrompt = (
-            f"Current Phase: *PHASE 7* - Executive Summarization on {targetTicker}\n"
-            f"Below is the full conversation for you to summarise:\n\n"
-            f"Phase 1: Macro Analyst Summary:\n{macroSummary}\n\n"
-            f"Phase 2: Bullish Analyst Summary:\n{bullThesis}\n\n"
-            f"Phase 2: Bearish Analyst Summary:\n{bearThesis}\n\n"
-            f"Phase 3: Aggressive Risk Analyst Questions:\n{aggQuestions}\n\n"
-            f"Phase 3: Conservative Risk Analyst Questions:\n{consQuestions}\n\n"
-            f"Phase 4: Bullish Analyst Defense:\n{bullDefense}\n\n"
-            f"Phase 4: Bearish Analyst Defense:\n{bearDefense}\n\n"
-            f"Phase 5: Aggressive Risk Analyst Summary:\n{aggProposal}\n\n"
-            f"Phase 5: Conservative Risk Analyst Summary:\n{consProposal}\n\n"
-            f"Phase 6: Final Executive Decision:\n{finalDecision}"
-        )
-        executiveSummary = self.boardSummariser.analyseAndReply(summaryPrompt, onlyPrintResponse=True)
+        print()
+        newPhaseHeader(0, f"Final Boardroom Summary on {targetTicker}")        
             
-        print(f"\n{'='*70}\nBoardroom Evaluation for {targetTicker} Completed.\n{'='*70}")
+        separator = f"\n{ANSI.BOLD}{ANSI.DIM}{'-'*70}{ANSI.RESET}\n"
+        print(
+            f"\n{ANSI.BOLD}{self.macroAnalyst.color}Macro Analyst Summary:\n{ANSI.RESET}{macroUiSummary}\n"
+            f"{separator}"
+
+            f"\n{ANSI.BOLD}{self.bullAnalyst.color}Bullish Analyst Summary:\n{ANSI.RESET}{bullThesisUiSummary}\n"
+            f"\n⇩\n"
+            f"\n{ANSI.BOLD}{self.consRiskAnalyst.color}Conservative Risk Analyst Summary and Questions:\n{ANSI.RESET}{consQuestionsUiSummary}\n"
+            f"\n⇩\n"
+            f"\n{ANSI.BOLD}{self.bullAnalyst.color}Bullish Analyst Defense:\n{ANSI.RESET}{bullDefenseUiSummary}\n"
+            f"\n{separator}\n"
+
+            f"\n{ANSI.BOLD}{self.bearAnalyst.color}Bearish Analyst Summary:\n{ANSI.RESET}{bearThesisUiSummary}\n"
+            f"\n⇩\n"
+            f"\n{ANSI.BOLD}{self.aggRiskAnalyst.color}Aggressive Risk Analyst Summary and Questions:\n{ANSI.RESET}{aggQuestionsUiSummary}\n"
+            f"\n⇩\n"
+            f"\n{ANSI.BOLD}{self.bearAnalyst.color}Bearish Analyst Defense:\n{ANSI.RESET}{bearDefenseUiSummary}\n"
+            f"\n{separator}\n"
+
+            f"\n{ANSI.BOLD}{self.aggRiskAnalyst.color}Aggressive Risk Analyst Proposal:\n{ANSI.RESET}{aggProposalUiSummary}\n"
+            f"\n{separator}\n"
+
+            f"\n{ANSI.BOLD}{self.consRiskAnalyst.color}Conservative Risk Analyst Proposal:\n{ANSI.RESET}{consProposalUiSummary}\n"
+            f"\n{separator}\n"
+
+            f"\n{ANSI.BOLD}{self.portManager.color}Final Executive Decision:\n{ANSI.RESET}{finalDecisionUiSummary}\n"
+            f"\n\n"
+        )
+
 
 
 if __name__ == "__main__":
     killExistingLlamaCppProcesses()
 
-    serverProcess = LlamaCppProcessInitiator(model=LlamaCppModel.GEMMA_4_12B)
+    serverProcess = LlamaCppProcessInitiator(model=LlamaCppModel.GEMMA_4_E2B)
     startThread = serverProcess.startOnAnotherThread()
     startThread.join()  
 
@@ -408,33 +507,23 @@ if __name__ == "__main__":
         dateStr=simulatedDate
     )
 
-    summariserAgent = FinancialAgent(
-        config=FinancialAgentConfig(
-            agentRole="Executive Boardroom Summariser",
-            systemPersona=getSystemPersona("Executive Boardroom Summariser"),
-            tools=[],
-            color=ANSI.BOLD
-        ),
-        apiClient=localClient,
-        dateStr=simulatedDate
-    )
-
-
     boardroom = BoardroomEngine({
         "macroAnalyst": macroAgent,
         "bullAnalyst": bullAgent,
         "bearAnalyst": bearAgent,
         "aggRiskAnalyst": aggRiskAnalystAgent,
         "consRiskAnalyst": consRiskAnalystAgent,
-        "portManager": portfolioManager,
-        "boardSummariser": summariserAgent
+        "portManager": portfolioManager
     })
 
-    # boardroom.executeSingleEquityRating("NVDA")
-    # time.sleep(2)
-    # boardroom.executeSingleEquityRating("AAPL")
-    # time.sleep(2)
-    boardroom.executeSingleEquityRating("NVDA")
+    
+    timeBefore = time.time()
+    boardroom.executeSingleEquityRating("INTU")
+    timeAfter = time.time()
+
+    seconds = timeAfter - timeBefore
+    print(f"\nTotal time taken for boardroom evaluation: {math.floor(seconds/60)} mins {seconds%60:.1f} secs")
+
     time.sleep(2)
 
     serverProcess.stop()

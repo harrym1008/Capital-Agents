@@ -12,4 +12,6 @@ class FinancialAgentConfig:
     tools: List[str] = field(default_factory=list)
     color: str = ANSI.RESET
 
+    summaryLength: Optional[int] = 100
+
     # temperature: float = 0.65

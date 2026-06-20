@@ -3,8 +3,10 @@ from enum import Enum
 
 LLAMACPP_PORT = 9081
 LLAMACPP_EXECUTABLE = "llama-server.exe"
-THINKING_BUDGET = 3192
 
+THINKING_BUDGET = 3072
+THINKING_BUDGET_MESSAGE = "My thinking allowance has been exhausted. I shall now produce my final response."
+SUMMARISE_THINK_BUDGET = 512
 
 class LlamaCppModel(Enum):
     GEMMA_4_26B_E4B = "Gemma-4-26B-E4B"
@@ -40,8 +42,8 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--mlock":          _,
         "--fit":            "on",
         "--fit-target":     "1000",
-        "--reasoning-budget":           str(THINKING_BUDGET),
-        "--reasoning-budget-message":   "The thinking allowance has been exhausted. It is time to produce my final response."
+        # "--reasoning-budget":           str(THINKING_BUDGET),     # To be set directly in the HTTP request body
+        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
     LlamaCppModel.GEMMA_4_12B: {
@@ -68,8 +70,8 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--spec-type":                  "draft-mtp",
         "--model-draft":                "I:\\LLM\\Gemma4\\mtp\\gemma-4-12B-it-Q8_0-MTP.gguf",
         "--spec-draft-n-max":           "2",
-        "--reasoning-budget":           str(THINKING_BUDGET),
-        "--reasoning-budget-message":   "The thinking allowance has been exhausted. It is time to produce my final response."
+        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
     LlamaCppModel.GEMMA_4_E4B: {
@@ -96,8 +98,8 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--spec-type":                  "draft-mtp",
         "--model-draft":                "I:\\LLM\\Gemma4\\mtp\\gemma-4-E4B-it-Q8_0-MTP.gguf",
         "--spec-draft-n-max":           "2",
-        "--reasoning-budget":           str(THINKING_BUDGET),
-        "--reasoning-budget-message":   "The thinking allowance has been exhausted. It is time to produce my final response."
+        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
     LlamaCppModel.GEMMA_4_E2B: {
@@ -124,8 +126,8 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--spec-type":                  "draft-mtp",
         "--model-draft":                "I:\\LLM\\Gemma4\\mtp\\gemma-4-E2B-it-Q8_0-MTP.gguf",
         "--spec-draft-n-max":           "2",
-        "--reasoning-budget":           str(THINKING_BUDGET),
-        "--reasoning-budget-message":   "The thinking allowance has been exhausted. It is time to produce my final response."
+        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
     
     LlamaCppModel.MINICPM5_1B: {
@@ -147,8 +149,8 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
         "-ngl":             "99",
         "--mlock":          _,
-        "--reasoning-budget":           str(THINKING_BUDGET),
-        "--reasoning-budget-message":   "The thinking allowance has been exhausted. It is time to produce my final response."
+        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
     
     LlamaCppModel.LFM2o5_8B_A1B: {
@@ -170,8 +172,8 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
         "-ngl":             "99",
         "--mlock":          _,
-        "--reasoning-budget":           str(THINKING_BUDGET),
-        "--reasoning-budget-message":   "The thinking allowance has been exhausted. It is time to produce my final response."
+        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
     LlamaCppModel.QWEN_3o6_27B: {
@@ -198,8 +200,8 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
         "-ngl":             "99",
         "--mlock":          _,
-        "--reasoning-budget":           str(THINKING_BUDGET),
-        "--reasoning-budget-message":   "The thinking allowance has been exhausted. It is time to produce my final response."
+        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     }
 
 }
