@@ -13,6 +13,16 @@ class RateLimiter:
         self.lock = threading.Lock()
     
 
+    def getWaitTime(self):
+        with self.lock:
+            currentTime = time.time()
+            if currentTime < self.nextAllowedTime:
+                return self.nextAllowedTime - currentTime + 0.05
+            else:
+                return 0.05
+
+
+
     def wait(self):
         with self.lock:
             currentTime = time.time()

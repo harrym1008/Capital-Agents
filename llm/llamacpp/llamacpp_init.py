@@ -8,7 +8,7 @@ from enum import Enum
 import psutil
 import time
 
-from llm.llamacpp_args import LLAMACPP_EXECUTABLE, LLAMACPP_PORT, LlamaCppModel, EMPTY_ARG, LLAMACPP_MODEL_TO_ARGS
+from llm.llamacpp.llamacpp_args import LLAMACPP_EXECUTABLE, LLAMACPP_PORT, LlamaCppModel, EMPTY_ARG, LLAMACPP_MODEL_TO_ARGS
 
 
 class ServerState(Enum):
@@ -28,14 +28,85 @@ def killExistingLlamaCppProcesses():
                 killed = True
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
-
     if killed:
-        time.sleep(3)
+        time.sleep(2)
+
+
+def rudimentaryVramClear():
+    try:
+        import gc, sys, time, psutil, torch
+        from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
+        
+        skip = False
+
+        gpuMem = []
+        try:
+            nvmlInit()
+            handle = nvmlDeviceGetHandleByIndex(0)
+            memInfo = nvmlDeviceGetMemoryInfo(handle)
+
+            totalVram = memInfo.total / (1024 ** 3)
+            totalSysRam = psutil.virtual_memory().total / (1024 ** 3)
+            targetAlloc = totalVram + min(totalSysRam * 0.25, 4)    # 25% of system RAM or 4GB overspill
+
+            totalAlloc = 0
+            usedVramBefore = round(memInfo.used / (1024 ** 3), 2)
+
+            if usedVramBefore < 1.25:
+                print(f"VRAM usage is already low: {usedVramBefore:.2f}/{totalVram:.2f} GB. Skipping VRAM clearing.")
+                skip = True
+            
+            else:
+                print(f"Clearing VRAM: Before: {usedVramBefore:.2f}/{totalVram:.2f} GB...", end="\r", flush=True)
+
+                while True:
+                    try:
+                        emptyTensor = torch.empty((512, 512, 256), device="cuda")
+                        gpuMem.append(emptyTensor)
+                        totalAlloc += (512 * 512 * 256 * 4) / 1024**3
+                        print(f"Clearing VRAM | Before: {usedVramBefore:.2f}/{totalVram:.2f} GB | Allocated {totalAlloc:.2f} GB", end="\r", flush=True)
+                        if totalAlloc >= targetAlloc:
+                            break
+                        time.sleep(0.02)
+                    except RuntimeError:
+                        break
+
+                time.sleep(3)
+
+        finally:
+            gpuMem.clear()
+            del gpuMem
+
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+
+            for module in ["torch", "psutil"]:
+                sys.modules.pop(module, None)
+
+            gc.collect()
+            time.sleep(1)
+
+            if not skip:
+                memInfo = nvmlDeviceGetMemoryInfo(handle)
+                usedVramAfter = round(memInfo.used / (1024 ** 3), 2)
+                print(f"\n  ↳ After: {usedVramAfter:.2f} GB | Freed: {usedVramBefore - usedVramAfter:.2f} GB")
+
+            sys.modules.pop("pynvml", None)
+            gc.collect()
+            time.sleep(1)
+
+    except Exception as e:
+        print(f"Error during rudimentary VRAM clearing: {e}. Continuing without clearing VRAM.")
 
 
 
 class LlamaCppProcessInitiator:
-    def __init__(self, model: LlamaCppModel, argOverrides=None):
+    def __init__(self, model: LlamaCppModel, killExistingProcesses: bool = True, argOverrides=None):
+        if killExistingProcesses:
+            killExistingLlamaCppProcesses()
+
         self.args = LLAMACPP_MODEL_TO_ARGS.get(model, {}).copy()
         self.args.update(argOverrides or {})
 
