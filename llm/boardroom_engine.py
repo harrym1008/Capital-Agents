@@ -1,4 +1,4 @@
-
+from datetime import datetime
 from typing import Dict
 
 from cli.ansi import ANSI
@@ -30,6 +30,7 @@ class BoardroomEngine:
 
 
     def executeFastSingleEquityRating(self, targetTicker):
+        startTime = datetime.now()
         print(f"\n{'='*70}\nStarting Fast Boardroom Evaluation for: {targetTicker}\n{'='*70}")        
 
         # Phase 1: Macro Environment Analysis
@@ -68,14 +69,17 @@ class BoardroomEngine:
         _, _ = self.portManager.analyseAndReply((
             f"Current Phase: *PHASE 7* - Decision Upload on {targetTicker}\n"
             f"Upload the final decision, weight allocation, and price targets via the 'confirmBoardroomDecision' tool, under the rules marked for Phase 7."
-        ))
+        ), summarisationOverride=False)
+        formattedExecutiveDecision = self.portManager.tools[2].toolLog[-1]
 
+        endTime = datetime.now()
+        timeTaken = endTime - startTime
 
         print()
-        self.newPhaseHeader(0, f"Final Boardroom Summary on {targetTicker}")        
-            
+        self.newPhaseHeader(0, f"Final Boardroom Summary on {targetTicker}")                    
+
         separator = f"\n{ANSI.BOLD}{ANSI.DIM}{'-'*70}{ANSI.RESET}\n"
-        print(
+        shortConvSummary = (
             f"\n{ANSI.BOLD}{self.macroAnalyst.color}Macro Analyst Summary:\n{ANSI.RESET}{macroUISummary}\n"
             f"{separator}"
 
@@ -86,15 +90,39 @@ class BoardroomEngine:
             f"\n{separator}\n"
 
             f"\n{ANSI.BOLD}{self.portManager.color}Final Executive Decision:\n{ANSI.RESET}{finalDecisionUISummary}\n"
-            f"\n"
+            f"\n{formattedExecutiveDecision}\n"
+
+            f"Time taken for boardroom discussion: {timeTaken.seconds//60} mins {timeTaken.seconds%60} secs\n"
+        )
+
+        fullConvSummary = (
+            f"\n{ANSI.BOLD}{self.macroAnalyst.color}Macro Analyst Summary:\n{ANSI.RESET}{macroRaw}\n"
+            f"{separator}"
+
+            f"\n{ANSI.BOLD}{self.bullAnalyst.color}Bullish Analyst Summary:\n{ANSI.RESET}{bullThesisRaw}\n"
+            f"\n{separator}\n"
+
+            f"\n{ANSI.BOLD}{self.bearAnalyst.color}Bearish Analyst Summary:\n{ANSI.RESET}{bearThesisRaw}\n"
+            f"\n{separator}\n"
+
+            f"\n{ANSI.BOLD}{self.portManager.color}Final Executive Decision:\n{ANSI.RESET}{finalDecisionRaw}\n"
+            f"\n{formattedExecutiveDecision}\n"
+            
+            f"Time taken for boardroom discussion: {timeTaken.seconds//60} mins {timeTaken.seconds%60} secs\n"
         )
         
-        executiveDecisionTool = self.portManager.tools[2].toolLog[-1]
-        print(executiveDecisionTool)
+        print(shortConvSummary)
+
+        with open(f"output\\{targetTicker}_fast_{startTime.strftime('%Y-%m-%d_%H-%M-%S')}.ans", "w", encoding="utf-8") as f:
+            f.write(fullConvSummary)
+        
+
+
 
 
 
     def executeCompleteSingleEquityRating(self, targetTicker):
+        startTime = datetime.now()
         print(f"\n{'='*70}\nStarting Live Boardroom Evaluation for: {targetTicker}\n{'='*70}")        
 
         # Phase 1: Macro Environment Analysis
@@ -176,13 +204,17 @@ class BoardroomEngine:
         _, _ = self.portManager.analyseAndReply((
             f"Current Phase: *PHASE 7* - Decision Upload on {targetTicker}\n"
             f"Upload the final decision, weight allocation, and price targets via the 'confirmBoardroomDecision' tool, under the rules marked for Phase 7."
-        ))
+        ), summarisationOverride=False)
+        formattedExecutiveDecision = self.portManager.tools[2].toolLog[-1]
+
+        endTime = datetime.now()
+        timeTaken = endTime - startTime
 
         print()
-        self.newPhaseHeader(0, f"Final Boardroom Summary on {targetTicker}")        
+        self.newPhaseHeader(0, f"Final Boardroom Summary on {targetTicker}")   
             
         separator = f"\n{ANSI.BOLD}{ANSI.DIM}{'-'*70}{ANSI.RESET}\n"
-        print(
+        shortConvSummary = (
             f"\n{ANSI.BOLD}{self.macroAnalyst.color}Macro Analyst Summary:\n{ANSI.RESET}{macroUISummary}\n"
             f"{separator}"
 
@@ -207,11 +239,46 @@ class BoardroomEngine:
             f"\n{separator}\n"
 
             f"\n{ANSI.BOLD}{self.portManager.color}Final Executive Decision:\n{ANSI.RESET}{finalDecisionUISummary}\n"
-            f"\n"
+            f"\n{formattedExecutiveDecision}\n"
+
+            f"Time taken for boardroom discussion: {timeTaken.seconds//60} mins {timeTaken.seconds%60} secs\n"
+        )
+
+        fullConvSummary = (
+            f"\n{ANSI.BOLD}{self.macroAnalyst.color}Macro Analyst Summary:\n{ANSI.RESET}{macroRaw}\n"
+            f"{separator}"
+
+            f"\n{ANSI.BOLD}{self.bullAnalyst.color}Bullish Analyst Summary:\n{ANSI.RESET}{bullThesisRaw}\n"
+            f"\n⇩\n"
+            f"\n{ANSI.BOLD}{self.consRiskAnalyst.color}Conservative Risk Analyst Summary and Questions:\n{ANSI.RESET}{consQuestionsRaw}\n"
+            f"\n⇩\n"
+            f"\n{ANSI.BOLD}{self.bullAnalyst.color}Bullish Analyst Defense:\n{ANSI.RESET}{bullDefenseRaw}\n"
+            f"\n{separator}\n"
+
+            f"\n{ANSI.BOLD}{self.bearAnalyst.color}Bearish Analyst Summary:\n{ANSI.RESET}{bearThesisRaw}\n"
+            f"\n⇩\n"
+            f"\n{ANSI.BOLD}{self.aggRiskAnalyst.color}Aggressive Risk Analyst Summary and Questions:\n{ANSI.RESET}{aggQuestionsRaw}\n"
+            f"\n⇩\n"
+            f"\n{ANSI.BOLD}{self.bearAnalyst.color}Bearish Analyst Defense:\n{ANSI.RESET}{bearDefenseRaw}\n"
+            f"\n{separator}\n"
+
+            f"\n{ANSI.BOLD}{self.aggRiskAnalyst.color}Aggressive Risk Analyst Proposal:\n{ANSI.RESET}{aggProposalRaw}\n"
+            f"\n{separator}\n"
+
+            f"\n{ANSI.BOLD}{self.consRiskAnalyst.color}Conservative Risk Analyst Proposal:\n{ANSI.RESET}{consProposalRaw}\n"
+            f"\n{separator}\n"
+
+            f"\n{ANSI.BOLD}{self.portManager.color}Final Executive Decision:\n{ANSI.RESET}{finalDecisionRaw}\n"
+            f"\n{formattedExecutiveDecision}\n"
+
+            f"Time taken for boardroom discussion: {timeTaken.seconds//60} mins {timeTaken.seconds%60} secs\n"
         )
         
-        executiveDecisionTool = self.portManager.tools[2].toolLog[-1]
-        print(executiveDecisionTool)
+        print(shortConvSummary)
+
+        with open(f"output\\{targetTicker}_full_{startTime.strftime('%Y-%m-%d_%H-%M-%S')}.ans", "w", encoding="utf-8") as f:
+            f.write(fullConvSummary)       
+        
 
 
     def executeSingleEquityRating(self, targetTicker, fastMode=False):
@@ -219,6 +286,7 @@ class BoardroomEngine:
             self.executeFastSingleEquityRating(targetTicker)
         else:
             self.executeCompleteSingleEquityRating(targetTicker)
+
 
 
 def boardroomGenerator(simulatedDate: str, llmClient: BaseLLMClient):

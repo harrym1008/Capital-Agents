@@ -25,7 +25,7 @@ class LLMClient(Enum):
     Groq = 3
 
 
-def runBoardroom(llmClient: LLMClient, model: str | LlamaCppModel, tickerToEval: str):
+def runBoardroom(llmClient: LLMClient, model: str | LlamaCppModel, tickerToEval: str, fastMode: bool = True):
     llmClient: BaseLLMClient
 
     if llmClient == LLMClient.LlamaCpp:        
@@ -53,7 +53,7 @@ def runBoardroom(llmClient: LLMClient, model: str | LlamaCppModel, tickerToEval:
     boardroom = boardroomGenerator(simulatedDate, llmClient)
     
     timeBefore = time.time()
-    boardroom.executeSingleEquityRating(targetTicker=tickerToEval, fastMode=True)
+    boardroom.executeSingleEquityRating(targetTicker=tickerToEval, fastMode=fastMode)
     timeAfter = time.time()
 
     seconds = timeAfter - timeBefore
@@ -65,8 +65,5 @@ def runBoardroom(llmClient: LLMClient, model: str | LlamaCppModel, tickerToEval:
 
 
 if __name__ == "__main__":
-    runBoardroom(llmClient=LLMClient.LlamaCpp, model=LlamaCppModel.QWEN_3o6_35B_A3B, tickerToEval="SPCX")
-    # runBoardroom(llmClient=LLMClient.OpenRouter, model="qwen/qwen3.5-flash-02-23", tickerToEval="ASTS")
-    # runBoardroom(llmClient=LLMClient.OpenRouter, model="deepseek/deepseek-v4-flash::baidu", tickerToEval="NFLX")
-    # runBoardroom(llmClient=LLMClient.Groq, model="openai/gpt-oss-120b", tickerToEval="MU")
+    runBoardroom(llmClient=LLMClient.LlamaCpp, model=LlamaCppModel.GEMMA_4_12B, tickerToEval="MU", fastMode=False)
 

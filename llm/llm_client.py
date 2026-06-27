@@ -149,6 +149,7 @@ class BaseLLMClient(ABC):
                 temperature=0.5,
                 tools=toolSchemas,
                 tool_choice="auto" if toolSchemas else None,
+                max_tokens=8192,
                 stream=True,
                 extra_body=self._getExtraBody(thinkingBudget) if thinkingBudget is not None else None
             )
@@ -193,13 +194,13 @@ class BaseLLMClient(ABC):
                     toolCalled = toolMap[funcName]
                     try:
                         if len(toolCallsList) > 1:
-                            print(f"{ANSI.BOLD} Executing {funcName} --> {funcArgsDict}", end="")
+                            print(f"{ANSI.BOLD} Executing {funcName} --> {funcArgsDict}", end="", flush=True)
                         toolResult = toolCalled.executeTool(**funcArgsDict)
                         stringResult = json.dumps(toolResult)
                         if "error" in toolResult:
-                            print(f" {ANSI.BOLD}{ANSI.RED}... failed: {toolResult['error']}  {ANSI.RESET}")
+                            print(f" {ANSI.BOLD}{ANSI.RED}... failed: {toolResult['error']}  {ANSI.RESET}", flush=True)
                         else:
-                            print(f" {ANSI.BOLD}{ANSI.GREEN}... done.  {ANSI.RESET}")
+                            print(f" {ANSI.BOLD}{ANSI.GREEN}... done.  {ANSI.RESET}", flush=True)
 
                         # Output tool's result
                         if toolCalled.toolName == "executePythonCalculation":
@@ -224,12 +225,22 @@ class BaseLLMClient(ABC):
                     "content": stringResult
                 })
 
+            # Inject a user prompt after all tool results are collected.
+            # Without this, the model treats tool results as a passive continuation
+            # of its pre-tool plan and often skips re-reasoning over the data.
+            # This explicit turn forces a fresh thinking pass grounded in the actual results.
+            messageHistory.append({
+                "role": "user",
+                "content": "All tool results have been returned. Analyse the data above carefully, extract the key figures, and now produce your response."
+            })
+
         # If this code is reached, it means the maximum number of iterations was reached without a final response
         self._applyRateLimit()
         finalResponseStream = self.openaiClient.chat.completions.create(
             model=self.defaultModel,
             messages=messageHistory,
             temperature=0.5,
+            max_tokens=8192,
             stream=True,
             extra_body=self._getExtraBody(thinkingBudget) if thinkingBudget is not None else None
         )

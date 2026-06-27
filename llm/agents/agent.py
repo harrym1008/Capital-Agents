@@ -1,3 +1,5 @@
+from typing import Optional
+
 from cli.ansi import ANSI
 
 from llm.agents.agent_config import FinancialAgentConfig, THINKING_BUDGET, SUMMARISE_THINK_BUDGET
@@ -27,7 +29,7 @@ class FinancialAgent:
 
     def executeInternalAnalysis(self, incomingMessage: str, responsePrint: ResponsePrintMode = ResponsePrintMode.FULL):
         self.messageHistory.append({"role": "user", "content": incomingMessage})
-        print(f"\n{self.color}{ANSI.BOLD}========== [{self.agentRole}] is analyzing... =========={ANSI.RESET}", end="")
+        print(f"\n{self.color}{ANSI.BOLD}========== [{self.agentRole}] is analysing... =========={ANSI.RESET}", end="")
         
         rawAnalysis = self.apiClient.runConversation(self.messageHistory, self.tools, THINKING_BUDGET, responsePrint)
         self.messageHistory.append({"role": "assistant", "content": rawAnalysis})
@@ -47,15 +49,17 @@ class FinancialAgent:
     def analyseAndReply(self, 
             incomingMessage: str, 
             responsePrintRawAnalysis: ResponsePrintMode = ResponsePrintMode.FULL,
-            responsePrintUISummary: ResponsePrintMode = ResponsePrintMode.ONE_TOKEN_ONLY
+            responsePrintUISummary: ResponsePrintMode = ResponsePrintMode.ONE_TOKEN_ONLY,
+            summarisationOverride: Optional[bool] = None
         ):
-        generatingSummaryAdvisory = responsePrintUISummary == ResponsePrintMode.SILENT and responsePrintRawAnalysis != ResponsePrintMode.SILENT
+        generateSummary = SUMMARISE_ENABLED if summarisationOverride is None else summarisationOverride
         
-        rawAnalysis = self.executeInternalAnalysis(incomingMessage, responsePrintRawAnalysis)
+        rawAnalysis = self.executeInternalAnalysis(incomingMessage, responsePrintRawAnalysis)        
         
-        if not SUMMARISE_ENABLED:
+        if not generateSummary:
             return rawAnalysis, rawAnalysis
 
+        generatingSummaryAdvisory = responsePrintUISummary == ResponsePrintMode.SILENT and responsePrintRawAnalysis != ResponsePrintMode.SILENT
         if generatingSummaryAdvisory:
             print(f"\n{self.color}{ANSI.BOLD}========== [{self.agentRole}] is generating UI summary... =========={ANSI.RESET}", end="\r")
 

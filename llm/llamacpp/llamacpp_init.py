@@ -8,6 +8,7 @@ from enum import Enum
 import psutil
 import time
 
+
 from llm.llamacpp.llamacpp_args import LLAMACPP_EXECUTABLE, LLAMACPP_PORT, LlamaCppModel, EMPTY_ARG, LLAMACPP_MODEL_TO_ARGS
 
 
@@ -52,7 +53,7 @@ def rudimentaryVramClear():
             totalAlloc = 0
             usedVramBefore = round(memInfo.used / (1024 ** 3), 2)
 
-            if usedVramBefore < 1.25:
+            if usedVramBefore < 1.5:
                 print(f"VRAM usage is already low: {usedVramBefore:.2f}/{totalVram:.2f} GB. Skipping VRAM clearing.")
                 skip = True
             

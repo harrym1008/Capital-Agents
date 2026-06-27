@@ -6,7 +6,7 @@ LLAMACPP_EXECUTABLE = "llama-server.exe"
 
 # THINKING_BUDGET = 128
 # SUMMARISE_THINK_BUDGET = 512
-THINKING_BUDGET_MESSAGE = "My thinking allowance has been exhausted. I shall now produce my final response."
+THINKING_BUDGET_MESSAGE = "... my thinking allowance has been exhausted. I shall now produce my final response.\n"
 
 MODELS_FOLDER = "I:\\LLM\\"
 
@@ -16,11 +16,17 @@ class LlamaCppModel(Enum):
     GEMMA_4_12B = "Gemma-4-12B"
     GEMMA_4_E4B = "Gemma-4-E4B"
     GEMMA_4_E2B = "Gemma-4-E2B"
-    GEMMA_4_E2B_CPU = "Gemma-4-E2B-LOW"
+    GEMMA_4_E2B_CPU = "Gemma-4-E2B-CPU"
+    
+    QWEN_36_27B = "Qwen-3.6-27B"
+    QWEN_36_35B_A3B = "Qwen-3.6-35B-A3B"
+
+    QWEN_35_9B = "Qwen-3.5-9B"
+    QWEN_35_800M = "Qwen-3.5-0.8B"
+
     MINICPM5_1B = "MiniCPM5-1B"
-    LFM2o5_8B_A1B = "LFM-2.5-8B-A1B"
-    QWEN_3o6_27B = "Qwen-3.6-27B"
-    QWEN_3o6_35B_A3B = "Qwen-3.6-35B-A3B"
+    LFM25_8B_A1B = "LFM-2.5-8B-A1B"
+    GPT_OSS_20B = "GPT-OSS-20B"
 
 
 EMPTY_ARG = _ = ""
@@ -184,7 +190,7 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
     
-    LlamaCppModel.LFM2o5_8B_A1B: {
+    LlamaCppModel.LFM25_8B_A1B: {
         "-m":               f"{MODELS_FOLDER}Others\\LFM2.5-8B-A1B-UD-Q6_K.gguf",
         "--port":           str(LLAMACPP_PORT),
         "--host":           "127.0.0.1",
@@ -207,7 +213,7 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
-    LlamaCppModel.QWEN_3o6_27B: {
+    LlamaCppModel.QWEN_36_27B: {
         "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3.6-27B-Bartowski-IQ3_XS.gguf",
         "--port":           str(LLAMACPP_PORT),
         "--host":           "127.0.0.1",
@@ -236,7 +242,7 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
-    LlamaCppModel.QWEN_3o6_35B_A3B: {
+    LlamaCppModel.QWEN_36_35B_A3B: {
         "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3.6-35B-A3B-MTP-UD-Q3_K_M.gguf",
         "--port":           str(LLAMACPP_PORT),
         "--host":           "127.0.0.1",
@@ -267,7 +273,92 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--spec-draft-ngl":             "99",
         # "--reasoning-budget":           str(THINKING_BUDGET),
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
+    },
+
+    LlamaCppModel.GPT_OSS_20B: {
+        "-m":               f"{MODELS_FOLDER}Others\\gpt-oss-20b-Q6_K.gguf",
+        "--port":           str(LLAMACPP_PORT),
+        "--host":           "127.0.0.1",
+        "--temp":           "0.65",
+        "--top-p":          "1.0",
+        "--flash-attn":     "on",
+        "--cache-type-k":   "q8_0",
+        "--cache-type-v":   "q8_0",
+        "--no-mmap":        _,
+        "--metrics":        _,
+        "-b":               "2048",
+        "-ub":              "512",
+        "--jinja":          _,
+        "-np":              "1",
+        "--kv-offload":     _,
+        "--cache-ram":      "4096",
+        "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
+        "--mlock":          _,
+        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
+    },
+
+    LlamaCppModel.QWEN_35_9B: {
+        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3.5-9B-MTP-Q8_0.gguf",
+        "--port":           str(LLAMACPP_PORT),
+        "--host":           "127.0.0.1",
+        "--temp":           "0.6",
+        "--top-p":          "0.95",
+        "--top-k":          "20",
+        "--min-p":          "0.0",
+        "--presence-penalty": "1.5",
+        "--repeat-penalty":   "1.0",
+        "--flash-attn":     "on",
+        "--cache-type-k":   "q8_0",
+        "--cache-type-v":   "q8_0",
+        "--no-mmap":        _,
+        "--metrics":        _,
+        "-b":               "2048",
+        "-ub":              "512",
+        "--jinja":          _,
+        "-np":              "1",
+        "--kv-offload":     _,
+        "--cache-ram":      "4096",
+        "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
+        "--mlock":          _,
+        "--chat-template-kwargs":       '{"preserve_thinking":true}',
+        "--spec-type":                  "draft-mtp",
+        "--spec-draft-n-max":           "2",
+        "--spec-draft-ngl":             "99",
+        "--reasoning":      "on",
+        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
+    },
+
+    LlamaCppModel.QWEN_35_800M: {
+        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3.5-0.8B-MTP-Q8_0.gguf",
+        "--port":           str(LLAMACPP_PORT),
+        "--host":           "127.0.0.1",
+        "--temp":           "0.6",
+        "--top-p":          "1.0",
+        "--top-k":          "20",
+        "--min-p":          "0.0",
+        "--presence-penalty": "2.0",
+        "--repeat-penalty":   "1.0",
+        "--flash-attn":     "on",
+        "--cache-type-k":   "q8_0",
+        "--cache-type-v":   "q8_0",
+        "--no-mmap":        _,
+        "--metrics":        _,
+        "-b":               "8192",
+        "-ub":              "2048",
+        "--jinja":          _,
+        "-np":              "1",
+        "--kv-offload":     _,
+        "--cache-ram":      "4096",
+        "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
+        "--mlock":          _,
+        "--chat-template-kwargs":       '{"preserve_thinking":true}',
+        "--spec-type":                  "draft-mtp",
+        "--spec-draft-n-max":           "2",
+        "--spec-draft-ngl":             "99",
+        "--reasoning":      "on",
+        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     }
 }
-
-

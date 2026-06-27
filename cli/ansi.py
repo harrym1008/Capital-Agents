@@ -58,3 +58,24 @@ class ANSI:
     @staticmethod
     def bgRgb(red, green, blue):
         return f"\033[48;2;{red};{green};{blue}m"
+    
+    def enumToRgb(enumValue):
+        match enumValue:
+            case ANSI.RED | ANSI.BG_RED:
+                return (255, 0, 0)
+            case ANSI.GREEN | ANSI.BG_GREEN:
+                return (0, 255, 0)
+            case ANSI.BLUE | ANSI.BG_BLUE:
+                return (0, 0, 255)
+            case ANSI.YELLOW | ANSI.BG_YELLOW:
+                return (255, 255, 0)
+            case ANSI.CYAN | ANSI.BG_CYAN:
+                return (0, 255, 255)
+            case ANSI.MAGENTA | ANSI.BG_MAGENTA:
+                return (255, 0, 255)
+            case ANSI.WHITE | ANSI.BG_WHITE:
+                return (255, 255, 255)
+            case ANSI.BLACK | ANSI.BG_BLACK:
+                return (0, 0, 0)
+            case _:
+                return (255, 255, 255)  # Default to white

@@ -3,6 +3,7 @@ import sys
 import io
 import math
 import json
+import traceback
 import requests
 from typing import Any, Dict, List, Callable
 from enum import Enum
@@ -13,7 +14,6 @@ import yfinance as yf
 from bs4 import BeautifulSoup
 from fredapi import Fred
 
-from cli.ansi import ANSI
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -119,7 +119,6 @@ def cleanNumber(value, numType: NumberType):
         else:
             return stringifyNumber(value, sf=4, minDp=1, leading="$")
 
-
     match numType:
         case NumberType.DOLLARS:
             return stringifyNumber(value, sf=4, minDp=1, leading="$")
@@ -173,24 +172,39 @@ def fetchMacroIndicators(tool: Tool) -> Dict[str, Any]:
         macroSummary = {}
         for metricName, ticker in macroTickers.items():
             tickerObj = yf.Ticker(ticker)
-            historyFrame = tickerObj.history(period="1mo").dropna(subset=["Open", "High", "Low", "Close"])
+            fiveDaysHistory = tickerObj.history(period="5d", interval="1d", prepost=True)["Close"]
+            if fiveDaysHistory.empty:
+                macroSummary[metricName] = {"error": f"Could not fetch data for {ticker}."}
+                continue
 
-            if not historyFrame.empty:
-                lastPrice = historyFrame["Close"].iloc[-1]
-                firstPrice = historyFrame["Close"].iloc[0]
-                priceChangePct = ((lastPrice - firstPrice) / firstPrice) * 100
-                highPrice = historyFrame["High"].max()
-                lowPrice = historyFrame["Low"].min()
-                
-                macroSummary[metricName] = {
-                    "ticker": ticker,
-                    "currentValue":         cleanNumber(lastPrice, NumberType.STOCK_PRICE),
-                    "oneMonthChangePct":    cleanNumber(priceChangePct, NumberType.PERCENTAGE_CHANGE),
-                    "oneMonthHigh":         cleanNumber(highPrice, NumberType.STOCK_PRICE),
-                    "oneMonthLow":          cleanNumber(lowPrice, NumberType.STOCK_PRICE)
-                }
-            else:
-                macroSummary[metricName] = {"error": "Could not fetch data for this ticker."}
+            tickerData = {}
+            lastPrice = fiveDaysHistory.iloc[-1]
+
+            for timeFrame in ["5d", "1mo", "3mo", "6mo", "1y"]:
+                tickerObj = yf.Ticker(ticker)
+                historyFrame = tickerObj.history(period=timeFrame, interval="1d").dropna(subset=["Open", "High", "Low", "Close"])
+
+                if not historyFrame.empty:
+                    firstPrice = historyFrame["Close"].iloc[0]
+                    priceChangePct = ((lastPrice - firstPrice) / firstPrice) * 100
+                    highPrice = historyFrame["High"].max()
+                    lowPrice = historyFrame["Low"].min()
+
+                    tickerData[timeFrame] = {
+                        f"price{timeFrame}Ago":     cleanNumber(firstPrice, NumberType.STOCK_PRICE),
+                        f"changePct_{timeFrame}":   cleanNumber(priceChangePct, NumberType.PERCENTAGE_CHANGE),
+                        f"high_{timeFrame}":        cleanNumber(highPrice, NumberType.STOCK_PRICE),
+                        f"low_{timeFrame}":         cleanNumber(lowPrice, NumberType.STOCK_PRICE)
+                    }
+                else:
+                    tickerData[timeFrame] = {"error": f"Could not fetch data for {ticker} over period of {timeFrame}."}
+
+            macroSummary[metricName] = {
+                "ticker":           ticker,
+                "mostRecentPrice":  cleanNumber(lastPrice, NumberType.STOCK_PRICE),
+                "priceData":        tickerData
+            }
+
 
         return cleanData(macroSummary)
     except Exception as e:
@@ -527,6 +541,7 @@ def fetchCashFlowStatement(tool: Tool, ticker: str, periodType: str = "annual") 
 def fetchStockPricePerformance(tool: Tool, ticker: str, period: str = "6mo") -> Dict[str, Any]:
     try:
         tickerObj = yf.Ticker(ticker.upper())
+        tickerInfo = tickerObj.info
 
         period = period.lower()
         shortPeriods = ["5d", "1mo", "3mo", "6mo", "ytd", "1y", "2y", "5y"]
@@ -585,12 +600,17 @@ def fetchStockPricePerformance(tool: Tool, ticker: str, period: str = "6mo") -> 
             startClose = 1e-10   # Avoid division by zero in case of erroneous data
         periodReturnPct = ((lastClose - startClose) / startClose) * 100
         
+        mostRecentPrice = (
+            tickerInfo.get("postMarketPrice")
+            or tickerInfo.get("preMarketPrice")
+            or tickerInfo.get("regularMarketPrice")
+        )
         
         performanceData = {
             "ticker": ticker.upper(),
             "period": period,
-            "periodStartPrice":     cleanNumber(startClose, NumberType.STOCK_PRICE),
-            "mostRecentPrice":      cleanNumber(lastClose, NumberType.STOCK_PRICE),
+            "lastClosePrice":       cleanNumber(lastClose, NumberType.STOCK_PRICE),
+            "mostRecentPrice":      cleanNumber(mostRecentPrice, NumberType.STOCK_PRICE),
             "periodReturnPct":      cleanNumber(periodReturnPct, NumberType.PERCENTAGE_CHANGE),
             "50DaySMA":             cleanNumber(fiftyDaySma, NumberType.STOCK_PRICE) ,
             "distFrom50DaySMA":     cleanNumber(distanceFrom50DaySMA, NumberType.STOCK_PRICE_CHANGE),
@@ -599,6 +619,10 @@ def fetchStockPricePerformance(tool: Tool, ticker: str, period: str = "6mo") -> 
             "high52Week":           cleanNumber(highPrice52W, NumberType.STOCK_PRICE),
             "low52Week":            cleanNumber(lowPrice52W, NumberType.STOCK_PRICE)
         }
+
+        if mostRecentPrice is not None and lastClose != mostRecentPrice:           
+            performanceData["periodStartPrice"] = cleanNumber(startClose, NumberType.STOCK_PRICE)
+
         if ipoNotice:
             performanceData["notice"] = (
                 f"Requested period {period} exceeds available historical data. "
@@ -791,6 +815,8 @@ def executePythonCalculation(tool: Tool, code: str) -> Any:
 
     try:
         strippedCode = code.strip()
+        localScope = None     # Defined here so it's accessible in the outer except block
+
         try:
             resultValue = eval(strippedCode, safeGlobals)
             capturedStdout = redirectedOutput.getvalue()
@@ -819,16 +845,51 @@ def executePythonCalculation(tool: Tool, code: str) -> Any:
             return output
         
     except Exception as e:
-        return {
+        tb = traceback.format_exc()
+
+        # Extract the specific line number from the traceback
+        excType, excValue, excTraceback = sys.exc_info()
+        failedLine = None
+        if excTraceback is not None:
+            try:
+                frames = traceback.extract_tb(excTraceback)
+                if frames:
+                    lastFrame = frames[-1]
+                    failedLine = {
+                        "line": lastFrame.lineno,
+                        "code": lastFrame.line
+                    }
+            except Exception:
+                pass
+
+        errorResult = {
             "success": False,
-            "error": f"{e.__class__.__name__}: {str(e)}"
+            "error": f"{e.__class__.__name__}: {str(e)}",
+            "traceback": tb,
+            "failedLine": failedLine
         }
+
+        # If exec() was attempted, include the partially-built variable state
+        if localScope is not None:
+            preloadedModules = {"math", "numpy", "np", "random", "datetime"}
+            try:
+                cleanedVars = {
+                    k: cleanData(v)
+                    for k, v in localScope.items()
+                    if not k.startswith("_") and k not in preloadedModules
+                }
+            except Exception:
+                cleanedVars = {"note": "Could not serialize variable data"}
+            errorResult["variables"] = cleanedVars
+
+        return errorResult
     finally:
         sys.stdout = oldStdout
 
 
 
 def confirmBoardroomDecision(tool: Tool, ticker: str, rating: str, weighting: str, twelveMonthTarget: float, threeYearTarget: float) -> Dict[str, Any]:
+    from cli.ansi import ANSI
     try:
         rating = rating.upper()
         weighting = weighting.upper()
@@ -1077,4 +1138,4 @@ def jsonPrettyPrint(data: Any) -> str:
 
 
 if __name__ == "__main__":
-    jsonPrettyPrint(fetchCompanyRecentNews("SPCX"))
+    jsonPrettyPrint(fetchMacroIndicators(Tool(None, None, None, None)))
