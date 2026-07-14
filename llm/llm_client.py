@@ -1,6 +1,8 @@
-from abc import ABC, abstractmethod
 import json
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from openai import OpenAI
 from enum import Enum
@@ -26,6 +28,7 @@ class BaseLLMClient(ABC):
     def __init__(self, defaultModel: str):
         self.defaultModel = defaultModel
         self.openaiClient = self._createOpenaiClient()
+        self.toolCallLock = threading.Lock()
 
 
     @abstractmethod
@@ -127,6 +130,51 @@ class BaseLLMClient(ABC):
         return fullContent, fullReasoning, toolCallsList
 
 
+    def executeSingleToolCall(self, currentToolCall, toolMap):
+        funcName = currentToolCall["function"]["name"]
+        funcArgsString = currentToolCall["function"]["arguments"]
+        callId = currentToolCall["id"]
+
+        try:
+            funcArgsDict = json.loads(funcArgsString)
+        except json.JSONDecodeError:
+            # Failed to parse the tool's arguments 
+            funcArgsDict = {}
+
+        if funcName in toolMap:
+            toolCalled = toolMap[funcName]
+            try:
+                toolResult = toolCalled.executeTool(**funcArgsDict)
+                stringResult = json.dumps(toolResult)
+                
+                with self.toolCallLock:                    
+                    print(f"{ANSI.BOLD} Executing {funcName} --> {funcArgsDict}", end="")
+                    if "error" in toolResult:
+                        print(f" {ANSI.BOLD}{ANSI.RED}... failed: {toolResult['error']}  {ANSI.RESET}", flush=True)
+                    else:
+                        print(f" {ANSI.BOLD}{ANSI.GREEN}... done.  {ANSI.RESET}", flush=True)
+
+                if toolCalled.toolName == "executePythonCalculation":
+                    with self.toolCallLock:
+                        output = toolCalled.toolLog.pop()
+                        print(
+                            f"\n{ANSI.BOLD}Python Execution Output: {ANSI.RESET}"
+                            f"\n{ANSI.DIM}{output['stdout']}{ANSI.RESET}\n"
+                            f"{ANSI.BOLD}\nPython Execution Variables: {ANSI.RESET}")
+                        for k, v in output["variables"].items():
+                            print(f"{ANSI.DIM}{k}: {ANSI.RESET}{v}")
+                        print()
+            
+            except Exception as e:
+                stringResult = json.dumps({"error": f"{e.__class__.__name__}: {e}"})
+                with self.toolCallLock:
+                    print(f"{ANSI.BOLD} Executing {funcName} --> {funcArgsDict}", end="")
+                    print(f" {ANSI.BOLD}{ANSI.RED}... failed: {e.__class__.__name__}: {e}  {ANSI.RESET}", flush=True)
+        else:
+            stringResult = json.dumps({"error": f"Tool {funcName} doesn't exist or not accessible by this agent."})
+
+        return callId, stringResult
+
 
     def runConversation(self, 
             messageHistory: List[Dict[str, Any]], 
@@ -179,60 +227,27 @@ class BaseLLMClient(ABC):
             messageHistory.append(assistantMessageDict)
         
             toolMap = {t.toolName: t for t in availableTools} if availableTools else {}
+            
+            resultsByIndex = [None] * len(toolCallsList)
+            with ThreadPoolExecutor(max_workers=len(toolCallsList)) as executor:
+                futureToIndex =  {executor.submit(self.executeSingleToolCall, call, toolMap): idx 
+                                  for idx, call in enumerate(toolCallsList)}
+                for future in as_completed(futureToIndex):
+                    idx = futureToIndex[future]
+                    toolCallId, stringResult = future.result()
+                    resultsByIndex[idx] = (toolCallId, stringResult)
 
-            for currentToolCall in toolCallsList:
-                funcName = currentToolCall["function"]["name"]
-                funcArgsString = currentToolCall["function"]["arguments"]
+                for toolCallId, stringResult in resultsByIndex:
+                    messageHistory.append({
+                        "role": "tool",
+                        "tool_call_id": toolCallId,
+                        "content": stringResult
+                    })
 
-                try:
-                    funcArgsDict = json.loads(funcArgsString)
-                except json.JSONDecodeError:
-                    # Failed to parse the tool's arguments 
-                    funcArgsDict = {}
-
-                if funcName in toolMap:
-                    toolCalled = toolMap[funcName]
-                    try:
-                        if len(toolCallsList) > 1:
-                            print(f"{ANSI.BOLD} Executing {funcName} --> {funcArgsDict}", end="", flush=True)
-                        toolResult = toolCalled.executeTool(**funcArgsDict)
-                        stringResult = json.dumps(toolResult)
-                        if "error" in toolResult:
-                            print(f" {ANSI.BOLD}{ANSI.RED}... failed: {toolResult['error']}  {ANSI.RESET}", flush=True)
-                        else:
-                            print(f" {ANSI.BOLD}{ANSI.GREEN}... done.  {ANSI.RESET}", flush=True)
-
-                        # Output tool's result
-                        if toolCalled.toolName == "executePythonCalculation":
-                            output = toolCalled.toolLog.pop()
-                            print(
-                                f"\n{ANSI.BOLD}Python Execution Output: {ANSI.RESET}"
-                                f"{ANSI.DIM}{output['stdout']}{ANSI.RESET}\n"
-                                f"{ANSI.BOLD}\nPython Execution Variables: {ANSI.RESET}")
-                            for k, v in output["variables"].items():
-                                print(f"{ANSI.DIM}{k}: {ANSI.RESET}{v}")
-                            print()
-
-                    except Exception as e:
-                        stringResult = json.dumps({"error": f"{e.__class__.__name__}: {e}"})
-                        print(f" {ANSI.BOLD}{ANSI.RED}... failed: {e.__class__.__name__}: {e}  {ANSI.RESET}")
-                else:
-                    stringResult = json.dumps({"error": f"Tool {funcName} doesn't exist or not accessible by this agent."})
-
-                messageHistory.append({
-                    "role": "tool",
-                    "tool_call_id": currentToolCall["id"],
-                    "content": stringResult
-                })
-
-            # Inject a user prompt after all tool results are collected.
-            # Without this, the model treats tool results as a passive continuation
-            # of its pre-tool plan and often skips re-reasoning over the data.
-            # This explicit turn forces a fresh thinking pass grounded in the actual results.
-            messageHistory.append({
-                "role": "user",
-                "content": "All tool results have been returned. Analyse the data above carefully, extract the key figures, and now produce your response."
-            })
+            # messageHistory.append({
+            #     "role": "user",
+            #     "content": "All tool results have been returned. Analyse the data above carefully, extract the key figures, and now produce your response."
+            # })
 
         # If this code is reached, it means the maximum number of iterations was reached without a final response
         self._applyRateLimit()
