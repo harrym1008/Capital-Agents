@@ -1,7 +1,8 @@
-import json
+import os, sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import time
 import math
-import os
 
 from enum import Enum
 from dotenv import load_dotenv
@@ -65,5 +66,5 @@ def runBoardroom(llmClient: LLMClient, model: str | LlamaCppModel, tickerToEval:
 
 
 if __name__ == "__main__":
-    runBoardroom(llmClient=LLMClient.LlamaCpp, model=LlamaCppModel.GEMMA_4_12B, tickerToEval="MU", fastMode=False)
+    runBoardroom(llmClient=LLMClient.LlamaCpp, model=LlamaCppModel.GEMMA_4_E2B, tickerToEval="MU", fastMode=True)
 

@@ -17,6 +17,7 @@ class LlamaCppModel(Enum):
     GEMMA_4_E4B = "Gemma-4-E4B"
     GEMMA_4_E2B = "Gemma-4-E2B"
     GEMMA_4_E2B_CPU = "Gemma-4-E2B-CPU"
+    GEMMA_4_E2B_MOBILE = "Gemma-4-E2B-Mobile"
     
     QWEN_36_27B = "Qwen-3.6-27B"
     QWEN_36_35B_A3B = "Qwen-3.6-35B-A3B"
@@ -81,6 +82,7 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--spec-type":                  "draft-mtp",
         "--model-draft":                f"{MODELS_FOLDER}Gemma4\\mtp\\gemma-4-12B-it-Q8_0-MTP.gguf",
         "--spec-draft-n-max":           "2",
+        "--spec-draft-ngl":             "99",
         # "--reasoning-budget":           str(THINKING_BUDGET),
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
@@ -109,6 +111,7 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--spec-type":                  "draft-mtp",
         "--model-draft":                f"{MODELS_FOLDER}Gemma4\\mtp\\gemma-4-E4B-it-Q8_0-MTP.gguf",
         "--spec-draft-n-max":           "2",
+        "--spec-draft-ngl":             "99",
         # "--reasoning-budget":           str(THINKING_BUDGET),
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
@@ -137,6 +140,7 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--spec-type":                  "draft-mtp",
         "--model-draft":                f"{MODELS_FOLDER}Gemma4\\mtp\\gemma-4-E2B-it-Q8_0-MTP.gguf",
         "--spec-draft-n-max":           "2",
+        "--spec-draft-ngl":             "99",
         # "--reasoning-budget":           str(THINKING_BUDGET),
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
@@ -163,6 +167,35 @@ LLAMACPP_MODEL_TO_ARGS = {
         # "--spec-type":                  "draft-mtp",
         # "--model-draft":                f"{MODELS_FOLDER}Gemma4\\mtp\\gemma-4-E2B-it-Q8_0-MTP.gguf",
         # "--spec-draft-n-max":           "2",
+        # "--spec-draft-ngl":             "0",
+        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
+    },
+
+    LlamaCppModel.GEMMA_4_E2B_MOBILE: {
+        "-m":               f"{MODELS_FOLDER}Gemma4\\gemma-4-E2B-it-qat-UD-Q2_K_XL.gguf",
+        "--port":           str(LLAMACPP_PORT),
+        "--host":           "127.0.0.1",
+        "--temp":           "0.5",
+        "--top-p":          "0.95",
+        "--top-k":          "64",
+        "--flash-attn":     "on",
+        "--cache-type-k":   "q8_0",
+        "--cache-type-v":   "q8_0",
+        "--no-mmap":        _,
+        "--metrics":        _,
+        "-b":               "8192",
+        "-ub":              "1024",
+        "--jinja":          _,
+        "-np":              "1",
+        "--kv-offload":     _,
+        "--cache-ram":      "4096",
+        "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
+        "-ngl":             "99",
+        "--mlock":          _,
+        "--spec-type":                  "draft-mtp",
+        "--model-draft":                f"{MODELS_FOLDER}Gemma4\\mtp\\gemma-4-E2B-it-Q4_0-MTP.gguf",
+        "--spec-draft-n-max":           "2",
         # "--reasoning-budget":           str(THINKING_BUDGET),
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
