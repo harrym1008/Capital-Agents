@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Dict
 
+from concurrent.futures import ThreadPoolExecutor
+
 from cli.ansi import ANSI
 
 from llm.llm_client import BaseLLMClient
@@ -10,16 +12,26 @@ from llm.agents.agent_config import FinancialAgentConfig
 
 
 class BoardroomEngine:
-    def __init__(self, agents: Dict[str, FinancialAgent]):
+    def __init__(self, agents: Dict[str, FinancialAgent], allowParallel: bool=True):
         self.macroAnalyst = agents.get("macroAnalyst")
         self.bullAnalyst = agents.get("bullAnalyst")
         self.bearAnalyst = agents.get("bearAnalyst")
         self.aggRiskAnalyst = agents.get("aggRiskAnalyst")
         self.consRiskAnalyst = agents.get("consRiskAnalyst")
         self.portManager = agents.get("portManager")
+        self.allowParallel = allowParallel
 
 
-    def newPhaseHeader(self, phaseNumber, phaseName):
+    def _runAgentsConcurrently(self, *tasks):
+        if not self.allowParallel:
+            return [task() for task in tasks]
+        
+        with ThreadPoolExecutor() as executor:
+            futures = [executor.submit(task) for task in tasks]
+            return [future.result() for future in futures]
+
+
+    def _newPhaseHeader(self, phaseNumber, phaseName):
         if phaseNumber == 0:
             tempHeader = f"{phaseName}"
         else:
@@ -34,14 +46,14 @@ class BoardroomEngine:
         print(f"\n{'='*70}\nStarting Fast Boardroom Evaluation for: {targetTicker}\n{'='*70}")        
 
         # Phase 1: Macro Environment Analysis
-        self.newPhaseHeader(1, "Macro Environment Analysis")
+        self._newPhaseHeader(1, "Macro Environment Analysis")
         macroRaw, macroUISummary = self.macroAnalyst.analyseAndReply(
             f"Current Phase: *PHASE 1* - Macro Environment Analysis\n"
             "Analyse the current financial environment via all three of your tools and produce a concise summary under the rules marked for Phase 1."
         )
         
         # Phase 2: Specialist Research
-        self.newPhaseHeader(2, f"Specialist Research on {targetTicker}")
+        self._newPhaseHeader(2, f"Specialist Research on {targetTicker}")
         researchPrompt = (
             f"Macroeconomic summary produced by the Macro Analyst:\n"
             f"{macroRaw}\n\n"
@@ -49,11 +61,12 @@ class BoardroomEngine:
             f"You must conduct your research on this ticker: {targetTicker}, under the rules marked for Phase 2. "
         )
         
-        bullThesisRaw, bullThesisUISummary = self.bullAnalyst.analyseAndReply(researchPrompt)        
-        bearThesisRaw, bearThesisUISummary = self.bearAnalyst.analyseAndReply(researchPrompt)
-
+        (bullThesisRaw, bullThesisUISummary), (bearThesisRaw, bearThesisUISummary) = self._runAgentsConcurrently(
+            lambda: self.bullAnalyst.analyseAndReply(researchPrompt),
+            lambda: self.bearAnalyst.analyseAndReply(researchPrompt)
+        )
         # Phase 3 or 6: Final Executive Decision
-        self.newPhaseHeader(3, f"Final Executive Decision on {targetTicker}")
+        self._newPhaseHeader(3, f"Final Executive Decision on {targetTicker}")
         managerPrompt = (
             f"Target Asset: {targetTicker}\n"
             f"Macro Conditions:\n{macroRaw}\n\n"
@@ -76,7 +89,7 @@ class BoardroomEngine:
         timeTaken = endTime - startTime
 
         print()
-        self.newPhaseHeader(0, f"Final Boardroom Summary on {targetTicker}")                    
+        self._newPhaseHeader(0, f"Final Boardroom Summary on {targetTicker}")                    
 
         separator = f"\n{ANSI.BOLD}{ANSI.DIM}{'-'*70}{ANSI.RESET}\n"
         shortConvSummary = (
@@ -126,14 +139,14 @@ class BoardroomEngine:
         print(f"\n{'='*70}\nStarting Live Boardroom Evaluation for: {targetTicker}\n{'='*70}")        
 
         # Phase 1: Macro Environment Analysis
-        self.newPhaseHeader(1, "Macro Environment Analysis")
+        self._newPhaseHeader(1, "Macro Environment Analysis")
         macroRaw, macroUISummary = self.macroAnalyst.analyseAndReply(
             f"Current Phase: *PHASE 1* - Macro Environment Analysis\n"
             "Analyse the current financial environment via all three of your tools and produce a concise summary under the rules marked for Phase 1."
         )
         
         # Phase 2: Specialist Research
-        self.newPhaseHeader(2, f"Specialist Research on {targetTicker}")
+        self._newPhaseHeader(2, f"Specialist Research on {targetTicker}")
         researchPrompt = (
             f"Macroeconomic summary produced by the Macro Analyst:\n"
             f"{macroRaw}\n\n"
@@ -141,55 +154,65 @@ class BoardroomEngine:
             f"You must conduct your research on this ticker: {targetTicker}, under the rules marked for Phase 2. "
         )
         
-        bullThesisRaw, bullThesisUISummary = self.bullAnalyst.analyseAndReply(researchPrompt)        
-        bearThesisRaw, bearThesisUISummary = self.bearAnalyst.analyseAndReply(researchPrompt)
+        (bullThesisRaw, bullThesisUISummary), (bearThesisRaw, bearThesisUISummary) = self._runAgentsConcurrently(
+            lambda: self.bullAnalyst.analyseAndReply(researchPrompt),
+            lambda: self.bearAnalyst.analyseAndReply(researchPrompt)
+        )
 
         # Phase 3: Senior Risk Debate
-        self.newPhaseHeader(3, f"Senior Risk Debate on {targetTicker}")
-        aggQuestionsRaw, aggQuestionsUISummary = self.aggRiskAnalyst.analyseAndReply(
-            f"Macroeconomic summary produced by the Macro Analyst:\n{macroRaw}\n\n"
-            # f"Bullish Value Analyst's Thesis:\n{bullThesis}\n\n"
-            f"Bearish Value Analyst's Thesis:\n{bearThesisRaw}\n\n"
-            f"Current Phase: *PHASE 3* - Senior Risk Debate on {targetTicker}\n"
-            f"Review the theses and targets for {targetTicker} and produce 2-3 questions challenging this thesis under the rules marked for Phase 3."
-        )
+        self._newPhaseHeader(3, f"Senior Risk Debate on {targetTicker}")
         
-        consQuestionsRaw, consQuestionsUISummary = self.consRiskAnalyst.analyseAndReply(
-            f"Macroeconomic summary produced by the Macro Analyst:\n{macroRaw}\n\n"
-            f"Bullish Value Analyst's Thesis:\n{bullThesisRaw}\n\n"
-            # f"Bearish Value Analyst's Thesis:\n{bearThesis}\n\n"
-            f"Current Phase: *PHASE 3* - Senior Risk Debate on {targetTicker}\n"
-            f"Review the theses and targets for {targetTicker} and produce 2-3 questions challenging this thesis under the rules marked for Phase 3."
+        (aggQuestionsRaw, aggQuestionsUISummary), (consQuestionsRaw, consQuestionsUISummary) = self._runAgentsConcurrently(
+            lambda: self.aggRiskAnalyst.analyseAndReply(
+                f"Macroeconomic summary produced by the Macro Analyst:\n{macroRaw}\n\n"
+                # f"Bullish Value Analyst's Thesis:\n{bullThesis}\n\n"
+                f"Bearish Value Analyst's Thesis:\n{bearThesisRaw}\n\n"
+                f"Current Phase: *PHASE 3* - Senior Risk Debate on {targetTicker}\n"
+                f"Review the theses and targets for {targetTicker} and produce 2-3 questions challenging this thesis under the rules marked for Phase 3."
+            ),
+            lambda: self.consRiskAnalyst.analyseAndReply(
+                f"Macroeconomic summary produced by the Macro Analyst:\n{macroRaw}\n\n"
+                f"Bullish Value Analyst's Thesis:\n{bullThesisRaw}\n\n"
+                # f"Bearish Value Analyst's Thesis:\n{bearThesis}\n\n"
+                f"Current Phase: *PHASE 3* - Senior Risk Debate on {targetTicker}\n"
+                f"Review the theses and targets for {targetTicker} and produce 2-3 questions challenging this thesis under the rules marked for Phase 3."
+            )
         )
         
         # Phase 4: Analyst Defense
-        self.newPhaseHeader(4, f"Analyst Defense on {targetTicker}")
-        bullDefenseRaw, bullDefenseUISummary = self.bullAnalyst.analyseAndReply(
-            f"Questions posed by the Conservative Risk Analyst:\n{consQuestionsRaw}\n\n"
-            f"Current Phase: *PHASE 4* - Analyst Defense on {targetTicker}\n"
-            f"Produce your response to these questions under the rules marked for Phase 4."
-        )
-        bearDefenseRaw, bearDefenseUISummary = self.bearAnalyst.analyseAndReply(
-            f"Questions posed by the Aggressive Risk Analyst:\n{aggQuestionsRaw}\n\n"
-            f"Current Phase: *PHASE 4* - Analyst Defense on {targetTicker}\n"
-            f"Produce your response to these questions under the rules marked for Phase 4."
+        self._newPhaseHeader(4, f"Analyst Defense on {targetTicker}")
+        
+        (bullDefenseRaw, bullDefenseUISummary), (bearDefenseRaw, bearDefenseUISummary) = self._runAgentsConcurrently(
+            lambda: self.bullAnalyst.analyseAndReply(
+                f"Questions posed by the Conservative Risk Analyst:\n{consQuestionsRaw}\n\n"
+                f"Current Phase: *PHASE 4* - Analyst Defense on {targetTicker}\n"
+                f"Produce your response to these questions under the rules marked for Phase 4."
+            ),
+            lambda: self.bearAnalyst.analyseAndReply(
+                f"Questions posed by the Aggressive Risk Analyst:\n{aggQuestionsRaw}\n\n"
+                f"Current Phase: *PHASE 4* - Analyst Defense on {targetTicker}\n"
+                f"Produce your response to these questions under the rules marked for Phase 4."
+            )
         )
 
         # Phase 5: Q&A Based Proposals
-        self.newPhaseHeader(5, f"Q&A-Based Proposals on {targetTicker}")
-        aggProposalRaw, aggProposalUISummary = self.aggRiskAnalyst.analyseAndReply(
-            f"Bearish Analyst's Response/Defense:\n{bearDefenseRaw}\n\n"
-            f"Current Phase: *PHASE 5* - Q&A-Based Proposals on {targetTicker}\n"
-            f"Based on the defenses, make your final proposals with justification under the rules marked for Phase 5."
-        )
-        consProposalRaw, consProposalUISummary = self.consRiskAnalyst.analyseAndReply(
-            f"Bullish Analyst's Response/Defense:\n{bullDefenseRaw}\n\n"
-            f"Current Phase: *PHASE 5* - Q&A-Based Proposals on {targetTicker}\n"
-            f"Based on the defenses, make your final proposals with justification under the rules marked for Phase 5."
+        self._newPhaseHeader(5, f"Q&A-Based Proposals on {targetTicker}")
+        
+        (aggProposalRaw, aggProposalUISummary), (consProposalRaw, consProposalUISummary) = self._runAgentsConcurrently(
+            lambda: self.aggRiskAnalyst.analyseAndReply(
+                f"Bearish Analyst's Response/Defense:\n{bearDefenseRaw}\n\n"
+                f"Current Phase: *PHASE 5* - Q&A-Based Proposals on {targetTicker}\n"
+                f"Based on the defenses, make your final proposals with justification under the rules marked for Phase 5."
+            ),
+            lambda: self.consRiskAnalyst.analyseAndReply(
+                f"Bullish Analyst's Response/Defense:\n{bullDefenseRaw}\n\n"
+                f"Current Phase: *PHASE 5* - Q&A-Based Proposals on {targetTicker}\n"
+                f"Based on the defenses, make your final proposals with justification under the rules marked for Phase 5."
+            )
         )
 
         # Phase 6: Final Executive Decision
-        self.newPhaseHeader(6, f"Final Executive Decision on {targetTicker}")
+        self._newPhaseHeader(6, f"Final Executive Decision on {targetTicker}")
         managerPrompt = (
             f"Target Asset: {targetTicker}\n"
             f"Macro Conditions:\n{macroRaw}\n\n"
@@ -211,7 +234,7 @@ class BoardroomEngine:
         timeTaken = endTime - startTime
 
         print()
-        self.newPhaseHeader(0, f"Final Boardroom Summary on {targetTicker}")   
+        self._newPhaseHeader(0, f"Final Boardroom Summary on {targetTicker}")   
             
         separator = f"\n{ANSI.BOLD}{ANSI.DIM}{'-'*70}{ANSI.RESET}\n"
         shortConvSummary = (
@@ -406,7 +429,7 @@ def boardroomGenerator(simulatedDate: str, llmClient: BaseLLMClient):
         "bearAnalyst": bearAgent,
         "aggRiskAnalyst": aggRiskAnalystAgent,
         "consRiskAnalyst": consRiskAnalystAgent,
-        "portManager": portfolioManager
-    })
+        "portManager": portfolioManager,
+    }, allowParallel=llmClient.allowParallel)
     return boardroom
 

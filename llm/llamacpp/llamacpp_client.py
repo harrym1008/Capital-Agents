@@ -6,9 +6,9 @@ from llm.llamacpp.llamacpp_init import LlamaCppProcessInitiator
 
 
 class LlamaCppClient(BaseLLMClient):
-    def __init__(self, processInitiator: LlamaCppProcessInitiator):
+    def __init__(self, processInitiator: LlamaCppProcessInitiator, allowParallel=True):
         self.processInitiator = processInitiator
-        super().__init__(defaultModel="model")
+        super().__init__(defaultModel="model", allowParallel=allowParallel)
 
     def _createOpenaiClient(self) -> OpenAI:
         return OpenAI(base_url=self.processInitiator.apiUrl, api_key="xyz")  # API key is unused

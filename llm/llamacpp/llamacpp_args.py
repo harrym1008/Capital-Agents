@@ -47,10 +47,10 @@ LLAMACPP_MODEL_TO_ARGS = {
         "-b":               "2048",
         "-ub":              "512",
         "--jinja":          _,
-        "-np":              "1",
+        "-np":              "2",
         "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
+        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
         "--mlock":          _,
         "--fit":            "on",
         "--fit-target":     "1000",
@@ -73,10 +73,10 @@ LLAMACPP_MODEL_TO_ARGS = {
         "-b":               "2048",
         "-ub":              "512",
         "--jinja":          _,
-        "-np":              "1",
+        "-np":              "2",
         "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
+        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
         "-ngl":             "99",
         "--mlock":          _,
         "--spec-type":                  "draft-mtp",
@@ -102,10 +102,10 @@ LLAMACPP_MODEL_TO_ARGS = {
         "-b":               "4096",
         "-ub":              "1024",
         "--jinja":          _,
-        "-np":              "1",
+        "-np":              "2",
         "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
+        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
         "-ngl":             "99",
         "--mlock":          _,
         "--spec-type":                  "draft-mtp",
@@ -131,10 +131,10 @@ LLAMACPP_MODEL_TO_ARGS = {
         "-b":               "8192",
         "-ub":              "1024",
         "--jinja":          _,
-        "-np":              "1",
+        "-np":              "2",
         "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
+        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
         "-ngl":             "99",
         "--mlock":          _,
         "--spec-type":                  "draft-mtp",
@@ -158,9 +158,9 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--no-mmap":        _,
         "--metrics":        _,
         "--jinja":          _,
-        "-np":              "1",
+        "-np":              "2",
         "--cache-ram":      "1024",
-        "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
+        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
         "-ngl":             "0",
         "--context-shift":  _,
         "--mlock":          _,
@@ -187,10 +187,10 @@ LLAMACPP_MODEL_TO_ARGS = {
         "-b":               "8192",
         "-ub":              "1024",
         "--jinja":          _,
-        "-np":              "1",
+        "-np":              "2",
         "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
+        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
         "-ngl":             "99",
         "--mlock":          _,
         "--spec-type":                  "draft-mtp",
@@ -213,10 +213,10 @@ LLAMACPP_MODEL_TO_ARGS = {
         "-b":               "4096",
         "-ub":              "1024",
         "--jinja":          _,
-        "-np":              "1",
+        "-np":              "2",
         "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
+        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
         "-ngl":             "99",
         "--mlock":          _,
         # "--reasoning-budget":           str(THINKING_BUDGET),
@@ -236,10 +236,10 @@ LLAMACPP_MODEL_TO_ARGS = {
         "-b":               "4096",
         "-ub":              "1024",
         "--jinja":          _,
-        "-np":              "1",
+        "-np":              "2",
         "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
+        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
         "-ngl":             "99",
         "--mlock":          _,
         # "--reasoning-budget":           str(THINKING_BUDGET),
@@ -264,10 +264,10 @@ LLAMACPP_MODEL_TO_ARGS = {
         "-b":               "2048",
         "-ub":              "512",
         "--jinja":          _,
-        "-np":              "1",
+        "-np":              "2",
         "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
+        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
         "-ngl":             "99",
         "--mlock":          _,
         "--chat-template-kwargs":       '{"preserve_thinking":true}',
@@ -293,10 +293,10 @@ LLAMACPP_MODEL_TO_ARGS = {
         "-b":               "2048",
         "-ub":              "512",
         "--jinja":          _,
-        "-np":              "1",
+        "-np":              "2",
         "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
+        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
         "--fit":            "on",
         "--fit-target":     "1000",
         "--mlock":          _,
@@ -322,10 +322,10 @@ LLAMACPP_MODEL_TO_ARGS = {
         "-b":               "2048",
         "-ub":              "512",
         "--jinja":          _,
-        "-np":              "1",
+        "-np":              "2",
         "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
+        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
         "--mlock":          _,
         # "--reasoning-budget":           str(THINKING_BUDGET),
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
@@ -349,10 +349,10 @@ LLAMACPP_MODEL_TO_ARGS = {
         "-b":               "2048",
         "-ub":              "512",
         "--jinja":          _,
-        "-np":              "1",
+        "-np":              "2",
         "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
+        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
         "--mlock":          _,
         "--chat-template-kwargs":       '{"preserve_thinking":true}',
         "--spec-type":                  "draft-mtp",
@@ -381,10 +381,10 @@ LLAMACPP_MODEL_TO_ARGS = {
         "-b":               "8192",
         "-ub":              "2048",
         "--jinja":          _,
-        "-np":              "1",
+        "-np":              "2",
         "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "65536",    # 65k context should be enough for almost every use case
+        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
         "--mlock":          _,
         "--chat-template-kwargs":       '{"preserve_thinking":true}',
         "--spec-type":                  "draft-mtp",

@@ -12,7 +12,7 @@ class OpenRouterClient(BaseLLMClient):
     def __init__(self, apiKey: str, model: str):
         self.apiKey = apiKey
         self.rateLimiter = RateLimiter("openrouter", 20, 60)  # 20 requests per minute max for free tier
-        super().__init__(defaultModel=model)
+        super().__init__(defaultModel=model, allowParallel=True)
 
     def _createOpenaiClient(self) -> OpenAI:
         return OpenAI(

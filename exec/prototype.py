@@ -26,13 +26,17 @@ class LLMClient(Enum):
     Groq = 3
 
 
-def runBoardroom(llmClient: LLMClient, model: str | LlamaCppModel, tickerToEval: str, fastMode: bool = True):
+def runBoardroom(llmClient: LLMClient, model: str | LlamaCppModel, tickerToEval: str, 
+                 fastMode: bool = True, allowParallel: bool = True):
     llmClient: BaseLLMClient
 
     if llmClient == LLMClient.LlamaCpp:        
         killExistingLlamaCppProcesses()
         rudimentaryVramClear()
-        serverProcess = LlamaCppProcessInitiator(model=model, killExistingProcesses=False)
+        argOverrides = []
+        if not allowParallel:
+            argOverrides += {"-np": "1", "--ctx-size": "65536"}
+        serverProcess = LlamaCppProcessInitiator(model=model, killExistingProcesses=False, argOverrides=argOverrides)
         startThread = serverProcess.startOnAnotherThread()
         startThread.join()  
 
@@ -66,5 +70,8 @@ def runBoardroom(llmClient: LLMClient, model: str | LlamaCppModel, tickerToEval:
 
 
 if __name__ == "__main__":
-    runBoardroom(llmClient=LLMClient.LlamaCpp, model=LlamaCppModel.GEMMA_4_E2B, tickerToEval="MU", fastMode=True)
+    runBoardroom(llmClient=LLMClient.LlamaCpp, model=LlamaCppModel.GEMMA_4_E2B, tickerToEval="NFLX", 
+                 fastMode=True, allowParallel=True)
+    
+
 

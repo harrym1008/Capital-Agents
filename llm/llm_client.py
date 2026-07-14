@@ -25,10 +25,13 @@ class ResponsePrintMode(Enum):
 
 
 class BaseLLMClient(ABC):
-    def __init__(self, defaultModel: str):
+    def __init__(self, defaultModel: str, allowParallel: bool = False):
         self.defaultModel = defaultModel
         self.openaiClient = self._createOpenaiClient()
         self.toolCallLock = threading.Lock()
+        
+        self.allowParallel = allowParallel
+        self.printLock = threading.Lock() if allowParallel else None
 
 
     @abstractmethod
@@ -40,6 +43,13 @@ class BaseLLMClient(ABC):
     
     def _applyRateLimit(self):
         pass
+
+    def _safePrint(self, *args, **kwargs):
+        if self.allowParallel:
+            with self.printLock:
+                print(*args, **kwargs)
+        else:
+            print(*args, **kwargs)
 
 
     def handleResponseStream(self, 
@@ -67,11 +77,11 @@ class BaseLLMClient(ABC):
                 fullReasoning += reasoningChunk
                 if responsePrint.printThinking():
                     if not isThinking:
-                        print(f"\n{ANSI.DIM}[Thinking]: ", end="", flush=True)
+                        self._safePrint(f"\n{ANSI.DIM}[Thinking]: ", end="", flush=True)
                         isThinking = True
-                    print(reasoningChunk, end="", flush=True)
+                    self._safePrint(reasoningChunk, end="", flush=True)
                 elif responsePrint == ResponsePrintMode.ONE_TOKEN_ONLY:
-                    print(f"{re.sub(r'[\x00-\x1F\x7F]', '', reasoningChunk)}                 ", end="\r", flush=True)
+                    self._safePrint(f"{re.sub(r'[\x00-\x1F\x7F]', '', reasoningChunk)}                 ", end="\r", flush=True)
 
             # 2. Capture regular response text tokens
             contentChunk = getattr(delta, "content", None)
@@ -79,13 +89,13 @@ class BaseLLMClient(ABC):
                 fullContent += contentChunk
                 if responsePrint.printResponse():
                     if isThinking:
-                        print(f"\n{ANSI.RESET}[Response]: ", end="", flush=True)
+                        self._safePrint(f"\n{ANSI.RESET}[Response]: ", end="", flush=True)
                         isThinking = False
                     elif fullContent == "":
-                        print("\n[Response]: ", end="", flush=True)
-                    print(contentChunk, end="", flush=True)
+                        self._safePrint("\n[Response]: ", end="", flush=True)
+                    self._safePrint(contentChunk, end="", flush=True)
                 elif responsePrint == ResponsePrintMode.ONE_TOKEN_ONLY:
-                    print(f"{re.sub(r'[\x00-\x1F\x7F]', '', contentChunk)}                 ", end="\r", flush=True)
+                    self._safePrint(f"{re.sub(r'[\x00-\x1F\x7F]', '', contentChunk)}                 ", end="\r", flush=True)
 
             # 3. Assemble fragmented tool call tokens as they arrive
             toolCallsChunk = getattr(delta, "tool_calls", None)
@@ -100,7 +110,7 @@ class BaseLLMClient(ABC):
                         })
                     
                     if not isToolCallStreaming:
-                        print(f"\n\n{ANSI.DIM}[Tool Calls]: ", end="", flush=True)
+                        self._safePrint(f"\n\n{ANSI.DIM}[Tool Calls]: ", end="", flush=True)
                         isToolCallStreaming = True
 
                     currentCall = toolCallsList[index]
@@ -110,22 +120,22 @@ class BaseLLMClient(ABC):
                         funcDelta = toolCallDelta.function
                         if getattr(funcDelta, "name", None):
                             if not currentCall["function"]["name"]:
-                                print(f"\n{ANSI.RESET}{ANSI.BOLD}[Tool #{index}]: {funcDelta.name} -> ", end="", flush=True)
+                                self._safePrint(f"\n{ANSI.RESET}{ANSI.BOLD}[Tool #{index}]: {funcDelta.name} -> ", end="", flush=True)
                             else:
-                                print(funcDelta.name, end="", flush=True)
+                                self._safePrint(funcDelta.name, end="", flush=True)
                             currentCall["function"]["name"] += funcDelta.name
                         if getattr(funcDelta, "arguments", None):
-                            print(funcDelta.arguments, end="", flush=True)
+                            self._safePrint(funcDelta.arguments, end="", flush=True)
                             currentCall["function"]["arguments"] += funcDelta.arguments
 
         if ((fullContent and responsePrint.printResponse()) or 
             (fullReasoning and responsePrint.printThinking())) and len(toolCallsList) == 0:
-            print(ANSI.RESET)
+            self._safePrint(ANSI.RESET)
         else:
-            print(ANSI.RESET, end="")
+            self._safePrint(ANSI.RESET, end="")
 
         if len(toolCallsList) > 1:
-            print()
+            self._safePrint()
 
         return fullContent, fullReasoning, toolCallsList
 
@@ -148,28 +158,28 @@ class BaseLLMClient(ABC):
                 stringResult = json.dumps(toolResult)
                 
                 with self.toolCallLock:                    
-                    print(f"{ANSI.BOLD} Executing {funcName} --> {funcArgsDict}", end="")
+                    self._safePrint(f"{ANSI.BOLD} Executing {funcName} --> {funcArgsDict}", end="")
                     if "error" in toolResult:
-                        print(f" {ANSI.BOLD}{ANSI.RED}... failed: {toolResult['error']}  {ANSI.RESET}", flush=True)
+                        self._safePrint(f" {ANSI.BOLD}{ANSI.RED}... failed: {toolResult['error']}  {ANSI.RESET}", flush=True)
                     else:
-                        print(f" {ANSI.BOLD}{ANSI.GREEN}... done.  {ANSI.RESET}", flush=True)
+                        self._safePrint(f" {ANSI.BOLD}{ANSI.GREEN}... done.  {ANSI.RESET}", flush=True)
 
                 if toolCalled.toolName == "executePythonCalculation":
                     with self.toolCallLock:
                         output = toolCalled.toolLog.pop()
-                        print(
+                        self._safePrint(
                             f"\n{ANSI.BOLD}Python Execution Output: {ANSI.RESET}"
                             f"\n{ANSI.DIM}{output['stdout']}{ANSI.RESET}\n"
                             f"{ANSI.BOLD}\nPython Execution Variables: {ANSI.RESET}")
                         for k, v in output["variables"].items():
-                            print(f"{ANSI.DIM}{k}: {ANSI.RESET}{v}")
-                        print()
+                            self._safePrint(f"{ANSI.DIM}{k}: {ANSI.RESET}{v}")
+                        self._safePrint()
             
             except Exception as e:
                 stringResult = json.dumps({"error": f"{e.__class__.__name__}: {e}"})
                 with self.toolCallLock:
-                    print(f"{ANSI.BOLD} Executing {funcName} --> {funcArgsDict}", end="")
-                    print(f" {ANSI.BOLD}{ANSI.RED}... failed: {e.__class__.__name__}: {e}  {ANSI.RESET}", flush=True)
+                    self._safePrint(f"{ANSI.BOLD} Executing {funcName} --> {funcArgsDict}", end="")
+                    self._safePrint(f" {ANSI.BOLD}{ANSI.RED}... failed: {e.__class__.__name__}: {e}  {ANSI.RESET}", flush=True)
         else:
             stringResult = json.dumps({"error": f"Tool {funcName} doesn't exist or not accessible by this agent."})
 

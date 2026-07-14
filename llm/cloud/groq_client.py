@@ -12,7 +12,7 @@ class GroqClient(BaseLLMClient):
     def __init__(self, apiKey: str, model: str = "gpt-oss-120b"):
         self.apiKey = apiKey
         self.rateLimiter = RateLimiter("groq", 30, 60)  # Conservative free-tier limiter
-        super().__init__(defaultModel=model)
+        super().__init__(defaultModel=model, allowParallel=True)
 
     def _createOpenaiClient(self) -> OpenAI:
         return OpenAI(
