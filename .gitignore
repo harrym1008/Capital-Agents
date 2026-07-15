@@ -185,12 +185,8 @@ cython_debug/
 
 # For CapitalAgents specifically
 docs/
-
 _old/
-
 data/
-
-
-simtestui.py
+sim_test.py
 output/
 art/
