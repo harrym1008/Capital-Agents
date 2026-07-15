@@ -140,6 +140,11 @@ class LlamaCppProcessInitiator:
             for line in iter(stream.readline, ''):
                 if self.getState() == ServerState.STARTING:
                     print(line.rstrip())
+                    try:
+                        from ui.ui_hooks import emitEvent
+                        emitEvent("llamaCppStartupLog", {"log": line.rstrip()})
+                    except Exception:
+                        pass
                 self.logs.append(f"[{tag}] {line}")
         finally:
             stream.close()

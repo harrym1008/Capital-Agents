@@ -40,8 +40,53 @@ class BoardroomEngine:
         headerLength = len(tempHeader)
         print(f"\n{ANSI.BOLD}{'-'*headerLength}\n{tempHeader}\n{'-'*headerLength}{ANSI.RESET}\n")
 
+        # Resolve active agents
+        agents = []
+        isFast = getattr(self, "fastMode", True)
+        
+        if phaseNumber == 1:
+            agents = [{"role": "Macro Strategist", "color": self.macroAnalyst.color, "name": "Macro Strategist"}]
+        elif phaseNumber == 2:
+            agents = [
+                {"role": "Bullish Value Analyst", "color": self.bullAnalyst.color, "name": "Bullish Analyst"},
+                {"role": "Bearish Risk Analyst", "color": self.bearAnalyst.color, "name": "Bearish Analyst"}
+            ]
+        elif phaseNumber == 3:
+            if isFast:
+                agents = [{"role": "Impartial Portfolio Manager", "color": self.portManager.color, "name": "Portfolio Manager"}]
+            else:
+                agents = [
+                    {"role": "Aggressive Risk Analyst", "color": self.aggRiskAnalyst.color, "name": "Aggressive Risk"},
+                    {"role": "Conservative Risk Analyst", "color": self.consRiskAnalyst.color, "name": "Conservative Risk"}
+                ]
+        elif phaseNumber == 4:
+            if isFast:
+                agents = [{"role": "Impartial Portfolio Manager", "color": self.portManager.color, "name": "Portfolio Manager"}]
+            else:
+                agents = [
+                    {"role": "Bullish Value Analyst", "color": self.bullAnalyst.color, "name": "Bullish Analyst"},
+                    {"role": "Bearish Risk Analyst", "color": self.bearAnalyst.color, "name": "Bearish Analyst"}
+                ]
+        elif phaseNumber == 5:
+            agents = [
+                {"role": "Aggressive Risk Analyst", "color": self.aggRiskAnalyst.color, "name": "Aggressive Risk"},
+                {"role": "Conservative Risk Analyst", "color": self.consRiskAnalyst.color, "name": "Conservative Risk"}
+            ]
+        elif phaseNumber == 6:
+            agents = [{"role": "Impartial Portfolio Manager", "color": self.portManager.color, "name": "Portfolio Manager"}]
+        elif phaseNumber == 7:
+            agents = [{"role": "Impartial Portfolio Manager", "color": self.portManager.color, "name": "Portfolio Manager"}]
+
+        from ui.ui_hooks import emitEvent
+        emitEvent("stageStart", {
+            "stageNum": phaseNumber,
+            "stageName": phaseName,
+            "agents": agents
+        })
+
 
     def executeFastSingleEquityRating(self, targetTicker):
+        self.fastMode = True
         startTime = datetime.now()
         print(f"\n{'='*70}\nStarting Fast Boardroom Evaluation for: {targetTicker}\n{'='*70}")        
 
@@ -65,7 +110,7 @@ class BoardroomEngine:
             lambda: self.bullAnalyst.analyseAndReply(researchPrompt),
             lambda: self.bearAnalyst.analyseAndReply(researchPrompt)
         )
-        # Phase 3 or 6: Final Executive Decision
+        # Phase 3/6: Final Executive Decision
         self._newPhaseHeader(3, f"Final Executive Decision on {targetTicker}")
         managerPrompt = (
             f"Target Asset: {targetTicker}\n"
@@ -78,7 +123,8 @@ class BoardroomEngine:
         finalDecisionRaw, finalDecisionUISummary = self.portManager.analyseAndReply(managerPrompt)
 
 
-        # Phase 4 or 7: Decision Upload
+        # Phase 4/7: Decision Upload
+        self._newPhaseHeader(4, "Decision Upload")
         _, _ = self.portManager.analyseAndReply((
             f"Current Phase: *PHASE 7* - Decision Upload on {targetTicker}\n"
             f"Upload the final decision, weight allocation, and price targets via the 'confirmBoardroomDecision' tool, under the rules marked for Phase 7."
@@ -135,6 +181,7 @@ class BoardroomEngine:
 
 
     def executeCompleteSingleEquityRating(self, targetTicker):
+        self.fastMode = False
         startTime = datetime.now()
         print(f"\n{'='*70}\nStarting Live Boardroom Evaluation for: {targetTicker}\n{'='*70}")        
 
@@ -224,6 +271,7 @@ class BoardroomEngine:
         finalDecisionRaw, finalDecisionUISummary = self.portManager.analyseAndReply(managerPrompt)
         
         # Phase 7: Decision Upload
+        self._newPhaseHeader(7, "Decision Upload")
         _, _ = self.portManager.analyseAndReply((
             f"Current Phase: *PHASE 7* - Decision Upload on {targetTicker}\n"
             f"Upload the final decision, weight allocation, and price targets via the 'confirmBoardroomDecision' tool, under the rules marked for Phase 7."

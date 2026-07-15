@@ -62,6 +62,7 @@ class BaseLLMClient(ABC):
         isThinking = False
         
         isToolCallStreaming = False
+        currentState = "idle"
 
         for chunk in responseStream:
             if not chunk.choices:
@@ -75,6 +76,16 @@ class BaseLLMClient(ABC):
                     reasoningChunk = reasoningChunk.get("text", "")     # OpenRouter might return reasoning as a dict with a "text" key
 
                 fullReasoning += reasoningChunk
+
+                # Emit reasoning token
+                from ui.ui_hooks import emitEvent, getAgentPhase
+                if currentState != "reasoning":
+                    if currentState == "content":
+                        emitEvent("contentEnd")
+                    emitEvent("reasoningStart", {"phase": getAgentPhase()})
+                    currentState = "reasoning"
+                emitEvent("reasoningToken", {"token": reasoningChunk, "phase": getAgentPhase()})
+
                 if responsePrint.printThinking():
                     if not isThinking:
                         self._safePrint(f"\n{ANSI.DIM}[Thinking]: ", end="", flush=True)
@@ -87,6 +98,16 @@ class BaseLLMClient(ABC):
             contentChunk = getattr(delta, "content", None)
             if contentChunk:
                 fullContent += contentChunk
+
+                # Emit content token
+                from ui.ui_hooks import emitEvent, getAgentPhase
+                if currentState != "content":
+                    if currentState == "reasoning":
+                        emitEvent("reasoningEnd")
+                    emitEvent("contentStart", {"phase": getAgentPhase()})
+                    currentState = "content"
+                emitEvent("contentToken", {"token": contentChunk, "phase": getAgentPhase()})
+
                 if responsePrint.printResponse():
                     if isThinking:
                         self._safePrint(f"\n{ANSI.RESET}[Response]: ", end="", flush=True)
@@ -128,6 +149,13 @@ class BaseLLMClient(ABC):
                             self._safePrint(funcDelta.arguments, end="", flush=True)
                             currentCall["function"]["arguments"] += funcDelta.arguments
 
+        # Close active streaming states at the end of the response stream
+        from ui.ui_hooks import emitEvent
+        if currentState == "reasoning":
+            emitEvent("reasoningEnd")
+        elif currentState == "content":
+            emitEvent("contentEnd")
+
         if ((fullContent and responsePrint.printResponse()) or 
             (fullReasoning and responsePrint.printThinking())) and len(toolCallsList) == 0:
             self._safePrint(ANSI.RESET)
@@ -140,10 +168,24 @@ class BaseLLMClient(ABC):
         return fullContent, fullReasoning, toolCallsList
 
 
-    def executeSingleToolCall(self, currentToolCall, toolMap):
+    def executeSingleToolCall(self, currentToolCall, toolMap, agentRole=None, agentColor=None):
+        if agentRole:
+            from ui.ui_hooks import setCurrentAgent
+            setCurrentAgent(agentRole, agentColor)
+
         funcName = currentToolCall["function"]["name"]
         funcArgsString = currentToolCall["function"]["arguments"]
         callId = currentToolCall["id"]
+
+        from ui.ui_hooks import emitEvent
+        emitEvent("toolCallStart", {
+            "toolName": funcName,
+            "args": funcArgsString,
+            "callId": callId
+        })
+
+        stdoutOutput = ""
+        variablesOutput = {}
 
         try:
             funcArgsDict = json.loads(funcArgsString)
@@ -174,6 +216,9 @@ class BaseLLMClient(ABC):
                         for k, v in output["variables"].items():
                             self._safePrint(f"{ANSI.DIM}{k}: {ANSI.RESET}{v}")
                         self._safePrint()
+
+                        stdoutOutput = output.get("stdout", "")
+                        variablesOutput = output.get("variables", {})
             
             except Exception as e:
                 stringResult = json.dumps({"error": f"{e.__class__.__name__}: {e}"})
@@ -183,7 +228,25 @@ class BaseLLMClient(ABC):
         else:
             stringResult = json.dumps({"error": f"Tool {funcName} doesn't exist or not accessible by this agent."})
 
-        return callId, stringResult
+        # Determine tool status
+        status = "success"
+        try:
+            resParsed = json.loads(stringResult)
+            if isinstance(resParsed, dict) and "error" in resParsed:
+                status = "error"
+        except Exception:
+            pass
+
+        emitEvent("toolCallEnd", {
+            "toolName": funcName,
+            "callId": callId,
+            "status": status,
+            "result": stringResult,
+            "stdout": stdoutOutput,
+            "variables": variablesOutput
+        })
+
+        return callId, stringResult, status
 
 
     def runConversation(self, 
@@ -238,32 +301,60 @@ class BaseLLMClient(ABC):
         
             toolMap = {t.toolName: t for t in availableTools} if availableTools else {}
             
+            from ui.ui_hooks import getCurrentAgent
+            parentAgent = getCurrentAgent()
+            agentRole = parentAgent.get("role")
+            agentColor = parentAgent.get("color")
+
             resultsByIndex = [None] * len(toolCallsList)
             with ThreadPoolExecutor(max_workers=len(toolCallsList)) as executor:
-                futureToIndex =  {executor.submit(self.executeSingleToolCall, call, toolMap): idx 
+                futureToIndex =  {executor.submit(self.executeSingleToolCall, call, toolMap, agentRole, agentColor): idx 
                                   for idx, call in enumerate(toolCallsList)}
                 for future in as_completed(futureToIndex):
                     idx = futureToIndex[future]
-                    toolCallId, stringResult = future.result()
-                    resultsByIndex[idx] = (toolCallId, stringResult)
+                    toolCallId, stringResult, status = future.result()
+                    resultsByIndex[idx] = (toolCallId, stringResult, status)
 
-                for toolCallId, stringResult in resultsByIndex:
+                for toolCallId, stringResult, status in resultsByIndex:
                     messageHistory.append({
                         "role": "tool",
                         "tool_call_id": toolCallId,
                         "content": stringResult
                     })
 
-            # messageHistory.append({
-            #     "role": "user",
-            #     "content": "All tool results have been returned. Analyse the data above carefully, extract the key figures, and now produce your response."
-            # })
+                # Check for 'confirmBoardroomDecision' tool call and handle it
+                for toolCall in toolCallsList:
+                    if toolCall["function"]["name"] == "confirmBoardroomDecision":
+                        # Find this tool call's id from messageHistory and if its status is 'success' assume the agent made the decision
+                        for msg in messageHistory:
+                            if msg.get("role") == "tool" and msg.get("tool_call_id") == toolCall["id"]:
+                                if msg.get("content"):
+                                    try:
+                                        resultData = json.loads(msg["content"])
+                                        if isinstance(resultData, dict) and resultData.get("status") == "success":
+                                            # Agent has made a decision, return the accumulated content
+                                            return accumulatedContent.strip()
+                                    except json.JSONDecodeError:
+                                        pass
+                                break
+
+            messageHistory.append({
+                "role": "user",
+                "content": "Your recent tool call requests have been returned. Analyse the data provided and gracefully continue your thinking phase, leading to your final response."
+            })
 
         # If this code is reached, it means the maximum number of iterations was reached without a final response
+
+        messageHistory.append({
+            "role": "user",
+            "content": "You have reached the maximum number of iterations without providing a final response. Please provide your final response based on the accumulated information."
+        })
+
         self._applyRateLimit()
         finalResponseStream = self.openaiClient.chat.completions.create(
             model=self.defaultModel,
             messages=messageHistory,
+            tools=[],
             temperature=0.5,
             max_tokens=8192,
             stream=True,

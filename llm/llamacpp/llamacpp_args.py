@@ -23,6 +23,7 @@ class LlamaCppModel(Enum):
     QWEN_36_35B_A3B = "Qwen-3.6-35B-A3B"
 
     QWEN_35_9B = "Qwen-3.5-9B"
+    QWEN_35_2B = "Qwen-3.5-2B"
     QWEN_35_800M = "Qwen-3.5-0.8B"
 
     MINICPM5_1B = "MiniCPM5-1B"
@@ -348,6 +349,38 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--metrics":        _,
         "-b":               "2048",
         "-ub":              "512",
+        "--jinja":          _,
+        "-np":              "2",
+        "--kv-offload":     _,
+        "--cache-ram":      "4096",
+        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
+        "--mlock":          _,
+        "--chat-template-kwargs":       '{"preserve_thinking":true}',
+        "--spec-type":                  "draft-mtp",
+        "--spec-draft-n-max":           "2",
+        "--spec-draft-ngl":             "99",
+        "--reasoning":      "on",
+        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
+    },
+
+    LlamaCppModel.QWEN_35_2B: {
+        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3.5-0.8B-MTP-Q8_0.gguf",
+        "--port":           str(LLAMACPP_PORT),
+        "--host":           "127.0.0.1",
+        "--temp":           "0.6",
+        "--top-p":          "1.0",
+        "--top-k":          "20",
+        "--min-p":          "0.0",
+        "--presence-penalty": "2.0",
+        "--repeat-penalty":   "1.0",
+        "--flash-attn":     "on",
+        "--cache-type-k":   "q8_0",
+        "--cache-type-v":   "q8_0",
+        "--no-mmap":        _,
+        "--metrics":        _,
+        "-b":               "4096",
+        "-ub":              "1024",
         "--jinja":          _,
         "-np":              "2",
         "--kv-offload":     _,

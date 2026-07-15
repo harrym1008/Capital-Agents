@@ -54,10 +54,21 @@ class FinancialAgent:
         ):
         generateSummary = SUMMARISE_ENABLED if summarisationOverride is None else summarisationOverride
         
+        # Set agent context for UI streaming
+        from ui.ui_hooks import setCurrentAgent, setAgentPhase, emitEvent
+        setCurrentAgent(self.agentRole, self.color)
+        setAgentPhase("raw")
+        emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.color, "phase": "raw"})
+        
         rawAnalysis = self.executeInternalAnalysis(incomingMessage, responsePrintRawAnalysis)        
+        
+        emitEvent("agentRunEnd", {"agentRole": self.agentRole, "phase": "raw"})
         
         if not generateSummary:
             return rawAnalysis, rawAnalysis
+
+        setAgentPhase("summary")
+        emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.color, "phase": "summary"})
 
         generatingSummaryAdvisory = responsePrintUISummary == ResponsePrintMode.SILENT and responsePrintRawAnalysis != ResponsePrintMode.SILENT
         if generatingSummaryAdvisory:
@@ -68,4 +79,7 @@ class FinancialAgent:
         if generatingSummaryAdvisory or responsePrintUISummary == ResponsePrintMode.ONE_TOKEN_ONLY:
             print(f"{self.color}{ANSI.BOLD}========== [{self.agentRole}] UI summary generation complete. =========={ANSI.RESET}\n")
 
+        emitEvent("agentRunEnd", {"agentRole": self.agentRole, "phase": "summary"})
+
         return rawAnalysis, uiSummary
+
