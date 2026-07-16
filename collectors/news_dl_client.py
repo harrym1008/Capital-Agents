@@ -6,7 +6,6 @@ import threading
 import requests
 import re
 import html
-import ast
 from dotenv import load_dotenv
 
 import pandas as pd
@@ -170,9 +169,6 @@ class NewsClient:
                                 "headline": article.get("headline", ""),
                                 "content": cleanupArticleContent(article.get("content", "")),
                                 "author": article.get("author", ""),
-                                # Store as a real list (not a stringified one) so the
-                                # parquet column becomes LIST<STRING> and DuckDB can use
-                                # list_contains() instead of slow string matching.
                                 "symbols": article.get("symbols", [])
                             })
 
@@ -271,55 +267,46 @@ class NewsClient:
         if batchFiles:
             dfs = [pd.read_parquet(f, engine="pyarrow") for f in batchFiles]
             consolidatedDf = pd.concat(dfs, ignore_index=True)
-            # Sort by date so each row group covers a contiguous time range. This lets
-            # DuckDB skip entire row groups via min/max statistics on `updated_at`
-            # (row-group pruning) for date-range queries.
+
+            # Sort the consolidated DataFrame by "updated_at" to maintain stability
             consolidatedDf = consolidatedDf.sort_values("updated_at", kind="mergesort")
-            _write_news_parquet(consolidatedDf, NEWS_PARQUET_PATH)
+            self.writeNewsParquet(consolidatedDf, NEWS_PARQUET_PATH)
         else:
+            print("Could not download any news articles! News parquet file will be empty.")
             emptyDf = pd.DataFrame(columns=["id", "updated_at", "headline", "content", "author", "symbols"])
-            _write_news_parquet(emptyDf, NEWS_PARQUET_PATH)
+            self.writeNewsParquet(emptyDf, NEWS_PARQUET_PATH)
 
         return totalFetched, totalBatchCount
 
 
-def _write_news_parquet(df, path):
-    """Write the news dataframe to parquet with an explicit Arrow schema.
+    def writeNewsParquet(self, df, path):
+        if len(df) == 0:
+            table = pa.table({
+                "id": pa.array([], type=pa.string()),
+                "updated_at": pa.array([], type=pa.timestamp("us")),
+                "headline": pa.array([], type=pa.string()),
+                "content": pa.array([], type=pa.string()),
+                "author": pa.array([], type=pa.string()),
+                "symbols": pa.array([], type=pa.list_(pa.string())),
+            })
+        else:
+            symbols = []
+            for s in df["symbols"].tolist():
+                symbols.append(list(s) if s is not None else [])
 
-    Guarantees `symbols` is stored as LIST<STRING> (so DuckDB can use
-    list_contains) and uses a tuned row-group size for date-range pruning.
-    """
-    if len(df) == 0:
-        table = pa.table({
-            "id": pa.array([], type=pa.string()),
-            "updated_at": pa.array([], type=pa.timestamp("us")),
-            "headline": pa.array([], type=pa.string()),
-            "content": pa.array([], type=pa.string()),
-            "author": pa.array([], type=pa.string()),
-            "symbols": pa.array([], type=pa.list_(pa.string())),
-        })
-    else:
-        # Normalise symbols to a list of strings even if a row somehow holds a
-        # stringified list (e.g. reading legacy batch files).
-        symbols = []
-        for s in df["symbols"].tolist():
-            if isinstance(s, str):
-                try:
-                    s = ast.literal_eval(s)
-                except Exception:
-                    s = []
-            symbols.append(list(s) if s is not None else [])
+            table = pa.table({
+                "id": pa.array(
+                    [str(x) if x is not None else None for x in df["id"].tolist()],
+                    type=pa.string()
+                ),
+                "updated_at": pa.array(df["updated_at"].tolist(), type=pa.timestamp("us")),
+                "headline": pa.array(df["headline"].tolist(), type=pa.string()),
+                "content": pa.array(df["content"].tolist(), type=pa.string()),
+                "author": pa.array(df["author"].tolist(), type=pa.string()),
+                "symbols": pa.array(symbols, type=pa.list_(pa.string())),
+            })
 
-        table = pa.table({
-            "id": pa.array(df["id"].tolist(), type=pa.string()),
-            "updated_at": pa.array(df["updated_at"].tolist(), type=pa.timestamp("us")),
-            "headline": pa.array(df["headline"].tolist(), type=pa.string()),
-            "content": pa.array(df["content"].tolist(), type=pa.string()),
-            "author": pa.array(df["author"].tolist(), type=pa.string()),
-            "symbols": pa.array(symbols, type=pa.list_(pa.string())),
-        })
-
-    pq.write_table(table, path, row_group_size=NEWS_ROW_GROUP_SIZE, compression="snappy")
+        pq.write_table(table, path, row_group_size=NEWS_ROW_GROUP_SIZE, compression="snappy")
 
 
     def buildInvertedIndex(self, pbar=None):
@@ -345,17 +332,7 @@ def _write_news_parquet(df, path):
         for row in df.itertuples(index=False):
             articleId = row.id
             symbolsVal = row.symbols
-            # New format: symbols is already a list (LIST<STRING> column).
-            # Legacy format: a stringified list -> fall back to literal_eval.
-            if isinstance(symbolsVal, str):
-                try:
-                    symbolsList = ast.literal_eval(symbolsVal)
-                except Exception:
-                    symbolsList = []
-            elif symbolsVal is None:
-                symbolsList = []
-            else:
-                symbolsList = list(symbolsVal)
+            symbolsList = symbolsVal if symbolsVal is not None else []
 
             for symbol in symbolsList:
                 if symbol not in indices:

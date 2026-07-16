@@ -426,7 +426,7 @@
 
     <header>
         <h1>Capital Agents Boardroom Simulation</h1>
-        <button id="connectionStatus" onclick="toggleSidebar()" style="background-color: #ef4444; color: #ffffff; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; transition: background-color 0.2s; user-select: none;">📋 Summaries (Disconnected)</button>
+        <button id="connectionStatus" onclick="toggleSidebar()" style="background-color: #ef4444; color: #ffffff; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; transition: background-color 0.2s; user-select: none;">Summaries (Disconnected)</button>
     </header>
 
     <div class="config-bar">
@@ -624,19 +624,6 @@
         function connectWebsocket() {
             const wsUrl = `ws://${window.location.hostname}:8001`;
             socket = new WebSocket(wsUrl);
-
-            socket.onopen = () => {
-                const statusBtn = document.getElementById("connectionStatus");
-                statusBtn.innerText = "📋 Summaries (Connected)";
-                statusBtn.style.backgroundColor = "#10b981";
-            };
-
-            socket.onclose = () => {
-                const statusBtn = document.getElementById("connectionStatus");
-                statusBtn.innerText = "📋 Summaries (Disconnected)";
-                statusBtn.style.backgroundColor = "#ef4444";
-                setTimeout(connectWebsocket, 3000);
-            };
 
             socket.onmessage = (event) => {
                 const payload = JSON.parse(event.data);

@@ -161,7 +161,9 @@ class TickerDataClient:
             # allTickersDf.rename(columns={"currency_name": "currency"}, inplace=True)
             allTickersDf.to_parquet(TEMP_TICKERS_FILE, index=False)
 
-        calendar = MarketCalendar(self.startDate.strftime("%Y-%m-%d"), self.endDate.strftime("%Y-%m-%d"))
+        todayMinus20Years = datetime.now() - timedelta(days=365*20)  # Earliest permitted date is 20 years ago (discrepancy with leap years gives safe leeway)
+        todayPlusYear = datetime.now() + timedelta(days=364)         # Latest permitted date is 1 year from now (only add 364 days for safety)
+        calendar = MarketCalendar(todayMinus20Years.strftime("%Y-%m-%d"), todayPlusYear.strftime("%Y-%m-%d")) 
 
         equities = fd.Equities()
         fdbDf = equities.select().reset_index().rename(columns={"index": "symbol"})

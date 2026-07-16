@@ -17,7 +17,7 @@ import time
 if __name__ == "__main__":
 
     print("=" * 60)
-    print("Mass Download Tool")
+    print("  Mass Download Tool")
     print("=" * 60, "\n")
 
     dateStart = pd.Timestamp(START_DATE_STR, tz=NEW_YORK).strftime("%d %b %Y")
@@ -52,12 +52,12 @@ if __name__ == "__main__":
         if download["confirm"]:
             print(f" - {download['desc']}")
 
-    print("\nThis WILL TAKE MULTIPLE HOURS!")
-    print("To confirm, type the following exactly: \"Proceed!\"")
+    # print("\nThis WILL TAKE MULTIPLE HOURS!")
+    # print("To confirm, type the following exactly: \"Proceed!\"")
 
-    if input("> ") != "Proceed!":
-        print("Aborting.")
-        exit()
+    # if input("> ") != "Proceed!":
+    #     print("Aborting.")
+    #     exit()
 
 
     print()
@@ -67,32 +67,23 @@ if __name__ == "__main__":
 
     time.sleep(5)
 
-    # Single shared rate limiter instance for ALL parallel threads
     limiters = GlobalRateLimiters()
 
-    # Create positioned progress bars (one per category) to prevent overlap
-    # position=0 is tickers (runs first), 1-3 are the parallel downloads
-    pbars = {}
-    if downloading["tickers"]["confirm"]:
-        pbars["tickers"] = tqdm(total=1, desc="[TICKERS]", position=0, leave=True, dynamic_ncols=True)
-    
-    # Mark external so clients don't close them
-    for pbar in pbars.values():
-        pbar._external = True
-
-    # Step 1: Tickers MUST run first (OHLCV depends on tickers.parquet)
+    # Step 1: Tickers MUST run first
     if downloading["tickers"]["confirm"]:
         tickerClient = TickerDataClient(START_DATE, END_DATE, limiters)
-        tickerClient.massTickerDownloadWithData(pbar=pbars["tickers"])
+        tickerClient.massTickerDownloadWithData()
         tqdm.write(f"Completed downloading: {downloading['tickers']['desc']}\n")
 
+    pbars = {}
     if downloading["ohlcv"]["confirm"]:
         pbars["ohlcv"] = tqdm(total=1, desc="[OHLCV]", position=1, leave=True, dynamic_ncols=True)
     if downloading["news"]["confirm"]:
         pbars["news"] = tqdm(total=1, desc="[NEWS]", position=2, leave=True, dynamic_ncols=True)
     if downloading["macro"]["confirm"]:
         pbars["macro"] = tqdm(total=1, desc="[MACRO]", position=3, leave=True, dynamic_ncols=True)
-
+    for pbar in pbars.values():
+        pbar._external = True
 
     # Step 2: OHLCV, News, Macro run in parallel (all share the same limiters instance)
     parallelTasks = []

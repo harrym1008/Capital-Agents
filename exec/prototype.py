@@ -1,11 +1,11 @@
 import os, sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 try:
     sys.stdout.reconfigure(errors='replace')
     sys.stderr.reconfigure(errors='replace')
 except AttributeError:
     pass
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import time
 import math
