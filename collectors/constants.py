@@ -12,7 +12,7 @@ START_DATE = pd.Timestamp(START_DATE_STR, tz=NEW_YORK)
 FIRST_TRAD_DAY_AFTER_START_STR = "2016-01-04"
 FIRST_TRAD_DAY_AFTER_START = pd.Timestamp(FIRST_TRAD_DAY_AFTER_START_STR, tz=NEW_YORK)
 
-END_DATE_STR = "2026-05-31"
+END_DATE_STR = "2026-07-15"
 END_DATE = pd.Timestamp(END_DATE_STR, tz=NEW_YORK)
 
 IPO_BEFORE_START_DATE = pd.Timestamp("2015-12-31", tz=NEW_YORK)
@@ -54,6 +54,11 @@ NEWS_BATCHES_DIR = "data/newsbatches"
 NEWS_PARQUET_PATH = "data/news.parquet"
 NEWS_INDEX_PARQUET_PATH = "data/newsindex.parquet"
 NEWS_BATCH_SIZE = 2000
+
+# Row-group size for the consolidated news parquet. Small enough that DuckDB's
+# min/max row-group statistics give fine-grained pruning on `updated_at` date
+# range queries, large enough to avoid excessive metadata overhead.
+NEWS_ROW_GROUP_SIZE = 200_000
 
 
 # For ohlcvclient.py

@@ -5,6 +5,9 @@ import urllib.request
 import collections
 from enum import Enum
 
+from pathlib import Path
+import shutil
+
 import psutil
 import time
 
@@ -102,9 +105,16 @@ def rudimentaryVramClear():
         print(f"Error during rudimentary VRAM clearing: {e}. Continuing without clearing VRAM.")
 
 
+def checkExecutableExists():
+    path = Path(LLAMACPP_EXECUTABLE)
+    return path.is_file() or shutil.which(LLAMACPP_EXECUTABLE) is not None
+
 
 class LlamaCppProcessInitiator:
     def __init__(self, model: LlamaCppModel, killExistingProcesses: bool = True, argOverrides=None):
+        if not checkExecutableExists():
+            raise FileNotFoundError(f"Llama.cpp executable not found at '{LLAMACPP_EXECUTABLE}' and not in PATH. Please ensure it is built and available.")
+        
         if killExistingProcesses:
             killExistingLlamaCppProcesses()
 

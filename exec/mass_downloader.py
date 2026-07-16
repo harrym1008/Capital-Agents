@@ -9,29 +9,36 @@ from collectors.macro_dl_client import MacroDataClient
 from collectors.rate_limiter import GlobalRateLimiters
 from collectors.constants import *
 
+from tqdm import tqdm
+import concurrent.futures
+import time
+
 
 if __name__ == "__main__":
-    
+
     print("=" * 60)
     print("Mass Download Tool")
     print("=" * 60, "\n")
 
+    dateStart = pd.Timestamp(START_DATE_STR, tz=NEW_YORK).strftime("%d %b %Y")
+    dateEnd = pd.Timestamp(END_DATE_STR, tz=NEW_YORK).strftime("%d %b %Y")
+
     downloading = {
         "tickers": {
             "confirm": input("Download tickers? (yes/no)        > ").lower() == "yes",
-            "desc": "All tickers (listed and delisted) from the NYSE and NASDAQ from 1 Jan 2016 to 31 May 2026"
+            "desc": f"All tickers (listed and delisted) from the NYSE and NASDAQ from {dateStart} to {dateEnd}"
         },
         "ohlcv": {
             "confirm": input("Download OHLCV data? (yes/no)     > ").lower() == "yes",
-            "desc": "All daily OHLCV values, and corporate actions, from 1 Jan 2016 to 31 May 2026 for all tickers"
+            "desc": f"All daily OHLCV values, and corporate actions, from {dateStart} to {dateEnd} for all tickers"
         },
         "news": {
             "confirm": input("Download news articles? (yes/no)  > ").lower() == "yes",
-            "desc": "All news articles from 1 Jan 2016 to 31 May 2026"
+            "desc": f"All news articles from {dateStart} to {dateEnd}"
         },
         "macro": {
             "confirm": input("Download macro data? (yes/no)     > ").lower() == "yes",
-            "desc": "Commodities, indices, forex and macroeconomic data from FRED from 1 Jan 2016 to 31 May 2026"
+            "desc": f"Commodities, indices, forex and macroeconomic data from FRED from {dateStart} to {dateEnd}"
         }
     }
 
@@ -46,9 +53,9 @@ if __name__ == "__main__":
             print(f" - {download['desc']}")
 
     print("\nThis WILL TAKE MULTIPLE HOURS!")
-    print("To confirm, type the following exactly: \"I wish to proceed.\"")
+    print("To confirm, type the following exactly: \"Proceed!\"")
 
-    if input("> ") != "I wish to proceed.":
+    if input("> ") != "Proceed!":
         print("Aborting.")
         exit()
 
@@ -58,28 +65,69 @@ if __name__ == "__main__":
     print("Starting downloads in 5 seconds...")
     print("=" * 60, "\n")
 
-    import time
     time.sleep(5)
 
+    # Single shared rate limiter instance for ALL parallel threads
     limiters = GlobalRateLimiters()
 
+    # Create positioned progress bars (one per category) to prevent overlap
+    # position=0 is tickers (runs first), 1-3 are the parallel downloads
+    pbars = {}
+    if downloading["tickers"]["confirm"]:
+        pbars["tickers"] = tqdm(total=1, desc="[TICKERS]", position=0, leave=True, dynamic_ncols=True)
+    
+    # Mark external so clients don't close them
+    for pbar in pbars.values():
+        pbar._external = True
+
+    # Step 1: Tickers MUST run first (OHLCV depends on tickers.parquet)
     if downloading["tickers"]["confirm"]:
         tickerClient = TickerDataClient(START_DATE, END_DATE, limiters)
-        tickerClient.massTickerDownloadWithData()
-        print(f"Completed downloading: {downloading['tickers']['desc']}\n")
+        tickerClient.massTickerDownloadWithData(pbar=pbars["tickers"])
+        tqdm.write(f"Completed downloading: {downloading['tickers']['desc']}\n")
 
     if downloading["ohlcv"]["confirm"]:
-        ohlcvClient = OHLCVDataClient(START_DATE_STR, END_DATE_STR, limiters)
-        ohlcvClient.massDownload(True, threads=8)
-        print(f"Completed downloading: {downloading['ohlcv']['desc']}\n")
+        pbars["ohlcv"] = tqdm(total=1, desc="[OHLCV]", position=1, leave=True, dynamic_ncols=True)
+    if downloading["news"]["confirm"]:
+        pbars["news"] = tqdm(total=1, desc="[NEWS]", position=2, leave=True, dynamic_ncols=True)
+    if downloading["macro"]["confirm"]:
+        pbars["macro"] = tqdm(total=1, desc="[MACRO]", position=3, leave=True, dynamic_ncols=True)
+
+
+    # Step 2: OHLCV, News, Macro run in parallel (all share the same limiters instance)
+    parallelTasks = []
+
+    if downloading["ohlcv"]["confirm"]:
+        parallelTasks.append(("ohlcv", OHLCVDataClient, (START_DATE_STR, END_DATE_STR, limiters),
+                              lambda c: c.massDownload(True, threads=8, pbar=pbars["ohlcv"])))
 
     if downloading["news"]["confirm"]:
-        newsClient = NewsClient(START_DATE_STR, END_DATE_STR, limiters)
-        newsClient.threadedMassDownload(threads=8)
-        newsClient.buildInvertedIndex()
-        print(f"Completed downloading: {downloading['news']['desc']}\n")
+        parallelTasks.append(("news", NewsClient, (START_DATE_STR, END_DATE_STR, limiters),
+                              lambda c: (c.threadedMassDownload(threads=8, pbar=pbars["news"]), c.buildInvertedIndex(pbar=pbars["news"]))))
 
     if downloading["macro"]["confirm"]:
-        macroClient = MacroDataClient(START_DATE_STR, END_DATE_STR, limiters)
-        macroClient.massDownload()
-        print(f"Completed downloading: {downloading['macro']['desc']}\n")
+        parallelTasks.append(("macro", MacroDataClient, (START_DATE_STR, END_DATE_STR, limiters),
+                              lambda c: c.massDownload(pbar=pbars["macro"])))
+
+    if parallelTasks:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(parallelTasks)) as executor:
+            futures = {}
+            for name, clientClass, args, runner in parallelTasks:
+                client = clientClass(*args)
+                futures[executor.submit(runner, client)] = name
+
+            for future in concurrent.futures.as_completed(futures):
+                name = futures[future]
+                try:
+                    future.result()
+                    tqdm.write(f"Completed downloading: {downloading[name]['desc']}\n")
+                except Exception as e:
+                    tqdm.write(f"ERROR in {name} download: {e}\n")
+
+    # Close all progress bars
+    for pbar in pbars.values():
+        pbar.close()
+
+    print("\n" + "=" * 60)
+    print("All downloads complete!")
+    print("=" * 60)

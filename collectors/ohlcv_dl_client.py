@@ -538,7 +538,7 @@ class OHLCVDataClient:
 
 
 
-    def massDownload(self, updateIpoDates=False, threads=8):
+    def massDownload(self, updateIpoDates=False, threads=8, pbar=None):
         for directory in [NYSE_DIRECTORY, NASDAQ_DIRECTORY]:
             if not os.path.exists(directory):
                 os.mkdir(directory)
@@ -579,15 +579,18 @@ class OHLCVDataClient:
         exportInterval = 200
         lastExportCount = 0
 
-        print(f"\nBeginning mass download of OHLCV data for {totalTickers} tickers...\n")
-        pbar = tqdm(
-            total=totalTickers,
-            desc="Downloading OHLCV for all tickers",
-            smoothing=0.1,
-            # bar_format="{desc}| {percentage:3.2f}% |{bar}| [{elapsed} elapsed, {remaining} remaining] ",
-            colour="green",
-            dynamic_ncols=True            
-        )
+        if pbar is None:
+            pbar = tqdm(
+                total=totalTickers,
+                desc="Downloading OHLCV for all tickers",
+                smoothing=0.1,
+                # bar_format="{desc}| {percentage:3.2f}% |{bar}| [{elapsed} elapsed, {remaining} remaining] ",
+                colour="green",
+                dynamic_ncols=True
+            )
+        else:
+            pbar.reset(total=totalTickers)
+            pbar.set_description("OHLCV: Downloading")
 
         skippedTickers = []
         failedTickers = []
@@ -641,18 +644,11 @@ class OHLCVDataClient:
                 futures = [executor.submit(downloadAndTrack, item) for item in tickerRows]
                 concurrent.futures.wait(futures)
 
-        pbar.close()
-
-        print(f"\nCompleted downloads for {completed} tickers with {errors} errors and {skipped} skipped.")
-        if skipped > 0:
-            print(f"Skipped tickers: {', '.join(skippedTickers)}")
-        if errors > 0:
-            print(f"Failed tickers: {', '.join(failedTickers)}")
-
+        pbar.set_description(f"OHLCV: Exported {completed} tickers ({errors} errors, {skipped} skipped)")
 
         # Export all corporate actions to one parquet file
         actionsDf = exportActions(allActionRows)
-        print(f"Saved corporate actions data for {len(actionsDf)} actions to {CORP_ACTIONS_OUTPUT}.")
+        pbar.set_description(f"OHLCV: Saved {len(actionsDf)} corporate actions")
 
 
         tickerChangeMap = {}
@@ -680,7 +676,7 @@ class OHLCVDataClient:
         tickerChangesDf = pd.DataFrame(tickerChangeRows).reindex(columns=["changeDate", "oldTicker", "newTicker"])
         tickerChangesDf.sort_values(by=["changeDate", "oldTicker"], ascending=True, inplace=True)
         tickerChangesDf.to_parquet(TICKER_CHANGES_OUTPUT, index=False)
-        print(f"Saved {len(tickerChangesDf)} ticker changes data changes to {TICKER_CHANGES_OUTPUT}.")
+        pbar.set_description(f"OHLCV: Saved {len(tickerChangesDf)} ticker changes")
 
 
         if updateIpoDates:
@@ -688,8 +684,9 @@ class OHLCVDataClient:
                 tickersDf.at[idx, "ipoDate"] = ipoDate.strftime("%Y-%m-%d")
 
             tickersDf.to_parquet(ALL_TICKERS_FILE, index=False)
-            print(f"Updated IPO dates for {completed} tickers and saved to {ALL_TICKERS_FILE}.")
+            pbar.set_description(f"OHLCV: Updated IPO dates for {completed} tickers")
 
-        print()
+        if pbar is not None and not hasattr(pbar, '_external'):
+            pbar.close()
 
     

@@ -10,10 +10,18 @@ import ast
 from dotenv import load_dotenv
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 from tqdm import tqdm
 
 from collectors.rate_limiter import GlobalRateLimiters
-from collectors.constants import NEWS_BATCHES_DIR, NEWS_PARQUET_PATH, NEWS_INDEX_PARQUET_PATH, NEWS_BATCH_SIZE
+from collectors.constants import (
+    NEWS_BATCHES_DIR,
+    NEWS_PARQUET_PATH,
+    NEWS_INDEX_PARQUET_PATH,
+    NEWS_BATCH_SIZE,
+    NEWS_ROW_GROUP_SIZE,
+)
 
 
 def cleanupArticleContent(rawContent):
@@ -57,7 +65,7 @@ class NewsClient:
         
 
 
-    def threadedMassDownload(self, threads=4):
+    def threadedMassDownload(self, threads=4, pbar=None):
         os.makedirs(NEWS_BATCHES_DIR, exist_ok=True)
         os.makedirs(os.path.dirname(NEWS_PARQUET_PATH), exist_ok=True)
 
@@ -86,14 +94,19 @@ class NewsClient:
 
         startUnix = int(self.startDate.timestamp())
         endUnix = int(self.endDate.timestamp())
-        pbar = tqdm(
-            total=endUnix - startUnix,
-            desc="Fetching news articles",
-            smoothing=0.1,
-            bar_format="{desc} | {percentage:3.2f}% |{bar}| [{elapsed} elapsed, {remaining} remaining] ",
-            colour="green",
-            dynamic_ncols=True
-        )
+
+        if pbar is None:
+            pbar = tqdm(
+                total=endUnix - startUnix,
+                desc="Fetching news articles",
+                smoothing=0.1,
+                bar_format="{desc} | {percentage:3.2f}% |{bar}| [{elapsed} elapsed, {remaining} remaining] ",
+                colour="green",
+                dynamic_ncols=True
+            )
+        else:
+            pbar.reset(total=endUnix - startUnix)
+            pbar.set_description("News: Fetching")
 
         def refreshProgress(threadId, latestUnix):
             nonlocal totalFetched, totalBatchCount
@@ -157,7 +170,10 @@ class NewsClient:
                                 "headline": article.get("headline", ""),
                                 "content": cleanupArticleContent(article.get("content", "")),
                                 "author": article.get("author", ""),
-                                "symbols": str(article.get("symbols", []))
+                                # Store as a real list (not a stringified one) so the
+                                # parquet column becomes LIST<STRING> and DuckDB can use
+                                # list_contains() instead of slow string matching.
+                                "symbols": article.get("symbols", [])
                             })
 
                         if articlesList:
@@ -194,11 +210,9 @@ class NewsClient:
                         self.alpacaLimiter.non429Error(e)
 
                 if not pageSuccess:
-                    print(f"\nFAILED to fetch news page after 10 attempts for thread {threadId}!")
                     break
 
                 if not nextPageToken:
-                    print(f"\nThread {threadId} completed. No more pages.")
                     break
 
             if batchBuffer:
@@ -227,11 +241,9 @@ class NewsClient:
         for thread in threads:
             thread.join()
 
-        pbar.close()
+        if pbar is not None and not hasattr(pbar, '_external'):
+            pbar.close()
 
-        print(f"\nDone! Total fetched: {totalFetched}, Total batches saved: {totalBatchCount}")
-
-        print(f"\nRenaming batch files...")
         batchFiles = sorted([
             f for f in os.listdir(NEWS_BATCHES_DIR)
             if f.endswith(".parquet")
@@ -250,7 +262,6 @@ class NewsClient:
             os.rename(tempPath, finalPath)
 
         # Consolidate all batch files into a single parquet file
-        print(f"\nConsolidating {totalBatchCount} batch files into {NEWS_PARQUET_PATH}...")
         batchFiles = sorted([
             os.path.join(NEWS_BATCHES_DIR, f)
             for f in os.listdir(NEWS_BATCHES_DIR)
@@ -260,40 +271,91 @@ class NewsClient:
         if batchFiles:
             dfs = [pd.read_parquet(f, engine="pyarrow") for f in batchFiles]
             consolidatedDf = pd.concat(dfs, ignore_index=True)
-            consolidatedDf.to_parquet(NEWS_PARQUET_PATH, engine="pyarrow", index=False)
-            print(f"Consolidated {len(consolidatedDf)} articles into {NEWS_PARQUET_PATH}")
+            # Sort by date so each row group covers a contiguous time range. This lets
+            # DuckDB skip entire row groups via min/max statistics on `updated_at`
+            # (row-group pruning) for date-range queries.
+            consolidatedDf = consolidatedDf.sort_values("updated_at", kind="mergesort")
+            _write_news_parquet(consolidatedDf, NEWS_PARQUET_PATH)
         else:
             emptyDf = pd.DataFrame(columns=["id", "updated_at", "headline", "content", "author", "symbols"])
-            emptyDf.to_parquet(NEWS_PARQUET_PATH, engine="pyarrow", index=False)
-            print("No articles to consolidate. Created empty parquet file.")
+            _write_news_parquet(emptyDf, NEWS_PARQUET_PATH)
 
         return totalFetched, totalBatchCount
 
 
-    def buildInvertedIndex(self):
+def _write_news_parquet(df, path):
+    """Write the news dataframe to parquet with an explicit Arrow schema.
+
+    Guarantees `symbols` is stored as LIST<STRING> (so DuckDB can use
+    list_contains) and uses a tuned row-group size for date-range pruning.
+    """
+    if len(df) == 0:
+        table = pa.table({
+            "id": pa.array([], type=pa.string()),
+            "updated_at": pa.array([], type=pa.timestamp("us")),
+            "headline": pa.array([], type=pa.string()),
+            "content": pa.array([], type=pa.string()),
+            "author": pa.array([], type=pa.string()),
+            "symbols": pa.array([], type=pa.list_(pa.string())),
+        })
+    else:
+        # Normalise symbols to a list of strings even if a row somehow holds a
+        # stringified list (e.g. reading legacy batch files).
+        symbols = []
+        for s in df["symbols"].tolist():
+            if isinstance(s, str):
+                try:
+                    s = ast.literal_eval(s)
+                except Exception:
+                    s = []
+            symbols.append(list(s) if s is not None else [])
+
+        table = pa.table({
+            "id": pa.array(df["id"].tolist(), type=pa.string()),
+            "updated_at": pa.array(df["updated_at"].tolist(), type=pa.timestamp("us")),
+            "headline": pa.array(df["headline"].tolist(), type=pa.string()),
+            "content": pa.array(df["content"].tolist(), type=pa.string()),
+            "author": pa.array(df["author"].tolist(), type=pa.string()),
+            "symbols": pa.array(symbols, type=pa.list_(pa.string())),
+        })
+
+    pq.write_table(table, path, row_group_size=NEWS_ROW_GROUP_SIZE, compression="snappy")
+
+
+    def buildInvertedIndex(self, pbar=None):
         if not os.path.exists(NEWS_PARQUET_PATH):
-            print(f"Build {NEWS_PARQUET_PATH} first by running threadedMassDownload()")
             return
-        
+
         df = pd.read_parquet(NEWS_PARQUET_PATH, engine="pyarrow", columns=["id", "symbols"])
         indices = {}
-    
-        pbar = tqdm(
-            total=len(df),
-            desc="Building inverted index",
-            smoothing=0.1,
-            bar_format="{desc} | {percentage:3.2f}% |{bar}| [{elapsed} elapsed, {remaining} remaining] ",
-            colour="green",
-            dynamic_ncols=True
-        )
-        
+
+        if pbar is None:
+            pbar = tqdm(
+                total=len(df),
+                desc="Building inverted index",
+                smoothing=0.1,
+                bar_format="{desc} | {percentage:3.2f}% |{bar}| [{elapsed} elapsed, {remaining} remaining] ",
+                colour="green",
+                dynamic_ncols=True
+            )
+        else:
+            pbar.reset(total=len(df))
+            pbar.set_description("News: Building index")
+
         for row in df.itertuples(index=False):
             articleId = row.id
-            symbolsStr = row.symbols
-            try:
-                symbolsList = ast.literal_eval(symbolsStr)
-            except:
+            symbolsVal = row.symbols
+            # New format: symbols is already a list (LIST<STRING> column).
+            # Legacy format: a stringified list -> fall back to literal_eval.
+            if isinstance(symbolsVal, str):
+                try:
+                    symbolsList = ast.literal_eval(symbolsVal)
+                except Exception:
+                    symbolsList = []
+            elif symbolsVal is None:
                 symbolsList = []
+            else:
+                symbolsList = list(symbolsVal)
 
             for symbol in symbolsList:
                 if symbol not in indices:
@@ -302,10 +364,11 @@ class NewsClient:
 
             pbar.update(1)
 
-        pbar.close()
+        if pbar is not None and not hasattr(pbar, '_external'):
+            pbar.close()
         out = pd.DataFrame(
             {"symbol": list(indices.keys()), "ids": list(indices.values())}
         ).sort_values("symbol")
 
         out.to_parquet(NEWS_INDEX_PARQUET_PATH, engine="pyarrow", index=False)
-        print(f"Built inverted index of {len(df)} articles with {len(out)} symbols into {NEWS_INDEX_PARQUET_PATH}.")
+

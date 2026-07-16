@@ -11,6 +11,7 @@ from collectors.rate_limiter import GlobalRateLimiters
 from collectors.constants import MACRO_DIRECTORY
 
 
+
 YFINANCE_MACRO_TICKERS = {
     "SPY": {
         "desc": "SPDR S&P 500 ETF Trust - Maps to S&P 500 index"
@@ -111,27 +112,31 @@ class MacroDataClient:
         load_dotenv()
         self.fredClient = Fred(api_key=os.getenv("FRED_API_KEY"))
         self.limiters = rateLimiterDatabase
-        
+
         self.startDateStr = startDateStr
         self.endDateStr = endDateStr
 
 
-    def massDownload(self):
+    def massDownload(self, pbar=None):
         if not os.path.exists(MACRO_DIRECTORY):
             os.mkdir(MACRO_DIRECTORY)
         else:
             for filename in os.listdir(MACRO_DIRECTORY):
                 if filename.endswith(".parquet"):
                     os.remove(os.path.join(MACRO_DIRECTORY, filename))
-        
+
         # First download the yfinance macro data
-        pbar = tqdm(
-            total=len(YFINANCE_MACRO_TICKERS) + len(FRED_MACRO_SERIES),
-            desc="Downloading macro data",
-            smoothing=0.1,
-            colour="green",
-            dynamic_ncols=True            
-        )
+        if pbar is None:
+            pbar = tqdm(
+                total=len(YFINANCE_MACRO_TICKERS) + len(FRED_MACRO_SERIES),
+                desc="Downloading macro data",
+                smoothing=0.1,
+                colour="green",
+                dynamic_ncols=True
+            )
+        else:
+            pbar.reset(total=len(YFINANCE_MACRO_TICKERS) + len(FRED_MACRO_SERIES))
+            pbar.set_description("Macro: Downloading")
 
         for name, info in YFINANCE_MACRO_TICKERS.items():
             yfTicker = info.get("yfticker", name)
@@ -143,7 +148,7 @@ class MacroDataClient:
                 progress=False
             )
 
-            df.columns = df.columns.get_level_values(0)  
+            df.columns = df.columns.get_level_values(0)
             df.reset_index(inplace=True)
             df.columns = df.columns.str.lower()
 
@@ -153,7 +158,7 @@ class MacroDataClient:
             targetCols = ["date", "open", "high", "low", "close", "volume"]
 
             df = df[[col for col in targetCols if col in df.columns]]
-            df[targetCols[1:5]] = df[targetCols[1:5]].round(4)            
+            df[targetCols[1:5]] = df[targetCols[1:5]].round(4)
 
             # Backfill empty values
             df[targetCols[1:5]] = df[targetCols[1:5]].ffill()
@@ -179,3 +184,5 @@ class MacroDataClient:
             pbar.update(1)
             self.limiters.fredLimiter.wait()
 
+        if pbar is not None and not hasattr(pbar, '_external'):
+            pbar.close()
