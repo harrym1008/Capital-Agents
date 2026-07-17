@@ -21,8 +21,8 @@ from llm.llamacpp.llamacpp_init import LlamaCppProcessInitiator, killExistingLla
 from llm.llamacpp.llamacpp_client import LlamaCppClient
 from llm.llamacpp.llamacpp_args import LlamaCppModel
 
-from llm.summarise.local_summary_server import LlamaCppSummaryClient
-from llm.summarise.cloud_summary_server import OpenRouterSummaryClient
+from llm.summarise.local_summary import LlamaCppSummaryClient
+from llm.summarise.cloud_summary import OpenRouterSummaryClient
 
 from llm.cloud.openrouter_client import OpenRouterClient
 
