@@ -5,21 +5,28 @@ from concurrent.futures import ThreadPoolExecutor
 
 from cli.ansi import ANSI
 
+from llm.client_duo import ClientDuo
 from llm.llm_client import BaseLLMClient
+
 from llm.tools_registry import buildToolsRegistry
 from llm.agents.agent import FinancialAgent
 from llm.agents.agent_config import FinancialAgentConfig
 
 
 class BoardroomEngine:
-    def __init__(self, agents: Dict[str, FinancialAgent], allowParallel: bool=True):
+    def __init__(self, agents: Dict[str, FinancialAgent], clientDuo: ClientDuo):
+        self.clientDuo = clientDuo        
+        for agent in agents.values():
+            agent.setLLMClient(clientDuo.boardroomClient)
+
+        self.allowParallel = clientDuo.boardroomClient.allowParallel
+        
         self.macroAnalyst = agents.get("macroAnalyst")
         self.bullAnalyst = agents.get("bullAnalyst")
         self.bearAnalyst = agents.get("bearAnalyst")
         self.aggRiskAnalyst = agents.get("aggRiskAnalyst")
         self.consRiskAnalyst = agents.get("consRiskAnalyst")
         self.portManager = agents.get("portManager")
-        self.allowParallel = allowParallel
 
 
     def _runAgentsConcurrently(self, *tasks):
@@ -32,6 +39,9 @@ class BoardroomEngine:
 
 
     def _newPhaseHeader(self, phaseNumber, phaseName):
+        from ui.ui_hooks import setCurrentStage
+        setCurrentStage(phaseNumber)
+        
         if phaseNumber == 0:
             tempHeader = f"{phaseName}"
         else:
@@ -360,9 +370,11 @@ class BoardroomEngine:
 
 
 
-def boardroomGenerator(simulatedDate: str, llmClient: BaseLLMClient):
+def boardroomGenerator(simulatedDate: str, clientDuo: ClientDuo):
     toolRegistry = buildToolsRegistry()
     toolMap = {tool.toolName: tool for tool in toolRegistry}
+
+    boardroomClient = clientDuo.boardroomClient
 
     macroAgent = FinancialAgent(
         config=FinancialAgentConfig(
@@ -375,7 +387,6 @@ def boardroomGenerator(simulatedDate: str, llmClient: BaseLLMClient):
             ],
             color=ANSI.CYAN
         ),
-        llmClient=llmClient,
         dateStr=simulatedDate
     )
 
@@ -395,7 +406,6 @@ def boardroomGenerator(simulatedDate: str, llmClient: BaseLLMClient):
             ],
             color=ANSI.GREEN
         ),
-        llmClient=llmClient,
         dateStr=simulatedDate
     )
 
@@ -415,7 +425,6 @@ def boardroomGenerator(simulatedDate: str, llmClient: BaseLLMClient):
             ],
             color=ANSI.RED
         ),
-        llmClient=llmClient,
         dateStr=simulatedDate
     )
 
@@ -434,7 +443,6 @@ def boardroomGenerator(simulatedDate: str, llmClient: BaseLLMClient):
             ],
             color=ANSI.YELLOW
         ),
-        llmClient=llmClient,
         dateStr=simulatedDate
     )
 
@@ -453,7 +461,6 @@ def boardroomGenerator(simulatedDate: str, llmClient: BaseLLMClient):
             ],
             color=ANSI.BLUE
         ),
-        llmClient=llmClient,
         dateStr=simulatedDate
     )
 
@@ -467,7 +474,6 @@ def boardroomGenerator(simulatedDate: str, llmClient: BaseLLMClient):
             ],
             color=ANSI.MAGENTA
         ),
-        llmClient=llmClient,
         dateStr=simulatedDate
     )    
 
@@ -478,6 +484,7 @@ def boardroomGenerator(simulatedDate: str, llmClient: BaseLLMClient):
         "aggRiskAnalyst": aggRiskAnalystAgent,
         "consRiskAnalyst": consRiskAnalystAgent,
         "portManager": portfolioManager,
-    }, allowParallel=llmClient.allowParallel)
+    }, clientDuo=clientDuo)
+
     return boardroom
 

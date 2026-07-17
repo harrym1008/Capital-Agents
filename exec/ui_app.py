@@ -13,11 +13,14 @@ import time
 from flask import Flask, render_template
 import websockets
 
+UI_PORT = 9091
+WS_PORT = 9092
+
 # Add local path to sys.path so we can import local modules
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(ROOT)
 
-from exec.prototype import runBoardroom, LLMClient
+from exec.prototype import runBoardroom, LLMClientType
 from llm.llamacpp.llamacpp_args import LlamaCppModel
 from ui.ui_hooks import setEventCallback, emitEvent
 
@@ -42,7 +45,7 @@ def runSimulationThread(clientType, model, ticker, fastMode, allowParallel):
     try:
         startTime = time.time()
         runBoardroom(
-            llmClient=clientType,
+            llmClientType=clientType,
             model=model,
             tickerToEval=ticker,
             fastMode=fastMode,
@@ -80,20 +83,20 @@ async def websocketHandler(websocket):
                 
                 # Map client type
                 if clientTypeStr == "LlamaCpp":
-                    clientType = LLMClient.LlamaCpp
+                    clientType = LLMClientType.LlamaCpp
                     # Look up enum member by its name from front-end select dropdown
                     try:
                         model = LlamaCppModel[modelName]
                     except KeyError:
                         model = LlamaCppModel.GEMMA_4_12B
                 elif clientTypeStr == "OpenRouter":
-                    clientType = LLMClient.OpenRouter
+                    clientType = LLMClientType.OpenRouter
                     model = modelName
                 elif clientTypeStr == "Groq":
-                    clientType = LLMClient.Groq
+                    clientType = LLMClientType.Groq
                     model = modelName
                 else:
-                    clientType = LLMClient.OpenRouter
+                    clientType = LLMClientType.OpenRouter
                     model = modelName
                 
                 # Start simulation in background thread
@@ -111,8 +114,8 @@ async def websocketHandler(websocket):
 
 def startWebsocketServer():
     async def main():
-        async with websockets.serve(websocketHandler, "127.0.0.1", 8001) as server:
-            print("WebSocket Server running on ws://127.0.0.1:8001")
+        async with websockets.serve(websocketHandler, "127.0.0.1", WS_PORT) as server:
+            print(f"WebSocket Server running on ws://127.0.0.1:{WS_PORT}")
             await asyncio.Future()  # run forever
 
     asyncio.run(main())
@@ -125,4 +128,4 @@ if __name__ == "__main__":
     websocketThread = threading.Thread(target=startWebsocketServer, daemon=True)
     websocketThread.start()
 
-    app.run(debug=False, threaded=True, host="127.0.0.1", port=9082)
+    app.run(debug=False, threaded=True, host="127.0.0.1", port=UI_PORT)

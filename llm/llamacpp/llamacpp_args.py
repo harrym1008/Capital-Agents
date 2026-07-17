@@ -2,6 +2,7 @@ from enum import Enum
 
 
 LLAMACPP_PORT = 9081
+LLAMACPP_SUMMARY_PORT = 9082
 LLAMACPP_EXECUTABLE = "llama-server.exe"
 
 # THINKING_BUDGET = 128
@@ -29,6 +30,8 @@ class LlamaCppModel(Enum):
     MINICPM5_1B = "MiniCPM5-1B"
     LFM25_8B_A1B = "LFM-2.5-8B-A1B"
     GPT_OSS_20B = "GPT-OSS-20B"
+
+    SUMMARY_MODEL = "Summary-Model"
 
 
 EMPTY_ARG = _ = ""
@@ -426,5 +429,31 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--reasoning":      "on",
         # "--reasoning-budget":           str(THINKING_BUDGET),
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
+    },
+
+
+#  ==============================================================
+
+    LlamaCppModel.SUMMARY_MODEL: {
+        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3-0.6B-UD-Q4_K_XL.gguf",
+        "--port":           str(LLAMACPP_SUMMARY_PORT),
+        "--host":           "127.0.0.1",
+        "--temp":           "0.15",
+        "--top-p":          "0.8",
+        "--top-k":          "20",
+        "--repeat-penalty": "1.1",
+        "--flash-attn":     "on",
+        "--cache-type-k":   "q8_0",
+        "--cache-type-v":   "q8_0",
+        "--no-mmap":        _,
+        "--jinja":          _,
+        "-np":              "4",
+        "--kv-offload":     _,
+        "--cache-ram":      "512",
+        "--ctx-size":       "32768",    # Each slot gets 8192 tokens to work with (likely enough)
+        "-ngl":             "99",
+        "--mlock":          _,
+        "--reasoning":      "on",
+        "--reasoning-budget-message":   "OK, I am out of thinking budget. Time to produce the summary."
     }
 }

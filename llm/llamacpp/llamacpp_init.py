@@ -111,12 +111,20 @@ def checkExecutableExists():
 
 
 class LlamaCppProcessInitiator:
-    def __init__(self, model: LlamaCppModel, killExistingProcesses: bool = True, argOverrides=None):
+    def __init__(self, 
+                 serverName: str, 
+                 model: LlamaCppModel, 
+                 printLogsToTerminal: bool = True,
+                 killExistingProcesses: bool = True, 
+                 argOverrides=None
+        ):
         if not checkExecutableExists():
             raise FileNotFoundError(f"Llama.cpp executable not found at '{LLAMACPP_EXECUTABLE}' and not in PATH. Please ensure it is built and available.")
         
         if killExistingProcesses:
             killExistingLlamaCppProcesses()
+
+        self.serverName = serverName
 
         self.args = LLAMACPP_MODEL_TO_ARGS.get(model, {}).copy()
         self.args.update(argOverrides or {})
@@ -132,6 +140,7 @@ class LlamaCppProcessInitiator:
         self.stdoutThread = None
         self.stderrThread = None
         self.logs = collections.deque(maxlen=1000)
+        self.printLogsToTerminal = printLogsToTerminal
 
 
     def setState(self, newState):
@@ -144,12 +153,17 @@ class LlamaCppProcessInitiator:
             return self.state
 
 
+    def printToTerminal(self, *args, **kwargs):
+        if self.printLogsToTerminal:
+            print(*args, **kwargs)
+
+
     
     def readStream(self, stream, tag):
         try:
             for line in iter(stream.readline, ''):
                 if self.getState() == ServerState.STARTING:
-                    print(line.rstrip())
+                    self.printToTerminal(line.rstrip())
                     try:
                         from ui.ui_hooks import emitEvent
                         emitEvent("llamaCppStartupLog", {"log": line.rstrip()})
@@ -175,7 +189,6 @@ class LlamaCppProcessInitiator:
         thread.start()
         return thread
 
-
     def start(self, readyTimeout=90):
         with self.stateLock:
             if self.state in (ServerState.STARTING, ServerState.RUNNING):
@@ -190,7 +203,8 @@ class LlamaCppProcessInitiator:
         self.setState(ServerState.STARTING)
         self.process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                         text=True, bufsize=1)
-        print(f"Started Llama.cpp process PID={self.process.pid}")
+        
+        print(f"[{self.serverName}] Started Llama.cpp process PID={self.process.pid}")
 
         if self.process.stdout:
             self.stdoutThread = threading.Thread(target=self.readStream, args=(self.process.stdout, "STDOUT"), daemon=True)
@@ -204,18 +218,18 @@ class LlamaCppProcessInitiator:
         while waited < readyTimeout:
             if not self.isProcessAlive():
                 self.setState(ServerState.STOPPED)
-                raise RuntimeError("Llama.cpp process terminated unexpectedly")
+                print(f"[{self.serverName}] Llama.cpp process terminated unexpectedly")
             
             if self.isReady():
                 self.setState(ServerState.RUNNING)
-                print("Llama.cpp server has loaded and is ready to take requests")
+                print(f"[{self.serverName}] Llama.cpp server has loaded and is ready to take requests")
                 return
             
             threading.Event().wait(step)
             waited += step
 
         self.stop()
-        raise TimeoutError(f"Llama.cpp process did not become ready within {readyTimeout} seconds")
+        raise TimeoutError(f"[{self.serverName}] Llama.cpp process did not become ready within {readyTimeout} seconds")
 
 
     def stop(self, gracefulTimeout=10):
@@ -232,11 +246,11 @@ class LlamaCppProcessInitiator:
             self.process.terminate()
             try:
                 self.process.wait(timeout=gracefulTimeout)
-                print("Llama.cpp process has been stopped gracefully")
+                print(f"[{self.serverName}] Llama.cpp process has been stopped gracefully")
             except subprocess.TimeoutExpired:
                 self.process.kill()
                 self.process.wait(timeout=5)
-                print("Llama.cpp process was forcefully killed")
+                print(f"[{self.serverName}]  Llama.cpp process was forcefully killed")
 
         self.process = None
         self.setState(ServerState.STOPPED)

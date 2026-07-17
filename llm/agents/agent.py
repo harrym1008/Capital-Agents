@@ -11,8 +11,8 @@ from llm.llm_client import BaseLLMClient, ResponsePrintMode
 SUMMARISE_ENABLED = True
 
 class FinancialAgent:
-    def __init__(self, config: FinancialAgentConfig, llmClient: BaseLLMClient, dateStr: str):
-        self.apiClient = llmClient
+    def __init__(self, config: FinancialAgentConfig, dateStr: str):
+        self.apiClient: BaseLLMClient = None
 
         self.agentRole = config.agentRole
         self.persona = config.systemPersona
@@ -26,6 +26,10 @@ class FinancialAgent:
         self.messageHistory = [
             {"role": "system", "content": self.researcherSystemMessage}
         ]
+
+    def setLLMClient(self, llmClient: BaseLLMClient):
+        self.apiClient = llmClient
+
 
     def executeInternalAnalysis(self, incomingMessage: str, responsePrint: ResponsePrintMode = ResponsePrintMode.FULL):
         self.messageHistory.append({"role": "user", "content": incomingMessage})

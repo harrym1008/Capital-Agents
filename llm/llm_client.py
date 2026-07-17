@@ -27,7 +27,7 @@ class ResponsePrintMode(Enum):
 class BaseLLMClient(ABC):
     def __init__(self, defaultModel: str, allowParallel: bool = False):
         self.defaultModel = defaultModel
-        self.openaiClient = self._createOpenaiClient()
+        self.openaiClient: OpenAI = self._createOpenaiClient()
         self.toolCallLock = threading.Lock()
         
         self.allowParallel = allowParallel
@@ -168,10 +168,11 @@ class BaseLLMClient(ABC):
         return fullContent, fullReasoning, toolCallsList
 
 
-    def executeSingleToolCall(self, currentToolCall, toolMap, agentRole=None, agentColor=None):
+    def executeSingleToolCall(self, currentToolCall, toolMap, agentRole=None, agentColor=None, stageNum=0):
         if agentRole:
-            from ui.ui_hooks import setCurrentAgent
+            from ui.ui_hooks import setCurrentAgent, setCurrentStage
             setCurrentAgent(agentRole, agentColor)
+            setCurrentStage(stageNum)
 
         funcName = currentToolCall["function"]["name"]
         funcArgsString = currentToolCall["function"]["arguments"]
@@ -301,14 +302,15 @@ class BaseLLMClient(ABC):
         
             toolMap = {t.toolName: t for t in availableTools} if availableTools else {}
             
-            from ui.ui_hooks import getCurrentAgent
+            from ui.ui_hooks import getCurrentAgent, getCurrentStage
             parentAgent = getCurrentAgent()
             agentRole = parentAgent.get("role")
             agentColor = parentAgent.get("color")
+            currentStageNum = getCurrentStage()
 
             resultsByIndex = [None] * len(toolCallsList)
             with ThreadPoolExecutor(max_workers=len(toolCallsList)) as executor:
-                futureToIndex =  {executor.submit(self.executeSingleToolCall, call, toolMap, agentRole, agentColor): idx 
+                futureToIndex =  {executor.submit(self.executeSingleToolCall, call, toolMap, agentRole, agentColor, currentStageNum): idx 
                                   for idx, call in enumerate(toolCallsList)}
                 for future in as_completed(futureToIndex):
                     idx = futureToIndex[future]
