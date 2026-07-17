@@ -446,7 +446,6 @@
             <select id="clientSelect">
                 <option value="LlamaCpp">LlamaCpp</option>
                 <option value="OpenRouter">OpenRouter</option>
-                <option value="Groq">Groq</option>
             </select>
         </div>
         <div class="config-group" id="modelInputContainer">
@@ -1331,10 +1330,8 @@
                 selectHtml += `</select>`;
                 container.innerHTML = selectHtml;
             } else {
-                let defaultValue = "google/gemini-2.5-flash";
-                if (client === "Groq") {
-                    defaultValue = "llama-3.3-70b-versatile";
-                }
+                let defaultValue = "nvidia/nemotron-3-super-120b-a12b:free";
+                
                 container.innerHTML = `<label for="modelInput">Model:</label>
                 <input type="text" id="modelInput" value="${defaultValue}" style="width: 250px;">`;
             }

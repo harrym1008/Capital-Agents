@@ -25,7 +25,6 @@ from llm.summarise.local_summary_server import LlamaCppSummaryClient
 from llm.summarise.cloud_summary_server import OpenRouterSummaryClient
 
 from llm.cloud.openrouter_client import OpenRouterClient
-from llm.cloud.groq_client import GroqClient
 
 from llm.boardroom_engine import boardroomGenerator
 
@@ -33,7 +32,6 @@ from llm.boardroom_engine import boardroomGenerator
 class LLMClientType(Enum):
     LlamaCpp = 1
     OpenRouter = 2
-    Groq = 3
 
 
 def runBoardroom(llmClientType: LLMClientType, model: str | LlamaCppModel, tickerToEval: str, 
@@ -70,13 +68,7 @@ def runBoardroom(llmClientType: LLMClientType, model: str | LlamaCppModel, ticke
 
         boardroomClient = OpenRouterClient(apiKey=apiKey, model=model)
         summaryClient = OpenRouterSummaryClient(apiKey=apiKey)
-
-    elif llmClientType == LLMClientType.Groq:
-        apiKey = os.getenv("GROQ_API_KEY")
-        if not apiKey: raise ValueError("GROQ_API_KEY environment variable is not set.")
-
-        boardroomClient = GroqClient(apiKey=apiKey, model=model)
-        summaryClient = OpenRouterSummaryClient(apiKey=apiKey)
+        
 
     clientDuo = ClientDuo(boardroomClient, summaryClient)
 

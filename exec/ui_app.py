@@ -92,9 +92,6 @@ async def websocketHandler(websocket):
                 elif clientTypeStr == "OpenRouter":
                     clientType = LLMClientType.OpenRouter
                     model = modelName
-                elif clientTypeStr == "Groq":
-                    clientType = LLMClientType.Groq
-                    model = modelName
                 else:
                     clientType = LLMClientType.OpenRouter
                     model = modelName
