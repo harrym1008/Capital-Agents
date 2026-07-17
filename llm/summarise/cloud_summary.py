@@ -9,7 +9,7 @@ from openai import OpenAI
 from llm.llm_client import BaseLLMClient, ResponsePrintMode
 from collectors.rate_limiter import RateLimiter
 
-from llm.summarise.local_summary_server import SummaryType, SYSTEM_PROMPTS
+from llm.summarise.local_summary import SummaryType, SYSTEM_PROMPTS
 
 
 SUMMARY_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
