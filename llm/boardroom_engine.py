@@ -33,8 +33,15 @@ class BoardroomEngine:
         if not self.allowParallel:
             return [task() for task in tasks]
         
+        from ui.ui_hooks import getCurrentStage, setCurrentStage
+        currentStageNum = getCurrentStage()
+        
+        def wrappedTask(task):
+            setCurrentStage(currentStageNum)
+            return task()
+
         with ThreadPoolExecutor() as executor:
-            futures = [executor.submit(task) for task in tasks]
+            futures = [executor.submit(wrappedTask, task) for task in tasks]
             return [future.result() for future in futures]
 
 

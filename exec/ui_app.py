@@ -55,7 +55,7 @@ def runSimulationThread(clientType, model, ticker, fastMode, allowParallel):
         elapsed = endTime - startTime
         mins = int(elapsed // 60)
         secs = elapsed % 60
-        totalTimeStr = f"{mins} mins {secs:.1f} secs"
+        totalTimeStr = f"{mins} mins {secs:.3f} secs"
         
         # Notify completion
         emitEvent("simComplete", {"totalTime": totalTimeStr})

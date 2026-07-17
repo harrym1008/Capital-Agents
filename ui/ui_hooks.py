@@ -1,6 +1,6 @@
 import threading
 
-# Thread-local storage to track the active agent role and color in multi-threaded runs
+# Thread-local storage to track the active agent role, color, and stage number in multi-threaded runs
 _local = threading.local()
 
 # Global callback function registered by the web UI server
@@ -26,6 +26,12 @@ def setAgentPhase(phase):
 def getAgentPhase():
     return getattr(_local, "phase", "raw")
 
+def setCurrentStage(stageNum):
+    _local.stageNum = stageNum
+
+def getCurrentStage():
+    return getattr(_local, "stageNum", 0)
+
 def emitEvent(eventType, data=None):
     global eventCallback
     if eventCallback:
@@ -35,6 +41,7 @@ def emitEvent(eventType, data=None):
             "agentRole": agentInfo["role"],
             "agentColor": agentInfo["color"],
             "phase": getAgentPhase(),
+            "stageNum": getCurrentStage(),
             "threadId": threading.get_ident()
         }
         if data:
