@@ -1,5 +1,8 @@
 from enum import Enum
 
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 LLAMACPP_PORT = 9081
 LLAMACPP_SUMMARY_PORT = 9082
@@ -9,7 +12,7 @@ LLAMACPP_EXECUTABLE = "llama-server.exe"
 # SUMMARISE_THINK_BUDGET = 512
 THINKING_BUDGET_MESSAGE = "... my thinking allowance has been exhausted. I shall now produce my final response.\n"
 
-MODELS_FOLDER = "I:\\LLM\\"
+MODELS_FOLDER = os.getenv("BASE_LLM_DIRECTORY") or "I:\\LLM\\"
 
 
 class LlamaCppModel(Enum):
@@ -26,6 +29,8 @@ class LlamaCppModel(Enum):
     QWEN_35_9B = "Qwen-3.5-9B"
     QWEN_35_2B = "Qwen-3.5-2B"
     QWEN_35_800M = "Qwen-3.5-0.8B"
+    
+    QWEN_3_1700M = "Qwen-3-1.7B"
 
     MINICPM5_1B = "MiniCPM5-1B"
     LFM25_8B_A1B = "LFM-2.5-8B-A1B"
@@ -150,7 +155,7 @@ LLAMACPP_MODEL_TO_ARGS = {
     },
 
     LlamaCppModel.GEMMA_4_E2B_CPU: {
-        "-m":               f"{MODELS_FOLDER}Gemma4\\gemma-4-E2B-it-qat-UD-Q4_K_XL.gguf",
+        "-m":               f"{MODELS_FOLDER}Gemma4\\gemma-4-E2B-it-qat-UD-Q2_K_XL.gguf",
         "--port":           str(LLAMACPP_PORT),
         "--host":           "127.0.0.1",
         "--temp":           "0.5",
@@ -368,7 +373,7 @@ LLAMACPP_MODEL_TO_ARGS = {
     },
 
     LlamaCppModel.QWEN_35_2B: {
-        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3.5-0.8B-MTP-Q8_0.gguf",
+        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3.5-2B-MTP-UD-Q8_K_XL.gguf",
         "--port":           str(LLAMACPP_PORT),
         "--host":           "127.0.0.1",
         "--temp":           "0.6",
@@ -431,6 +436,33 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
+    LlamaCppModel.QWEN_3_1700M: {
+        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3-1.7B-Q4_K_M.gguf",
+        "--port":           str(LLAMACPP_PORT),
+        "--host":           "127.0.0.1",
+        "--temp":           "0.6",
+        "--top-p":          "0.95",
+        "--top-k":          "20",
+        "--min-p":          "0.0",
+        "--presence-penalty": "1.6",
+        "--flash-attn":     "on",
+        "--cache-type-k":   "q8_0",
+        "--cache-type-v":   "q8_0",
+        "--no-mmap":        _,
+        "--metrics":        _,
+        # "-b":               "8192",
+        # "-ub":              "2048",
+        "--jinja":          _,
+        "-np":              "2",
+        "--kv-offload":     _,
+        "--cache-ram":      "4096",
+        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
+        "--mlock":          _,
+        "--reasoning":      "on",
+        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
+    },
+
 
 #  ==============================================================
 
@@ -447,11 +479,11 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--cache-type-v":   "q8_0",
         "--no-mmap":        _,
         "--jinja":          _,
-        "-np":              "4",
+        "-np":              "5",
         "--kv-offload":     _,
         "--cache-ram":      "512",
-        "--ctx-size":       "32768",    # Each slot gets 8192 tokens to work with (likely enough)
-        "-ngl":             "99",
+        "--ctx-size":       "30600",    # Each slot gets 6120 tokens to work with... if this is not enough,
+        "-ngl":             "99",       # the model will split the large text into smaller chunks and summarise them in multiple iterations 
         "--mlock":          _,
         "--reasoning":      "on",
         "--reasoning-budget-message":   "OK, I am out of thinking budget. Time to produce the summary."

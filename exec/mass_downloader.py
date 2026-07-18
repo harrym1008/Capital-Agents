@@ -109,6 +109,7 @@ if __name__ == "__main__":
 
             for future in concurrent.futures.as_completed(futures):
                 name = futures[future]
+                pbars[name].close()
                 try:
                     future.result()
                     tqdm.write(f"Completed downloading: {downloading[name]['desc']}\n")

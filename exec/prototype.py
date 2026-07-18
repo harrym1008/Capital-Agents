@@ -34,8 +34,14 @@ class LLMClientType(Enum):
     OpenRouter = 2
 
 
-def runBoardroom(llmClientType: LLMClientType, model: str | LlamaCppModel, tickerToEval: str, 
-                 fastMode: bool = True, allowParallel: bool = True):
+def runBoardroom(
+        llmClientType: LLMClientType, 
+        model: str | LlamaCppModel, 
+        tickerToEval: str, 
+        fastMode: bool = True, 
+        allowParallel: bool = True, 
+        summaryHasOwnLocalServer: bool = True
+    ):
     boardroomClient: BaseLLMClient
     summaryClient: BaseLLMClient
 
@@ -43,11 +49,15 @@ def runBoardroom(llmClientType: LLMClientType, model: str | LlamaCppModel, ticke
         killExistingLlamaCppProcesses()
         rudimentaryVramClear()
         
-        summaryClient = LlamaCppSummaryClient()
+        if summaryHasOwnLocalServer:
+            summaryClient = LlamaCppSummaryClient()
+        else:
+            summaryClient = None
 
-        argOverrides = []
+        argOverrides = {}
         if not allowParallel:
-            argOverrides += {"-np": "1", "--ctx-size": "65536"}
+            argOverrides["-np"] = "1"
+            argOverrides["--ctx_size"] = "65536"
 
         serverProcess = LlamaCppProcessInitiator(
             serverName="boardroom", 
@@ -83,14 +93,21 @@ def runBoardroom(llmClientType: LLMClientType, model: str | LlamaCppModel, ticke
     print(f"\nTotal time taken for boardroom evaluation: {math.floor(seconds/60)} mins {seconds%60:.1f} secs")
 
     if llmClientType == LLMClientType.LlamaCpp:
-        time.sleep(2)
+        time.sleep(0.5)
+        if summaryClient:
+            summaryClient.stop()
         serverProcess.stop()
-        summaryClient.stop()
 
 
 if __name__ == "__main__":
-    runBoardroom(llmClientType=LLMClientType.LlamaCpp, model=LlamaCppModel.GEMMA_4_12B, tickerToEval="NVDA", 
-                 fastMode=False, allowParallel=True)
+    runBoardroom(
+        llmClientType=LLMClientType.LlamaCpp, 
+        model=LlamaCppModel.GEMMA_4_12B, 
+        tickerToEval="NVDA",
+        fastMode=False, 
+        allowParallel=True,
+        summaryHasOwnLocalServer=(os.getenv("HIGH_MEMORY", "false") == "true")
+    ) 
     
 
 

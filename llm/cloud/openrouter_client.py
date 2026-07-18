@@ -27,13 +27,21 @@ class OpenRouterClient(BaseLLMClient):
     def _getExtraBody(self, thinkingBudget: Optional[int] = None):
         extraBody = {}
         if thinkingBudget is not None:
-            extraBody = {
-                "reasoning": {
-                    "enabled": True,
-                    "max_tokens": thinkingBudget,
-                    "exclude_from_response": False
+            if thinkingBudget == 0:
+                extraBody = {
+                    "reasoning": {
+                        "enabled": False
+                    }
                 }
-            }
+            else:
+                effort = "low" if thinkingBudget < 512 else ("medium" if thinkingBudget < 2048 else "high")
+                extraBody = {
+                    "reasoning": {
+                        "enabled": True,
+                        "max_tokens": thinkingBudget,
+                        # "effort": effort
+                    }
+                }
         
         return extraBody    
 

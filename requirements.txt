@@ -17,7 +17,7 @@ cycler==0.12.1
 defusedxml==0.7.1
 distro==1.9.0
 dotenv==0.9.9
-duckdb
+duckdb==1.5.4
 edgartools==5.36.0
 et_xmlfile==2.0.0
 exchange_calendars==4.13.2
@@ -80,6 +80,9 @@ pydantic_core==2.46.4
 Pygments==2.20.0
 pyluach==2.3.0
 pyparsing==3.3.2
+PyQt6==6.11.0
+PyQt6-Qt6==6.11.1
+PyQt6_sip==13.11.1
 pyrate-limiter==4.4.0
 python-calamine==0.6.2
 python-dateutil==2.9.0.post0
@@ -104,9 +107,6 @@ tenacity==9.1.4
 textdistance==4.6.3
 threadpoolctl==3.6.0
 toolz==1.1.0
-# torch==2.12.1+cu130
-# torchaudio==2.11.0+cu130
-# torchvision==0.27.1+cu130
 tqdm==4.67.3
 truststore==0.10.4
 typing-inspection==0.4.2

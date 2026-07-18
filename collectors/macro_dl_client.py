@@ -13,11 +13,21 @@ from collectors.constants import MACRO_DIRECTORY
 
 
 YFINANCE_MACRO_TICKERS = {
-    "SPY": {
-        "desc": "SPDR S&P 500 ETF Trust - Maps to S&P 500 index"
+    "SP500": {
+        "desc": "S&P 500 Index",
+        "yfticker": "^GSPC"
     },
-    "QQQ": {
-        "desc": "Invesco QQQ Trust - Maps to NASDAQ 100 index"
+    "NDQ100": {
+        "desc": "NASDAQ 100 Index",
+        "yfticker": "^NDX"
+    },
+    "DJIA": {
+        "desc": "Dow Jones Industrial Average",
+        "yfticker": "^DJI"
+    },
+    "RUS2000": {
+        "desc": "Russell 2000 Index",
+        "yfticker": "^RUT"
     },
     "VIX": {
         "desc": "CBOE Volatility Index",

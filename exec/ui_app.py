@@ -13,6 +13,9 @@ import time
 from flask import Flask, render_template
 import websockets
 
+from dotenv import load_dotenv
+load_dotenv()
+
 UI_PORT = 9091
 WS_PORT = 9092
 
@@ -49,7 +52,8 @@ def runSimulationThread(clientType, model, ticker, fastMode, allowParallel):
             model=model,
             tickerToEval=ticker,
             fastMode=fastMode,
-            allowParallel=allowParallel
+            allowParallel=allowParallel,
+            summaryHasOwnLocalServer=(os.getenv("HIGH_MEMORY", "false") == "true")
         )
         endTime = time.time()
         elapsed = endTime - startTime

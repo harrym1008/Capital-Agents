@@ -4,16 +4,17 @@ import pyarrow.parquet as pq
 
 from collectors.constants import NYSE_DIRECTORY, NASDAQ_DIRECTORY, ALL_TICKERS_FILE, CORP_ACTIONS_OUTPUT, NEW_YORK, UTC
 from dataquery.lru_cache import LRUCache
-from dataquery.ticker_manager import TickerDataProvider, CompanyProfile
+from dataquery.ticker_provider import TickerDataProvider, CompanyProfile
 
 
 class DailyPriceProvider:
-    def __init__(self, startDate: pd.Timestamp, endDate: pd.Timestamp, tickerDataProvider: TickerDataProvider, 
-                 cache=None, cacheSize=1024**3):
+    def __init__(self, startDate: pd.Timestamp, endDate: pd.Timestamp, tickerDataProvider: TickerDataProvider, cache: LRUCache):
+        self.cache = cache
+
         self.startDate = startDate
         self.endDate = endDate
+
         self.tickerDataProvider = tickerDataProvider
-        self.cache = LRUCache(cacheSize) if cache is None else cache
         self.tickersPaths = self.buildTickerPathIndex()
 
 
@@ -89,7 +90,7 @@ class DailyPriceProvider:
         
 
     def getYear(self, ticker, year):
-        key = f"{ticker}_{year}"
+        key = f"ohlcv|{ticker}_{year}"
         cached = self.cache.get(key)
         if cached is not None:
             return cached
@@ -138,7 +139,7 @@ class DailyPriceProvider:
 
 
     def getYearCorporateActions(self, year):
-        key = f"corpActions_{year}"
+        key = f"corpActions|{year}"
         cached = self.cache.get(key)
         if cached is not None:
             return cached

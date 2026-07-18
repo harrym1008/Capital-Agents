@@ -4,10 +4,10 @@ from datetime import timedelta
 import pandas as pd
 import math
 
-from dataquery.price_manager import DailyPriceProvider
+from dataquery.price_provider import DailyPriceProvider
 from collectors.market_calendar import MarketCalendar 
 from collectors.constants import NEW_YORK
-from dataquery.ticker_manager import TickerDataProvider
+from dataquery.ticker_provider import TickerDataProvider
 from simulation.orders import Order, MarketOrder, LimitOrder, StopOrder, StopLimitOrder, OrderSide, OrderStatus
 from simulation.portfolio import Position, Dividend, Portfolio
 

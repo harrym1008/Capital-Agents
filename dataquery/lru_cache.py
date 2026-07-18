@@ -50,3 +50,12 @@ class LRUCache:
 
             self.entries[key] = CacheEntry(df=df, size=sizeBytes, lastAccess=now)
             self.currentSizeBytes += sizeBytes
+
+
+    def getCacheUsage(self):
+        with self.lock:
+            return self.currentSizeBytes, self.maxSizeBytes
+        
+    def getCacheUsagePercent(self):
+        usage, max = self.getCacheUsage()
+        return (usage / max) * 100 if max > 0 else 0

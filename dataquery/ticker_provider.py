@@ -2,8 +2,7 @@ import os
 import pandas as pd
 from dataclasses import dataclass
 
-from collectors.constants import NYSE_DIRECTORY, NASDAQ_DIRECTORY, ALL_TICKERS_FILE, CORP_ACTIONS_OUTPUT, NEW_YORK, UTC
-from dataquery.lru_cache import LRUCache
+from collectors.constants import ALL_TICKERS_FILE, NEW_YORK
 
 
 @dataclass
@@ -24,7 +23,6 @@ class CompanyProfile:
 
     cik: str
     isin: str
-
 
 
 
