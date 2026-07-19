@@ -996,7 +996,10 @@
 
             // Collapse any tool call blocks in this pane's feed
             const toolBlocks = pane.feed.querySelectorAll(`.collapsible-block[data-type="tools"]`);
-            toolBlocks.forEach(tb => tb.classList.add("collapsed"));
+            toolBlocks.forEach(tb => {
+                tb.classList.add("collapsed");
+                tb.setAttribute("data-type", "tools-completed");
+            });
 
             const block = document.createElement("div");
             block.className = "collapsible-block";
@@ -1024,8 +1027,12 @@
                 active.rawText = (active.rawText || "") + token;
                 active.element.innerHTML = parseMarkdown(active.rawText);
                 
-                // Unconditionally keep the thinking box scrolled to its bottom
-                active.element.scrollTop = active.element.scrollHeight;
+                // Check if the user is scrolled near the bottom of the thinking block before snapping it
+                const el = active.element;
+                const isNearBottomEl = (el.scrollHeight - el.clientHeight - el.scrollTop) < 60;
+                if (isNearBottomEl) {
+                    el.scrollTop = el.scrollHeight;
+                }
                 
                 const feed = activeAgentPanes[compoundKey].feed;
                 scrollFeedToBottom(feed);
@@ -1038,7 +1045,10 @@
 
             // Collapse any tool call blocks in this pane's feed
             const toolBlocks = pane.feed.querySelectorAll(`.collapsible-block[data-type="tools"]`);
-            toolBlocks.forEach(tb => tb.classList.add("collapsed"));
+            toolBlocks.forEach(tb => {
+                tb.classList.add("collapsed");
+                tb.setAttribute("data-type", "tools-completed");
+            });
 
             if (phase === "summary") {
                 const config = agentConfigs[agentRole] || { class: "cyan" };

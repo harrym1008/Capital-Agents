@@ -409,6 +409,7 @@ def boardroomGenerator(simulatedDate: str, clientDuo: ClientDuo):
                 toolMap["fetchStockPricePerformance"],
                 toolMap["fetchAnalystConsensus"],
                 toolMap["fetchCompanyRecentNews"],
+                toolMap["calculatePctChangeFromCurrStockPrice"],
                 toolMap["executePythonCalculation"]
             ],
             color=ANSI.GREEN
@@ -428,6 +429,7 @@ def boardroomGenerator(simulatedDate: str, clientDuo: ClientDuo):
                 toolMap["fetchStockPricePerformance"],
                 toolMap["fetchAnalystConsensus"],
                 toolMap["fetchCompanyRecentNews"],
+                toolMap["calculatePctChangeFromCurrStockPrice"],
                 toolMap["executePythonCalculation"]
             ],
             color=ANSI.RED
@@ -446,6 +448,7 @@ def boardroomGenerator(simulatedDate: str, clientDuo: ClientDuo):
                 toolMap["fetchStockPricePerformance"],
                 toolMap["fetchAnalystConsensus"],
                 toolMap["fetchCompanyRecentNews"],
+                toolMap["calculatePctChangeFromCurrStockPrice"],
                 toolMap["executePythonCalculation"]
             ],
             color=ANSI.YELLOW
@@ -464,6 +467,7 @@ def boardroomGenerator(simulatedDate: str, clientDuo: ClientDuo):
                 toolMap["fetchStockPricePerformance"],
                 toolMap["fetchAnalystConsensus"],
                 toolMap["fetchCompanyRecentNews"],
+                toolMap["calculatePctChangeFromCurrStockPrice"],
                 toolMap["executePythonCalculation"]
             ],
             color=ANSI.BLUE
@@ -477,6 +481,7 @@ def boardroomGenerator(simulatedDate: str, clientDuo: ClientDuo):
             tools=[
                 toolMap["fetchCompanyProfile"],
                 toolMap["executePythonCalculation"],
+                toolMap["calculatePctChangeFromCurrStockPrice"],
                 toolMap["confirmBoardroomDecision"]
             ],
             color=ANSI.MAGENTA

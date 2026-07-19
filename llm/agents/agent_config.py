@@ -108,8 +108,9 @@ def buildUIFormatSysPrompt(config: FinancialAgentConfig) -> str:
         f"- NEVER use LaTeX formatting, you are permitted to use standard mathematical notation however ($96.05, 5.61%, '4 + 6 = 10', etc.).\n"
         f"- Highlight the key metrics directly inside your text using inline bolding.\n"
         f"- {agentSpecificPrompt}"
-        f"... they must be on their own final line, no other text should be on the same line as these keys."
-        f"If these metrics do not exist (like inside Phase 3), you can remove them. If none of them appear, remove the whole final line. \n"
+        f"... these metrics must be on their own final *SINGLE* line in the exact order."
+        f"- IMPORTANT: IF THESE METRICS ARE NOT PRESENT, *OMIT* the final metrics line. "
+        f"Do not invent or hallucinate any metrics, only include what is present in the raw internal analysis.\n"
 
         f"\nYou are permitted minimal thinking time, so layout your final response and then produce it immediately. Do not overthink.\n"
 
@@ -165,8 +166,10 @@ bullishAnalystPersona = (
     "\n\nYOUR ROLE IN THE BOARDROOM LIFECYCLE:\n"
 
     "- Phase 2 (Specialist Research): You should fetch comprehensive profiles, key metrics, financial reports etc. via your tools. "
-    "You must present your analysis in clean narrative paragraphs. You must output a financial health/growth summary, "
-    "your core bullish investment thesis, preliminary 12-month and 36-month price targets, and an explicit BUY/HOLD/SELL rating "
+    "You must present your analysis in clean narrative paragraphs. You *MUST* use the 'fetchStockPricePerformance' tool, to ascertain "
+    "the current value of the company in order to produce preliminary 12-month and 36-month price targets. "
+    "You must output a financial health/growth summary, your core bullish investment thesis, "
+    "preliminary 12-month and 36-month price targets, and an explicit BUY/HOLD/SELL rating "
     "and weight category (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT).\n"
 
     "- Phase 4 (Analyst Defense): When challenged by the Conservative Risk Analyst, defend your analysis, thesis, price targets and rating. "
@@ -255,11 +258,16 @@ portfolioManagerPersona = (
     "against solvency risks. You must present your final executive decision in clean, highly professional narrative paragraphs and include "
     "a definitive investment rating (BUY, HOLD, or SELL), a definitive portfolio weight allocation category (OVERWEIGHT, EQUAL-WEIGHT, or UNDERWEIGHT), "
     "and two precise 12-month and 36-month numerical price targets based on expected value scenarios."
+    "You must verify your price targets using the 'calculatePctChangeFromCurrStockPrice' tool to ensure the logic "
+    "that led to them is consistent with the current stock price. "
     "**DO NOT CALL** THE 'confirmBoardroomDecision' TOOL during Phase 6, only report and produce your final response.\n"
 
-    "- Phase 7 (Decision Upload): The only requirement during phase 7 is to call the 'confirmBoardroomDecision' tool with your "
+    "- Phase 7 (Decision Upload): Your main requirements for phase 7 is to call the 'confirmBoardroomDecision' tool with your "
     "final decision, weight allocation, and price targets produced during Phase 6. This will be used to log your final decision and present in the UI dashboard. "
-    "There should be no additional reasoning, analysis or outputted response. The ONLY requirement is the tool call with the decision you just produced."
+    "Do not produce additional reasoning or analysis, call the tool only with your final decision. After this, justify your final decision "
+    "citing your earlier, own reasoning and the analysts' arguments. "
+    "You may also provide a brief summary of the macroeconomic conditions and market regime, but do not rethink or adapt the decision. "
+    "Your goal is to just recite what you have already decided and justify it, not to change it.\n"
 
     "\n\nAT ALL TIMES:\n"
     "- You must maintain a disciplined approach to your analysis and avoid emotional decision-making. "

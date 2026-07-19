@@ -641,6 +641,32 @@ def fetchCompanyRecentNews(tool: Tool, ticker: str, limit: int = 6) -> List[Dict
         return [{"error": f"An error occurred while fetching company news for {ticker}: {str(e)}"}]
     
 
+def calculatePctChangeFromCurrStockPrice(tool: Tool, ticker: str, targetPrice: float) -> Dict[str, Any]:
+    try:
+        tickerObj = yf.Ticker(ticker.upper())
+        tickerInfo = tickerObj.info
+        currentPrice = (
+            tickerInfo.get("postMarketPrice")
+            or tickerInfo.get("preMarketPrice")
+            or tickerInfo.get("regularMarketPrice")
+        )
+
+        if currentPrice is None:
+            return {"error": f"Could not retrieve current price for {ticker}."}
+
+        percentChange = ((targetPrice - currentPrice) / currentPrice) * 100
+
+        result = {
+            "ticker": ticker.upper(),
+            "currentPrice": cleanNumber(currentPrice, NumberType.STOCK_PRICE),
+            "targetPrice": cleanNumber(targetPrice, NumberType.STOCK_PRICE),
+            "percentChange": cleanNumber(percentChange, NumberType.PERCENTAGE_CHANGE)
+        }
+        return cleanData(result)
+    except Exception as e:
+        return {"error": f"An error occurred while calculating percent change for {ticker}: {str(e)}"}
+
+
 
 def executePythonCalculation(tool: Tool, code: str) -> Any:
     oldStdout = sys.stdout
@@ -992,6 +1018,25 @@ def buildToolsRegistry() -> List[Tool]:
             toolName="fetchCompanyRecentNews",
             toolDescription="Fetch the latest news headlines and article content (if available) for a given stock ticker.",
             parameterSchema=tickerNewsSchema
+        ),
+        Tool(
+            toolFunction=calculatePctChangeFromCurrStockPrice,
+            toolName="calculatePctChangeFromCurrStockPrice",
+            toolDescription="Calculate the percentage change from the current stock price of a ticker to a specified target price.",
+            parameterSchema={
+                "type": "object",
+                "properties": {
+                    "ticker": {
+                        "type": "string",
+                        "description": "The stock ticker symbol."
+                    },
+                    "targetPrice": {
+                        "type": "number",
+                        "description": "The target stock price to compare against the current price."
+                    }
+                },
+                "required": ["ticker", "targetPrice"]
+            }
         ),
         Tool(
             toolFunction=executePythonCalculation,
