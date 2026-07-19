@@ -145,9 +145,17 @@ class BaseLLMClient(ABC):
                             else:
                                 self._safePrint(funcDelta.name, end="", flush=True)
                             currentCall["function"]["name"] += funcDelta.name
+                            emitEvent("toolCallStreamStart", {
+                                "index": index,
+                                "toolName": currentCall["function"]["name"]
+                            })
                         if getattr(funcDelta, "arguments", None):
                             self._safePrint(funcDelta.arguments, end="", flush=True)
                             currentCall["function"]["arguments"] += funcDelta.arguments
+                            emitEvent("toolCallStreamToken", {
+                                "index": index,
+                                "token": funcDelta.arguments
+                            })
 
         # Close active streaming states at the end of the response stream
         from ui.ui_hooks import emitEvent
@@ -168,7 +176,7 @@ class BaseLLMClient(ABC):
         return fullContent, fullReasoning, toolCallsList
 
 
-    def executeSingleToolCall(self, currentToolCall, toolMap, agentRole=None, agentColor=None, stageNum=0):
+    def executeSingleToolCall(self, currentToolCall, toolMap, agentRole=None, agentColor=None, stageNum=0, toolIndex=0):
         if agentRole:
             from ui.ui_hooks import setCurrentAgent, setCurrentStage
             setCurrentAgent(agentRole, agentColor)
@@ -182,7 +190,8 @@ class BaseLLMClient(ABC):
         emitEvent("toolCallStart", {
             "toolName": funcName,
             "args": funcArgsString,
-            "callId": callId
+            "callId": callId,
+            "toolIndex": toolIndex
         })
 
         stdoutOutput = ""
@@ -244,7 +253,8 @@ class BaseLLMClient(ABC):
             "status": status,
             "result": stringResult,
             "stdout": stdoutOutput,
-            "variables": variablesOutput
+            "variables": variablesOutput,
+            "toolIndex": toolIndex
         })
 
         return callId, stringResult, status
@@ -310,7 +320,7 @@ class BaseLLMClient(ABC):
 
             resultsByIndex = [None] * len(toolCallsList)
             with ThreadPoolExecutor(max_workers=len(toolCallsList)) as executor:
-                futureToIndex =  {executor.submit(self.executeSingleToolCall, call, toolMap, agentRole, agentColor, currentStageNum): idx 
+                futureToIndex =  {executor.submit(self.executeSingleToolCall, call, toolMap, agentRole, agentColor, currentStageNum, idx): idx 
                                   for idx, call in enumerate(toolCallsList)}
                 for future in as_completed(futureToIndex):
                     idx = futureToIndex[future]

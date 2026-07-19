@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CapitalAgents Boardroom Dashboard</title>
+    <title>CapitalAgents Boardroom</title>
     <style>
         * {
             box-sizing: border-box;
@@ -483,7 +483,7 @@
 <body>
 
     <header>
-        <h1>CapitalAgents Boardroom Simulation</h1>
+        <h1>CapitalAgents Boardroom - Single Equity Rating</h1>
         <button id="connectionStatus" onclick="toggleSidebar()" style="background-color: #ef4444; color: #ffffff; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; transition: background-color 0.2s; user-select: none;">Summaries (Disconnected)</button>
     </header>
 
@@ -521,6 +521,7 @@
                 <option value="QWEN_35_2B">QWEN_35_2B</option>
                 <option value="QWEN_35_800M">QWEN_35_800M</option>
                 <option value="QWEN_3_1700M">QWEN_3_1700M</option>
+                <option value="QWEN_3_600M">QWEN_3_600M</option>
                 <option value="MINICPM5_1B">MINICPM5_1B</option>
                 <option value="LFM25_8B_A1B">LFM25_8B_A1B</option>
                 <option value="GPT_OSS_20B">GPT_OSS_20B</option>
@@ -742,11 +743,19 @@
                     endCurrentBlock(activeStage, agentRole);
                     break;
 
+                case "toolCallStreamStart":
+                    startToolCallStream(activeStage, agentRole, payload.index, payload.toolName);
+                    break;
+
+                case "toolCallStreamToken":
+                    appendToolCallStreamToken(activeStage, agentRole, payload.index, payload.token);
+                    break;
+
                 case "toolCallStart":
                     if (payload.toolName === "confirmBoardroomDecision") {
                         updateUploadReceipt(payload.args, "UPLOADING");
                     } else {
-                        startToolBlock(activeStage, agentRole, payload.toolName, payload.args, payload.callId);
+                        startToolBlock(activeStage, agentRole, payload.toolName, payload.args, payload.callId, payload.toolIndex);
                     }
                     break;
 
@@ -754,7 +763,7 @@
                     if (payload.toolName === "confirmBoardroomDecision") {
                         updateUploadReceipt(payload.result, payload.status === "success" ? "UPLOADED" : "FAILED");
                     } else {
-                        endToolBlock(activeStage, agentRole, payload.toolName, payload.callId, payload.status, payload.result, payload.stdout, payload.variables);
+                        endToolBlock(activeStage, agentRole, payload.toolName, payload.callId, payload.status, payload.result, payload.stdout, payload.variables, payload.toolIndex);
                     }
                     break;
 
@@ -1200,13 +1209,169 @@
             }
         }
 
-        function startToolBlock(stageNum, agentRole, toolName, args, callId) {
+        let streamingArgs = {};
+
+        // Helper to try pretty formatting a JSON string (with indents)
+        function tryFormatJson(str) {
+            try {
+                const trimmed = String(str).trim();
+                if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || 
+                    (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+                    const parsed = JSON.parse(trimmed);
+                    return JSON.stringify(parsed, null, 2);
+                }
+            } catch (e) {}
+            return str;
+        }
+
+        // Regex to extract value of "code" property from partial JSON string
+        function extractPartialCode(rawJson) {
+            const match = rawJson.match(/"code"\s*:\s*"((?:[^"\\]|\\.)*)/);
+            if (match) {
+                // Unescape basic characters (\n, \", \\)
+                return match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+            }
+            return rawJson;
+        }
+
+        function startToolCallStream(stageNum, agentRole, index, toolName) {
             const pane = getOrCreateAgentPane(stageNum, agentRole);
             const compoundKey = `${stageNum}_${agentRole}`;
+            const streamId = `streamToolCall-${stageNum}-${index}`;
 
-            const toolBlock = document.createElement("div");
-            toolBlock.className = "collapsible-block tool-call-block";
+            let toolBlock = document.getElementById(streamId);
+            if (!toolBlock) {
+                // Collapse any active tool call blocks in this pane's feed
+                const toolBlocks = pane.feed.querySelectorAll(`.tool-call-block`);
+                toolBlocks.forEach(tb => tb.classList.add("collapsed"));
+
+                toolBlock = document.createElement("div");
+                toolBlock.className = "collapsible-block tool-call-block";
+                toolBlock.id = streamId;
+
+                const header = document.createElement("div");
+                header.className = "collapsible-header tool-call-header";
+                header.onclick = () => toolBlock.classList.toggle("collapsed");
+
+                const label = document.createElement("span");
+                label.className = "tool-call-label";
+                label.innerHTML = `Tool: <strong class="tool-call-name">${toolName}</strong>`;
+                header.appendChild(label);
+
+                const badge = document.createElement("span");
+                badge.className = "tool-status-badge status-running";
+                badge.innerText = "generating";
+                header.appendChild(badge);
+
+                const argsPreview = document.createElement("span");
+                argsPreview.className = "tool-call-args-preview";
+                header.appendChild(argsPreview);
+
+                const content = document.createElement("div");
+                content.className = "collapsible-content tool-call-content";
+
+                const sectionTitle = document.createElement("div");
+                sectionTitle.className = "tool-section-title";
+                sectionTitle.style.fontWeight = "bold";
+                sectionTitle.style.fontSize = "12px";
+                sectionTitle.style.color = "#475569";
+                sectionTitle.style.marginBottom = "4px";
+                sectionTitle.innerText = toolName === "executePythonCalculation" ? "Python Code:" : "Arguments:";
+                content.appendChild(sectionTitle);
+
+                const pre = document.createElement("pre");
+                pre.className = "tool-stream-pre";
+                pre.style.margin = "0";
+                if (toolName === "executePythonCalculation") {
+                    pre.style.backgroundColor = "#0f172a";
+                    pre.style.color = "#38bdf8";
+                    pre.style.padding = "10px";
+                } else {
+                    pre.style.backgroundColor = "#f1f5f9";
+                    pre.style.color = "#0f172a";
+                    pre.style.padding = "8px";
+                }
+                pre.style.borderRadius = "4px";
+                pre.style.fontFamily = "monospace";
+                pre.style.fontSize = "12px";
+                pre.style.overflowX = "auto";
+                pre.style.whiteSpace = "pre-wrap";
+                content.appendChild(pre);
+
+                toolBlock.appendChild(header);
+                toolBlock.appendChild(content);
+                pane.feed.appendChild(toolBlock);
+
+                pane.feed.scrollTop = pane.feed.scrollHeight;
+                activeBlocks[compoundKey] = { type: 'tool', element: content, block: toolBlock };
+            } else {
+                // Just update the name
+                const label = toolBlock.querySelector(".tool-call-name");
+                if (label) label.innerText = toolName;
+            }
+        }
+
+        function appendToolCallStreamToken(stageNum, agentRole, index, token) {
+            const streamId = `streamToolCall-${stageNum}-${index}`;
+            const key = `${stageNum}_${index}`;
+            
+            streamingArgs[key] = (streamingArgs[key] || "") + token;
+            const raw = streamingArgs[key];
+
+            const toolBlock = document.getElementById(streamId);
+            if (toolBlock) {
+                const nameEl = toolBlock.querySelector(".tool-call-name");
+                const toolName = nameEl ? nameEl.innerText : "";
+
+                // Update uncollapsed header preview
+                const argsPreview = toolBlock.querySelector(".tool-call-args-preview");
+                if (argsPreview) {
+                    if (toolName === "executePythonCalculation") {
+                        argsPreview.innerText = ""; // Hide preview
+                    } else {
+                        argsPreview.innerText = `Arguments: ${raw.trim()}`;
+                    }
+                }
+
+                // Update pre element
+                const pre = toolBlock.querySelector(".tool-stream-pre");
+                if (pre) {
+                    if (toolName === "executePythonCalculation") {
+                        pre.innerText = extractPartialCode(raw);
+                    } else {
+                        pre.innerText = raw.trim();
+                    }
+                }
+
+                const compoundKey = `${stageNum}_${agentRole}`;
+                if (activeAgentPanes[compoundKey]) {
+                    const feed = activeAgentPanes[compoundKey].feed;
+                    scrollFeedToBottom(feed);
+                }
+            }
+        }
+
+        function startToolBlock(stageNum, agentRole, toolName, args, callId, toolIndex) {
+            const pane = getOrCreateAgentPane(stageNum, agentRole);
+            const compoundKey = `${stageNum}_${agentRole}`;
+            const streamId = `streamToolCall-${stageNum}-${toolIndex}`;
+
+            let toolBlock = document.getElementById(streamId);
+            if (!toolBlock) {
+                // Collapse any active tool call blocks
+                const toolBlocks = pane.feed.querySelectorAll(`.tool-call-block`);
+                toolBlocks.forEach(tb => tb.classList.add("collapsed"));
+
+                toolBlock = document.createElement("div");
+                toolBlock.className = "collapsible-block tool-call-block";
+                pane.feed.appendChild(toolBlock);
+            }
+
+            // Bind the actual callId to the block ID
             toolBlock.id = `toolCall-${stageNum}-${callId}`;
+
+            // Re-render header and content with final pretty-formatted json/code
+            toolBlock.innerHTML = "";
 
             const header = document.createElement("div");
             header.className = "collapsible-header tool-call-header";
@@ -1223,6 +1388,8 @@
             header.appendChild(badge);
 
             const trimmedArgs = String(args).trim();
+            const prettyArgs = tryFormatJson(trimmedArgs);
+
             const argsPreview = document.createElement("span");
             argsPreview.className = "tool-call-args-preview";
             if (toolName === "executePythonCalculation") {
@@ -1235,7 +1402,6 @@
             const content = document.createElement("div");
             content.className = "collapsible-content tool-call-content";
 
-            // If it is python tool, preview the code nicely in monospace in the expanded content area
             if (toolName === "executePythonCalculation") {
                 let codeVal = "";
                 try {
@@ -1250,23 +1416,21 @@
                                      <pre style="margin: 0; background-color: #0f172a; color: #38bdf8; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; overflow-x: auto; white-space: pre-wrap;">${codeVal}</pre>`;
                 content.appendChild(codeDiv);
             } else {
-                // If it is another tool, show full arguments in the content area too
                 const argsDiv = document.createElement("div");
                 argsDiv.style.marginBottom = "10px";
                 argsDiv.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: #475569; margin-bottom: 4px;">Arguments:</div>
-                                     <pre style="margin: 0; background-color: #f1f5f9; padding: 8px; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; color: #0f172a;">${trimmedArgs}</pre>`;
+                                     <pre style="margin: 0; background-color: #f1f5f9; padding: 8px; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; color: #0f172a;">${prettyArgs}</pre>`;
                 content.appendChild(argsDiv);
             }
 
             toolBlock.appendChild(header);
             toolBlock.appendChild(content);
-            pane.feed.appendChild(toolBlock);
 
             pane.feed.scrollTop = pane.feed.scrollHeight;
             activeBlocks[compoundKey] = { type: 'tool', element: content, block: toolBlock };
         }
 
-        function endToolBlock(stageNum, agentRole, toolName, callId, status, result, stdout, variables) {
+        function endToolBlock(stageNum, agentRole, toolName, callId, status, result, stdout, variables, toolIndex) {
             const toolBlock = document.getElementById(`toolCall-${stageNum}-${callId}`);
             if (toolBlock) {
                 const badge = toolBlock.querySelector(".tool-status-badge");
@@ -1279,10 +1443,12 @@
                 if (content) {
                     // Format and show the returned result
                     const trimmedResult = String(result).trim();
+                    const prettyResult = tryFormatJson(trimmedResult);
+
                     const resDiv = document.createElement("div");
                     resDiv.style.marginTop = "10px";
                     resDiv.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: #475569; margin-bottom: 4px;">Result:</div>
-                                         <pre style="margin: 0; background-color: #f8fafc; border: 1.5px solid #e2e8f0; padding: 8px; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; color: #0f172a;">${trimmedResult}</pre>`;
+                                         <pre style="margin: 0; background-color: #f8fafc; border: 1.5px solid #e2e8f0; padding: 8px; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; color: #0f172a;">${prettyResult}</pre>`;
                     content.appendChild(resDiv);
 
                     // Format and show stdout if present
@@ -1301,7 +1467,8 @@
                         varDiv.style.marginTop = "10px";
                         let varRows = "";
                         for (const [k, v] of Object.entries(variables)) {
-                            varRows += `<tr><td style="padding: 4px 8px; font-weight: bold; font-family: monospace; border: 1px solid #cbd5e1;">${k}</td><td style="padding: 4px 8px; font-family: monospace; border: 1px solid #cbd5e1;">${v}</td></tr>`;
+                            const prettyVal = tryFormatJson(v);
+                            varRows += `<tr><td style="padding: 4px 8px; font-weight: bold; font-family: monospace; border: 1px solid #cbd5e1; vertical-align: top;">${k}</td><td style="padding: 4px 8px; font-family: monospace; border: 1px solid #cbd5e1; vertical-align: top; white-space: pre-wrap;">${prettyVal}</td></tr>`;
                         }
                         varDiv.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: #475569; margin-bottom: 4px;">Variables:</div>
                                              <table style="border-collapse: collapse; width: 100%; border: 1px solid #cbd5e1; font-size: 12px; background-color: #ffffff;">${varRows}</table>`;
@@ -1311,6 +1478,10 @@
 
                 // Collapse the tool call block automatically after it finishes running
                 toolBlock.classList.add("collapsed");
+
+                // Clean up the streaming arguments dictionary
+                const key = `${stageNum}_${toolIndex}`;
+                delete streamingArgs[key];
 
                 const compoundKey = `${stageNum}_${agentRole}`;
                 if (activeAgentPanes[compoundKey]) {
@@ -1417,6 +1588,7 @@
             "QWEN_35_9B",
             "QWEN_35_800M",
             "QWEN_3_1700M",
+            "QWEN_3_600M",
             "MINICPM5_1B",
             "LFM25_8B_A1B",
             "GPT_OSS_20B"
