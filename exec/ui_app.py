@@ -23,7 +23,7 @@ WS_PORT = 9092
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(ROOT)
 
-from exec.prototype import runBoardroom, LLMClientType
+from exec.terminal_quick_run import runBoardroom, LLMClientType
 from llm.llamacpp.llamacpp_args import LlamaCppModel
 from ui.ui_hooks import setEventCallback, emitEvent
 

@@ -146,7 +146,8 @@ class BoardroomEngine:
             f"Current Phase: *PHASE 7* - Decision Upload on {targetTicker}\n"
             f"Upload the final decision, weight allocation, and price targets via the 'confirmBoardroomDecision' tool, under the rules marked for Phase 7."
         ), summarisationOverride=False)
-        formattedExecutiveDecision = self.portManager.tools[2].toolLog[-1]
+        confirmDecisionTool = next((tool for tool in self.portManager.tools if tool.toolName == "confirmBoardroomDecision"), None)
+        formattedExecutiveDecision = confirmDecisionTool.toolLog[-1] if confirmDecisionTool else "Decision not found."
 
         endTime = datetime.now()
         timeTaken = endTime - startTime
