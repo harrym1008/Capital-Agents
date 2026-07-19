@@ -340,10 +340,10 @@ class BaseLLMClient(ABC):
                                         pass
                                 break
 
-            messageHistory.append({
-                "role": "user",
-                "content": "Your recent tool call requests have been returned. Analyse the data provided and gracefully continue your thinking phase, leading to your final response."
-            })
+            # messageHistory.append({
+            #     "role": "user",
+            #     "content": "New tool data above. Do not restate your case or prior conclusions, you already have them. Use the new data to refine or confirm your conclusions."
+            # })
 
         # If this code is reached, it means the maximum number of iterations was reached without a final response
 
