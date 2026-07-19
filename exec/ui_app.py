@@ -44,7 +44,7 @@ def broadcastEvent(eventData):
 def indexPage():
     return render_template("index.html")
 
-def runSimulationThread(clientType, model, ticker, fastMode, allowParallel):
+def runSimulationThread(clientType, model, ticker, fastMode, allowParallel, summaryHasOwnLocalServer):
     try:
         startTime = time.time()
         runBoardroom(
@@ -53,7 +53,7 @@ def runSimulationThread(clientType, model, ticker, fastMode, allowParallel):
             tickerToEval=ticker,
             fastMode=fastMode,
             allowParallel=allowParallel,
-            summaryHasOwnLocalServer=(os.getenv("HIGH_MEMORY", "false") == "true")
+            summaryHasOwnLocalServer=summaryHasOwnLocalServer
         )
         endTime = time.time()
         elapsed = endTime - startTime
@@ -84,6 +84,7 @@ async def websocketHandler(websocket):
                 clientTypeStr = data.get("clientType", "OpenRouter")
                 modelName = data.get("model", "")
                 allowParallel = data.get("allowParallel", True)
+                summaryHasOwnLocalServer = data.get("summaryHasOwnLocalServer", False)
                 
                 # Map client type
                 if clientTypeStr == "LlamaCpp":
@@ -103,7 +104,7 @@ async def websocketHandler(websocket):
                 # Start simulation in background thread
                 simThread = threading.Thread(
                     target=runSimulationThread,
-                    args=(clientType, model, ticker, mode == "fast", allowParallel),
+                    args=(clientType, model, ticker, mode == "fast", allowParallel, summaryHasOwnLocalServer),
                     daemon=True
                 )
                 simThread.start()

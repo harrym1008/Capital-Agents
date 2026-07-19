@@ -760,21 +760,27 @@ def executePythonCalculation(tool: Tool, code: str) -> Any:
         
     except Exception as e:
         tb = traceback.format_exc()
-
-        # Extract the specific line number from the traceback
-        excType, excValue, excTraceback = sys.exc_info()
         failedLine = None
-        if excTraceback is not None:
-            try:
-                frames = traceback.extract_tb(excTraceback)
-                if frames:
-                    lastFrame = frames[-1]
-                    failedLine = {
-                        "line": lastFrame.lineno,
-                        "code": lastFrame.line
-                    }
-            except Exception:
-                pass
+
+        if isinstance(e, SyntaxError):
+            failedLine = {
+                "line": e.lineno,
+                "column": e.offset,
+                "code": e.text.rstrip() if e.text else None
+            }
+        else:
+            _, _, excTraceback = sys.exc_info()
+            if excTraceback is not None:
+                try:
+                    frames = traceback.extract_tb(excTraceback)
+                    if frames:
+                        lastFrame = frames[-1]
+                        failedLine = {
+                            "line": lastFrame.lineno,
+                            "code": lastFrame.line
+                        }
+                except Exception:
+                    pass
 
         errorResult = {
             "success": False,
@@ -796,6 +802,7 @@ def executePythonCalculation(tool: Tool, code: str) -> Any:
                 cleanedVars = {"note": "Could not serialize variable data"}
             errorResult["variables"] = cleanedVars
 
+        tool.toolLog.append(errorResult)
         return errorResult
     finally:
         sys.stdout = oldStdout

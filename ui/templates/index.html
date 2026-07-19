@@ -420,6 +420,64 @@
             flex-direction: column;
             gap: 15px;
         }
+
+        /* Collapsible Individual Tool Call Block styling */
+        .tool-call-block {
+            border: 2.5px solid #0f172a;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            background-color: #ffffff;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tool-call-header {
+            background-color: #ffffff !important;
+            color: #0f172a !important;
+            padding: 8px 15px;
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            user-select: none;
+            position: relative;
+        }
+        
+        .tool-call-label {
+            font-weight: 500;
+            color: #334155;
+            margin-right: 8px;
+        }
+
+        .tool-call-name {
+            font-weight: 800;
+            color: #0f172a;
+            font-family: monospace;
+            font-size: 14px;
+        }
+
+        .tool-call-args-preview {
+            flex: 1;
+            margin-left: 15px;
+            font-size: 12px;
+            color: #64748b;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 40%;
+        }
+
+        .toggle-arrow {
+            font-size: 10px;
+            color: #475569;
+            margin-left: auto;
+            transition: transform 0.2s ease;
+        }
+
+        .tool-call-block.collapsed .toggle-arrow {
+            transform: rotate(-90deg);
+        }
     </style>
 </head>
 <body>
@@ -471,6 +529,10 @@
         <div class="config-group">
             <label for="parallelCheckbox">Allow Parallel:</label>
             <input type="checkbox" id="parallelCheckbox" checked>
+        </div>
+        <div class="config-group">
+            <label for="summaryServerCheckbox">Separate Summary Server:</label>
+            <input type="checkbox" id="summaryServerCheckbox">
         </div>
         <button id="runBtn" class="run-btn" onclick="startSimulation()">Start Analysis</button>
         <div id="simulationTimer" style="margin-left: auto; font-size: 14px; font-weight: 700; color: #0f172a; padding: 6px 12px; border: 2px solid #0f172a; border-radius: 4px; background-color: #f8fafc; display: none;">
@@ -995,11 +1057,8 @@
             const compoundKey = `${stageNum}_${agentRole}`;
 
             // Collapse any tool call blocks in this pane's feed
-            const toolBlocks = pane.feed.querySelectorAll(`.collapsible-block[data-type="tools"]`);
-            toolBlocks.forEach(tb => {
-                tb.classList.add("collapsed");
-                tb.setAttribute("data-type", "tools-completed");
-            });
+            const toolBlocks = pane.feed.querySelectorAll(`.tool-call-block`);
+            toolBlocks.forEach(tb => tb.classList.add("collapsed"));
 
             const block = document.createElement("div");
             block.className = "collapsible-block";
@@ -1044,11 +1103,8 @@
             const compoundKey = `${stageNum}_${agentRole}`;
 
             // Collapse any tool call blocks in this pane's feed
-            const toolBlocks = pane.feed.querySelectorAll(`.collapsible-block[data-type="tools"]`);
-            toolBlocks.forEach(tb => {
-                tb.classList.add("collapsed");
-                tb.setAttribute("data-type", "tools-completed");
-            });
+            const toolBlocks = pane.feed.querySelectorAll(`.tool-call-block`);
+            toolBlocks.forEach(tb => tb.classList.add("collapsed"));
 
             if (phase === "summary") {
                 const config = agentConfigs[agentRole] || { class: "cyan" };
@@ -1148,77 +1204,113 @@
             const pane = getOrCreateAgentPane(stageNum, agentRole);
             const compoundKey = `${stageNum}_${agentRole}`;
 
-            let toolBlock = pane.feed.querySelector(`.collapsible-block[data-type="tools"]`);
-            let content = null;
-            
-            if (!toolBlock) {
-                toolBlock = document.createElement("div");
-                toolBlock.className = "collapsible-block";
-                toolBlock.setAttribute("data-type", "tools");
-                
-                const header = document.createElement("div");
-                header.className = "collapsible-header";
-                header.innerText = "Tool Calls";
-                header.onclick = () => toolBlock.classList.toggle("collapsed");
+            const toolBlock = document.createElement("div");
+            toolBlock.className = "collapsible-block tool-call-block";
+            toolBlock.id = `toolCall-${stageNum}-${callId}`;
 
-                content = document.createElement("div");
-                content.className = "collapsible-content";
-                
-                toolBlock.appendChild(header);
-                toolBlock.appendChild(content);
-                pane.feed.appendChild(toolBlock);
-            } else {
-                content = toolBlock.querySelector(".collapsible-content");
-            }
-
-            const toolRunDiv = document.createElement("div");
-            toolRunDiv.className = "tool-call-detail";
-            toolRunDiv.id = `toolCall-${stageNum}-${callId}`;
+            const header = document.createElement("div");
+            header.className = "collapsible-header tool-call-header";
+            header.onclick = () => toolBlock.classList.toggle("collapsed");
 
             const label = document.createElement("span");
-            label.style.fontWeight = "bold";
-            label.innerText = `Tool: ${toolName}`;
+            label.className = "tool-call-label";
+            label.innerHTML = `Tool: <strong class="tool-call-name">${toolName}</strong>`;
+            header.appendChild(label);
 
             const badge = document.createElement("span");
             badge.className = "tool-status-badge status-running";
-            badge.innerText = "Running";
+            badge.innerText = "running";
+            header.appendChild(badge);
 
-            const argsDiv = document.createElement("div");
-            argsDiv.style.color = "#475569";
-            argsDiv.style.marginTop = "4px";
-            argsDiv.innerText = `Arguments: ${args}`;
+            const trimmedArgs = String(args).trim();
+            const argsPreview = document.createElement("span");
+            argsPreview.className = "tool-call-args-preview";
+            if (toolName === "executePythonCalculation") {
+                argsPreview.innerText = ""; // Hide args preview for python calculation
+            } else {
+                argsPreview.innerText = `Arguments: ${trimmedArgs}`;
+            }
+            header.appendChild(argsPreview);
 
-            toolRunDiv.appendChild(label);
-            toolRunDiv.appendChild(badge);
-            toolRunDiv.appendChild(argsDiv);
-            
-            content.appendChild(toolRunDiv);
-            
+            const content = document.createElement("div");
+            content.className = "collapsible-content tool-call-content";
+
+            // If it is python tool, preview the code nicely in monospace in the expanded content area
+            if (toolName === "executePythonCalculation") {
+                let codeVal = "";
+                try {
+                    const parsed = JSON.parse(args);
+                    codeVal = String(parsed.code || "").trim();
+                } catch(e) {
+                    codeVal = trimmedArgs;
+                }
+                const codeDiv = document.createElement("div");
+                codeDiv.style.marginBottom = "10px";
+                codeDiv.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: #475569; margin-bottom: 4px;">Python Code:</div>
+                                     <pre style="margin: 0; background-color: #0f172a; color: #38bdf8; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; overflow-x: auto; white-space: pre-wrap;">${codeVal}</pre>`;
+                content.appendChild(codeDiv);
+            } else {
+                // If it is another tool, show full arguments in the content area too
+                const argsDiv = document.createElement("div");
+                argsDiv.style.marginBottom = "10px";
+                argsDiv.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: #475569; margin-bottom: 4px;">Arguments:</div>
+                                     <pre style="margin: 0; background-color: #f1f5f9; padding: 8px; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; color: #0f172a;">${trimmedArgs}</pre>`;
+                content.appendChild(argsDiv);
+            }
+
+            toolBlock.appendChild(header);
+            toolBlock.appendChild(content);
+            pane.feed.appendChild(toolBlock);
+
             pane.feed.scrollTop = pane.feed.scrollHeight;
-            activeBlocks[compoundKey] = { type: 'tool', element: toolRunDiv, block: toolBlock };
+            activeBlocks[compoundKey] = { type: 'tool', element: content, block: toolBlock };
         }
 
         function endToolBlock(stageNum, agentRole, toolName, callId, status, result, stdout, variables) {
-            const toolRunDiv = document.getElementById(`toolCall-${stageNum}-${callId}`);
-            if (toolRunDiv) {
-                const badge = toolRunDiv.querySelector(".tool-status-badge");
-                badge.className = `tool-status-badge status-${status}`;
-                badge.innerText = status;
-
-                if (stdout && stdout.trim()) {
-                    const stdoutPre = document.createElement("pre");
-                    stdoutPre.className = "tool-output-stdout";
-                    stdoutPre.innerText = `STDOUT:\n${stdout}`;
-                    toolRunDiv.appendChild(stdoutPre);
+            const toolBlock = document.getElementById(`toolCall-${stageNum}-${callId}`);
+            if (toolBlock) {
+                const badge = toolBlock.querySelector(".tool-status-badge");
+                if (badge) {
+                    badge.className = `tool-status-badge status-${status}`;
+                    badge.innerText = status.toUpperCase();
                 }
 
-                if (variables && Object.keys(variables).length > 0) {
-                    const varsPre = document.createElement("pre");
-                    varsPre.className = "tool-output-stdout";
-                    varsPre.style.color = "#a7f3d0";
-                    varsPre.innerText = `VARIABLES:\n${JSON.stringify(variables, null, 2)}`;
-                    toolRunDiv.appendChild(varsPre);
+                const content = toolBlock.querySelector(".collapsible-content");
+                if (content) {
+                    // Format and show the returned result
+                    const trimmedResult = String(result).trim();
+                    const resDiv = document.createElement("div");
+                    resDiv.style.marginTop = "10px";
+                    resDiv.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: #475569; margin-bottom: 4px;">Result:</div>
+                                         <pre style="margin: 0; background-color: #f8fafc; border: 1.5px solid #e2e8f0; padding: 8px; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; color: #0f172a;">${trimmedResult}</pre>`;
+                    content.appendChild(resDiv);
+
+                    // Format and show stdout if present
+                    if (stdout && stdout.trim()) {
+                        const trimmedStdout = String(stdout).trim();
+                        const stdoutDiv = document.createElement("div");
+                        stdoutDiv.style.marginTop = "10px";
+                        stdoutDiv.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: #475569; margin-bottom: 4px;">STDOUT:</div>
+                                               <pre style="margin: 0; background-color: #0f172a; color: #38bdf8; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; overflow-x: auto; white-space: pre-wrap;">${trimmedStdout}</pre>`;
+                        content.appendChild(stdoutDiv);
+                    }
+
+                    // Format and show variables if present
+                    if (variables && Object.keys(variables).length > 0) {
+                        const varDiv = document.createElement("div");
+                        varDiv.style.marginTop = "10px";
+                        let varRows = "";
+                        for (const [k, v] of Object.entries(variables)) {
+                            varRows += `<tr><td style="padding: 4px 8px; font-weight: bold; font-family: monospace; border: 1px solid #cbd5e1;">${k}</td><td style="padding: 4px 8px; font-family: monospace; border: 1px solid #cbd5e1;">${v}</td></tr>`;
+                        }
+                        varDiv.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: #475569; margin-bottom: 4px;">Variables:</div>
+                                             <table style="border-collapse: collapse; width: 100%; border: 1px solid #cbd5e1; font-size: 12px; background-color: #ffffff;">${varRows}</table>`;
+                        content.appendChild(varDiv);
+                    }
                 }
+
+                // Collapse the tool call block automatically after it finishes running
+                toolBlock.classList.add("collapsed");
 
                 const compoundKey = `${stageNum}_${agentRole}`;
                 if (activeAgentPanes[compoundKey]) {
@@ -1251,6 +1343,7 @@
             const client = document.getElementById("clientSelect").value;
             const model = document.getElementById("modelInput").value.trim();
             const parallel = document.getElementById("parallelCheckbox").checked;
+            const summaryServer = document.getElementById("summaryServerCheckbox").checked;
 
             if (!ticker) {
                 alert("Please enter a valid ticker.");
@@ -1303,7 +1396,8 @@
                 mode,
                 clientType: client,
                 model,
-                allowParallel: parallel
+                allowParallel: parallel,
+                summaryHasOwnLocalServer: summaryServer
             }));
         }
 
