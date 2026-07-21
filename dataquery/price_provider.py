@@ -2,17 +2,18 @@ import os
 import pandas as pd
 import pyarrow.parquet as pq
 
-from collectors.constants import NYSE_DIRECTORY, NASDAQ_DIRECTORY, ALL_TICKERS_FILE, CORP_ACTIONS_OUTPUT, NEW_YORK, UTC
+from collectors.constants import NYSE_DIRECTORY, NASDAQ_DIRECTORY, ALL_TICKERS_FILE,  \
+                                 CORP_ACTIONS_OUTPUT, NEW_YORK, UTC, START_DATE, END_DATE
 from dataquery.lru_cache import LRUCache
-from dataquery.ticker_provider import TickerDataProvider, CompanyProfile
+from dataquery.ticker_provider import TickerDataProvider
 
 
 class DailyPriceProvider:
-    def __init__(self, startDate: pd.Timestamp, endDate: pd.Timestamp, tickerDataProvider: TickerDataProvider, cache: LRUCache):
+    def __init__(self, tickerDataProvider: TickerDataProvider, cache: LRUCache):
         self.cache = cache
 
-        self.startDate = startDate
-        self.endDate = endDate
+        self.startDate = START_DATE
+        self.endDate = END_DATE
 
         self.tickerDataProvider = tickerDataProvider
         self.tickersPaths = self.buildTickerPathIndex()

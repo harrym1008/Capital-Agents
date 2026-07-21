@@ -22,7 +22,8 @@ class NewsDataProvider:
         return ts.tz_localize(None)
 
 
-    def getRecentNewsForTicker(self, ticker: str, before: pd.Timestamp, limit: int = 10) -> pd.DataFrame:
+    def getRecentNewsForTicker(self, ticker: str, before: pd.Timestamp, 
+                               limit: int = 10, mustHaveContent: bool = False) -> pd.DataFrame:
         if limit < 1:
             return pd.DataFrame()
 
@@ -42,6 +43,7 @@ class NewsDataProvider:
             FROM read_parquet('{self.newsPath}')
             WHERE updated_at < ?
               AND list_contains(symbols, ?)
+              {"AND LENGTH(content) > 0" if mustHaveContent else ""}
             ORDER BY updated_at DESC, id
             LIMIT ?
         """
@@ -54,7 +56,8 @@ class NewsDataProvider:
         return df
 
 
-    def getRecentNewsForTickers(self, tickers: list[str], before: pd.Timestamp, limit: int = 10) -> pd.DataFrame:
+    def getRecentNewsForTickers(self, tickers: list[str], before: pd.Timestamp, 
+                                limit: int = 10, mustHaveContent: bool = False) -> pd.DataFrame:
         if limit < 1:
             return pd.DataFrame()
 
@@ -78,6 +81,7 @@ class NewsDataProvider:
             FROM read_parquet('{self.newsPath}')
             WHERE updated_at < ?
               AND list_has_any(symbols, ?)
+              {"AND LENGTH(content) > 0" if mustHaveContent else ""}
             ORDER BY updated_at DESC, id
             LIMIT ?
         """

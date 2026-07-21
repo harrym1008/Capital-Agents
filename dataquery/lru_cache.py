@@ -33,6 +33,15 @@ class LRUCache:
     
     
     def put(self, key, df):
+        if df is None:
+            # Store None values without calculating memory usage
+            with self.lock:
+                if key in self.entries:
+                    old = self.entries.pop(key)
+                    self.currentSizeBytes -= old.size
+                self.entries[key] = CacheEntry(df, 0, time.time())
+                return
+        
         sizeBytes = int(df.memory_usage(deep=True, index=True).sum())
         now = time.time()
 

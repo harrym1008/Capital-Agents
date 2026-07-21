@@ -86,7 +86,7 @@ class MacroDataProvider:
         if "date" not in df.columns:
             return pd.DataFrame()
 
-        # Normalise the date column to UTC-naive for consistent comparisons.
+        # Normalise the date column to UTC-naive for consistent comparisons
         dateCol = df["date"]
         if dateCol.dt.tz is None:
             dateCol = dateCol.dt.tz_localize(UTC)
@@ -100,7 +100,7 @@ class MacroDataProvider:
         return df
 
 
-    def getAvailableSeries(self) -> list:
+    def getAllSeries(self) -> list:
         return list(self.availableSeries.keys())
 
 
@@ -161,3 +161,34 @@ class MacroDataProvider:
             return pd.DataFrame(columns=["series", "date", "value"])
 
         return pd.DataFrame(rows)
+
+    
+    def getLowest(self, name: MacroSeries, startDate: pd.Timestamp, endDate: pd.Timestamp):
+        df = self.getSeries(name, startDate=startDate, endDate=endDate)
+        if df.empty:
+            return None
+
+        valueCol = "low" if name.source == "yfinance" else name.valueCol
+
+        if valueCol not in df.columns:
+            return None
+        
+        idx = df[valueCol].idxmin()
+        row = df.loc[idx]
+
+        return row["date"], row[valueCol]
+    
+    def getHighest(self, name: MacroSeries, startDate: pd.Timestamp, endDate: pd.Timestamp):
+        df = self.getSeries(name, startDate=startDate, endDate=endDate)
+        if df.empty:
+            return None
+
+        valueCol = "high" if name.source == "yfinance" else name.valueCol
+
+        if valueCol not in df.columns:
+            return None
+        
+        idx = df[valueCol].idxmax()
+        row = df.loc[idx]
+
+        return row["date"], row[valueCol]
