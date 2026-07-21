@@ -22,7 +22,7 @@ YFINANCE_MACRO_TICKERS = {
         "yfticker": "^NDX"
     },
     "DJIA": {
-        "desc": "Dow Jones Industrial Average",
+        "desc": "Dow Jones Industrial Average Index",
         "yfticker": "^DJI"
     },
     "RUS2000": {
@@ -185,6 +185,7 @@ class MacroDataClient:
             df = self.fredClient.get_series(seriesId, observation_start=self.startDateStr, observation_end=self.endDateStr)
             df = df.reset_index()
             df.columns = ["date", "value"]
+            df.dropna(subset=["value"], inplace=True)
 
             df["date"] = pd.to_datetime(df["date"])
             df["date"] = df["date"].dt.tz_localize("America/New_York").dt.tz_convert("UTC")

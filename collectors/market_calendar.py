@@ -9,6 +9,5 @@ class MarketCalendar:
         sessions = self.nyseCalendar.sessions_in_range(startDate, endDate)
         self.openDays = set(sessions.strftime("%Y-%m-%d"))
 
-
     def isOpenDay(self, date):
         return date in self.openDays

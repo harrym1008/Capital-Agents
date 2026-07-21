@@ -41,7 +41,7 @@ class MarketSimulation:
 
         self.marketCalendar = MarketCalendar(startDate, endDate)
         self.tickerDataProvider = TickerDataProvider() 
-        self.dailyPriceProvider = DailyPriceProvider(self.startDate, self.endDate, self.tickerDataProvider)
+        self.dailyPriceProvider = DailyPriceProvider(self.tickerDataProvider)
 
         self.users: list[str] = []                          # Set of all users in the simulation
         self.userPortfolios: dict[str, Portfolio] = {}      # Maps user to their portfolios. The portfolio itself is a dict mapping ticker to Position
