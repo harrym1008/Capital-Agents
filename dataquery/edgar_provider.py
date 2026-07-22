@@ -118,3 +118,22 @@ class EdgarDataProvider:
             return None
 
         return self.getLatestFiling(ticker, formType=formType, before=beforeDate)
+    
+
+    def downloadFiling(self, filing: Filing):
+        if filing is None:
+            return None
+
+        accessionNumber = filing.accession_number
+        cacheKey = f"edgar|filingDownload_{accessionNumber}"
+
+        cached = self.cache.get(cacheKey)
+        if cached is not None:
+            return cached
+
+        try:
+            parsedObj = filing.obj()
+            self.cache.put(cacheKey, parsedObj)
+            return parsedObj
+        except Exception:
+            return None
