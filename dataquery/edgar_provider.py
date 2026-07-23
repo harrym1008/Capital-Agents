@@ -1,26 +1,57 @@
 import os
 from enum import Enum
 from dataclasses import dataclass, field
-from typing import Optional, List, Union, Dict, Any
+from typing import Optional, List, Tuple, Union, Dict, Any
 import pandas as pd
 
 from edgar import Company, set_identity, Filing
+from edgar.company_reports import CompanyReport
+from edgar.xbrl import XBRL
+
 from collectors.constants import UTC, SEC_EDGAR_IDENTITY
 from dataquery.lru_cache import LRUCache
+from dataquery.ticker_provider import TickerDataProvider
 
 
 class FormType(Enum):
     FORM_10K = "10-K"
     FORM_10Q = "10-Q"
     FORM_8K = "8-K"
+    FORM_20F = "20-F"
+    FORM_40F = "40-F"
+    FORM_6K = "6-K"
 
     def __init__(self, formCode: str):
         self.formCode = formCode
 
 
+class CompanyRef:
+    def __init__(self, ticker: Optional[str], cik: Optional[str] = None):
+        if ticker is None and cik is None:
+            raise ValueError("Either ticker or cik must be provided.")
+        self.ticker = ticker.strip().upper() if ticker else None
+        self.cik = str(cik).strip().zfill(10) if cik else None
+
+    def loadCik(self, data: TickerDataProvider):
+        if self.cik is not None:
+            return self.cik
+        if self.ticker is None:
+            return None
+        
+        profile = data.getTickerProfile(self.ticker)
+        if profile is None:
+            return None
+        
+        self.cik = profile.cik
+
+    def __str__(self):
+        return self.cik or self.ticker or None
+
+
 
 class EdgarDataProvider:
-    def __init__(self, cache: LRUCache):
+    def __init__(self, tickerProvider: TickerDataProvider, cache: LRUCache):
+        self.tickerProvider = tickerProvider
         self.cache = cache
         set_identity(SEC_EDGAR_IDENTITY) 
 
@@ -32,19 +63,18 @@ class EdgarDataProvider:
             ts = ts.tz_convert(UTC)
         return ts.tz_localize(None)
     
-    def loadFilingsForTicker(self, ticker: str, formType: FormType = None):
-        ticker = ticker.upper().strip()
-        formStr = formType.formCode if isinstance(formType, FormType) else (formType or "ALL")
+    def loadFilingRefsForCompany(self, companyRef: CompanyRef, formType: FormType|List[FormType] = None) -> List[Filing]:
+        companyRef.loadCik(self.tickerProvider)
+        formCodes = [formType.formCode] if isinstance(formType, FormType) else [f.formCode for f in formType]
         
-        key = f"edgar|rawFilings_{ticker}_{formStr}"
+        key = f"edgar|rawFilings_{companyRef}_{"&".join(formCodes)}"
         cached = self.cache.get(key)
         if cached is not None:
             return cached
-
         try:
-            company = Company(ticker)
+            company = Company(str(companyRef))
             if formType is not None:
-                filings = company.get_filings(form=formStr)
+                filings = company.get_filings(form=formCodes)
             else:
                 filings = company.get_filings()
 
@@ -59,19 +89,20 @@ class EdgarDataProvider:
             return None
 
 
-    def getLatestFiling(self, ticker: str, formType: FormType = None, before: pd.Timestamp = None) -> Optional[Filing]:
+    def getLatestFilingRef(self, companyRef: CompanyRef, formType: FormType = None, before: pd.Timestamp = None) -> Filing:
+        companyRef.loadCik(self.tickerProvider)
         if before is None:
             before = pd.Timestamp.now(tz=UTC)
 
         formStr = formType.formCode if isinstance(formType, FormType) else (formType or "ALL")
         beforeNorm = self.normaliseTimestamp(before)
 
-        key = f"edgar|latestFiling_{ticker}_{formStr}_{beforeNorm.isoformat()}"
+        key = f"edgar|latestFiling_{companyRef}_{formStr}_{beforeNorm.strftime('%Y-%m-%d')}"
         cached = self.cache.get(key)
         if cached is not None:
             return cached
         
-        filings = self.loadFilingsForTicker(ticker, formType=formType)
+        filings = self.loadFilingRefsForCompany(companyRef, formType=formType)
         if filings is None or len(filings) == 0:
             self.cache.put(key, None)
             return None
@@ -103,7 +134,7 @@ class EdgarDataProvider:
         return latestFiling
     
 
-    def getFilingBeforeAnother(self, ticker: str, formType: FormType, beforeFiling: Filing) -> Optional[Filing]:
+    def getFilingRefBeforeAnother(self, companyRef: CompanyRef, formType: FormType, beforeFiling: Filing) -> Filing:
         if beforeFiling is None:
             return None
 
@@ -117,12 +148,12 @@ class EdgarDataProvider:
         except Exception:
             return None
 
-        return self.getLatestFiling(ticker, formType=formType, before=beforeDate)
+        return self.getLatestFilingRef(companyRef, formType=formType, before=beforeDate)
     
 
-    def downloadFiling(self, filing: Filing):
+    def downloadFilingObjects(self, filing: Filing) -> Tuple[CompanyReport, XBRL]:
         if filing is None:
-            return None
+            return None, None
 
         accessionNumber = filing.accession_number
         cacheKey = f"edgar|filingDownload_{accessionNumber}"
@@ -133,7 +164,17 @@ class EdgarDataProvider:
 
         try:
             parsedObj = filing.obj()
-            self.cache.put(cacheKey, parsedObj)
-            return parsedObj
+            parsedXbrl = filing.xbrl()
+
+            self.cache.put(cacheKey, (parsedObj, parsedXbrl))
+            return parsedObj, parsedXbrl
         except Exception:
+            return None, None
+
+
+    def findRefAndDownloadFilingObjects(self, companyRef: CompanyRef, formType: FormType, before: pd.Timestamp = None):
+        latestFiling = self.getLatestFilingRef(companyRef, formType=formType, before=before)
+        if latestFiling is None:
             return None
+        downloaded = self.downloadFilingObjects(latestFiling)
+        return downloaded
