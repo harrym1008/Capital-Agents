@@ -276,6 +276,13 @@ class NewsClient:
             emptyDf = pd.DataFrame(columns=["id", "updated_at", "headline", "content", "author", "symbols"])
             self.writeNewsParquet(emptyDf, NEWS_PARQUET_PATH)
 
+        # Clear the batch files after consolidation
+        for filename in os.listdir(NEWS_BATCHES_DIR):
+            filePath = os.path.join(NEWS_BATCHES_DIR, filename)
+            if os.path.isfile(filePath):
+                os.remove(filePath)
+        os.rmdir(NEWS_BATCHES_DIR)
+
         return totalFetched, totalBatchCount
 
 

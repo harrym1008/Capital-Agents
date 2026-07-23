@@ -18,7 +18,7 @@ defusedxml==0.7.1
 distro==1.9.0
 dotenv==0.9.9
 duckdb==1.5.4
-edgartools==5.36.0
+edgartools==5.43.0
 et_xmlfile==2.0.0
 exchange_calendars==4.13.2
 fastparquet==2026.3.0
@@ -79,6 +79,7 @@ pydantic==2.13.4
 pydantic_core==2.46.4
 Pygments==2.20.0
 pyluach==2.3.0
+Pympler==1.1
 pyparsing==3.3.2
 PyQt6==6.11.0
 PyQt6-Qt6==6.11.1
@@ -88,6 +89,7 @@ python-calamine==0.6.2
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 pytz==2026.2
+pywin32==312
 pyxlsb==1.0.10
 rank-bm25==0.2.2
 RapidFuzz==3.14.5
@@ -107,6 +109,9 @@ tenacity==9.1.4
 textdistance==4.6.3
 threadpoolctl==3.6.0
 toolz==1.1.0
+torch==2.12.1+cu130
+torchaudio==2.11.0+cu130
+torchvision==0.27.1+cu130
 tqdm==4.67.3
 truststore==0.10.4
 typing-inspection==0.4.2

@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from tqdm import tqdm
 import pandas as pd
 import numpy as np
+import yfinance as yf
 
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.historical.corporate_actions import CorporateActionsClient
@@ -345,11 +346,6 @@ class SingleTickerDataCollector:
     
 
     def addOutstandingSharesToDf(self, df, actions):
-        if self.isAdrc:
-            df["outstandingShares"] = pd.NA
-            df["marketCap"] = "N/A"
-            return df
-
         cikPadded = self.cik.zfill(10)
         url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cikPadded}.json"
         headers = {"User-Agent": SEC_EDGAR_IDENTITY}
@@ -410,6 +406,25 @@ class SingleTickerDataCollector:
         if sharesDf.empty:
             df["outstandingShares"] = pd.NA
             df["marketCap"] = "N/A"
+
+        sharesDf.sort_values("date", inplace=True)
+
+        # Extrapolate ADR ratio from yfinance
+        if self.isAdrc:
+            try:
+                yfTicker = yf.Ticker(self.ticker)
+                yfShares = yfTicker.info.get("sharesOutstanding")
+
+                if yfShares and yfShares > 0:
+                    latestSecShares = sharesDf["outstandingShares"].iloc[-1]
+                    adrRatio = yfShares / latestSecShares
+                    sharesDf["outstandingShares"] *= adrRatio
+                else:
+                    raise Exception("YFinance shares outstanding data is missing or invalid")
+            except Exception:
+                df["outstandingShares"] = pd.NA
+                df["marketCap"] = "N/A"
+                return df            
         
         df = df.merge(sharesDf, on="date", how="left")
         # Forward fill first, then backfill (to fill it in before self.startDate)
