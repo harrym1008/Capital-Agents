@@ -9,7 +9,7 @@ from collectors.ticker_dl_client import TickerDataClient
 from collectors.news_dl_client import NewsClient
 from collectors.macro_dl_client import MacroDataClient
 from collectors.shortdata_dl_client import ShortDataClient
-from forex_dl_client import CurrencyDataClient
+from collectors.forex_dl_client import CurrencyDataClient
 from collectors.rate_limiter import GlobalRateLimiters
 from collectors.constants import *
 
