@@ -46,7 +46,7 @@ class ShortDataProvider:
         if not os.path.exists(self.shortDataPath):
             return pd.DataFrame()
         
-        key = f"short|single_{ticker}_{startDate.isoformat()}_{endDate.isoformat()}"
+        key = f"short|single_{ticker}_{startDate.strftime('%Y-%m-%d') if startDate else 'none'}_{endDate.strftime('%Y-%m-%d') if endDate else 'none'}"
         cached = self.cache.get(key)
         if cached is not None:
             return cached
@@ -63,19 +63,19 @@ class ShortDataProvider:
             SELECT *
             FROM read_parquet('{self.shortDataPath}')
             WHERE ticker = ?
-            {"AND date >= ?" if startParam else ""}
-            {"AND date <= ?" if endParam else ""}
+            {"AND date >= ?" if not pd.isna(startParam) else ""}
+            {"AND date <= ?" if not pd.isna(endParam) else ""}
             ORDER BY date DESC, changePercent ASC
         """
 
         params = [ticker]
-        if startParam:
+        if not pd.isna(startParam):
             params.append(startParam)
-        if endParam:
+        if not pd.isna(endParam):
             params.append(endParam)
 
         df = self.con.execute(sql, params).df()
-        if not df.empty:
+        if df.empty:
             self.cache.put(key, df)
             return df
             
@@ -105,4 +105,19 @@ class ShortDataProvider:
             output[ticker] = self.getShortInterestForTicker(ticker, startDate, endDate)
 
         return output 
-        
+
+
+    def getLatestShortInterestForTicker(self, ticker: str, before: pd.Timestamp) -> ShortInterest | None:
+        df = self.getShortInterestForTicker(ticker, endDate=before)
+        if df.empty:
+            return None
+        latestRow = df.iloc[0]
+        return ShortInterest(
+            date=latestRow["date"],
+            ticker=latestRow["ticker"],
+            currentShortPositions=latestRow["currentShortPositions"],
+            previousShortPositions=latestRow["previousShortPositions"],
+            changePercent=latestRow["changePercent"],
+            avgDailyVolume=latestRow["avgDailyVolume"],
+            daysToCover=latestRow["daysToCover"]
+        )

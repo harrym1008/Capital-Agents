@@ -73,3 +73,7 @@ SHORT_PARQUET_PATH = "data/shortdata.parquet"
 
 # For macroclient.py
 MACRO_DIRECTORY = "data/macro/"
+
+
+# For forex_dl_client.py
+FOREX_DIRECTORY = "data/forex/"

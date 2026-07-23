@@ -1,8 +1,5 @@
 import os, sys
-
-
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 
 from collectors.ohlcv_dl_client import OHLCVDataClient
 from collectors.ticker_dl_client import TickerDataClient

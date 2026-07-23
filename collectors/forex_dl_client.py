@@ -19,6 +19,7 @@ class Currency:
 
 
 CURRENCIES = [
+    Currency("USD", "United States Dollar", "$", ""),
     Currency("TWD", "New Taiwan Dollar", "NT$", "TWDUSD=X"),
     Currency("EUR", "Euro", "€", "EURUSD=X"),
     Currency("GBP", "British Pound", "£", "GBPUSD=X"),
@@ -74,6 +75,11 @@ class CurrencyDataClient:
 
 
         for currency in CURRENCIES:
+            if currency.code == "USD":
+                # Skip USD
+                pbar.update(1)
+                continue
+
             try:
                 self.yfRateLimiter.wait()
 
@@ -99,6 +105,7 @@ class CurrencyDataClient:
                 df.columns = [str(column).lower().replace(" ", "_") for column in df.columns]
 
                 df = df.drop(columns=["adj_close", "volume"])
+                df.columns = ["date", "open", "high", "low", "close"]
 
                 # To NY timezone
                 df["date"] = pd.to_datetime(df["date"])

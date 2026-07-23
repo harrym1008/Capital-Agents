@@ -1,14 +1,42 @@
+import sys
 import time
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
+
+
+def getSize(obj):
+    if obj is None:
+        return 0
+
+    # Pandas Dataframes and Series
+    if isinstance(obj, (pd.DataFrame, pd.Series)):
+        return int(obj.memory_usage(deep=True, index=True).sum())
+
+    # Numpy arrays
+    if isinstance(obj, np.ndarray):
+        return int(obj.nbytes)
+
+    # Basic bytestreams
+    if isinstance(obj, (bytes, bytearray, memoryview)):
+        return len(obj)
+
+    # Estimate via pympler
+    try:
+        from pympler import asizeof
+        return asizeof.asizeof(obj)
+    except ImportError:
+        # Final resort - may heavily underestimate, not much choice
+        return sys.getsizeof(obj)
+    
 
 
 @dataclass
 class CacheEntry:
-    df: pd.DataFrame
+    value: any
     size: int
     lastAccess: float
 
@@ -29,20 +57,20 @@ class LRUCache:
                 return None
             entry.lastAccess = time.time()
             self.entries.move_to_end(key)
-            return entry.df
+            return entry.value
     
     
-    def put(self, key, df):
-        if df is None:
+    def put(self, key, value):
+        if value is None:
             # Store None values without calculating memory usage
             with self.lock:
                 if key in self.entries:
                     old = self.entries.pop(key)
                     self.currentSizeBytes -= old.size
-                self.entries[key] = CacheEntry(df, 0, time.time())
+                self.entries[key] = CacheEntry(value, 0, time.time())
                 return
         
-        sizeBytes = int(df.memory_usage(deep=True, index=True).sum())
+        sizeBytes = getSize(value)
         now = time.time()
 
         with self.lock:
@@ -57,7 +85,7 @@ class LRUCache:
                 _, evicted = self.entries.popitem(last=False)
                 self.currentSizeBytes -= evicted.size
 
-            self.entries[key] = CacheEntry(df=df, size=sizeBytes, lastAccess=now)
+            self.entries[key] = CacheEntry(value=value, size=sizeBytes, lastAccess=now)
             self.currentSizeBytes += sizeBytes
 
 
