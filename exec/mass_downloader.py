@@ -1,5 +1,6 @@
 import os, sys
 
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
@@ -8,6 +9,7 @@ from collectors.ticker_dl_client import TickerDataClient
 from collectors.news_dl_client import NewsClient
 from collectors.macro_dl_client import MacroDataClient
 from collectors.shortdata_dl_client import ShortDataClient
+from forex_dl_client import CurrencyDataClient
 from collectors.rate_limiter import GlobalRateLimiters
 from collectors.constants import *
 
@@ -41,6 +43,10 @@ if __name__ == "__main__":
         "macro": {
             "confirm": input("Download macro data? (yes/no)     > ").lower() == "yes",
             "desc": f"Commodities, indices, forex and macroeconomic data from FRED from {dateStart} to {dateEnd}"
+        },
+        "forex": {
+            "confirm": input("Download forex data? (yes/no)     > ").lower() == "yes",
+            "desc": f"Forex data for 20 currencies to USD from {dateStart} to {dateEnd}"
         },
         "short": {
             "confirm": input("Download short data? (yes/no)     > ").lower() == "yes",
@@ -89,8 +95,10 @@ if __name__ == "__main__":
         pbars["news"] = tqdm(total=1, desc="[NEWS]", position=2, leave=True, dynamic_ncols=True)
     if downloading["macro"]["confirm"]:
         pbars["macro"] = tqdm(total=1, desc="[MACRO]", position=3, leave=True, dynamic_ncols=True)
+    if downloading["forex"]["confirm"]:
+        pbars["forex"] = tqdm(total=1, desc="[FOREX]", position=4, leave=True, dynamic_ncols=True)
     if downloading["short"]["confirm"]:
-        pbars["short"] = tqdm(total=1, desc="[SHORT]", position=4, leave=True, dynamic_ncols=True)
+        pbars["short"] = tqdm(total=1, desc="[SHORT]", position=5, leave=True, dynamic_ncols=True)
     for pbar in pbars.values():
         pbar._external = True
 
@@ -108,6 +116,10 @@ if __name__ == "__main__":
     if downloading["macro"]["confirm"]:
         parallelTasks.append(("macro", MacroDataClient, (START_DATE_STR, END_DATE_STR, limiters),
                               lambda c: c.massDownload(pbar=pbars["macro"])))
+
+    if downloading["forex"]["confirm"]:
+        parallelTasks.append(("forex", CurrencyDataClient, (START_DATE_STR, END_DATE_STR, limiters),
+                              lambda c: c.massDownload(pbar=pbars["forex"])))
         
     if downloading["short"]["confirm"]:
         parallelTasks.append(("short", ShortDataClient, (START_DATE.date(), END_DATE.date(), limiters),
