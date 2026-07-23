@@ -5,3 +5,4 @@ from .price_provider import DailyPriceProvider
 from .ticker_provider import TickerDataProvider
 from .short_provider import ShortDataProvider
 from .edgar_provider import EdgarDataProvider
+from .forex_provider import ForexDataProvider
