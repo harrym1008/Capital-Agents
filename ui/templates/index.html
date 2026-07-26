@@ -138,6 +138,25 @@
             background-color: #2563eb;
         }
 
+        .summaries-btn {
+            margin-left: auto;
+            background-color: #2563eb;
+            color: #ffffff;
+            border: none;
+            padding: 6px 16px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            user-select: none;
+            flex-shrink: 0;
+        }
+
+        .summaries-btn:hover {
+            background-color: #1d4ed8;
+        }
+
         .workspace {
             flex: 1;
             padding: 20px 30px;
@@ -484,7 +503,19 @@
 
     <header>
         <h1>CapitalAgents Boardroom - Single Equity Rating</h1>
-        <button id="connectionStatus" onclick="toggleSidebar()" style="background-color: #ef4444; color: #ffffff; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; transition: background-color 0.2s; user-select: none;">Summaries (Disconnected)</button>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 24px;">
+            <span id="connectionStatus" style="font-size: 18px; font-weight: 700; color: #22c55e; user-select: none;">Connected</span>
+            <div id="tokenMetricsReadout" style="display: flex; flex-direction: column; align-items: flex-end; font-size: 13px; line-height: 1.25; font-weight: 700; color: #ffffff; font-family: system-ui, -apple-system, sans-serif;">
+                <div style="display: flex; gap: 12px; justify-content: space-between;">
+                    <span style="color: #cbd5e1; font-weight: 600;">Prefill:</span>
+                    <span id="prefillSpeedVal" style="min-width: 95px; text-align: right;">0.0 tok/s</span>
+                </div>
+                <div style="display: flex; gap: 12px; justify-content: space-between;">
+                    <span style="color: #cbd5e1; font-weight: 600;">Generation:</span>
+                    <span id="genSpeedVal" style="min-width: 95px; text-align: right;">0.0 tok/s</span>
+                </div>
+            </div>
+        </div>
     </header>
 
     <div class="config-bar">
@@ -508,7 +539,7 @@
         </div>
         <div class="config-group" id="modelInputContainer">
             <label for="modelInput">Model:</label>
-            <select id="modelInput" style="width: 250px;">
+            <select id="modelInput" style="width: 212px;">
                 <option value="GEMMA_4_26B_A4B">GEMMA_4_26B_A4B</option>
                 <option value="GEMMA_4_12B" selected="">GEMMA_4_12B</option>
                 <option value="GEMMA_4_E4B">GEMMA_4_E4B</option>
@@ -525,7 +556,15 @@
                 <option value="MINICPM5_1B">MINICPM5_1B</option>
                 <option value="LFM25_8B_A1B">LFM25_8B_A1B</option>
                 <option value="GPT_OSS_20B">GPT_OSS_20B</option>
+                <option value="TERNARY_BONSAI_27B">TERNARY_BONSAI_27B</option>
             </select>
+        </div>
+        <div class="config-group">
+            <label for="simulatedDateCheckbox">Use Sim Date:</label>
+            <input type="checkbox" id="simulatedDateCheckbox">
+        </div>
+        <div class="config-group" id="simulatedDateContainer" style="display: none;">
+            <input type="date" id="simulatedDateInput" min="2016-01-01" max="" style="width: 150px;">
         </div>
         <div class="config-group">
             <label for="parallelCheckbox">Allow Parallel:</label>
@@ -692,6 +731,30 @@
             const wsUrl = `ws://${window.location.hostname}:9092`;
             socket = new WebSocket(wsUrl);
 
+            socket.onopen = () => {
+                const connEl = document.getElementById("connectionStatus");
+                if (connEl) {
+                    connEl.innerText = "Connected";
+                    connEl.style.color = "#22c55e";
+                }
+            };
+
+            socket.onclose = () => {
+                const connEl = document.getElementById("connectionStatus");
+                if (connEl) {
+                    connEl.innerText = "Disconnected";
+                    connEl.style.color = "#ef4444";
+                }
+            };
+
+            socket.onerror = () => {
+                const connEl = document.getElementById("connectionStatus");
+                if (connEl) {
+                    connEl.innerText = "Disconnected";
+                    connEl.style.color = "#ef4444";
+                }
+            };
+
             socket.onmessage = (event) => {
                 const payload = JSON.parse(event.data);
                 handleSimulationEvent(payload);
@@ -778,6 +841,7 @@
                         clearInterval(timerInterval);
                         timerInterval = null;
                     }
+                    stopMetricsPolling();
                     if (payload.totalTime) {
                         const timerEl = document.getElementById("simulationTimer");
                         if (timerEl) {
@@ -811,6 +875,7 @@
                         clearInterval(timerInterval);
                         timerInterval = null;
                     }
+                    stopMetricsPolling();
                     break;
             }
         }
@@ -887,6 +952,91 @@
             }
         }
 
+        let metricsPollInterval = null;
+        let lastMetricsData = null;
+
+        function formatTokSpeed(val) {
+            if (val === undefined || val === null || isNaN(val) || val <= 0) return "0.0 tok/s";
+            if (val < 1000) {
+                return val.toFixed(1) + " tok/s";
+            } else {
+                return Math.round(val).toString() + " tok/s";
+            }
+        }
+
+        function parsePrometheusMetrics(text) {
+            const metrics = {};
+            if (!text) return metrics;
+            const lines = text.split('\n');
+            for (let line of lines) {
+                line = line.trim();
+                if (!line || line.startsWith('#')) continue;
+                const spaceIdx = line.lastIndexOf(' ');
+                if (spaceIdx === -1) continue;
+                let key = line.substring(0, spaceIdx).trim();
+                const val = parseFloat(line.substring(spaceIdx + 1).trim());
+                if (isNaN(val)) continue;
+                const braceIdx = key.indexOf('{');
+                if (braceIdx !== -1) {
+                    key = key.substring(0, braceIdx);
+                }
+                metrics[key] = val;
+                metrics[key.replace(/:/g, '_')] = val;
+            }
+            return metrics;
+        }
+
+        function updateMetricsReadout() {
+            fetch('/api/metrics')
+                .then(res => {
+                    if (!res.ok) throw new Error("HTTP error " + res.status);
+                    return res.text();
+                })
+                .then(text => {
+                    const metrics = parsePrometheusMetrics(text);
+
+                    // Direct server-calculated metrics: llamacpp:prompt_tokens_seconds and llamacpp:predicted_tokens_seconds
+                    let prefillSpeed = metrics['llamacpp:prompt_tokens_seconds'] ?? metrics['llamacpp_prompt_tokens_seconds'] ?? metrics['llamacpp:prompt_tokens_per_second'] ?? metrics['llamacpp_prompt_tokens_per_second'];
+                    let genSpeed = metrics['llamacpp:predicted_tokens_seconds'] ?? metrics['llamacpp_predicted_tokens_seconds'] ?? metrics['llamacpp:tokens_predicted_per_second'] ?? metrics['llamacpp_tokens_predicted_per_second'] ?? metrics['llamacpp:tokens_predicted_seconds'] ?? metrics['llamacpp_tokens_predicted_seconds'];
+
+                    // Fallback to cumulative average if server gauges are omitted
+                    if (prefillSpeed === undefined || genSpeed === undefined) {
+                        const predTokens = metrics['llamacpp:tokens_predicted_total'] ?? metrics['llamacpp_tokens_predicted_total'] ?? metrics['llamacpp:predicted_tokens_total'] ?? metrics['llamacpp_predicted_tokens_total'] ?? 0;
+                        const predSecs = metrics['llamacpp:tokens_predicted_seconds_total'] ?? metrics['llamacpp_tokens_predicted_seconds_total'] ?? metrics['llamacpp:predicted_seconds_total'] ?? metrics['llamacpp_predicted_seconds_total'] ?? metrics['llamacpp_generation_seconds_total'] ?? 0;
+
+                        const promptTokens = metrics['llamacpp:prompt_tokens_total'] ?? metrics['llamacpp_prompt_tokens_total'] ?? metrics['llamacpp:tokens_evaluated_total'] ?? metrics['llamacpp_tokens_evaluated_total'] ?? 0;
+                        const promptSecs = metrics['llamacpp:prompt_seconds_total'] ?? metrics['llamacpp_prompt_seconds_total'] ?? metrics['llamacpp:prompt_processing_seconds_total'] ?? metrics['llamacpp_prompt_processing_seconds_total'] ?? metrics['llamacpp_prompt_evaluation_seconds_total'] ?? 0;
+
+                        genSpeed = (predTokens > 0 && predSecs > 0) ? (predTokens / predSecs) : 0;
+                        prefillSpeed = (promptTokens > 0 && promptSecs > 0) ? (promptTokens / promptSecs) : 0;
+                    }
+
+                    const prefillEl = document.getElementById("prefillSpeedVal");
+                    const genEl = document.getElementById("genSpeedVal");
+                    if (prefillEl) prefillEl.innerText = formatTokSpeed(prefillSpeed);
+                    if (genEl) genEl.innerText = formatTokSpeed(genSpeed);
+                })
+                .catch(err => {
+                    const prefillEl = document.getElementById("prefillSpeedVal");
+                    const genEl = document.getElementById("genSpeedVal");
+                    if (prefillEl) prefillEl.innerText = "0.0 tok/s";
+                    if (genEl) genEl.innerText = "0.0 tok/s";
+                });
+        }
+
+        function startMetricsPolling() {
+            stopMetricsPolling();
+            updateMetricsReadout();
+            metricsPollInterval = setInterval(updateMetricsReadout, 1000);
+        }
+
+        function stopMetricsPolling() {
+            if (metricsPollInterval) {
+                clearInterval(metricsPollInterval);
+                metricsPollInterval = null;
+            }
+        }
+
         function initStagesBar(mode) {
             const bar = document.getElementById("stagesBar");
             bar.innerHTML = "";
@@ -905,6 +1055,13 @@
                 };
                 bar.appendChild(div);
             });
+
+            const summariesBtn = document.createElement("button");
+            summariesBtn.className = "summaries-btn";
+            summariesBtn.id = "summariesBtn";
+            summariesBtn.innerText = "Summaries";
+            summariesBtn.onclick = toggleSidebar;
+            bar.appendChild(summariesBtn);
         }
 
         function showStageWorkspace(stageNum) {
@@ -1513,6 +1670,20 @@
             const mode = document.getElementById("modeSelect").value;
             const client = document.getElementById("clientSelect").value;
             const model = document.getElementById("modelInput").value.trim();
+            const useSimDate = document.getElementById("simulatedDateCheckbox").checked;
+            let simulatedDate = null;
+            if (useSimDate) {
+                simulatedDate = document.getElementById("simulatedDateInput").value || null;
+                if (!simulatedDate) {
+                    alert("Please select a valid simulation date.");
+                    return;
+                }
+                const today = new Date().toISOString().split('T')[0];
+                if (simulatedDate > today) {
+                    alert("Simulation date cannot be in the future.");
+                    return;
+                }
+            }
             const parallel = document.getElementById("parallelCheckbox").checked;
             const summaryServer = document.getElementById("summaryServerCheckbox").checked;
 
@@ -1523,6 +1694,9 @@
 
             document.getElementById("runBtn").disabled = true;
             document.getElementById("panesContainer").innerHTML = "";
+
+            initStagesBar(mode);
+            startMetricsPolling();
 
             if (timerInterval) {
                 clearInterval(timerInterval);
@@ -1552,8 +1726,6 @@
             currentStageNumber = 0;
             highestStageNumber = 0;
 
-            initStagesBar(mode);
-
             if (client === "LlamaCpp") {
                 document.getElementById("llamaLoadingLogs").textContent = "";
                 document.getElementById("llamaLoadingContainer").style.display = "flex";
@@ -1567,6 +1739,8 @@
                 mode,
                 clientType: client,
                 model,
+                useSimDate: useSimDate,
+                simulatedDate: simulatedDate,
                 allowParallel: parallel,
                 summaryHasOwnLocalServer: summaryServer
             }));
@@ -1591,7 +1765,8 @@
             "QWEN_3_600M",
             "MINICPM5_1B",
             "LFM25_8B_A1B",
-            "GPT_OSS_20B"
+            "GPT_OSS_20B",
+            "TERNARY_BONSAI_27B"
         ];
 
         document.getElementById("clientSelect").onchange = (e) => {
@@ -1600,7 +1775,7 @@
             
             if (client === "LlamaCpp") {
                 let selectHtml = `<label for="modelInput">Model:</label>
-                <select id="modelInput" style="width: 250px;">`;
+                <select id="modelInput" style="width: 212px;">`;
                 llamaCppModels.forEach(model => {
                     const selected = model === "GEMMA_4_12B" ? "selected" : "";
                     selectHtml += `<option value="${model}" ${selected}>${model}</option>`;
@@ -1611,12 +1786,23 @@
                 let defaultValue = "nvidia/nemotron-3-super-120b-a12b:free";
                 
                 container.innerHTML = `<label for="modelInput">Model:</label>
-                <input type="text" id="modelInput" value="${defaultValue}" style="width: 250px;">`;
+                <input type="text" id="modelInput" value="${defaultValue}" style="width: 212px;">`;
             }
         };
 
+        // Toggle simulated date container visibility based on checkbox
+        document.getElementById("simulatedDateCheckbox").addEventListener("change", function() {
+            const container = document.getElementById("simulatedDateContainer");
+            if (this.checked) {
+                container.style.display = "flex";
+            } else {
+                container.style.display = "none";
+            }
+        });
+
         initStagesBar("fast");
         connectWebsocket();
+        startMetricsPolling();
     </script>
 </body>
 </html>

@@ -23,9 +23,19 @@ WS_PORT = 9092
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(ROOT)
 
+import urllib.request
+import urllib.error
+
 from exec.terminal_quick_run import runBoardroom, LLMClientType
-from llm.llamacpp.llamacpp_args import LlamaCppModel
+from llm.llamacpp.llamacpp_args import LlamaCppModel, LLAMACPP_PORT
 from ui.ui_hooks import setEventCallback, emitEvent
+import logging
+
+class MetricsFilter(logging.Filter):
+    def filter(self, record):
+        return "/api/metrics" not in record.getMessage()
+
+logging.getLogger('werkzeug').addFilter(MetricsFilter())
 
 app = Flask(__name__, template_folder=os.path.join(ROOT, "ui/templates"))
 
@@ -44,13 +54,26 @@ def broadcastEvent(eventData):
 def indexPage():
     return render_template("index.html")
 
-def runSimulationThread(clientType, model, ticker, fastMode, allowParallel, summaryHasOwnLocalServer):
+@app.route("/api/metrics")
+def getBoardroomMetrics():
+    url = f"http://127.0.0.1:{LLAMACPP_PORT}/metrics"
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            content = resp.read().decode('utf-8')
+            return content, 200, {'Content-Type': 'text/plain; charset=utf-8'}
+    except Exception as e:
+        return f"# Error reaching llama-server metrics: {e}", 503, {'Content-Type': 'text/plain; charset=utf-8'}
+
+
+def runSimulationThread(clientType, model, ticker, simulatedDate, fastMode, allowParallel, summaryHasOwnLocalServer):
     try:
         startTime = time.time()
         runBoardroom(
             llmClientType=clientType,
             model=model,
             tickerToEval=ticker,
+            simulatedDate=simulatedDate,
             fastMode=fastMode,
             allowParallel=allowParallel,
             summaryHasOwnLocalServer=summaryHasOwnLocalServer
@@ -83,6 +106,7 @@ async def websocketHandler(websocket):
                 mode = data.get("mode", "fast")
                 clientTypeStr = data.get("clientType", "OpenRouter")
                 modelName = data.get("model", "")
+                simulatedDate = data.get("simulatedDate") or None
                 allowParallel = data.get("allowParallel", True)
                 summaryHasOwnLocalServer = data.get("summaryHasOwnLocalServer", False)
                 
@@ -104,7 +128,7 @@ async def websocketHandler(websocket):
                 # Start simulation in background thread
                 simThread = threading.Thread(
                     target=runSimulationThread,
-                    args=(clientType, model, ticker, mode == "fast", allowParallel, summaryHasOwnLocalServer),
+                    args=(clientType, model, ticker, simulatedDate, mode == "fast", allowParallel, summaryHasOwnLocalServer),
                     daemon=True
                 )
                 simThread.start()
@@ -117,7 +141,7 @@ async def websocketHandler(websocket):
 def startWebsocketServer():
     async def main():
         async with websockets.serve(websocketHandler, "127.0.0.1", WS_PORT) as server:
-            print(f"WebSocket Server running on ws://127.0.0.1:{WS_PORT}")
+            # print(f"WebSocket Server running on ws://127.0.0.1:{WS_PORT}")
             await asyncio.Future()  # run forever
 
     asyncio.run(main())
