@@ -8,6 +8,7 @@ from edgar import Company, set_identity, Filing
 from edgar.company_reports import CompanyReport
 from edgar.xbrl import XBRL
 
+from collectors.rate_limiter import RateLimiter
 from collectors.constants import UTC, SEC_EDGAR_IDENTITY
 from dataquery.lru_cache import LRUCache
 from dataquery.ticker_provider import TickerDataProvider
@@ -50,9 +51,10 @@ class CompanyRef:
 
 
 class EdgarDataProvider:
-    def __init__(self, tickerProvider: TickerDataProvider, cache: LRUCache):
+    def __init__(self, tickerProvider: TickerDataProvider, cache: LRUCache, rateLimiter: RateLimiter):
         self.tickerProvider = tickerProvider
         self.cache = cache
+        self.rateLimiter = rateLimiter
         set_identity(SEC_EDGAR_IDENTITY) 
 
     def normaliseTimestamp(self, before: pd.Timestamp) -> pd.Timestamp:
@@ -73,6 +75,7 @@ class EdgarDataProvider:
             return cached
         try:
             company = Company(str(companyRef))
+            self.rateLimiter.wait()
             if formType is not None:
                 filings = company.get_filings(form=formCodes)
             else:
@@ -163,7 +166,9 @@ class EdgarDataProvider:
             return cached
 
         try:
+            self.rateLimiter.wait()
             parsedObj = filing.obj()
+            self.rateLimiter.wait()
             parsedXbrl = filing.xbrl()
 
             self.cache.put(cacheKey, (parsedObj, parsedXbrl))

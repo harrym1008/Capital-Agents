@@ -1,0 +1,191 @@
+import os
+import sys
+import io
+import math
+import traceback
+
+from typing import Dict, Any
+import pandas as pd
+import numpy as np
+
+from dotenv import load_dotenv
+load_dotenv()
+
+from llm.tools.tool_registry import DataProviders, Tool
+from llm.tools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, isLocalDataAvailable, NumberType 
+
+
+def executePythonCalculation(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, code: str) -> Any:
+    oldStdout = sys.stdout
+    redirectedOutput = io.StringIO()
+    sys.stdout = redirectedOutput
+
+    # NOTE: __import__ is included so that LLM-generated code can use
+    # standard "import math" / "import numpy as np" statements inside
+    # the sandbox. Without it, any import statement raises ImportError.
+    safeGlobals = {
+        "__builtins__": {
+            "__import__": __import__,
+            "abs": abs,
+            "all": all,
+            "any": any,
+            "bin": bin,
+            "bool": bool,
+            "chr": chr,
+            "dict": dict,
+            "divmod": divmod,
+            "enumerate": enumerate,
+            "filter": filter,
+            "float": float,
+            "format": format,
+            "hash": hash,
+            "hex": hex,
+            "int": int,
+            "isinstance": isinstance,
+            "len": len,
+            "list": list,
+            "map": map,
+            "max": max,
+            "min": min,
+            "oct": oct,
+            "ord": ord,
+            "pow": pow,
+            "print": print,
+            "range": range,
+            "repr": repr,
+            "reversed": reversed,
+            "round": round,
+            "set": set,
+            "slice": slice,
+            "sorted": sorted,
+            "str": str,
+            "sum": sum,
+            "tuple": tuple,
+            "type": type,
+            "zip": zip,
+        },
+        "math": math,
+        "numpy": np,
+        "np": np,
+        "random": __import__("random"),
+        "datetime": __import__("datetime"),
+    }
+
+    try:
+        strippedCode = code.strip()
+        localScope = None     # Defined here so it's accessible in the outer except block
+
+        try:
+            resultValue = eval(strippedCode, safeGlobals)
+            capturedStdout = redirectedOutput.getvalue()
+            output = {
+                "success": True,
+                "result": cleanData(resultValue),
+                "stdout": capturedStdout
+            }
+            tool.toolLog.append(output)
+            return output
+        
+        except SyntaxError:     # The code contains statements, it is not just a pure expression
+            localScope = {}
+            exec(strippedCode, safeGlobals, localScope)
+            capturedStdout = redirectedOutput.getvalue()
+
+            preloadedModules = {"math", "numpy", "np", "random", "datetime"}
+            cleanedLocalScope = {
+                k: cleanData(v)
+                for k, v in localScope.items()
+                if not k.startswith("_") and k not in preloadedModules
+            }
+            output = {
+                "success": True,
+                "variables": cleanedLocalScope,
+                "stdout": capturedStdout
+            }
+            tool.toolLog.append(output)
+            return output
+        
+    except Exception as e:
+        tb = traceback.format_exc()
+        failedLine = None
+
+        if isinstance(e, SyntaxError):
+            failedLine = {
+                "line": e.lineno,
+                "column": e.offset,
+                "code": e.text.rstrip() if e.text else None
+            }
+        else:
+            _, _, excTraceback = sys.exc_info()
+            if excTraceback is not None:
+                try:
+                    frames = traceback.extract_tb(excTraceback)
+                    if frames:
+                        lastFrame = frames[-1]
+                        failedLine = {
+                            "line": lastFrame.lineno,
+                            "code": lastFrame.line
+                        }
+                except Exception:
+                    pass
+
+        errorResult = {
+            "success": False,
+            "error": f"{e.__class__.__name__}: {str(e)}",
+            "traceback": tb,
+            "failedLine": failedLine
+        }
+
+        # If exec() was attempted, include the partially-built variable state
+        if localScope is not None:
+            preloadedModules = {"math", "numpy", "np", "random", "datetime"}
+            try:
+                cleanedVars = {
+                    k: cleanData(v)
+                    for k, v in localScope.items()
+                    if not k.startswith("_") and k not in preloadedModules
+                }
+            except Exception:
+                cleanedVars = {"note": "Could not serialize variable data"}
+            errorResult["variables"] = cleanedVars
+
+        tool.toolLog.append(errorResult)
+        return errorResult
+    finally:
+        sys.stdout = oldStdout
+
+
+
+def confirmBoardroomDecision(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, 
+                             ticker: str, rating: str, weighting: str, twelveMonthTarget: float, threeYearTarget: float) -> Dict[str, Any]:
+    from cli.ansi import ANSI
+    try:
+        rating = rating.upper()
+        weighting = weighting.upper()
+
+        if rating not in ["STRONG BUY", "BUY", "HOLD", "SELL", "STRONG SELL"]:
+            return {"error": f"Invalid rating value: {rating}. Must be one of STRONG BUY, BUY, HOLD, SELL, STRONG SELL."}
+        if weighting not in ["UNDERWEIGHT", "EQUAL-WEIGHT", "OVERWEIGHT"]:
+            return {"error": f"Invalid weighting value: {weighting}. Must be one of UNDERWEIGHT, EQUAL-WEIGHT, OVERWEIGHT."}
+
+        finalDecisionStr = f"""{ANSI.BOLD}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  Completed boardroom decision confirmation of {(ticker+':'):<12}   ┃
+┃                                                              ┃
+┃        Rating:  {ANSI.ITALIC}{rating:<12}{ANSI.RESET}{ANSI.BOLD}                                 ┃
+┃     Weighting:  {ANSI.ITALIC}{weighting:<12}{ANSI.RESET}{ANSI.BOLD}                                 ┃
+┃  12-Mo Target:  {cleanNumber(twelveMonthTarget, NumberType.STOCK_PRICE):<12}                                 ┃
+┃   3-Yr Target:  {cleanNumber(threeYearTarget, NumberType.STOCK_PRICE):<12}                                 ┃ 
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n{ANSI.RESET}"""
+        
+        result = {
+            "ticker": ticker,
+            "rating": rating,
+            "weighting": weighting,
+            "twelveMonthTarget": cleanNumber(twelveMonthTarget, NumberType.STOCK_PRICE),
+            "threeYearTarget": cleanNumber(threeYearTarget, NumberType.STOCK_PRICE)
+        }
+        tool.toolLog.append(finalDecisionStr)
+
+        return cleanData(result)
+    except Exception as e:
+        return {"error": f"An error occurred while confirming boardroom decision: {str(e)}"}

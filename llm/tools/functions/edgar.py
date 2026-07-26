@@ -280,8 +280,12 @@ def fetchValidFilings(companyRef: CompanyRef, data: DataProviders, timestamp: pd
 
 
 
-
 def fetchCompanyValuationMetrics(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str):
+    cacheKey = f"valuation|{ticker}_{timestamp.strftime('%Y-%m-%dH%H')}"
+    cached = data.cache.get(cacheKey)
+    if cached is not None:
+        return cached
+    
     companyRef = CompanyRef(ticker)
 
     formsToFetch = [FormType.FORM_10K, FormType.FORM_10Q, FormType.FORM_20F, FormType.FORM_40F]
@@ -469,9 +473,10 @@ def fetchCompanyValuationMetrics(tool: Tool, data: DataProviders, timestamp: pd.
         "operatingMargins": cleanNumber(operatingMargins, NumberType.UNSCALED_PERCENTAGE),
         "returnOnEquity": cleanNumber(returnOnEquity, NumberType.UNSCALED_PERCENTAGE)
     })
-    return dataHeader | fundamentalData
 
-
+    jsonOutput = dataHeader | fundamentalData
+    data.cache.put(cacheKey, jsonOutput)
+    return jsonOutput
 
 
 
@@ -564,11 +569,18 @@ def formatStatementFromDataframe(df: pd.DataFrame, filing: Filing, data: DataPro
         return f"Error processing {statementName} data for filing {filing.form} filed on {filing.filing_date}: {str(e)}"
 
 
-def fetchFormattedStatement(data: DataProviders, timestamp: pd.Timestamp, 
+def fetchFormattedStatementInJson(data: DataProviders, timestamp: pd.Timestamp, 
                             ticker: str, statementName: str, statementGetter: callable, periodType: str = "annual"):
     companyRef = CompanyRef(ticker)
     formsToFetch = [FormType.FORM_10K, FormType.FORM_20F, FormType.FORM_40F] if periodType == "annual" else [FormType.FORM_10Q]
     validFilings = fetchValidFilings(companyRef, data, timestamp, formsToFetch)
+
+    allFilingsAccessionNumbers = [f.accession_number for f in validFilings]
+    allFilingsNumberCacheStr = ",".join(allFilingsAccessionNumbers)
+    cacheKey = f"stmt|{ticker}_{statementName.replace(' ', '')}_{allFilingsNumberCacheStr}"
+    cached = data.cache.get(cacheKey)
+    if cached is not None:
+        return cached
 
     if not validFilings:
         return f"No valid filings found for {ticker} before {timestamp}."
@@ -583,26 +595,31 @@ def fetchFormattedStatement(data: DataProviders, timestamp: pd.Timestamp,
 
     df = statement.to_dataframe()
     reportCurrency = extractCurrency(latestFiling, filingXbrl) or "USD"
-    return formatStatementFromDataframe(df, latestFiling, data, statementName, ticker, reportCurrency)
+
+    formattedStatement = formatStatementFromDataframe(df, latestFiling, data, statementName, ticker, reportCurrency)
+    jsonOutput = {"date": timestamp.strftime("%Y-%m-%d"), "statement": formattedStatement}
+
+    data.cache.put(cacheKey, jsonOutput)
+    return jsonOutput
 
 
 
 def fetchIncomeStatement(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str, periodType: str = "annual"):
-    return fetchFormattedStatement(data, timestamp, ticker, "Income Statement", lambda f: f.income_statement(), periodType)
+    return fetchFormattedStatementInJson(data, timestamp, ticker, "Income Statement", lambda f: f.income_statement(), periodType)
 
 
 def fetchBalanceSheet(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str, periodType: str = "annual"):
-    return fetchFormattedStatement(data, timestamp, ticker, "Balance Sheet", lambda f: f.balance_sheet(), periodType)
+    return fetchFormattedStatementInJson(data, timestamp, ticker, "Balance Sheet", lambda f: f.balance_sheet(), periodType)
 
 
 def fetchCashFlowStatement(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str, periodType: str = "annual"):
-    return fetchFormattedStatement(data, timestamp, ticker, "Cash Flow Statement", lambda f: f.cash_flow_statement(), periodType)
+    return fetchFormattedStatementInJson(data, timestamp, ticker, "Cash Flow Statement", lambda f: f.cash_flow_statement(), periodType)
 
 
 def fetchStatementOfEquity(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str, periodType: str = "annual"):
-    return fetchFormattedStatement(data, timestamp, ticker, "Statement of Equity", lambda f: f.statement_of_equity(), periodType)
+    return fetchFormattedStatementInJson(data, timestamp, ticker, "Statement of Equity", lambda f: f.statement_of_equity(), periodType)
 
 
 def fetchComprehensiveIncomeStatement(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str, periodType: str = "annual"):
-    return fetchFormattedStatement(data, timestamp, ticker, "Comprehensive Income Statement", lambda f: f.comprehensive_income(), periodType)
+    return fetchFormattedStatementInJson(data, timestamp, ticker, "Comprehensive Income Statement", lambda f: f.comprehensive_income(), periodType)
 

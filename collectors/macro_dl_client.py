@@ -54,19 +54,19 @@ YFINANCE_MACRO_TICKERS = {
         "yfticker": "NG=F"
     },
     "BTCUSD": {
-        "desc": "Bitcoin to US Dollar exchange rate",
+        "desc": "1 Bitcoin to US Dollar exchange rate",
         "yfticker": "BTC-USD"
     },
     "GBPUSD": {
-        "desc": "British Pound to US Dollar exchange rate",
+        "desc": "1 British Pound to US Dollar exchange rate",
         "yfticker": "GBPUSD=X"
     },
     "EURUSD": {
-        "desc": "Euro to US Dollar exchange rate",
+        "desc": "1 Euro to US Dollar exchange rate",
         "yfticker": "EURUSD=X"
     },
     "USDJPY": {
-        "desc": "US Dollar to Japanese Yen exchange rate",
+        "desc": "1 US Dollar to Japanese Yen exchange rate",
         "yfticker": "USDJPY=X"
     },
 }

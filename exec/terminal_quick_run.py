@@ -10,6 +10,8 @@ except AttributeError:
 import time
 import math
 
+import pandas as pd
+
 from enum import Enum
 from dotenv import load_dotenv
 load_dotenv()
@@ -26,7 +28,12 @@ from llm.summarise.cloud_summary import OpenRouterSummaryClient
 
 from llm.cloud.openrouter_client import OpenRouterClient
 
-from llm.boardroom_engine import boardroomGenerator
+from llm.boardroom_engine import generateBoardroom
+from llm.tools.registry_builder import buildToolRegistry
+from llm.tools.lru_cacher import startPrecacheThread
+
+from collectors.constants import UTC, NEW_YORK
+
 
 
 class LLMClientType(Enum):
@@ -38,12 +45,20 @@ def runBoardroom(
         llmClientType: LLMClientType, 
         model: str | LlamaCppModel, 
         tickerToEval: str, 
+        simulatedDate: str = None,
         fastMode: bool = True, 
         allowParallel: bool = True, 
         summaryHasOwnLocalServer: bool = True
     ):
     boardroomClient: BaseLLMClient
     summaryClient: BaseLLMClient
+
+    if simulatedDate is None:
+        simulatedDate = time.strftime("%Y-%m-%d", time.localtime())
+    timestamp = pd.Timestamp(f"{simulatedDate} 09:00").tz_localize(NEW_YORK).tz_convert(UTC)
+    toolRegistry = buildToolRegistry()
+
+    precacheThread = startPrecacheThread(toolRegistry, timestamp, tickerToEval)
 
     if llmClientType == LLMClientType.LlamaCpp:        
         killExistingLlamaCppProcesses()
@@ -81,9 +96,10 @@ def runBoardroom(
         
 
     clientDuo = ClientDuo(boardroomClient, summaryClient)
+    boardroom = generateBoardroom(toolRegistry, timestamp)
+    boardroom.assignClientDuo(clientDuo)
 
-    simulatedDate = time.strftime("%Y-%m-%d", time.localtime())
-    boardroom = boardroomGenerator(simulatedDate, clientDuo)
+    precacheThread.join()   # Wait for the precache thread to finish before proceeding
     
     timeBefore = time.time()
     boardroom.executeSingleEquityRating(targetTicker=tickerToEval, fastMode=fastMode)
@@ -102,11 +118,11 @@ def runBoardroom(
 if __name__ == "__main__":
     runBoardroom(
         llmClientType=LLMClientType.LlamaCpp, 
-        model=LlamaCppModel.GEMMA_4_12B, 
+        model=LlamaCppModel.GEMMA_4_E4B, 
         tickerToEval="NVDA",
-        fastMode=False, 
-        allowParallel=True,
-        summaryHasOwnLocalServer=(os.getenv("HIGH_MEMORY", "false") == "true")
+        fastMode=True, 
+        allowParallel=False,
+        summaryHasOwnLocalServer=False  # (os.getenv("HIGH_MEMORY", "false") == "true")
     ) 
     
 

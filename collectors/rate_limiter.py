@@ -71,4 +71,4 @@ class GlobalRateLimiters:
         self.massiveLimiter = RateLimiter("massive", 5, 60)         # Massive API allows 5 requests per minute
         self.edgarLimiter = RateLimiter("edgar", 5, 1)              # No official limit, 5 reqs per second will be safe
         self.fredLimiter = RateLimiter("fred", 120, 60)             # FRED allows 120 requests per minute
-        self.finraLimiter = RateLimiter("finracdn", 300, 60)         # FINRA's CDN doesnt have a limit, 300/min should be safe
+        self.finraLimiter = RateLimiter("finracdn", 300, 60)        # FINRA's CDN doesnt have a limit, 300/min should be safe

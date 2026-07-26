@@ -54,6 +54,7 @@ class NumberType(Enum):
     LARGE_NUMBER = 13
     UNSCALED_PERCENTAGE = 14
     EXCHANGE_RATE = 15
+    CHANGE_BP = 16 
 
 
 def cleanNumber(value, numType: NumberType):
@@ -105,7 +106,10 @@ def cleanNumber(value, numType: NumberType):
             case NumberType.PERCENTAGE: 
                 return stringifyNumber(value, sf=3, minDp=1, trailing="%")
             case NumberType.PERCENTAGE_CHANGE:
+                if value == 0:
+                    return "0% (no change)"
                 return stringifyNumber(value, sf=3, minDp=1, plusSign=True, trailing="%")
+            
             case NumberType.LARGE_DOLLARS:
                 return formatLargeDollars(value)
             case NumberType.LARGE_DOLLARS_CHANGE:
@@ -134,6 +138,9 @@ def cleanNumber(value, numType: NumberType):
 
             case NumberType.EXCHANGE_RATE:
                 return stringifyNumber(value, sf=5, minDp=2)
+
+            case NumberType.CHANGE_BP:
+                return stringifyNumber(value, sf=3, minDp=1, plusSign=True) + " bps"
 
             case _:
                 return str(value)

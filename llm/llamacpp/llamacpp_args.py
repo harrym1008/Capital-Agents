@@ -37,10 +37,14 @@ class LlamaCppModel(Enum):
     LFM25_8B_A1B = "LFM-2.5-8B-A1B"
     GPT_OSS_20B = "GPT-OSS-20B"
 
+    TERNARY_BONSAI_27B = "Ternary-Bonsai-27B"
+
     SUMMARY_MODEL = "Summary-Model"
 
 
 EMPTY_ARG = _ = ""
+EXECUTABLE_ARG_OVERRIDE = "EXECUTABLE_ARG_OVERRIDE"
+
 LLAMACPP_MODEL_TO_ARGS = {
     LlamaCppModel.GEMMA_4_26B_A4B: {
         "-m":               f"{MODELS_FOLDER}Gemma4\\gemma-4-26B-A4B-it-qat-UD-Q4_K_XL.gguf",
@@ -280,7 +284,7 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
         "-ngl":             "99",
         "--mlock":          _,
-        "--chat-template-kwargs":       '{"preserve_thinking":true}',
+        "--reasoning-preserve":        "on",
         # "--reasoning-budget":           str(THINKING_BUDGET),
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
@@ -310,7 +314,7 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--fit":            "on",
         "--fit-target":     "1000",
         "--mlock":          _,
-        "--chat-template-kwargs":       '{"preserve_thinking":true}',
+        "--reasoning-preserve":        "on",
         "--spec-type":                  "draft-mtp",
         "--spec-draft-n-max":           "2",
         "--spec-draft-ngl":             "99",
@@ -364,7 +368,7 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--cache-ram":      "4096",
         "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
         "--mlock":          _,
-        "--chat-template-kwargs":       '{"preserve_thinking":true}',
+        "--reasoning-preserve":        "on",
         "--spec-type":                  "draft-mtp",
         "--spec-draft-n-max":           "2",
         "--spec-draft-ngl":             "99",
@@ -396,7 +400,7 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--cache-ram":      "4096",
         "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
         "--mlock":          _,
-        "--chat-template-kwargs":       '{"preserve_thinking":true}',
+        "--reasoning-preserve":        "on",
         "--spec-type":                  "draft-mtp",
         "--spec-draft-n-max":           "2",
         "--spec-draft-ngl":             "99",
@@ -428,7 +432,7 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--cache-ram":      "4096",
         "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
         "--mlock":          _,
-        "--chat-template-kwargs":       '{"preserve_thinking":true}',
+        "--reasoning-preserve":        "on",
         "--spec-type":                  "draft-mtp",
         "--spec-draft-n-max":           "2",
         "--spec-draft-ngl":             "99",
@@ -486,6 +490,35 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--ctx-size":       "65536",    # Qwen 3 has max context of 32k per slot
         "--mlock":          _,
         "--reasoning":      "on",
+        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
+    },
+
+    LlamaCppModel.TERNARY_BONSAI_27B: {
+        EXECUTABLE_ARG_OVERRIDE: f"I:\\llamacpp-other\\bonsai-ternary-27b\\llama-server.exe",
+        "-m":               f"{MODELS_FOLDER}Bonsai\\Ternary-Bonsai-27B-Q2_0.gguf",
+        "--port":           str(LLAMACPP_PORT),
+        "--host":           "127.0.0.1",
+        "--temp":           "0.5",
+        "--top-p":          "0.95",
+        "--top-k":          "20",
+        "--min-p":          "0.0",
+        "--presence-penalty": "0.0",
+        "--repeat-penalty":   "1.0",
+        "--flash-attn":     "on",
+        "--cache-type-k":   "q8_0",
+        "--cache-type-v":   "q8_0",
+        "--no-mmap":        _,
+        "--metrics":        _,
+        "-b":               "2048",
+        "-ub":              "512",
+        "--jinja":          _,
+        "-np":              "2",
+        "--kv-offload":     _,
+        "--cache-ram":      "4096",
+        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
+        "-ngl":             "99",
+        "--mlock":          _,
         # "--reasoning-budget":           str(THINKING_BUDGET),
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },

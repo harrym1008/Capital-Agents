@@ -166,12 +166,12 @@ class MacroDataProvider:
     def getLowest(self, name: MacroSeries, startDate: pd.Timestamp, endDate: pd.Timestamp):
         df = self.getSeries(name, startDate=startDate, endDate=endDate)
         if df.empty:
-            return None
+            return None, None
 
         valueCol = "low" if name.source == "yfinance" else name.valueCol
 
         if valueCol not in df.columns:
-            return None
+            return None, None
         
         idx = df[valueCol].idxmin()
         row = df.loc[idx]
@@ -181,12 +181,12 @@ class MacroDataProvider:
     def getHighest(self, name: MacroSeries, startDate: pd.Timestamp, endDate: pd.Timestamp):
         df = self.getSeries(name, startDate=startDate, endDate=endDate)
         if df.empty:
-            return None
+            return None, None
 
         valueCol = "high" if name.source == "yfinance" else name.valueCol
 
         if valueCol not in df.columns:
-            return None
+            return None, None
         
         idx = df[valueCol].idxmax()
         row = df.loc[idx]

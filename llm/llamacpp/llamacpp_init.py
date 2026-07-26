@@ -12,7 +12,8 @@ import psutil
 import time
 
 
-from llm.llamacpp.llamacpp_args import LLAMACPP_EXECUTABLE, LLAMACPP_PORT, LlamaCppModel, EMPTY_ARG, LLAMACPP_MODEL_TO_ARGS
+from llm.llamacpp.llamacpp_args import LLAMACPP_EXECUTABLE, LLAMACPP_PORT, LlamaCppModel, EMPTY_ARG, LLAMACPP_MODEL_TO_ARGS, EXECUTABLE_ARG_OVERRIDE
+from ui.ui_hooks import emitEvent
 
 
 class ServerState(Enum):
@@ -22,11 +23,11 @@ class ServerState(Enum):
     STOPPING = "stopping"
 
 
-def killExistingLlamaCppProcesses():
+def killExistingLlamaCppProcesses(executablePath=LLAMACPP_EXECUTABLE):
     killed = False
     for process in psutil.process_iter(["pid", "name"]):
         try:
-            if process.info["name"].lower() == LLAMACPP_EXECUTABLE.lower():
+            if process.info["name"].lower() == executablePath.lower():
                 print(f"Killing PID {process.pid}")
                 process.kill()
                 killed = True
@@ -105,29 +106,33 @@ def rudimentaryVramClear():
         print(f"Error during rudimentary VRAM clearing: {e}. Continuing without clearing VRAM.")
 
 
-def checkExecutableExists():
-    path = Path(LLAMACPP_EXECUTABLE)
-    return path.is_file() or shutil.which(LLAMACPP_EXECUTABLE) is not None
+def checkExecutableExists(executablePath=LLAMACPP_EXECUTABLE):
+    path = Path(executablePath)
+    return path.is_file() or shutil.which(executablePath) is not None
 
 
 class LlamaCppProcessInitiator:
     def __init__(self, 
-                 serverName: str, 
-                 model: LlamaCppModel, 
-                 printLogsToTerminal: bool = True,
-                 killExistingProcesses: bool = True, 
-                 argOverrides=None
+                serverName: str, 
+                model: LlamaCppModel, 
+                printLogsToTerminal: bool = True,
+                killExistingProcesses: bool = True, 
+                argOverrides=None
         ):
-        if not checkExecutableExists():
-            raise FileNotFoundError(f"Llama.cpp executable not found at '{LLAMACPP_EXECUTABLE}' and not in PATH. Please ensure it is built and available.")
-        
-        if killExistingProcesses:
-            killExistingLlamaCppProcesses()
-
         self.serverName = serverName
-
+        
         self.args = LLAMACPP_MODEL_TO_ARGS.get(model, {}).copy()
         self.args.update(argOverrides or {})
+
+        self.llamacppExecutable = self.args.get(EXECUTABLE_ARG_OVERRIDE, LLAMACPP_EXECUTABLE)
+
+        if not checkExecutableExists(self.llamacppExecutable):
+            raise FileNotFoundError(f"Llama.cpp executable not found at '{self.llamacppExecutable}' and not in PATH. Please ensure it is built and available.")
+        
+        if killExistingProcesses:
+            if self.llamacppExecutable != LLAMACPP_EXECUTABLE:
+                killExistingLlamaCppProcesses(LLAMACPP_EXECUTABLE)
+            killExistingLlamaCppProcesses(self.llamacppExecutable)
 
         self.baseUrl = f"http://{self.args.get('--host', '127.0.0.1')}:{self.args.get('--port', LLAMACPP_PORT)}"
         self.healthUrl = f"{self.baseUrl}/health"
@@ -157,7 +162,6 @@ class LlamaCppProcessInitiator:
         if self.printLogsToTerminal:
             print(*args, **kwargs)
 
-
     
     def readStream(self, stream, tag):
         try:
@@ -165,7 +169,6 @@ class LlamaCppProcessInitiator:
                 if self.getState() == ServerState.STARTING:
                     self.printToTerminal(line.rstrip())
                     try:
-                        from ui.ui_hooks import emitEvent
                         emitEvent("llamaCppStartupLog", {"log": line.rstrip()})
                     except Exception:
                         pass
@@ -194,11 +197,15 @@ class LlamaCppProcessInitiator:
             if self.state in (ServerState.STARTING, ServerState.RUNNING):
                 return
             
-        command = [LLAMACPP_EXECUTABLE]
+        command = [self.llamacppExecutable]
         for key, value in self.args.items():
+            if key == EXECUTABLE_ARG_OVERRIDE:
+                continue            
             command.append(key)
             if value != EMPTY_ARG:
                 command.append(value)
+
+        print(f"[{self.serverName}] Starting Llama.cpp process with command:\n'{' '.join(command)}'")
                 
         self.setState(ServerState.STARTING)
         self.process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,

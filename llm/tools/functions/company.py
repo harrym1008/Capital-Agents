@@ -4,6 +4,7 @@ import requests
 import numpy as np
 import pandas as pd
 import yfinance as yf
+from fredapi import Fred
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -17,9 +18,25 @@ from llm.tools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanH
 
 
 def fetchCompanyProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str):
+    useLocal = isLocalDataAvailable(timestamp)
+
     tickerProfile: CompanyProfile = data.tickers.getTickerProfile(ticker)
     if tickerProfile is None:
         return {"error": f"No profile found for ticker {ticker}"}
+
+    if not useLocal:
+        key = f"company|profile_{ticker}_{timestamp.strftime('%Y-%m-%dH%H')}"
+        cached = data.cache.get(key)
+        if cached is not None:
+            yfInfo = cached
+        else:
+            # Fetch profile from yfinance
+            data.rateLimiters.yFinanceLimiter.wait()
+            yfTicker = yf.Ticker(ticker)
+            yfInfo = yfTicker.info
+            data.cache.put(key, yfInfo)
+            
+        tickerProfile.summary = yfInfo.get("longBusinessSummary") or tickerProfile.summary
 
     profileDict = {
         "ticker": tickerProfile.ticker,
@@ -31,10 +48,10 @@ def fetchCompanyProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
         "industry": tickerProfile.industry,
         "website": tickerProfile.website,
         "summary": tickerProfile.summary,
-        "summaryNote": "Company profile is highly outdated! Do not use for investment decisions."
+        "summaryNote": "Company profile could be highly outdated! Do not use for investment decisions."
     }
 
-    if tickerProfile.ipoDate == IPO_BEFORE_START_DATE:
+    if tickerProfile.ipoDate <= IPO_BEFORE_START_DATE:
         profileDict["ipoDate"] = "pre-2016"
 
     if tickerProfile.delistDate is None or tickerProfile.delistDate > timestamp:
@@ -100,8 +117,8 @@ def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timest
 
     else:
         # Retrieve news from the Alpaca API
-        apiKeyId = os.getenv("ALPACA_API_KEY_ID")
-        apiKeySecret = os.getenv("ALPACA_API_SECRET_KEY")
+        apiKeyId = os.getenv("ALPACA_API_KEY")
+        apiKeySecret = os.getenv("ALPACA_API_SECRET")
 
         headers = {
             "accept": "application/json",
@@ -109,18 +126,31 @@ def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timest
             "APCA-API-SECRET-KEY": apiKeySecret
         }
 
-        url = (
-            f"https://data.alpaca.markets/v1beta1/news"
-            f"?sort=desc&symbols={ticker}&limit={limit}"
-            f"&include_content=true&exclude_contentless=true&sort=desc"
-            f"&start={(timestamp - pd.Timedelta(days=365)).strftime('%Y-%m-%dT%H:%M:%SZ')}-0400"
-            f"&end={timestamp.strftime('%Y-%m-%dT%H:%M:%SZ')}-0400"
-        )
+        url = "https://data.alpaca.markets/v1beta1/news"
+
+        params = {
+            "start": (timestamp - pd.Timedelta(days=365)).strftime("%Y-%m-%dT%H:%M:%S-04:00"),
+            "end": timestamp.strftime("%Y-%m-%dT%H:%M:%S-04:00"),
+            "sort": "desc",
+            "symbols": ticker,
+            "limit": limit,
+            "include_content": "true",
+            "exclude_contentless": "true",
+        }
 
         try:
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            rawNews = response.json().get("news", [])
+            # Check if it is in the cache
+            cacheKey = f"alpaca|news_{ticker}_{timestamp.strftime('%Y-%m-%dH%H')}_{limit}"
+            cached = data.cache.get(cacheKey)
+            if cached is not None:
+                rawNews = cached
+            else:
+                data.rateLimiters.alpacaLimiter.wait()
+                response = requests.get(url, headers=headers, params=params)
+                response.raise_for_status()
+                rawNews = response.json().get("news", [])
+                data.cache.put(cacheKey, rawNews)
+
         except requests.exceptions.RequestException as e:
             jsonResult.append({"error": f"Error fetching news from Alpaca API: {str(e)}"})
             return cleanData(jsonResult)
@@ -160,11 +190,10 @@ def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timest
                 "url": url
             }) 
 
-
     if len(jsonResult) < limit:
         jsonResult.append({"info": f"Only {len(jsonResult)} articles could be retrieved."})
 
-    return cleanData(jsonResult)
+    return {"date": timestamp.strftime("%Y-%m-%d"), "news": cleanData(jsonResult)}
 
 
 def calculateRsi(priceData: pd.DataFrame, period: int = 14) -> float:
@@ -204,11 +233,16 @@ def calculateMacd(priceData: pd.DataFrame, fast: int, slow: int, signal: int):
 
 def calculateSharpeRatio(priceData: pd.DataFrame, treasuryData: pd.DataFrame):
     priceDf = priceData.copy()
+    treasuryDf = treasuryData.copy()
+
     if priceDf["date"].dt.tz is not None:
         priceDf["date"] = priceDf["date"].dt.tz_localize(None)
 
-    treasuryData = treasuryData.rename(columns={"value": "treasuryRate"})
-    mergedData = pd.merge(priceDf, treasuryData, on="date", how="inner")
+    if treasuryDf["date"].dt.tz is not None:
+        treasuryDf["date"] = treasuryDf["date"].dt.tz_localize(None)
+
+    treasuryDf = treasuryDf.rename(columns={"value": "treasuryRate"})
+    mergedData = pd.merge(priceDf, treasuryDf, on="date", how="inner")
 
     returns = mergedData["close"].pct_change()
     dailyRiskFree = (1 + mergedData["treasuryRate"] / 100) ** (1 / 252) - 1
@@ -218,10 +252,56 @@ def calculateSharpeRatio(priceData: pd.DataFrame, treasuryData: pd.DataFrame):
     return sharpeRatio
 
 
+def downloadTreasuryData(data: DataProviders, startDate: pd.Timestamp, endDate: pd.Timestamp):
+    fredClient = Fred(api_key=os.getenv("FRED_API_KEY"))
+
+    data.rateLimiters.fredLimiter.wait()
+    df = fredClient.get_series("DGS2", observation_start=startDate.strftime("%Y-%m-%d"), observation_end=endDate.strftime("%Y-%m-%d"))
+    df = df.reset_index()
+    df.columns = ["date", "value"]
+    df.dropna(subset=["value"], inplace=True)
+    df["date"] = pd.to_datetime(df["date"]).dt.tz_localize("America/New_York").dt.tz_convert("UTC")
+
+    return df
+
+
+def findSmaCrossovers(priceData: pd.DataFrame, maxLookbackDays: int = 503, maxCrossovers: int = 8):     # 503 trading days is 2 years +/- 1 day
+    df = priceData.copy()
+
+    df["sma50"] = df["close"].rolling(window=50).mean()
+    df["sma200"] = df["close"].rolling(window=200).mean()
+
+    # 50 SMA was <= 200 SMA yesterday, but > today
+    goldenCondition = (df["sma50"] > df["sma200"]) & (df["sma50"].shift(1) <= df["sma200"].shift(1))
+
+    # 50 SMA was >= 200 SMA yesterday, but < today
+    deathCondition = (df["sma50"] < df["sma200"]) & (df["sma50"].shift(1) >= df["sma200"].shift(1))
+
+    df["crossType"] = None
+    df.loc[goldenCondition, "crossType"] = "goldenCross"
+    df.loc[deathCondition, "crossType"] = "deathCross"
+
+    crossoversDf = df[df["crossType"].notna()].copy().tail(maxLookbackDays)
+    crossovers = []
+
+    for _, row in crossoversDf.iterrows():
+        crossovers.append({
+            "date": row["date"].strftime("%Y-%m-%d"),
+            "type": row["crossType"],
+            "price": cleanNumber(row["close"], NumberType.STOCK_PRICE)
+        })
+    return crossovers[-maxCrossovers:] 
+
 
 def fetchStockPricePerformance(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str):
     useLocal = isLocalDataAvailable(timestamp)
     startDate = timestamp - pd.DateOffset(years=5, weeks=1)
+
+    # Check if it is in the cache
+    cacheKey = f"stockPerf|{ticker}_{timestamp.strftime('%Y-%m-%dH%H')}"
+    cached = data.cache.get(cacheKey)
+    if cached is not None:
+        return cached
 
     priceData: pd.DataFrame = None
     
@@ -241,6 +321,7 @@ def fetchStockPricePerformance(tool: Tool, data: DataProviders, timestamp: pd.Ti
             return {"error": "No local price data available."}
     else:
         # Get via yfinance
+        data.rateLimiters.yFinanceLimiter.wait()
         yfTicker = yf.Ticker(ticker)
         priceData = yfTicker.history(
             start=startDate, 
@@ -250,11 +331,18 @@ def fetchStockPricePerformance(tool: Tool, data: DataProviders, timestamp: pd.Ti
             actions=False
         )
 
+        tickerInfo = yfTicker.info
+        mostRecentPrice = float(
+            tickerInfo.get("regularMarketOpen")
+            or tickerInfo.get("regularMarketPrice")
+        )       # Sometimes the most recent day of trading is all NaN, update the most recent day
+
         priceData.drop(columns=["Volume"], inplace=True)
-        priceData = priceData.reset_index()
+        priceData = priceData.dropna().reset_index()
         priceData.columns = priceData.columns.str.lower()
         priceData["date"] = priceData["date"].dt.tz_convert("UTC")
         priceData = priceData[["date", "open", "high", "low", "close"]]
+        priceData.loc[priceData.index[-1], "close"] = mostRecentPrice
 
         if priceData.empty:
             return {"error": "No price data available from yfinance."}
@@ -281,7 +369,7 @@ def fetchStockPricePerformance(tool: Tool, data: DataProviders, timestamp: pd.Ti
     rsi30Day = calculateRsi(priceData, period=30)
 
     # Calculate 30d volatility
-    pctReturns = priceData["close"].pct_change().dropna()
+    pctReturns = priceData["close"].pct_change(fill_method=None).dropna()
     volatility30d = pctReturns.tail(30).std() * np.sqrt(252)
 
     # Calculate max drawdown
@@ -292,7 +380,10 @@ def fetchStockPricePerformance(tool: Tool, data: DataProviders, timestamp: pd.Ti
     macdData = calculateMacd(priceData, fast=12, slow=26, signal=9)
 
     # Calculate Sharpe ratio
-    treasuryData = data.macro.getSeries(MacroSeries.TREAS_2Y, startDate=startDate, endDate=timestamp)
+    if useLocal:
+        treasuryData = data.macro.getSeries(MacroSeries.TREAS_2Y, startDate=startDate, endDate=timestamp)
+    else:
+        treasuryData = downloadTreasuryData(data, startDate, timestamp)
     sharpeRatio = calculateSharpeRatio(priceData, treasuryData)
 
     # Calculate periodic returns
@@ -317,8 +408,10 @@ def fetchStockPricePerformance(tool: Tool, data: DataProviders, timestamp: pd.Ti
         else:
             pctReturns[periodName] = "N/A"
 
+    # Find SMA crossovers
+    crossovers = findSmaCrossovers(priceData, maxLookbackDays=503, maxCrossovers=8)
 
-
+    # Compile results
     stockPricePerformance = {
         "ticker": ticker.upper(),
         "mostRecentPrice": cleanNumber(mostRecentPrice, NumberType.STOCK_PRICE),
@@ -369,9 +462,11 @@ def fetchStockPricePerformance(tool: Tool, data: DataProviders, timestamp: pd.Ti
         "maxDrawdown": cleanNumber(maxDrawdown, NumberType.DECIMAL),
         "sharpeRatio": cleanNumber(sharpeRatio, NumberType.DECIMAL),
 
-        "returns": pctReturns
+        "returns": pctReturns,
+        "smaCrossovers": crossovers
     }
 
+    data.cache.put(cacheKey, stockPricePerformance)
     return stockPricePerformance
 
 
@@ -384,11 +479,11 @@ def calculateDistFromCurrPrice(tool: Tool, data: DataProviders, timestamp: pd.Ti
         priceData = data.ohlcv.getSingleDayTickerData(ticker, timestamp)
         mostRecentPrice = float(priceData["close"])
     else:
+        data.rateLimiters.yFinanceLimiter.wait()
         tickerObj = yf.Ticker(ticker.upper())
         tickerInfo = tickerObj.info
         mostRecentPrice = float(
-            tickerInfo.get("postMarketPrice")
-            or tickerInfo.get("preMarketPrice")
+            tickerInfo.get("regularMarketOpen")
             or tickerInfo.get("regularMarketPrice")
         )
 

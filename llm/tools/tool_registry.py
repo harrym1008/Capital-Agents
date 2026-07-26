@@ -1,6 +1,7 @@
 from dataquery import LRUCache, MacroDataProvider, NewsDataProvider, DailyPriceProvider, \
                       TickerDataProvider, ShortDataProvider, EdgarDataProvider, ForexDataProvider
 from collectors.constants import START_DATE, END_DATE
+from collectors.rate_limiter import GlobalRateLimiters
 
 from typing import Any, Dict, List, Callable
 import pandas as pd
@@ -9,14 +10,16 @@ import pandas as pd
 class DataProviders:
     def __init__(self):
         self.cache = LRUCache(512 * 1024 ** 2)  # 512 MB max size of cache in RAM
+        self.rateLimiters = GlobalRateLimiters()
 
         self.tickers = TickerDataProvider()
         self.macro = MacroDataProvider(self.cache)
         self.news = NewsDataProvider(self.cache)
         self.ohlcv = DailyPriceProvider(self.tickers, self.cache)
         self.short = ShortDataProvider(self.cache)
-        self.edgar = EdgarDataProvider(self.tickers, self.cache)
+        self.edgar = EdgarDataProvider(self.tickers, self.cache, self.rateLimiters.edgarLimiter)
         self.forex = ForexDataProvider(START_DATE, END_DATE, self.cache)
+
 
 
 class Tool:
@@ -42,9 +45,13 @@ class Tool:
             toolCall = self.toolFunction(self, data, timestamp, **args)
             return toolCall
         except Exception as e:
-            error = {"error": f"Uncaught error occurred while executing tool '{self.toolName}': {str(e)}"}
             import traceback
-            traceback.print_exc()
+            tb = traceback.format_exc()
+            error = {
+                "error": f"Uncaught error occurred while executing tool '{self.toolName}': {str(e)}",
+                "traceback": tb
+            }
+            raise e
             return error
 
 
@@ -62,7 +69,10 @@ class ToolRegistry:
 
     def getTool(self, toolName: str):
         return self.tools.get(toolName)
-    
+
+    def getToolMap(self):
+        return self.tools
+
     def executeTool(self, toolName: str, timestamp: pd.Timestamp, arguments: Dict[str, Any] = {}):
         tool = self.getTool(toolName)
         if tool:

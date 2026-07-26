@@ -1,25 +1,36 @@
 from datetime import datetime
 from typing import Dict
 
+import pandas as pd
+
 from concurrent.futures import ThreadPoolExecutor
 
 from cli.ansi import ANSI
 
 from llm.client_duo import ClientDuo
-from llm.llm_client import BaseLLMClient
-
-from llm.tools_registry import buildToolsRegistry
+from llm.tools.registry_builder import buildToolRegistry, ToolRegistry
+from llm.tools.lru_cacher import startPrecacheThread
 from llm.agents.agent import FinancialAgent
 from llm.agents.agent_config import FinancialAgentConfig
 
+from collectors.constants import UTC, NEW_YORK
+
+from ui.ui_hooks import getCurrentStage, setCurrentStage, emitEvent
+
 
 class BoardroomEngine:
-    def __init__(self, agents: Dict[str, FinancialAgent], clientDuo: ClientDuo):
-        self.clientDuo = clientDuo        
-        for agent in agents.values():
-            agent.setLLMClient(clientDuo.boardroomClient)
+    def __init__(
+            self, 
+            agents: Dict[str, FinancialAgent], 
+            timestamp: pd.Timestamp,
+            toolRegistry: ToolRegistry
+        ):
 
-        self.allowParallel = clientDuo.boardroomClient.allowParallel
+        self.clientDuo: ClientDuo = None
+        self.allowParallel = False
+
+        self.timestamp = timestamp
+        self.toolRegistry = toolRegistry
         
         self.macroAnalyst = agents.get("macroAnalyst")
         self.bullAnalyst = agents.get("bullAnalyst")
@@ -29,11 +40,17 @@ class BoardroomEngine:
         self.portManager = agents.get("portManager")
 
 
+    def assignClientDuo(self, clientDuo: ClientDuo):
+        self.clientDuo = clientDuo
+        for agent in [self.macroAnalyst, self.bullAnalyst, self.bearAnalyst, self.aggRiskAnalyst, self.consRiskAnalyst, self.portManager]:
+            agent.setLLMClient(clientDuo.boardroomClient)
+        self.allowParallel = clientDuo.boardroomClient.allowParallel
+
+
     def _runAgentsConcurrently(self, *tasks):
         if not self.allowParallel:
             return [task() for task in tasks]
         
-        from ui.ui_hooks import getCurrentStage, setCurrentStage
         currentStageNum = getCurrentStage()
         
         def wrappedTask(task):
@@ -46,7 +63,6 @@ class BoardroomEngine:
 
 
     def _newPhaseHeader(self, phaseNumber, phaseName):
-        from ui.ui_hooks import setCurrentStage
         setCurrentStage(phaseNumber)
         
         if phaseNumber == 0:
@@ -94,7 +110,6 @@ class BoardroomEngine:
         elif phaseNumber == 7:
             agents = [{"role": "Impartial Portfolio Manager", "color": self.portManager.color, "name": "Portfolio Manager"}]
 
-        from ui.ui_hooks import emitEvent
         emitEvent("stageStart", {
             "stageNum": phaseNumber,
             "stageName": phaseName,
@@ -111,7 +126,8 @@ class BoardroomEngine:
         self._newPhaseHeader(1, "Macro Environment Analysis")
         macroRaw, macroUISummary = self.macroAnalyst.analyseAndReply(
             f"Current Phase: *PHASE 1* - Macro Environment Analysis\n"
-            "Analyse the current financial environment via all three of your tools and produce a concise summary under the rules marked for Phase 1."
+            "Analyse the current financial environment via both of your tools and produce a concise summary under the rules marked for Phase 1.",
+            self.toolRegistry, self.timestamp
         )
         
         # Phase 2: Specialist Research
@@ -124,8 +140,8 @@ class BoardroomEngine:
         )
         
         (bullThesisRaw, bullThesisUISummary), (bearThesisRaw, bearThesisUISummary) = self._runAgentsConcurrently(
-            lambda: self.bullAnalyst.analyseAndReply(researchPrompt),
-            lambda: self.bearAnalyst.analyseAndReply(researchPrompt)
+            lambda: self.bullAnalyst.analyseAndReply(researchPrompt, self.toolRegistry, self.timestamp),
+            lambda: self.bearAnalyst.analyseAndReply(researchPrompt, self.toolRegistry, self.timestamp)
         )
         # Phase 3/6: Final Executive Decision
         self._newPhaseHeader(3, f"Final Executive Decision on {targetTicker}")
@@ -137,7 +153,7 @@ class BoardroomEngine:
             f"Current Phase: *PHASE 6* - Final Executive Decision on {targetTicker}\n"
             f"Weigh up the arguments and make the final executive decision under the rules marked for Phase 6."
         )
-        finalDecisionRaw, finalDecisionUISummary = self.portManager.analyseAndReply(managerPrompt)
+        finalDecisionRaw, finalDecisionUISummary = self.portManager.analyseAndReply(managerPrompt, self.toolRegistry, self.timestamp)
 
 
         # Phase 4/7: Decision Upload
@@ -145,10 +161,13 @@ class BoardroomEngine:
         _, _ = self.portManager.analyseAndReply((
             f"Current Phase: *PHASE 7* - Decision Upload on {targetTicker}\n"
             f"Upload the final decision, weight allocation, and price targets via the 'confirmBoardroomDecision' tool, under the rules marked for Phase 7."
-        ), summarisationOverride=False)
-        confirmDecisionTool = next((tool for tool in self.portManager.tools if tool.toolName == "confirmBoardroomDecision"), None)
-        formattedExecutiveDecision = confirmDecisionTool.toolLog[-1] if confirmDecisionTool else "Decision not found."
+        ), self.toolRegistry, self.timestamp, summarisationOverride=False)
 
+        try:
+            formattedExecutiveDecision = self.toolRegistry.getTool("confirmBoardroomDecision").toolLog[-1]
+        except Exception:
+            formattedExecutiveDecision = "Decision not found."        
+                
         endTime = datetime.now()
         timeTaken = endTime - startTime
 
@@ -207,7 +226,8 @@ class BoardroomEngine:
         self._newPhaseHeader(1, "Macro Environment Analysis")
         macroRaw, macroUISummary = self.macroAnalyst.analyseAndReply(
             f"Current Phase: *PHASE 1* - Macro Environment Analysis\n"
-            "Analyse the current financial environment via all three of your tools and produce a concise summary under the rules marked for Phase 1."
+            "Analyse the current financial environment via both of your tools and produce a concise summary under the rules marked for Phase 1.",
+            self.toolRegistry, self.timestamp
         )
         
         # Phase 2: Specialist Research
@@ -220,8 +240,8 @@ class BoardroomEngine:
         )
         
         (bullThesisRaw, bullThesisUISummary), (bearThesisRaw, bearThesisUISummary) = self._runAgentsConcurrently(
-            lambda: self.bullAnalyst.analyseAndReply(researchPrompt),
-            lambda: self.bearAnalyst.analyseAndReply(researchPrompt)
+            lambda: self.bullAnalyst.analyseAndReply(researchPrompt, self.toolRegistry, self.timestamp),
+            lambda: self.bearAnalyst.analyseAndReply(researchPrompt, self.toolRegistry, self.timestamp)
         )
 
         # Phase 3: Senior Risk Debate
@@ -233,14 +253,16 @@ class BoardroomEngine:
                 # f"Bullish Value Analyst's Thesis:\n{bullThesis}\n\n"
                 f"Bearish Value Analyst's Thesis:\n{bearThesisRaw}\n\n"
                 f"Current Phase: *PHASE 3* - Senior Risk Debate on {targetTicker}\n"
-                f"Review the theses and targets for {targetTicker} and produce 2-3 questions challenging this thesis under the rules marked for Phase 3."
+                f"Review the theses and targets for {targetTicker} and produce 2-3 questions challenging this thesis under the rules marked for Phase 3.",
+                self.toolRegistry, self.timestamp
             ),
             lambda: self.consRiskAnalyst.analyseAndReply(
                 f"Macroeconomic summary produced by the Macro Analyst:\n{macroRaw}\n\n"
                 f"Bullish Value Analyst's Thesis:\n{bullThesisRaw}\n\n"
                 # f"Bearish Value Analyst's Thesis:\n{bearThesis}\n\n"
                 f"Current Phase: *PHASE 3* - Senior Risk Debate on {targetTicker}\n"
-                f"Review the theses and targets for {targetTicker} and produce 2-3 questions challenging this thesis under the rules marked for Phase 3."
+                f"Review the theses and targets for {targetTicker} and produce 2-3 questions challenging this thesis under the rules marked for Phase 3.",
+                self.toolRegistry, self.timestamp
             )
         )
         
@@ -251,12 +273,14 @@ class BoardroomEngine:
             lambda: self.bullAnalyst.analyseAndReply(
                 f"Questions posed by the Conservative Risk Analyst:\n{consQuestionsRaw}\n\n"
                 f"Current Phase: *PHASE 4* - Analyst Defense on {targetTicker}\n"
-                f"Produce your response to these questions under the rules marked for Phase 4."
+                f"Produce your response to these questions under the rules marked for Phase 4.",
+                self.toolRegistry, self.timestamp
             ),
             lambda: self.bearAnalyst.analyseAndReply(
                 f"Questions posed by the Aggressive Risk Analyst:\n{aggQuestionsRaw}\n\n"
                 f"Current Phase: *PHASE 4* - Analyst Defense on {targetTicker}\n"
-                f"Produce your response to these questions under the rules marked for Phase 4."
+                f"Produce your response to these questions under the rules marked for Phase 4.",
+                self.toolRegistry, self.timestamp
             )
         )
 
@@ -267,12 +291,14 @@ class BoardroomEngine:
             lambda: self.aggRiskAnalyst.analyseAndReply(
                 f"Bearish Analyst's Response/Defense:\n{bearDefenseRaw}\n\n"
                 f"Current Phase: *PHASE 5* - Q&A-Based Proposals on {targetTicker}\n"
-                f"Based on the defenses, make your final proposals with justification under the rules marked for Phase 5."
+                f"Based on the defenses, make your final proposals with justification under the rules marked for Phase 5.",
+                self.toolRegistry, self.timestamp
             ),
             lambda: self.consRiskAnalyst.analyseAndReply(
                 f"Bullish Analyst's Response/Defense:\n{bullDefenseRaw}\n\n"
                 f"Current Phase: *PHASE 5* - Q&A-Based Proposals on {targetTicker}\n"
-                f"Based on the defenses, make your final proposals with justification under the rules marked for Phase 5."
+                f"Based on the defenses, make your final proposals with justification under the rules marked for Phase 5.",
+                self.toolRegistry, self.timestamp
             )
         )
 
@@ -286,15 +312,19 @@ class BoardroomEngine:
             f"Current Phase: *PHASE 6* - Final Executive Decision on {targetTicker}\n"
             f"Weigh up the arguments and make the final executive decision under the rules marked for Phase 6."
         )
-        finalDecisionRaw, finalDecisionUISummary = self.portManager.analyseAndReply(managerPrompt)
+        finalDecisionRaw, finalDecisionUISummary = self.portManager.analyseAndReply(managerPrompt, self.toolRegistry, self.timestamp)
         
         # Phase 7: Decision Upload
         self._newPhaseHeader(7, "Decision Upload")
         _, _ = self.portManager.analyseAndReply((
             f"Current Phase: *PHASE 7* - Decision Upload on {targetTicker}\n"
             f"Upload the final decision, weight allocation, and price targets via the 'confirmBoardroomDecision' tool, under the rules marked for Phase 7."
-        ), summarisationOverride=False)
-        formattedExecutiveDecision = self.portManager.tools[2].toolLog[-1]
+        ), self.toolRegistry, self.timestamp, summarisationOverride=False)
+
+        try:
+            formattedExecutiveDecision = self.toolRegistry.getTool("confirmBoardroomDecision").toolLog[-1]
+        except Exception:
+            formattedExecutiveDecision = "Decision not found."
 
         endTime = datetime.now()
         timeTaken = endTime - startTime
@@ -371,6 +401,9 @@ class BoardroomEngine:
 
 
     def executeSingleEquityRating(self, targetTicker, fastMode=False):
+        if self.clientDuo is None:
+            raise ValueError("ClientDuo is not assigned. Please assign a ClientDuo before executing the boardroom.")
+        
         if fastMode:
             self.executeFastSingleEquityRating(targetTicker)
         else:
@@ -378,24 +411,21 @@ class BoardroomEngine:
 
 
 
-def boardroomGenerator(simulatedDate: str, clientDuo: ClientDuo):
-    toolRegistry = buildToolsRegistry()
-    toolMap = {tool.toolName: tool for tool in toolRegistry}
-
-    boardroomClient = clientDuo.boardroomClient
+def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> BoardroomEngine:
+    timestampStr = timestamp.strftime("%Y-%m-%d")
+    toolMap = toolRegistry.getToolMap()
 
     macroAgent = FinancialAgent(
         config=FinancialAgentConfig(
             agentRole="Macro Strategist",
             tools=[
-                toolMap["fetchMacroIndicators"],
+                toolMap["fetchMacroContext"],
                 toolMap["fetchMacroNews"],
-                toolMap["fetchMacroFredSeries"],
                 toolMap["executePythonCalculation"]
             ],
             color=ANSI.CYAN
         ),
-        dateStr=simulatedDate
+        dateStr=timestampStr
     )
 
     bullAgent = FinancialAgent(
@@ -407,15 +437,16 @@ def boardroomGenerator(simulatedDate: str, clientDuo: ClientDuo):
                 toolMap["fetchIncomeStatement"],
                 toolMap["fetchBalanceSheet"],
                 toolMap["fetchCashFlowStatement"],
+                toolMap["fetchStatementOfEquity"],
+                toolMap["fetchComprehensiveIncomeStatement"],
                 toolMap["fetchStockPricePerformance"],
-                toolMap["fetchAnalystConsensus"],
                 toolMap["fetchCompanyRecentNews"],
-                toolMap["calculatePctChangeFromCurrStockPrice"],
+                toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
             color=ANSI.GREEN
         ),
-        dateStr=simulatedDate
+        dateStr=timestampStr
     )
 
     bearAgent = FinancialAgent(
@@ -427,15 +458,16 @@ def boardroomGenerator(simulatedDate: str, clientDuo: ClientDuo):
                 toolMap["fetchIncomeStatement"],
                 toolMap["fetchBalanceSheet"],
                 toolMap["fetchCashFlowStatement"],
+                toolMap["fetchStatementOfEquity"],
+                toolMap["fetchComprehensiveIncomeStatement"],
                 toolMap["fetchStockPricePerformance"],
-                toolMap["fetchAnalystConsensus"],
                 toolMap["fetchCompanyRecentNews"],
-                toolMap["calculatePctChangeFromCurrStockPrice"],
+                toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
             color=ANSI.RED
         ),
-        dateStr=simulatedDate
+        dateStr=timestampStr
     )
 
     aggRiskAnalystAgent = FinancialAgent(
@@ -444,17 +476,19 @@ def boardroomGenerator(simulatedDate: str, clientDuo: ClientDuo):
             tools=[
                 toolMap["fetchCompanyProfile"],
                 toolMap["fetchCompanyValuationMetrics"],
+                toolMap["fetchIncomeStatement"],
                 toolMap["fetchBalanceSheet"],
                 toolMap["fetchCashFlowStatement"],
+                toolMap["fetchStatementOfEquity"],
+                toolMap["fetchComprehensiveIncomeStatement"],
                 toolMap["fetchStockPricePerformance"],
-                toolMap["fetchAnalystConsensus"],
                 toolMap["fetchCompanyRecentNews"],
-                toolMap["calculatePctChangeFromCurrStockPrice"],
+                toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
             color=ANSI.YELLOW
         ),
-        dateStr=simulatedDate
+        dateStr=timestampStr
     )
 
     consRiskAnalystAgent = FinancialAgent(
@@ -463,17 +497,19 @@ def boardroomGenerator(simulatedDate: str, clientDuo: ClientDuo):
             tools=[
                 toolMap["fetchCompanyProfile"],
                 toolMap["fetchCompanyValuationMetrics"],
+                toolMap["fetchIncomeStatement"],
                 toolMap["fetchBalanceSheet"],
                 toolMap["fetchCashFlowStatement"],
+                toolMap["fetchStatementOfEquity"],
+                toolMap["fetchComprehensiveIncomeStatement"],
                 toolMap["fetchStockPricePerformance"],
-                toolMap["fetchAnalystConsensus"],
                 toolMap["fetchCompanyRecentNews"],
-                toolMap["calculatePctChangeFromCurrStockPrice"],
+                toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
             color=ANSI.BLUE
         ),
-        dateStr=simulatedDate
+        dateStr=timestampStr
     )
 
     portfolioManager = FinancialAgent(
@@ -481,23 +517,28 @@ def boardroomGenerator(simulatedDate: str, clientDuo: ClientDuo):
             agentRole="Impartial Portfolio Manager",
             tools=[
                 toolMap["fetchCompanyProfile"],
+                toolMap["fetchCompanyValuationMetrics"],
                 toolMap["executePythonCalculation"],
-                toolMap["calculatePctChangeFromCurrStockPrice"],
+                toolMap["calculateDistFromCurrPrice"],
                 toolMap["confirmBoardroomDecision"]
             ],
             color=ANSI.MAGENTA
         ),
-        dateStr=simulatedDate
+        dateStr=timestampStr
     )    
 
-    boardroom = BoardroomEngine({
-        "macroAnalyst": macroAgent,
-        "bullAnalyst": bullAgent,
-        "bearAnalyst": bearAgent,
-        "aggRiskAnalyst": aggRiskAnalystAgent,
-        "consRiskAnalyst": consRiskAnalystAgent,
-        "portManager": portfolioManager,
-    }, clientDuo=clientDuo)
+    boardroom = BoardroomEngine(
+        agents={
+            "macroAnalyst": macroAgent,
+            "bullAnalyst": bullAgent,
+            "bearAnalyst": bearAgent,
+            "aggRiskAnalyst": aggRiskAnalystAgent,
+            "consRiskAnalyst": consRiskAnalystAgent,
+            "portManager": portfolioManager,
+        }, 
+        timestamp=timestamp,
+        toolRegistry=toolRegistry
+    )
 
     return boardroom
 

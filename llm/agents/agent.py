@@ -1,11 +1,15 @@
 from typing import Optional
 
+import pandas as pd
+
 from cli.ansi import ANSI
 
-from llm.agents.agent_config import FinancialAgentConfig, THINKING_BUDGET, SUMMARISE_THINK_BUDGET
-from llm.agents.agent_config import buildResearcherSysPrompt, buildUIFormatSysPrompt
-
+from llm.agents.agent_config import FinancialAgentConfig, THINKING_BUDGET, SUMMARISE_THINK_BUDGET, \
+                                    buildResearcherSysPrompt, buildUIFormatSysPrompt
 from llm.llm_client import BaseLLMClient, ResponsePrintMode
+from llm.tools.tool_registry import ToolRegistry
+
+from ui.ui_hooks import setCurrentAgent, setAgentPhase, emitEvent
 
 
 SUMMARISE_ENABLED = True
@@ -31,27 +35,52 @@ class FinancialAgent:
         self.apiClient = llmClient
 
 
-    def executeInternalAnalysis(self, incomingMessage: str, responsePrint: ResponsePrintMode = ResponsePrintMode.FULL):
+    def executeInternalAnalysis(
+            self, 
+            incomingMessage: str,
+            toolRegistry: ToolRegistry,
+            timestamp: pd.Timestamp,
+            responsePrint: ResponsePrintMode = ResponsePrintMode.FULL
+        ):
         self.messageHistory.append({"role": "user", "content": incomingMessage})
         print(f"\n{self.color}{ANSI.BOLD}========== [{self.agentRole}] is analysing... =========={ANSI.RESET}", end="")
         
-        rawAnalysis = self.apiClient.runConversation(self.messageHistory, self.tools, THINKING_BUDGET, responsePrint)
+        rawAnalysis = self.apiClient.runConversation(
+            self.messageHistory, 
+            toolRegistry, 
+            timestamp, 
+            THINKING_BUDGET, 
+            responsePrint
+        )
+
         self.messageHistory.append({"role": "assistant", "content": rawAnalysis})
         return rawAnalysis
 
 
-    def generateUISummary(self, rawAnalysis: str, responsePrint: ResponsePrintMode = ResponsePrintMode.SILENT):
+    def generateUISummary(
+            self, 
+            rawAnalysis: str, 
+            responsePrint: ResponsePrintMode = ResponsePrintMode.SILENT
+        ):
         tempHistory = [
             {"role": "system", "content": self.uiFormatSystemMessage},
             {"role": "user", "content": f"Reformat the following raw analysis according to the instructions:\n\n{rawAnalysis}"}
         ]
 
-        uiSummary = self.apiClient.runConversation(tempHistory, [], SUMMARISE_THINK_BUDGET, responsePrint)
+        uiSummary = self.apiClient.runConversation(
+            tempHistory, 
+            toolRegistry=None, 
+            timestamp=pd.Timestamp.now(tz="UTC"), 
+            thinkingBudget=SUMMARISE_THINK_BUDGET, 
+            responsePrint=responsePrint
+        )
         return uiSummary
 
 
     def analyseAndReply(self, 
             incomingMessage: str, 
+            toolRegistry: ToolRegistry,
+            timestamp: pd.Timestamp,
             responsePrintRawAnalysis: ResponsePrintMode = ResponsePrintMode.FULL,
             responsePrintUISummary: ResponsePrintMode = ResponsePrintMode.ONE_TOKEN_ONLY,
             summarisationOverride: Optional[bool] = None
@@ -59,12 +88,11 @@ class FinancialAgent:
         generateSummary = SUMMARISE_ENABLED if summarisationOverride is None else summarisationOverride
         
         # Set agent context for UI streaming
-        from ui.ui_hooks import setCurrentAgent, setAgentPhase, emitEvent
         setCurrentAgent(self.agentRole, self.color)
         setAgentPhase("raw")
         emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.color, "phase": "raw"})
         
-        rawAnalysis = self.executeInternalAnalysis(incomingMessage, responsePrintRawAnalysis)        
+        rawAnalysis = self.executeInternalAnalysis(incomingMessage, toolRegistry, timestamp, responsePrintRawAnalysis)        
         
         emitEvent("agentRunEnd", {"agentRole": self.agentRole, "phase": "raw"})
         

@@ -4,11 +4,18 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
-from openai import OpenAI
 from enum import Enum
 
+from openai import OpenAI
+import pandas as pd
+
 from cli.ansi import ANSI
-from llm.tools_registry import Tool
+from llm.tools.tool_registry import Tool, ToolRegistry
+
+from ui.ui_hooks import (
+    emitEvent, getCurrentAgent, setCurrentAgent,
+    getAgentPhase, setAgentPhase, getCurrentStage, setCurrentStage
+)
 
 
 class ResponsePrintMode(Enum):
@@ -78,7 +85,6 @@ class BaseLLMClient(ABC):
                 fullReasoning += reasoningChunk
 
                 # Emit reasoning token
-                from ui.ui_hooks import emitEvent, getAgentPhase
                 if currentState != "reasoning":
                     if currentState == "content":
                         emitEvent("contentEnd")
@@ -100,7 +106,6 @@ class BaseLLMClient(ABC):
                 fullContent += contentChunk
 
                 # Emit content token
-                from ui.ui_hooks import emitEvent, getAgentPhase
                 if currentState != "content":
                     if currentState == "reasoning":
                         emitEvent("reasoningEnd")
@@ -158,7 +163,6 @@ class BaseLLMClient(ABC):
                             })
 
         # Close active streaming states at the end of the response stream
-        from ui.ui_hooks import emitEvent
         if currentState == "reasoning":
             emitEvent("reasoningEnd")
         elif currentState == "content":
@@ -176,9 +180,17 @@ class BaseLLMClient(ABC):
         return fullContent, fullReasoning, toolCallsList
 
 
-    def executeSingleToolCall(self, currentToolCall, toolMap, agentRole=None, agentColor=None, stageNum=0, toolIndex=0):
+    def executeSingleToolCall(
+        self,
+        currentToolCall: Dict[str, Any], 
+        toolRegistry: ToolRegistry, 
+        timestamp: pd.Timestamp,
+        agentRole=None, 
+        agentColor=None, 
+        stageNum=0, 
+        toolIndex=0
+    ):
         if agentRole:
-            from ui.ui_hooks import setCurrentAgent, setCurrentStage
             setCurrentAgent(agentRole, agentColor)
             setCurrentStage(stageNum)
 
@@ -186,7 +198,6 @@ class BaseLLMClient(ABC):
         funcArgsString = currentToolCall["function"]["arguments"]
         callId = currentToolCall["id"]
 
-        from ui.ui_hooks import emitEvent
         emitEvent("toolCallStart", {
             "toolName": funcName,
             "args": funcArgsString,
@@ -203,10 +214,10 @@ class BaseLLMClient(ABC):
             # Failed to parse the tool's arguments 
             funcArgsDict = {}
 
-        if funcName in toolMap:
-            toolCalled = toolMap[funcName]
+        if funcName in toolRegistry.tools:
+            toolCalled = toolRegistry.tools[funcName]
             try:
-                toolResult = toolCalled.executeTool(**funcArgsDict)
+                toolResult = toolRegistry.executeTool(funcName, timestamp, funcArgsDict)
                 stringResult = json.dumps(toolResult)
                 
                 with self.toolCallLock:                    
@@ -219,16 +230,23 @@ class BaseLLMClient(ABC):
                 if toolCalled.toolName == "executePythonCalculation":
                     with self.toolCallLock:
                         output = toolCalled.toolLog.pop()
-                        self._safePrint(
-                            f"\n{ANSI.BOLD}Python Execution Output: {ANSI.RESET}"
-                            f"\n{ANSI.DIM}{output['stdout']}{ANSI.RESET}\n"
-                            f"{ANSI.BOLD}\nPython Execution Variables: {ANSI.RESET}")
-                        for k, v in output["variables"].items():
-                            self._safePrint(f"{ANSI.DIM}{k}: {ANSI.RESET}{v}")
-                        self._safePrint()
+                        success = output.get("success", False)
 
-                        stdoutOutput = output.get("stdout", "")
-                        variablesOutput = output.get("variables", {})
+                        if not success:
+                            error = output.get("error", "Unknown error")
+                            self._safePrint(f"{ANSI.BOLD}{ANSI.RED}Python Execution Error: {error}{ANSI.RESET}")
+                        else:
+                            stdoutOutput = output.get("stdout", "No stdout captured.")
+                            variablesOutput = output.get("variables", {})
+
+                            self._safePrint(
+                                f"\n{ANSI.BOLD}Python Execution Output: {ANSI.RESET}"
+                                f"\n{ANSI.DIM}{stdoutOutput}{ANSI.RESET}\n"
+                                f"{ANSI.BOLD}\nPython Execution Variables: {ANSI.RESET}")
+                            for k, v in variablesOutput.items():
+                                self._safePrint(f"{ANSI.DIM}{k}: {ANSI.RESET}{v}")
+                            self._safePrint()
+
             
             except Exception as e:
                 stringResult = json.dumps({"error": f"{e.__class__.__name__}: {e}"})
@@ -262,11 +280,12 @@ class BaseLLMClient(ABC):
 
     def runConversation(self, 
             messageHistory: List[Dict[str, Any]], 
-            availableTools: Optional[List[Tool]] = None, 
+            toolRegistry: ToolRegistry,
+            timestamp: pd.Timestamp,
             thinkingBudget: Optional[int] = None,
-            responsePrint: ResponsePrintMode = ResponsePrintMode.FULL
+            responsePrint: ResponsePrintMode = ResponsePrintMode.FULL,
         ):
-        toolSchemas = [tool.getToolSchema() for tool in availableTools] if availableTools else []
+        toolSchemas = [tool.getToolSchema() for tool in toolRegistry.tools.values()] if toolRegistry else []
         maxIterations = 12
         currentIteration = 0
         accumulatedContent = ""
@@ -309,10 +328,7 @@ class BaseLLMClient(ABC):
                 }
 
             messageHistory.append(assistantMessageDict)
-        
-            toolMap = {t.toolName: t for t in availableTools} if availableTools else {}
             
-            from ui.ui_hooks import getCurrentAgent, getCurrentStage
             parentAgent = getCurrentAgent()
             agentRole = parentAgent.get("role")
             agentColor = parentAgent.get("color")
@@ -320,7 +336,9 @@ class BaseLLMClient(ABC):
 
             resultsByIndex = [None] * len(toolCallsList)
             with ThreadPoolExecutor(max_workers=len(toolCallsList)) as executor:
-                futureToIndex =  {executor.submit(self.executeSingleToolCall, call, toolMap, agentRole, agentColor, currentStageNum, idx): idx 
+                futureToIndex =  {executor.submit(
+                    self.executeSingleToolCall, 
+                    call, toolRegistry, timestamp, agentRole, agentColor, currentStageNum, idx): idx
                                   for idx, call in enumerate(toolCallsList)}
                 for future in as_completed(futureToIndex):
                     idx = futureToIndex[future]
@@ -350,13 +368,7 @@ class BaseLLMClient(ABC):
                                         pass
                                 break
 
-            # messageHistory.append({
-            #     "role": "user",
-            #     "content": "New tool data above. Do not restate your case or prior conclusions, you already have them. Use the new data to refine or confirm your conclusions."
-            # })
-
         # If this code is reached, it means the maximum number of iterations was reached without a final response
-
         messageHistory.append({
             "role": "user",
             "content": "You have reached the maximum number of iterations without providing a final response. Please provide your final response based on the accumulated information."

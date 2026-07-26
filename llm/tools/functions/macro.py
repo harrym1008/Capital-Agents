@@ -69,6 +69,11 @@ FRED_SERIES_MAP = {
 
 
 def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
+    cacheKey = f"macro|context_{timestamp.strftime('%Y-%m-%dH%H')}"
+    cached = data.cache.get(cacheKey)
+    if cached is not None:
+        return cached
+    
     useLocal = isLocalDataAvailable(timestamp)
     jsonResult = {}
 
@@ -77,12 +82,13 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
 
         todaySnapshot = data.macro.getSnapshot(allSeries, timestamp)
         pastDates = {
-            "1w": timestamp - pd.DateOffset(weeks=1),
+            "5d": timestamp - pd.DateOffset(weeks=1),
             "1mo": timestamp - pd.DateOffset(months=1),
             "3mo": timestamp - pd.DateOffset(months=3),
             "6mo": timestamp - pd.DateOffset(months=6),
             "1y": timestamp - pd.DateOffset(years=1),
-            "3y": timestamp - pd.DateOffset(years=3)
+            "3y": timestamp - pd.DateOffset(years=3),
+            "5y": timestamp - pd.DateOffset(years=5)
         }
         pastSnapshots = {name: data.macro.getSnapshot(allSeries, date) for name, date in pastDates.items()}
 
@@ -92,101 +98,155 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
 
             if seriesOrigin == "yfinance":
                 seriesDesc = YFINANCE_MACRO_TICKERS[seriesIdentifier]["desc"]
-            elif seriesOrigin == "fred":
-                seriesDesc = FRED_SERIES_MAP[seriesIdentifier]["desc"] + f" (unit: {FRED_SERIES_MAP[seriesIdentifier]['unit']})"
-            
-            latestValue = todaySnapshot.loc[todaySnapshot["series"] == series, "value"].iloc[0]
-            latestValueStr = cleanNumber(latestValue, NumberType.STOCK_PRICE if seriesOrigin == "yfinance" else FRED_SERIES_MAP[seriesIdentifier]["numType"])
+                numberType = NumberType.STOCK_PRICE if "USD" not in seriesIdentifier \
+                                    else (NumberType.EXCHANGE_RATE if "BTC" not in seriesIdentifier else NumberType.STOCK_PRICE)
+            else:   # FRED series
+                seriesDesc = FRED_SERIES_MAP[seriesIdentifier]["desc"]
+                numberType = FRED_SERIES_MAP[seriesIdentifier]["numType"]
+
+            latestPrice = todaySnapshot.loc[todaySnapshot["series"] == series, "value"].iloc[0]
+            latestValueStr = cleanNumber(latestPrice, numberType)
 
             outputsPerPeriod = {}
+            fiftyTwoWeekMin = None
+            fiftyTwoWeekMax = None
             
             for period, snapshot in pastSnapshots.items():
-                if seriesOrigin == "fred" and period in ["1w", "1mo"]:      # Skip 1w and 1mo for FRED series due to low frequency
+                if seriesOrigin == "yfinance" and period == "5y":
                     continue
+                elif seriesOrigin == "fred":
+                    if period == "5d":
+                        continue
+                    if period == "1mo" and not seriesIdentifier.startswith("TREAS"):
+                        continue
+                    elif period == "3mo" and seriesIdentifier in ["CPI", "CORECPI", "GDP"]:
+                        continue
 
                 pastPrice = snapshot.loc[snapshot["series"] == series, "value"].iloc[0]
-                if pd.isna(latestValue) or pd.isna(pastPrice) or pastPrice == 0:
-                    pctChangeStr = "N/A"
-                else:
-                    pctChange = ((latestValue - pastPrice) / pastPrice) * 100
-                    if pctChange == 0:
-                        pctChangeStr = "0% (no change)"
-                    else:
-                        pctChangeStr = cleanNumber(pctChange, NumberType.PERCENTAGE_CHANGE)
-                
-                highest = cleanNumber(data.macro.getHighest(series, pastDates[period], timestamp)[1], 
-                                      NumberType.STOCK_PRICE if seriesOrigin == "yfinance" else FRED_SERIES_MAP[seriesIdentifier]["numType"])
-                lowest = cleanNumber(data.macro.getLowest(series, pastDates[period], timestamp)[1],
-                                      NumberType.STOCK_PRICE if seriesOrigin == "yfinance" else FRED_SERIES_MAP[seriesIdentifier]["numType"])
-                
-                startPrice = cleanNumber(pastPrice, NumberType.STOCK_PRICE if seriesOrigin == "yfinance" else FRED_SERIES_MAP[seriesIdentifier]["numType"])
-                
-                outputsPerPeriod[period] = {
-                    f"pctChange_{period}": pctChangeStr,
-                    f"valueAtPeriodStart_{period}": startPrice,
-                    f"highest_{period}": highest,
-                    f"lowest_{period}": lowest
-                }
+                priceChangePct = ((latestPrice - pastPrice) / pastPrice) * 100 if pastPrice != 0 else 0
 
-            jsonResult[seriesIdentifier] = {
-                "description": seriesDesc,
-                "latestValue": latestValueStr,
-                "history": outputsPerPeriod
-            }   
+                if seriesOrigin == "yfinance" and period == "1y":
+                    fiftyTwoWeekMin = cleanNumber(data.macro.getLowest(series, pastDates[period], timestamp)[1], numberType)
+                    fiftyTwoWeekMax = cleanNumber(data.macro.getHighest(series, pastDates[period], timestamp)[1], numberType)
+                
+                startPrice = cleanNumber(pastPrice, numberType)
+
+                if seriesOrigin == "fred" and seriesIdentifier.startswith("TREAS"):
+                    bpsChange = (latestPrice - pastPrice) * 100
+                    outputsPerPeriod[period] = {
+                        f"price_{period}_ago": startPrice,
+                        f"change_{period}_bps": cleanNumber(bpsChange, NumberType.CHANGE_BP)
+                    }
+                else:
+                    outputsPerPeriod[period] = {
+                        f"price_{period}_ago": startPrice,
+                        f"change_{period}_pct": cleanNumber(priceChangePct, NumberType.PERCENTAGE_CHANGE),
+                    }
+
+            if seriesOrigin == "yfinance":
+                jsonResult[seriesIdentifier] = {
+                    "description": seriesDesc,
+                    "latestValue": latestValueStr,
+                    "history": outputsPerPeriod,
+                    "52w": {
+                        "52wLow": fiftyTwoWeekMin,
+                        "52wHigh": fiftyTwoWeekMax
+                    }
+                }
+            else:
+                jsonResult[seriesIdentifier] = {
+                    "description": seriesDesc,
+                    "unit": FRED_SERIES_MAP[seriesIdentifier]["unit"],
+                    "latestValue": latestValueStr,
+                    "history": outputsPerPeriod
+                }
 
     else:  # Get from online sources
         # First deal with yfinance
         allSeries = data.macro.getAllSeries()
         yfinanceSeries = [s for s in allSeries if s.source == "yfinance"]
+
+        todayStr = (timestamp + pd.DateOffset(days=1)).strftime("%Y-%m-%d")
+        threeYearAgoStr = (timestamp - pd.DateOffset(years=3, days=7)).strftime("%Y-%m-%d")
+                    
+        yfTickerMap ={s.parquetName: YFINANCE_MACRO_TICKERS[s.parquetName]["yfticker"] for s in yfinanceSeries}
+        yfTickerSymbols = list(set(yfTickerMap.values()))
+
+        data.rateLimiters.yFinanceLimiter.wait()
+        batchData = yf.download(
+            tickers=yfTickerSymbols,
+            start=threeYearAgoStr,
+            end=todayStr,
+            interval="1d",
+            group_by="ticker",
+            auto_adjust=True,
+            progress=False
+        )
+
         for series in yfinanceSeries:
             seriesIdentifier = series.parquetName
-            seriesOrigin = series.source
             seriesDesc = YFINANCE_MACRO_TICKERS[seriesIdentifier]["desc"]
-
             yfTicker = YFINANCE_MACRO_TICKERS[seriesIdentifier]["yfticker"]
-            tickerObj = yf.Ticker(yfTicker)
 
-            fiveDaysHistory = tickerObj.history(period="5d", interval="1d")["Close"]
-            if fiveDaysHistory.empty:
+            tickerData = batchData[yfTicker] if yfTicker in batchData.columns.levels[0] else None
+            if tickerData is None or tickerData.empty:
                 jsonResult[seriesIdentifier] = {
                     "description": seriesDesc,
                     "error": "Could not download data from yfinance for this series."
                 }
                 continue
 
-            latestPrice = fiveDaysHistory.iloc[-1]
-            latestPriceStr = cleanNumber(latestPrice, NumberType.STOCK_PRICE)
+            fullHistory = tickerData.dropna(subset=["Open", "High", "Low", "Close"])
+     
+            numberType = NumberType.STOCK_PRICE if "USD" not in seriesIdentifier \
+                            else (NumberType.EXCHANGE_RATE if "BTC" not in seriesIdentifier else NumberType.STOCK_PRICE)
 
-            outputsPerPeriod = {}
+            latestPrice = fullHistory["Close"].iloc[-1]
+            latestPriceStr = cleanNumber(latestPrice, numberType)
+            latestDate = fullHistory.index[-1]
+            earliestDate = fullHistory.index[0]
 
-            for timeFrame in ["5d", "1mo", "3mo", "6mo", "1y", "3y"]:
-                timeFrameHistory = tickerObj.history(period=timeFrame, interval="1d" if timeFrame == "5d" else "1wk")  \
-                                               .dropna(subset=["Open", "High", "Low", "Close"])
-                if timeFrameHistory.empty:
-                    outputsPerPeriod[timeFrame] = {"error": f"Could not download data from yfinance for this series for the '{timeFrame}' timeframe."}
+            oneYearAgoDate = latestDate - pd.DateOffset(years=1)
+            oneYearSlice = fullHistory.loc[fullHistory.index >= oneYearAgoDate]
+            
+            fiftyTwoWeekMin = oneYearSlice["Low"].min() if not oneYearSlice.empty else None
+            fiftyTwoWeekMax = oneYearSlice["High"].max() if not oneYearSlice.empty else None
+
+            timeFramesMap = {
+                "5d": pd.DateOffset(days=7),
+                "1mo": pd.DateOffset(months=1),
+                "3mo": pd.DateOffset(months=3),
+                "6mo": pd.DateOffset(months=6),
+                "1y": pd.DateOffset(years=1),
+                "3y": pd.DateOffset(years=3),
+            }
+
+            outputsPerPeriod = {}      
+
+            for timeFrame, offset in timeFramesMap.items():
+                targetDate = latestDate - offset
+                historicalSlice = fullHistory.loc[fullHistory.index <= targetDate]
+
+                if historicalSlice.empty:
+                    outputsPerPeriod[timeFrame] = {"error": f"No data available prior to {targetDate.strftime('%Y-%m-%d')}."}
                     continue
 
-                pastPrice = timeFrameHistory["Close"].iloc[0]
+                pastPrice = historicalSlice["Close"].iloc[-1]
                 priceChangePct = ((latestPrice - pastPrice) / pastPrice) * 100 if pastPrice != 0 else 0
-                highPrice = timeFrameHistory["High"].max()
-                lowPrice = timeFrameHistory["Low"].min()
-
-                pastPriceStr = cleanNumber(pastPrice, NumberType.STOCK_PRICE)
-                priceChangePctStr = cleanNumber(priceChangePct, NumberType.PERCENTAGE_CHANGE)
-                lowestPriceStr = cleanNumber(lowPrice, NumberType.STOCK_PRICE)
-                highestPriceStr = cleanNumber(highPrice, NumberType.STOCK_PRICE)
-
+                
                 outputsPerPeriod[timeFrame] = {                    
-                    f"valueAtPeriodStart_{timeFrame}": pastPriceStr,
-                    f"pctChange_{timeFrame}": priceChangePctStr,
-                    f"lowest_{timeFrame}": lowestPriceStr,
-                    f"highest_{timeFrame}": highestPriceStr
+                    f"price_{timeFrame}_ago": cleanNumber(pastPrice, numberType),
+                    f"change_{timeFrame}_pct": cleanNumber(priceChangePct, NumberType.PERCENTAGE_CHANGE)
                 }
 
             jsonResult[seriesIdentifier] = {
                 "description": seriesDesc,
                 "latestValue": latestPriceStr,
-                "history": outputsPerPeriod
+                "history": outputsPerPeriod,
+                "52w": {
+                    "52wLow": cleanNumber(fiftyTwoWeekMin, numberType),
+                    "52wHigh": cleanNumber(fiftyTwoWeekMax, numberType)
+                }
             } 
 
         # Then deal with FRED
@@ -196,7 +256,8 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
             "3mo": pd.DateOffset(months=3),
             "6mo": pd.DateOffset(months=6),
             "1y": pd.DateOffset(years=1),
-            "3y": pd.DateOffset(years=3)
+            "3y": pd.DateOffset(years=3),
+            "5y": pd.DateOffset(years=5)
         }
 
         # Ensure base timestamp is naive for pandas compatibility
@@ -207,9 +268,10 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
             seriesDesc = seriesData["desc"]
             seriesUnit = seriesData["unit"]
 
-            observationStart = (naiveTimestamp - pd.DateOffset(years=4)).strftime("%Y-%m-%d")
+            observationStart = (naiveTimestamp - pd.DateOffset(years=5, months=6)).strftime("%Y-%m-%d")
             observationEnd = naiveTimestamp.strftime("%Y-%m-%d")
 
+            data.rateLimiters.fredLimiter.wait()
             rawSeries = fredClient.get_series(
                 seriesId, 
                 observation_start=observationStart, 
@@ -224,13 +286,18 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
                 }
                 continue
 
-            latestValue = rawSeries.iloc[-1]
-            latestValueStr = cleanNumber(latestValue, seriesData["numType"])
+            latestPrice = rawSeries.iloc[-1]
+            latestValueStr = cleanNumber(latestPrice, seriesData["numType"])
 
             outputsPerPeriod = {}
             hasIndexError = False
 
             for label, offset in periods.items():
+                if label == "1mo" and not seriesName.startswith("TREAS"):
+                    continue
+                elif label == "3mo" and seriesName in ["CPI", "CORECPI", "GDP"]:
+                    continue
+
                 targetDate = naiveTimestamp - offset
                 closestDateIdx = rawSeries.index.get_indexer([targetDate], method="pad")[0]
 
@@ -244,21 +311,19 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
                     break
 
                 pastValue = rawSeries.iloc[closestDateIdx]
-                pctChange = ((latestValue - pastValue) / pastValue) * 100 if pastValue != 0 else 0
-                lowestValue = rawSeries.iloc[closestDateIdx:].min()
-                highestValue = rawSeries.iloc[closestDateIdx:].max()
 
-                pastPriceStr = cleanNumber(pastValue, seriesData["numType"])
-                priceChangePctStr = cleanNumber(pctChange, NumberType.PERCENTAGE_CHANGE)
-                lowestPriceStr = cleanNumber(lowestValue, seriesData["numType"])
-                highestPriceStr = cleanNumber(highestValue, seriesData["numType"])
-
-                outputsPerPeriod[label] = {                    
-                    f"valueAtPeriodStart_{label}": pastPriceStr,
-                    f"pctChange_{label}": priceChangePctStr,
-                    f"lowest_{label}": lowestPriceStr,
-                    f"highest_{label}": highestPriceStr
-                }
+                if "TREAS" in seriesName:
+                    bpsChange = (latestPrice - pastValue) * 100
+                    outputsPerPeriod[label] = {
+                        f"price_{label}_ago": cleanNumber(pastValue, seriesData["numType"]),
+                        f"change_{label}_bps": cleanNumber(bpsChange, NumberType.CHANGE_BP)
+                    }
+                else:
+                    pctChange = ((latestPrice - pastValue) / pastValue) * 100 if pastValue != 0 else 0
+                    outputsPerPeriod[label] = {                    
+                        f"price_{label}_ago": cleanNumber(pastValue, seriesData["numType"]),
+                        f"change_{label}_pct": cleanNumber(pctChange, NumberType.PERCENTAGE_CHANGE)
+                    }
 
             if not hasIndexError:
                 jsonResult[seriesName] = {
@@ -268,9 +333,9 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
                     "history": outputsPerPeriod
                 }
 
-    return cleanData(jsonResult)
-
-        
+    jsonOutput = cleanData({"date": timestamp.strftime("%Y-%m-%d"), "macroContext": cleanData(jsonResult)})
+    data.cache.put(cacheKey, jsonOutput)
+    return jsonOutput
 
 def fetchMacroNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, limit: int = 15):
     useLocal = isLocalDataAvailable(timestamp)
@@ -332,8 +397,8 @@ def fetchMacroNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, lim
 
     else:
         # Retrieve via Alpaca API
-        apiKeyId = os.getenv("ALPACA_API_KEY_ID")
-        apiKeySecret = os.getenv("ALPACA_API_SECRET_KEY")
+        apiKeyId = os.getenv("ALPACA_API_KEY")
+        apiKeySecret = os.getenv("ALPACA_API_SECRET")
 
         headers = {
             "accept": "application/json",
@@ -341,22 +406,35 @@ def fetchMacroNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, lim
             "APCA-API-SECRET-KEY": apiKeySecret
         }
 
-        macroSymbols = "SPY,QQQ,DIA,GLD,SLV,VIX,USO,TLT"
-        url = (
-            f"https://data.alpaca.markets/v1beta1/news"
-            f"?sort=desc&symbols={macroSymbols}&limit={limit}"
-            f"&include_content=true&exclude_contentless=true&sort=desc"
-            f"&start={(timestamp - pd.Timedelta(days=365)).strftime('%Y-%m-%dT%H:%M:%SZ')}-0400"
-            f"&end={timestamp.strftime('%Y-%m-%dT%H:%M:%SZ')}-0400"
-        )
+        url = "https://data.alpaca.markets/v1beta1/news"
+ 
+        params = {
+            "start": (timestamp - pd.Timedelta(days=365)).strftime("%Y-%m-%dT%H:%M:%S-04:00"),
+            "end": timestamp.strftime("%Y-%m-%dT%H:%M:%S-04:00"),
+            "sort": "desc",
+            "symbols": "SPY,QQQ,DIA,GLD,SLV,VIX,USO,TLT",
+            "limit": limit,
+            "include_content": "true",
+            "exclude_contentless": "true",
+        }
 
         try:
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            rawNews = response.json().get("news", [])
+            # Check if it is in the cache
+            cacheKey = f"alpaca|news_macro_{timestamp.strftime('%Y-%m-%dH%H')}_{limit}"
+            cached = data.cache.get(cacheKey)
+            if cached is not None:
+                rawNews = cached
+            else:
+                data.rateLimiters.alpacaLimiter.wait()
+                response = requests.get(url, headers=headers, params=params)
+                response.raise_for_status()
+                rawNews = response.json().get("news", [])
+                data.cache.put(cacheKey, rawNews)
+
         except requests.exceptions.RequestException as e:
             jsonResult.append({"error": f"Error fetching news from Alpaca API: {str(e)}"})
             return cleanData(jsonResult)
+        
         
         for idx, article in enumerate(rawNews):
             headline = article.get("headline", "").strip()
@@ -397,4 +475,4 @@ def fetchMacroNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, lim
     if len(jsonResult) < limit:
         jsonResult.append({"info": f"Only {len(jsonResult)} articles could be retrieved."})
 
-    return cleanData(jsonResult)
+    return {"date": timestamp.strftime("%Y-%m-%d"), "news": cleanData(jsonResult)}

@@ -96,3 +96,18 @@ class LRUCache:
     def getCacheUsagePercent(self):
         usage, max = self.getCacheUsage()
         return (usage / max) * 100 if max > 0 else 0
+
+
+    def getCacheUsagePrettyString(self):
+        def formatBytes(size):
+            for unit in ["B", "KB", "MB"]:
+                if size < 1024:
+                    return f"{size:.2f} {unit}"
+                size /= 1024
+            return f"{size:.2f} GB"
+        
+        usage, max = self.getCacheUsage()
+        usagePct = self.getCacheUsagePercent()
+        usageStr = formatBytes(usage)
+        maxStr = formatBytes(max)
+        return f"{usageStr} / {maxStr} ({usagePct:.3f}%)"
