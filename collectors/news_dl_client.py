@@ -21,15 +21,10 @@ from collectors.constants import (
     NEWS_BATCH_SIZE,
     NEWS_ROW_GROUP_SIZE,
 )
-
-
-def cleanupArticleContent(rawContent):
-    if not rawContent:
-        return ""
-    text = re.sub(r"<.*?>", "", rawContent)  # Remove HTML tags
-    text = html.unescape(text)  # Convert HTML entities to characters
-    text = " ".join(text.split())  # Clean whitespace
-    return text
+from collectors.news_cleaner import (
+    cleanHtmlContent, removeDuplicateHeadline, removeBenzingaFooter, filterEmpty, filterAutomated, 
+    filterTranscripts, filterOptions, filterIfYouInvested
+)
 
 
 def splitDateRange(startDate, endDate, threadCount):
@@ -167,7 +162,7 @@ class NewsClient:
                                 "id": articleId,
                                 "updated_at": article.get("updated_at", ""),
                                 "headline": article.get("headline", ""),
-                                "content": cleanupArticleContent(article.get("content", "")),
+                                "content": article.get("content", ""),
                                 "author": article.get("author", ""),
                                 "symbols": article.get("symbols", [])
                             })
@@ -267,6 +262,7 @@ class NewsClient:
         if batchFiles:
             dfs = [pd.read_parquet(f, engine="pyarrow") for f in batchFiles]
             consolidatedDf = pd.concat(dfs, ignore_index=True)
+            consolidatedDf = self.filterOutBadArticles(consolidatedDf)
 
             # Sort the consolidated DataFrame by "updated_at" to maintain stability
             consolidatedDf = consolidatedDf.sort_values("updated_at", kind="mergesort")
@@ -314,6 +310,33 @@ class NewsClient:
             })
 
         pq.write_table(table, path, row_group_size=NEWS_ROW_GROUP_SIZE, compression="snappy")
+
+
+
+    def filterOutBadArticles(self, df):
+        df["removeReason"] = None
+        df["wordCount"] = df["content"].apply(lambda x: len(str(x).split()))
+
+        df["content"] = df["content"].apply(cleanHtmlContent)
+        df["content"] = df.apply(lambda row: removeDuplicateHeadline(row["headline"], row["content"]), axis=1)
+        df["content"] = df["content"].apply(removeBenzingaFooter)
+
+        for filterFunc, reason in [
+            # (filterEmpty, "EMPTY"),
+            (filterAutomated, "AUTOMATED"),
+            (filterTranscripts, "TRANSCRIPT"),
+            (filterOptions, "OPTIONS"),
+            (filterIfYouInvested, "IF_YOU_INVESTED")
+        ]:
+            mask = df["removeReason"].isna()
+            df.loc[mask, "removeReason"] = df[mask].apply(filterFunc, axis=1)
+
+        badDf = df[df["removeReason"].notna()].copy()
+        goodDf = df[df["removeReason"].isna()].copy()
+
+        badDf.to_parquet("data/newsfiltered.parquet", engine="pyarrow", index=False)
+        return goodDf.drop(columns=["removeReason", "wordCount"])
+
 
 
     def buildInvertedIndex(self, pbar=None):

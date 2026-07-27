@@ -23,7 +23,7 @@ class NewsDataProvider:
 
 
     def getRecentNewsForTicker(self, ticker: str, before: pd.Timestamp, 
-                               limit: int = 10, mustHaveContent: bool = False) -> pd.DataFrame:
+                               limit: int = 12, mustHaveContent: bool = False) -> pd.DataFrame:
         if limit < 1:
             return pd.DataFrame()
 
@@ -57,7 +57,7 @@ class NewsDataProvider:
 
 
     def getRecentNewsForTickers(self, tickers: list[str], before: pd.Timestamp, 
-                                limit: int = 10, mustHaveContent: bool = False) -> pd.DataFrame:
+                                limit: int = 12, mustHaveContent: bool = False) -> pd.DataFrame:
         if limit < 1:
             return pd.DataFrame()
 

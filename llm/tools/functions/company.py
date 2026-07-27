@@ -63,7 +63,7 @@ def fetchCompanyProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
     return cleanData(profileDict)
     
 
-def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str, limit: int = 10):
+def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str, limit: int = 12):
     useLocal = isLocalDataAvailable(timestamp)
     limit = min(max(limit, 1), 50)
 

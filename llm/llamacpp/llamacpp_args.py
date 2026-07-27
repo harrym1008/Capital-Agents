@@ -21,7 +21,6 @@ class LlamaCppModel(Enum):
     GEMMA_4_E4B = "Gemma-4-E4B"
     GEMMA_4_E2B = "Gemma-4-E2B"
     GEMMA_4_E2B_CPU = "Gemma-4-E2B-CPU"
-    GEMMA_4_E2B_MOBILE = "Gemma-4-E2B-Mobile"
     
     QWEN_36_27B = "Qwen-3.6-27B"
     QWEN_36_35B_A3B = "Qwen-3.6-35B-A3B"
@@ -32,9 +31,6 @@ class LlamaCppModel(Enum):
     
     QWEN_3_1700M = "Qwen-3-1.7B"
     QWEN_3_600M = "Qwen-3-0.6B"
-
-    MINICPM5_1B = "MiniCPM5-1B"
-    LFM25_8B_A1B = "LFM-2.5-8B-A1B"
     GPT_OSS_20B = "GPT-OSS-20B"
 
     TERNARY_BONSAI_27B = "Ternary-Bonsai-27B"
@@ -56,19 +52,17 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--flash-attn":     "on",
         "--cache-type-k":   "q8_0",
         "--cache-type-v":   "q8_0",
-        "--no-mmap":        _,
+        "--load-mode":      "mlock",
         "--metrics":        _,
         "-b":               "2048",
         "-ub":              "512",
         "--jinja":          _,
         "-np":              "2",
-        "--kv-offload":     _,
         "--cache-ram":      "4096",
         "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
-        "--mlock":          _,
         "--fit":            "on",
         "--fit-target":     "1000",
-        # "--reasoning-budget":           str(THINKING_BUDGET),     # To be set directly in the HTTP request body
+        "--reasoning":      "on",
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
@@ -82,22 +76,20 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--flash-attn":     "on",
         "--cache-type-k":   "q8_0",
         "--cache-type-v":   "q8_0",
-        "--no-mmap":        _,
+        "--load-mode":      "mlock",
         "--metrics":        _,
         "-b":               "2048",
         "-ub":              "512",
         "--jinja":          _,
         "-np":              "2",
-        "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
+        "--ctx-size":       "131072",
         "-ngl":             "99",
-        "--mlock":          _,
         "--spec-type":                  "draft-mtp",
         "--model-draft":                f"{MODELS_FOLDER}Gemma4\\mtp\\gemma-4-12B-it-Q8_0-MTP.gguf",
         "--spec-draft-n-max":           "2",
         "--spec-draft-ngl":             "99",
-        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning":      "on",
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
@@ -111,22 +103,20 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--flash-attn":     "on",
         "--cache-type-k":   "q8_0",
         "--cache-type-v":   "q8_0",
-        "--no-mmap":        _,
+        "--load-mode":      "mlock",
         "--metrics":        _,
         "-b":               "4096",
         "-ub":              "1024",
         "--jinja":          _,
         "-np":              "2",
-        "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
+        "--ctx-size":       "131072",
         "-ngl":             "99",
-        "--mlock":          _,
         "--spec-type":                  "draft-mtp",
         "--model-draft":                f"{MODELS_FOLDER}Gemma4\\mtp\\gemma-4-E4B-it-Q8_0-MTP.gguf",
         "--spec-draft-n-max":           "2",
         "--spec-draft-ngl":             "99",
-        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning":      "on",
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
@@ -140,22 +130,20 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--flash-attn":     "on",
         "--cache-type-k":   "q8_0",
         "--cache-type-v":   "q8_0",
-        "--no-mmap":        _,
+        "--load-mode":      "mlock",
         "--metrics":        _,
         "-b":               "8192",
         "-ub":              "1024",
         "--jinja":          _,
         "-np":              "2",
-        "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
+        "--ctx-size":       "131072",
         "-ngl":             "99",
-        "--mlock":          _,
         "--spec-type":                  "draft-mtp",
         "--model-draft":                f"{MODELS_FOLDER}Gemma4\\mtp\\gemma-4-E2B-it-Q8_0-MTP.gguf",
         "--spec-draft-n-max":           "2",
         "--spec-draft-ngl":             "99",
-        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning":      "on",
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
@@ -169,99 +157,24 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--flash-attn":     "on",
         "--cache-type-k":   "q8_0",
         "--cache-type-v":   "q8_0",
-        "--no-mmap":        _,
+        "--load-mode":      "mlock",
         "--metrics":        _,
         "--jinja":          _,
         "-np":              "2",
         "--cache-ram":      "1024",
-        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
+        "--ctx-size":       "131072",
         "-ngl":             "0",
         "--context-shift":  _,
-        "--mlock":          _,
         # "--spec-type":                  "draft-mtp",
         # "--model-draft":                f"{MODELS_FOLDER}Gemma4\\mtp\\gemma-4-E2B-it-Q8_0-MTP.gguf",
         # "--spec-draft-n-max":           "2",
         # "--spec-draft-ngl":             "0",
-        # "--reasoning-budget":           str(THINKING_BUDGET),
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-
-    LlamaCppModel.GEMMA_4_E2B_MOBILE: {
-        "-m":               f"{MODELS_FOLDER}Gemma4\\gemma-4-E2B-it-qat-UD-Q2_K_XL.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.5",
-        "--top-p":          "0.95",
-        "--top-k":          "64",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--no-mmap":        _,
-        "--metrics":        _,
-        "-b":               "8192",
-        "-ub":              "1024",
-        "--jinja":          _,
-        "-np":              "2",
-        "--kv-offload":     _,
-        "--cache-ram":      "4096",
-        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
-        "-ngl":             "99",
-        "--mlock":          _,
-        "--spec-type":                  "draft-mtp",
-        "--model-draft":                f"{MODELS_FOLDER}Gemma4\\mtp\\gemma-4-E2B-it-Q4_0-MTP.gguf",
-        "--spec-draft-n-max":           "2",
-        # "--reasoning-budget":           str(THINKING_BUDGET),
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-    
-    LlamaCppModel.MINICPM5_1B: {
-        "-m":               f"{MODELS_FOLDER}Others\\MiniCPM5-1B-Q8_0.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.5",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--no-mmap":        _,
-        "--metrics":        _,
-        "-b":               "4096",
-        "-ub":              "1024",
-        "--jinja":          _,
-        "-np":              "2",
-        "--kv-offload":     _,
-        "--cache-ram":      "4096",
-        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
-        "-ngl":             "99",
-        "--mlock":          _,
-        # "--reasoning-budget":           str(THINKING_BUDGET),
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-    
-    LlamaCppModel.LFM25_8B_A1B: {
-        "-m":               f"{MODELS_FOLDER}Others\\LFM2.5-8B-A1B-UD-Q6_K.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.4",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--no-mmap":        _,
-        "--metrics":        _,
-        "-b":               "4096",
-        "-ub":              "1024",
-        "--jinja":          _,
-        "-np":              "2",
-        "--kv-offload":     _,
-        "--cache-ram":      "4096",
-        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
-        "-ngl":             "99",
-        "--mlock":          _,
-        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning":      "on",
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
     LlamaCppModel.QWEN_36_27B: {
-        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3.6-27B-Bartowski-IQ3_XS.gguf",
+        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3.6-27B-MTP-UD-IQ3_XXS.gguf",
         "--port":           str(LLAMACPP_PORT),
         "--host":           "127.0.0.1",
         "--temp":           "0.5",
@@ -273,24 +186,22 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--flash-attn":     "on",
         "--cache-type-k":   "q8_0",
         "--cache-type-v":   "q8_0",
-        "--no-mmap":        _,
+        "--load-mode":      "mlock",
         "--metrics":        _,
         "-b":               "2048",
         "-ub":              "512",
         "--jinja":          _,
         "-np":              "2",
-        "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
+        "--ctx-size":       "131072",
         "-ngl":             "99",
-        "--mlock":          _,
-        "--reasoning-preserve":        "on",
-        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning":      "on",
+        "--reasoning-preserve":   _,
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
     LlamaCppModel.QWEN_36_35B_A3B: {
-        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3.6-35B-A3B-MTP-UD-Q3_K_M.gguf",
+        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
         "--port":           str(LLAMACPP_PORT),
         "--host":           "127.0.0.1",
         "--temp":           "0.5",
@@ -302,23 +213,18 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--flash-attn":     "on",
         "--cache-type-k":   "q8_0",
         "--cache-type-v":   "q8_0",
-        "--no-mmap":        _,
+        "--load-mode":      "mlock",
         "--metrics":        _,
         "-b":               "2048",
         "-ub":              "512",
         "--jinja":          _,
         "-np":              "2",
-        "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
+        "--ctx-size":       "131072",
         "--fit":            "on",
         "--fit-target":     "1000",
-        "--mlock":          _,
-        "--reasoning-preserve":        "on",
-        "--spec-type":                  "draft-mtp",
-        "--spec-draft-n-max":           "2",
-        "--spec-draft-ngl":             "99",
-        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--reasoning":      "on",
+        "--reasoning-preserve":   _,
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
@@ -331,17 +237,15 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--flash-attn":     "on",
         "--cache-type-k":   "q8_0",
         "--cache-type-v":   "q8_0",
-        "--no-mmap":        _,
+        "--load-mode":      "mlock",
         "--metrics":        _,
         "-b":               "2048",
         "-ub":              "512",
         "--jinja":          _,
         "-np":              "2",
-        "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
-        "--mlock":          _,
-        # "--reasoning-budget":           str(THINKING_BUDGET),
+        "--ctx-size":       "131072",
+        "--reasoning":      "on",
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
@@ -358,22 +262,19 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--flash-attn":     "on",
         "--cache-type-k":   "q8_0",
         "--cache-type-v":   "q8_0",
-        "--no-mmap":        _,
+        "--load-mode":      "mlock",
         "--metrics":        _,
         "-b":               "2048",
         "-ub":              "512",
         "--jinja":          _,
         "-np":              "2",
-        "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
-        "--mlock":          _,
-        "--reasoning-preserve":        "on",
+        "--ctx-size":       "131072",
+        "--reasoning-preserve":         _,
         "--spec-type":                  "draft-mtp",
         "--spec-draft-n-max":           "2",
         "--spec-draft-ngl":             "99",
         "--reasoning":      "on",
-        # "--reasoning-budget":           str(THINKING_BUDGET),
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
@@ -390,22 +291,19 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--flash-attn":     "on",
         "--cache-type-k":   "q8_0",
         "--cache-type-v":   "q8_0",
-        "--no-mmap":        _,
+        "--load-mode":      "mlock",
         "--metrics":        _,
         "-b":               "4096",
         "-ub":              "1024",
         "--jinja":          _,
         "-np":              "2",
-        "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
-        "--mlock":          _,
-        "--reasoning-preserve":        "on",
+        "--ctx-size":       "131072",
+        "--reasoning-preserve":         _,
         "--spec-type":                  "draft-mtp",
         "--spec-draft-n-max":           "2",
         "--spec-draft-ngl":             "99",
         "--reasoning":      "on",
-        # "--reasoning-budget":           str(THINKING_BUDGET),
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
@@ -422,22 +320,19 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--flash-attn":     "on",
         "--cache-type-k":   "q8_0",
         "--cache-type-v":   "q8_0",
-        "--no-mmap":        _,
+        "--load-mode":      "mlock",
         "--metrics":        _,
         "-b":               "8192",
         "-ub":              "2048",
         "--jinja":          _,
         "-np":              "2",
-        "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
-        "--mlock":          _,
-        "--reasoning-preserve":        "on",
+        "--ctx-size":       "131072",
+        "--reasoning-preserve":         _,
         "--spec-type":                  "draft-mtp",
         "--spec-draft-n-max":           "2",
         "--spec-draft-ngl":             "99",
         "--reasoning":      "on",
-        # "--reasoning-budget":           str(THINKING_BUDGET),
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
@@ -453,18 +348,15 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--flash-attn":     "on",
         "--cache-type-k":   "q8_0",
         "--cache-type-v":   "q8_0",
-        "--no-mmap":        _,
+        "--load-mode":      "mlock",
         "--metrics":        _,
         # "-b":               "8192",
         # "-ub":              "2048",
         "--jinja":          _,
         "-np":              "2",
-        "--kv-offload":     _,
         "--cache-ram":      "4096",
         "--ctx-size":       "65536",    # Qwen 3 has max context of 32k per slot
-        "--mlock":          _,
         "--reasoning":      "on",
-        # "--reasoning-budget":           str(THINKING_BUDGET),
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
@@ -479,18 +371,15 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--flash-attn":     "on",
         "--cache-type-k":   "q8_0",
         "--cache-type-v":   "q8_0",
-        "--no-mmap":        _,
+        "--load-mode":      "mlock",
         "--metrics":        _,
         # "-b":               "8192",
         # "-ub":              "2048",
         "--jinja":          _,
         "-np":              "2",
-        "--kv-offload":     _,
         "--cache-ram":      "4096",
         "--ctx-size":       "65536",    # Qwen 3 has max context of 32k per slot
-        "--mlock":          _,
         "--reasoning":      "on",
-        # "--reasoning-budget":           str(THINKING_BUDGET),
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
@@ -508,23 +397,20 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--flash-attn":     "on",
         "--cache-type-k":   "q8_0",
         "--cache-type-v":   "q8_0",
-        "--no-mmap":        _,
+        "--load-mode":      "mlock",
         "--metrics":        _,
         "-b":               "2048",
         "-ub":              "512",
         "--jinja":          _,
         "-np":              "2",
-        "--kv-offload":     _,
         "--cache-ram":      "4096",
-        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
+        "--ctx-size":       "131072",
         "-ngl":             "99",
-        "--mlock":          _,
-        # "--reasoning-budget":           str(THINKING_BUDGET),
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
 
-#  ==============================================================
+    #==============================================================
 
     LlamaCppModel.SUMMARY_MODEL: {
         "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3-0.6B-UD-Q4_K_XL.gguf",
@@ -537,14 +423,12 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--flash-attn":     "on",
         "--cache-type-k":   "q8_0",
         "--cache-type-v":   "q8_0",
-        "--no-mmap":        _,
+        "--load-mode":      "mlock",
         "--jinja":          _,
         "-np":              "5",
-        "--kv-offload":     _,
         "--cache-ram":      "512",
         "--ctx-size":       "30600",    # Each slot gets 6120 tokens to work with... if this is not enough,
         "-ngl":             "99",       # the model will split the large text into smaller chunks and summarise them in multiple iterations 
-        "--mlock":          _,
         "--reasoning":      "on",
         "--reasoning-budget-message":   "OK, I am out of thinking budget. Time to produce the summary."
     }

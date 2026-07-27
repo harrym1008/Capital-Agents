@@ -51,7 +51,7 @@ class Tool:
                 "error": f"Uncaught error occurred while executing tool '{self.toolName}': {str(e)}",
                 "traceback": tb
             }
-            raise e
+            # raise e
             return error
 
 

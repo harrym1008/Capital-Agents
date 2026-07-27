@@ -337,7 +337,7 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
     data.cache.put(cacheKey, jsonOutput)
     return jsonOutput
 
-def fetchMacroNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, limit: int = 15):
+def fetchMacroNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, limit: int = 12):
     useLocal = isLocalDataAvailable(timestamp)
     limit = min(max(limit, 1), 50)
 
