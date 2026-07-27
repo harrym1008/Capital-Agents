@@ -148,12 +148,15 @@ class MacroDataClient:
             pbar.reset(total=len(YFINANCE_MACRO_TICKERS) + len(FRED_MACRO_SERIES))
             pbar.set_description("Macro: Downloading")
 
+        # yfinance 'end' is exclusive — add 1 day so END_DATE's data is included
+        yfEndDate = (pd.Timestamp(self.endDateStr) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+
         for name, info in YFINANCE_MACRO_TICKERS.items():
             yfTicker = info.get("yfticker", name)
             df = yf.download(
                 yfTicker,
                 start=self.startDateStr,
-                end=self.endDateStr,
+                end=yfEndDate,
                 auto_adjust=False,
                 progress=False
             )

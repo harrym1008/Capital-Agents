@@ -111,15 +111,16 @@ def filterTranscripts(row):
 
     transcriptMarkers = [
         r"\btranscript\b",
-        r"\bearnings call\b",
+        r"\bearnings\b",
         r"\bconference call\b",
+        r"\bwebcast\b",
     ]
+    matches = [marker for marker in transcriptMarkers if re.search(marker, headline, re.IGNORECASE)]
+    matchCount = len(matches)
+    if matchCount >= 2 and transcriptMarkers[0] in matches:
+        return "TRANSCRIPT"
 
-    for marker in transcriptMarkers:
-        if re.search(marker, headline, re.IGNORECASE) and wordCount > 500:
-            return "TRANSCRIPT"
-
-    if wordCount > 1500:
+    if wordCount > 3600:
         return "TRANSCRIPT"     # Likely a transcript if very long
 
     return None
@@ -147,6 +148,20 @@ def filterIfYouInvested(row):
         if re.search(marker, headline, re.IGNORECASE):
             return "IF_YOU_INVESTED"
 
+    return None
+
+
+def filterBadTicker(row, validTickers):
+    tickers = row.get("tickers", [])
+    if not tickers or len(tickers) == 0:
+        return None
+    
+    # Check if ALL tickers are NOT in validTickers
+    allInvalid = all(symbol.upper() not in validTickers for symbol in tickers)
+    
+    if allInvalid:
+        return "BAD_TICKER"
+    
     return None
 
 

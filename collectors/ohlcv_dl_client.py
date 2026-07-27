@@ -346,6 +346,11 @@ class SingleTickerDataCollector:
     
 
     def addOutstandingSharesToDf(self, df, actions):
+        if pd.isna(self.cik):
+            df["outstandingShares"] = pd.NA
+            df["marketCap"] = "N/A"
+            return df
+
         cikPadded = self.cik.zfill(10)
         url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cikPadded}.json"
         headers = {"User-Agent": SEC_EDGAR_IDENTITY}
@@ -406,6 +411,7 @@ class SingleTickerDataCollector:
         if sharesDf.empty:
             df["outstandingShares"] = pd.NA
             df["marketCap"] = "N/A"
+            return df
 
         sharesDf.sort_values("date", inplace=True)
 
@@ -440,7 +446,7 @@ class SingleTickerDataCollector:
             # Find the next date 
             nextDate = sharesDf[sharesDf["date"] > splitDate]["date"].min()
 
-            if nextDate is pd.NaT:
+            if pd.isna(nextDate):
                 mask = df["date"] >= splitDate
             else:
                 mask = (df["date"] >= splitDate) & (df["date"] < nextDate)
@@ -613,27 +619,33 @@ class OHLCVDataClient:
         def downloadAndTrack(item):
             nonlocal completed, errors, skipped, lastExportCount
             exportAfter = False
-            # try:
-            passed, ticker, ipoDate, actionRows = threadWorker(
-                item["ticker"], item["exchange"], item["isAdrc"], item["cik"], item["startDate"], item["endDate"], item["delistDate"],
-                self.priceClient, self.corpActionsClient, self.limiters.alpacaLimiter, self.limiters.edgarLimiter
-            )
+            try:
+                passed, ticker, ipoDate, actionRows = threadWorker(
+                    item["ticker"], item["exchange"], item["isAdrc"], item["cik"], item["startDate"], item["endDate"], item["delistDate"],
+                    self.priceClient, self.corpActionsClient, self.limiters.alpacaLimiter, self.limiters.edgarLimiter
+                )
 
-            with resultsLock:
-                if not passed:
-                    skipped += 1
-                    skippedTickers.append(item["ticker"])
-                    pbar.set_postfix_str(f"{ticker:>5} was intentionally skipped")
-                else:
-                    completed += 1
-                    ipoResults[item["rowIdx"]] = ipoDate
-                    allActionRows.extend(actionRows)
-                    pbar.set_postfix_str(f"{ticker:>5}, {errors} errors so far")
+                with resultsLock:
+                    if not passed:
+                        skipped += 1
+                        skippedTickers.append(item["ticker"])
+                        pbar.set_postfix_str(f"{ticker:>5} was intentionally skipped")
+                    else:
+                        completed += 1
+                        ipoResults[item["rowIdx"]] = ipoDate
+                        allActionRows.extend(actionRows)
+                        pbar.set_postfix_str(f"{ticker:>5}, {errors} errors so far")
 
-                processed = completed + skipped + errors
-                if processed - lastExportCount >= exportInterval:
-                    lastExportCount = processed
-                    exportAfter = True
+                    processed = completed + skipped + errors
+                    if processed - lastExportCount >= exportInterval:
+                        lastExportCount = processed
+                        exportAfter = True
+
+            except Exception as e:
+                with resultsLock:
+                    errors += 1
+                    failedTickers.append(item["ticker"])
+                    pbar.set_postfix_str(f"{item['ticker']:>5} FAILED: {e}")
 
             # Export outside the lock
             pbar.update(1)

@@ -20,10 +20,11 @@ from collectors.constants import (
     NEWS_INDEX_PARQUET_PATH,
     NEWS_BATCH_SIZE,
     NEWS_ROW_GROUP_SIZE,
+    ALL_TICKERS_FILE,
 )
 from collectors.news_cleaner import (
-    cleanHtmlContent, removeDuplicateHeadline, removeBenzingaFooter, filterEmpty, filterAutomated, 
-    filterTranscripts, filterOptions, filterIfYouInvested
+    cleanHtmlContent, removeDuplicateHeadline, removeBenzingaFooter, filterEmpty, filterAutomated,
+    filterTranscripts, filterOptions, filterIfYouInvested, filterBadTicker
 )
 
 
@@ -55,7 +56,9 @@ class NewsClient:
         self.alpacaLimiter = rateLimiterDatabase.alpacaLimiter
 
         self.startDate = datetime.strptime(startDate, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-        self.endDate = datetime.strptime(endDate, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        self.endDate = datetime.strptime(endDate, "%Y-%m-%d").replace(
+            hour=23, minute=59, second=59, tzinfo=timezone.utc
+        )
         
 
 
@@ -160,18 +163,18 @@ class NewsClient:
 
                             batchBuffer.append({
                                 "id": articleId,
-                                "updated_at": article.get("updated_at", ""),
+                                "date": article.get("updated_at", ""),
                                 "headline": article.get("headline", ""),
                                 "content": article.get("content", ""),
                                 "author": article.get("author", ""),
-                                "symbols": article.get("symbols", [])
+                                "tickers": article.get("symbols", [])
                             })
 
                         if articlesList:
                             with sharedLock:
                                 totalFetched += len(articlesList)
 
-                        latestArticleTime = articlesList[-1]["updated_at"] if articlesList else None
+                        latestArticleTime = articlesList[-1]["date"] if articlesList else None
                         if latestArticleTime:
                             latestArticleDt = datetime.strptime(latestArticleTime, "%Y-%m-%dT%H:%M:%SZ").replace(
                                 tzinfo=timezone.utc
@@ -184,7 +187,7 @@ class NewsClient:
 
                         if len(batchBuffer) >= NEWS_BATCH_SIZE:
                             df = pd.DataFrame(batchBuffer)
-                            df["updated_at"] = pd.to_datetime(df["updated_at"])
+                            df["date"] = pd.to_datetime(df["date"])
 
                             batchFileName = f"{NEWS_BATCHES_DIR}/news_{threadId}_{batchCount:03d}.parquet"
                             df.to_parquet(batchFileName, engine="pyarrow", index=False)
@@ -208,7 +211,7 @@ class NewsClient:
 
             if batchBuffer:
                 df = pd.DataFrame(batchBuffer)
-                df["updated_at"] = pd.to_datetime(df["updated_at"])
+                df["date"] = pd.to_datetime(df["date"])
 
                 batchFileName = f"{NEWS_BATCHES_DIR}/news_{threadId}_{batchCount:03d}.parquet"
                 df.to_parquet(batchFileName, engine="pyarrow", index=False)
@@ -264,12 +267,12 @@ class NewsClient:
             consolidatedDf = pd.concat(dfs, ignore_index=True)
             consolidatedDf = self.filterOutBadArticles(consolidatedDf)
 
-            # Sort the consolidated DataFrame by "updated_at" to maintain stability
-            consolidatedDf = consolidatedDf.sort_values("updated_at", kind="mergesort")
+            # Sort the consolidated DataFrame by "date" to maintain stability
+            consolidatedDf = consolidatedDf.sort_values("date", kind="mergesort")
             self.writeNewsParquet(consolidatedDf, NEWS_PARQUET_PATH)
         else:
             print("Could not download any news articles! News parquet file will be empty.")
-            emptyDf = pd.DataFrame(columns=["id", "updated_at", "headline", "content", "author", "symbols"])
+            emptyDf = pd.DataFrame(columns=["id", "date", "headline", "content", "author", "tickers"])
             self.writeNewsParquet(emptyDf, NEWS_PARQUET_PATH)
 
         # Clear the batch files after consolidation
@@ -277,7 +280,7 @@ class NewsClient:
             filePath = os.path.join(NEWS_BATCHES_DIR, filename)
             if os.path.isfile(filePath):
                 os.remove(filePath)
-        os.rmdir(NEWS_BATCHES_DIR)
+        # os.rmdir(NEWS_BATCHES_DIR)
 
         return totalFetched, totalBatchCount
 
@@ -286,27 +289,27 @@ class NewsClient:
         if len(df) == 0:
             table = pa.table({
                 "id": pa.array([], type=pa.string()),
-                "updated_at": pa.array([], type=pa.timestamp("us")),
+                "date": pa.array([], type=pa.timestamp("us")),
                 "headline": pa.array([], type=pa.string()),
                 "content": pa.array([], type=pa.string()),
                 "author": pa.array([], type=pa.string()),
-                "symbols": pa.array([], type=pa.list_(pa.string())),
+                "tickers": pa.array([], type=pa.list_(pa.string())),
             })
         else:
-            symbols = []
-            for s in df["symbols"].tolist():
-                symbols.append(list(s) if s is not None else [])
+            tickers = []
+            for s in df["tickers"].tolist():
+                tickers.append(list(s) if s is not None else [])
 
             table = pa.table({
                 "id": pa.array(
                     [str(x) if x is not None else None for x in df["id"].tolist()],
                     type=pa.string()
                 ),
-                "updated_at": pa.array(df["updated_at"].tolist(), type=pa.timestamp("us")),
+                "date": pa.array(df["date"].tolist(), type=pa.timestamp("us")),
                 "headline": pa.array(df["headline"].tolist(), type=pa.string()),
                 "content": pa.array(df["content"].tolist(), type=pa.string()),
                 "author": pa.array(df["author"].tolist(), type=pa.string()),
-                "symbols": pa.array(symbols, type=pa.list_(pa.string())),
+                "tickers": pa.array(tickers, type=pa.list_(pa.string())),
             })
 
         pq.write_table(table, path, row_group_size=NEWS_ROW_GROUP_SIZE, compression="snappy")
@@ -314,6 +317,10 @@ class NewsClient:
 
 
     def filterOutBadArticles(self, df):
+        tickersDf = pd.read_parquet(ALL_TICKERS_FILE, engine="pyarrow")
+        validTickers = set(tickersDf["ticker"].tolist())
+        validTickers.update(["SPY", "QQQ", "DIA", "GLD", "SLV", "VIX", "USO", "TLT"])
+
         df["removeReason"] = None
         df["wordCount"] = df["content"].apply(lambda x: len(str(x).split()))
 
@@ -331,6 +338,10 @@ class NewsClient:
             mask = df["removeReason"].isna()
             df.loc[mask, "removeReason"] = df[mask].apply(filterFunc, axis=1)
 
+        if not df["removeReason"].all():  # Only apply if there are still articles to check
+            mask = df["removeReason"].isna()
+            df.loc[mask, "removeReason"] = df[mask].apply(lambda row: filterBadTicker(row, validTickers), axis=1)
+
         badDf = df[df["removeReason"].notna()].copy()
         goodDf = df[df["removeReason"].isna()].copy()
 
@@ -338,12 +349,11 @@ class NewsClient:
         return goodDf.drop(columns=["removeReason", "wordCount"])
 
 
-
     def buildInvertedIndex(self, pbar=None):
         if not os.path.exists(NEWS_PARQUET_PATH):
             return
 
-        df = pd.read_parquet(NEWS_PARQUET_PATH, engine="pyarrow", columns=["id", "symbols"])
+        df = pd.read_parquet(NEWS_PARQUET_PATH, engine="pyarrow", columns=["id", "tickers"])
         indices = {}
 
         if pbar is None:
@@ -361,10 +371,10 @@ class NewsClient:
 
         for row in df.itertuples(index=False):
             articleId = row.id
-            symbolsVal = row.symbols
-            symbolsList = symbolsVal if symbolsVal is not None else []
+            tickersVal = row.tickers
+            tickersList = tickersVal if tickersVal is not None else []
 
-            for symbol in symbolsList:
+            for symbol in tickersList:
                 if symbol not in indices:
                     indices[symbol] = []
                 indices[symbol].append(articleId)

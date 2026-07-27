@@ -74,6 +74,9 @@ class CurrencyDataClient:
             pbar.set_description("Forex: Downloading")
 
 
+        # yfinance 'end' is exclusive — add 1 day so END_DATE's data is included
+        yfEndDate = (pd.Timestamp(self.endDate) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+
         for currency in CURRENCIES:
             if currency.code == "USD":
                 # Skip USD
@@ -86,7 +89,7 @@ class CurrencyDataClient:
                 df = yf.download(
                     currency.yfinanceTicker,
                     start=self.startDate,
-                    end=self.endDate,
+                    end=yfEndDate,
                     interval="1d",
                     auto_adjust=False,
                     progress=False
@@ -104,7 +107,7 @@ class CurrencyDataClient:
                 df = df.reset_index()
                 df.columns = [str(column).lower().replace(" ", "_") for column in df.columns]
 
-                df = df.drop(columns=["adj_close", "volume"])
+                df = df.drop(columns=["adj_close", "volume"], errors="ignore")
                 df.columns = ["date", "open", "high", "low", "close"]
 
                 # To NY timezone

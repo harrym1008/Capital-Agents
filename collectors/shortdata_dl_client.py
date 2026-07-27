@@ -107,6 +107,9 @@ class ShortDataClient:
 
 
     def cleanDataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return df
+
         columnsToKeep = [
             "settlementDate", 
             "symbolCode", 

@@ -170,11 +170,11 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
         threeYearAgoStr = (timestamp - pd.DateOffset(years=3, days=7)).strftime("%Y-%m-%d")
                     
         yfTickerMap ={s.parquetName: YFINANCE_MACRO_TICKERS[s.parquetName]["yfticker"] for s in yfinanceSeries}
-        yfTickerSymbols = list(set(yfTickerMap.values()))
+        yfTickerTickers = list(set(yfTickerMap.values()))
 
         data.rateLimiters.yFinanceLimiter.wait()
         batchData = yf.download(
-            tickers=yfTickerSymbols,
+            tickers=yfTickerTickers,
             start=threeYearAgoStr,
             end=todayStr,
             interval="1d",

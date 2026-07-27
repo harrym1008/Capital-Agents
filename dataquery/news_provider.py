@@ -41,10 +41,10 @@ class NewsDataProvider:
         sql = f"""
             SELECT *
             FROM read_parquet('{self.newsPath}')
-            WHERE updated_at < ?
-              AND list_contains(symbols, ?)
+            WHERE date < ?
+              AND list_contains(tickers, ?)
               {"AND LENGTH(content) > 0" if mustHaveContent else ""}
-            ORDER BY updated_at DESC, id
+            ORDER BY date DESC, id
             LIMIT ?
         """
         df = self.con.execute(
@@ -79,10 +79,10 @@ class NewsDataProvider:
         sql = f"""
             SELECT *
             FROM read_parquet('{self.newsPath}')
-            WHERE updated_at < ?
-              AND list_has_any(symbols, ?)
+            WHERE date < ?
+              AND list_has_any(tickers, ?)
               {"AND LENGTH(content) > 0" if mustHaveContent else ""}
-            ORDER BY updated_at DESC, id
+            ORDER BY date DESC, id
             LIMIT ?
         """
         df = self.con.execute(
