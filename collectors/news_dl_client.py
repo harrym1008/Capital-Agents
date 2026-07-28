@@ -51,9 +51,9 @@ def splitDateRange(startDate, endDate, threadCount):
 class NewsClient:
     def __init__(self, startDate, endDate, rateLimiterDatabase: GlobalRateLimiters):
         load_dotenv()
-        self.apiKey = os.getenv("ALPACA_API_KEY")
-        self.apiSecret = os.getenv("ALPACA_API_SECRET")
-        self.alpacaLimiter = rateLimiterDatabase.alpacaLimiter
+        self.apiKey = os.getenv("ALPACA_API_KEY_2")
+        self.apiSecret = os.getenv("ALPACA_API_SECRET_2")
+        self.alpacaLimiter = rateLimiterDatabase.alpacaNewsDlLimiter
 
         self.startDate = datetime.strptime(startDate, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         self.endDate = datetime.strptime(endDate, "%Y-%m-%d").replace(

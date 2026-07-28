@@ -106,6 +106,9 @@ def runMassDownloadTool(presetDownloads=None):
 
     time.sleep(5)
 
+    if not os.path.exists(DATA_DIR):
+        os.mkdir(DATA_DIR)
+
     limiters = GlobalRateLimiters()
 
     # Step 1: Tickers MUST run first
@@ -151,7 +154,7 @@ def runMassDownloadTool(presetDownloads=None):
         tasks.append(("short", ShortDataClient, (START_DATE.date(), END_DATE.date(), limiters),
                               lambda c: c.massDownload(pbar=pbars["short"])))
 
-    runInParallel = False
+    runInParallel = True
     if tasks and runInParallel:
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(tasks)) as executor:
             futures = {}

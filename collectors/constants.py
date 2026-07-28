@@ -20,6 +20,8 @@ IPO_BEFORE_START_DATE = pd.Timestamp(IPO_BEFORE_START_DATE_STR, tz=NEW_YORK)
 
 SEC_EDGAR_IDENTITY = "CapitalAgents/1.0 (hpmm1@student.london.ac.uk)"
 
+DATA_DIR = "data"
+
 
 # For ticker_dl_client.py
 BAD_SECURITY_TERMS = [
