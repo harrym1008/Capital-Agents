@@ -129,32 +129,33 @@ def runMassDownloadTool(presetDownloads=None):
         pbar._external = True
 
     # Step 2: OHLCV, News, Macro run in parallel (all share the same limiters instance)
-    parallelTasks = []
+    tasks = []
 
     if downloading["ohlcv"]["confirm"]:
-        parallelTasks.append(("ohlcv", OHLCVDataClient, (START_DATE_STR, END_DATE_STR, limiters),
+        tasks.append(("ohlcv", OHLCVDataClient, (START_DATE_STR, END_DATE_STR, limiters),
                               lambda c: c.massDownload(True, threads=8, pbar=pbars["ohlcv"])))
 
     if downloading["news"]["confirm"]:
-        parallelTasks.append(("news", NewsClient, (START_DATE_STR, END_DATE_STR, limiters),
+        tasks.append(("news", NewsClient, (START_DATE_STR, END_DATE_STR, limiters),
                               lambda c: (c.threadedMassDownload(threads=8, pbar=pbars["news"]), c.buildInvertedIndex(pbar=pbars["news"]))))
 
     if downloading["macro"]["confirm"]:
-        parallelTasks.append(("macro", MacroDataClient, (START_DATE_STR, END_DATE_STR, limiters),
+        tasks.append(("macro", MacroDataClient, (START_DATE_STR, END_DATE_STR, limiters),
                               lambda c: c.massDownload(pbar=pbars["macro"])))
 
     if downloading["forex"]["confirm"]:
-        parallelTasks.append(("forex", CurrencyDataClient, (START_DATE_STR, END_DATE_STR, limiters),
+        tasks.append(("forex", CurrencyDataClient, (START_DATE_STR, END_DATE_STR, limiters),
                               lambda c: c.massDownload(pbar=pbars["forex"])))
         
     if downloading["short"]["confirm"]:
-        parallelTasks.append(("short", ShortDataClient, (START_DATE.date(), END_DATE.date(), limiters),
+        tasks.append(("short", ShortDataClient, (START_DATE.date(), END_DATE.date(), limiters),
                               lambda c: c.massDownload(pbar=pbars["short"])))
 
-    if parallelTasks:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(parallelTasks)) as executor:
+    runInParallel = False
+    if tasks and runInParallel:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(tasks)) as executor:
             futures = {}
-            for name, clientClass, args, runner in parallelTasks:
+            for name, clientClass, args, runner in tasks:
                 client = clientClass(*args)
                 futures[executor.submit(runner, client)] = name
 
@@ -166,6 +167,13 @@ def runMassDownloadTool(presetDownloads=None):
                     tqdm.write(f"Completed downloading: {downloading[name]['desc']}\n")
                 except Exception as e:
                     tqdm.write(f"ERROR in {name} download: {e}\n")
+    elif tasks and not runInParallel:
+        for name, clientClass, args, runner in tasks:
+            client = clientClass(*args)
+            runner(client)
+            pbars[name].close()
+            tqdm.write(f"Completed downloading: {downloading[name]['desc']}\n")
+
 
     # Close all progress bars
     for pbar in pbars.values():

@@ -672,10 +672,11 @@ class OHLCVDataClient:
                 concurrent.futures.wait(futures)
 
         pbar.set_description(f"OHLCV: Exported {completed} tickers ({errors} errors, {skipped} skipped)")
+        print(f"\nOHLCV: Exported {completed} tickers ({errors} errors, {skipped} skipped)\n")
 
         # Export all corporate actions to one parquet file
         actionsDf = exportActions(allActionRows)
-        pbar.set_description(f"OHLCV: Saved {len(actionsDf)} corporate actions")
+        # pbar.set_description(f"OHLCV: Saved {len(actionsDf)} corporate actions")
 
 
         tickerChangeMap = {}

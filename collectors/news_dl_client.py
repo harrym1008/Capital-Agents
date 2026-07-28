@@ -174,7 +174,7 @@ class NewsClient:
                             with sharedLock:
                                 totalFetched += len(articlesList)
 
-                        latestArticleTime = articlesList[-1]["date"] if articlesList else None
+                        latestArticleTime = articlesList[-1].get("updated_at") if articlesList else None
                         if latestArticleTime:
                             latestArticleDt = datetime.strptime(latestArticleTime, "%Y-%m-%dT%H:%M:%SZ").replace(
                                 tzinfo=timezone.utc
