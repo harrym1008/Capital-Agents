@@ -55,7 +55,7 @@ def precacheToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Timestamp, ticke
             try:
                 result = future.result()
                 strResult = str(result)
-                truncatedResult = strResult[:100] + "..." if len(strResult) > 50 else strResult
+                truncatedResult = strResult[:98] + "..." if len(strResult) > 100 else strResult
                 print(f"[{toolCall.toolName}] Completed: {truncatedResult}")
             except Exception as exc:
                 print(f"[{toolCall.toolName}] Generated an exception: {exc}")

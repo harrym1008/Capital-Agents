@@ -65,7 +65,7 @@ def fetchCompanyProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
 
 def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str, limit: int = 12):
     useLocal = isLocalDataAvailable(timestamp)
-    limit = min(max(limit, 1), 50)
+    limit = min(max(limit, 1), 18)
 
     jsonResult = []
 

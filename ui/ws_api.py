@@ -2,6 +2,7 @@ import io
 import base64
 import urllib.request
 import urllib.error
+import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -38,7 +39,64 @@ def adjustPriceDataSplits(priceData):
         priceData["splitFactor"] = finalSplitFactor
     return priceData
 
-def generateOhlcvChartImage(ticker, simDateTs, target12=None, target36=None):
+
+def getRollingMean(series, window=3):
+    s = pd.Series(series)
+    return s.rolling(window=window, center=True, min_periods=1).mean().values
+
+
+def computeBezierThroughPoints(pointsX, pointsY, numSamples=300):
+    n = len(pointsX)
+    if n < 2:
+        return np.array(pointsX), np.array(pointsY)
+    
+    # Convert to numpy for computation
+    xPts = np.array(pointsX, dtype=np.float64)
+    yPts = np.array(pointsY, dtype=np.float64)
+    
+    # Catmull-Rom spline interpolation
+    
+    def catmullRomPoint(t, p0, p1, p2, p3):
+        t2 = t * t
+        t3 = t2 * t
+        return 0.5 * (
+            2 * p1 +
+            (-p0 + p2) * t +
+            (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
+            (-p0 + 3 * p1 - 3 * p2 + p3) * t3
+        )
+    
+    # Build the full curve by interpolating between each pair of consecutive points
+    samplesPerSegment = max(numSamples // n, 50)
+    xAll = []
+    yAll = []
+    
+    for i in range(n - 1):
+        p0 = xPts[max(i - 1, 0)]
+        p1 = xPts[i]
+        p2 = xPts[min(i + 1, n - 1)]
+        p3 = xPts[min(i + 2, n - 1)]
+        
+        y0 = yPts[max(i - 1, 0)]
+        y1 = yPts[i]
+        y2 = yPts[min(i + 1, n - 1)]
+        y3 = yPts[min(i + 2, n - 1)]
+        
+        for j in range(samplesPerSegment):
+            t = j / samplesPerSegment
+            x = catmullRomPoint(t, p0, p1, p2, p3)
+            y = catmullRomPoint(t, y0, y1, y2, y3)
+            xAll.append(x)
+            yAll.append(y)
+    
+    # Always include the last point exactly
+    xAll.append(xPts[-1])
+    yAll.append(yPts[-1])
+    
+    return np.array(xAll), np.array(yAll)
+
+
+def generateOhlcvChartImage(ticker, simDateTs, targets=None):
     todayTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
     startDateTs = simDateTs - pd.DateOffset(years=3)
     endDateTs = simDateTs + pd.DateOffset(years=3)
@@ -68,66 +126,83 @@ def generateOhlcvChartImage(ticker, simDateTs, target12=None, target36=None):
     lastHistoricalClose = None
     allPrices = []
     
-    if not dfHistorical.empty and "close" in dfHistorical.columns:
-        dfCleanHist = dfHistorical.dropna(subset=["close"])
-        if not dfCleanHist.empty:
-            allPrices.extend(dfCleanHist["close"].tolist())
-            
-    if not dfFuture.empty and "close" in dfFuture.columns:
-        dfCleanFuture = dfFuture.dropna(subset=["close"])
-        if not dfCleanFuture.empty:
-            allPrices.extend(dfCleanFuture["close"].tolist())
-            
-    if target12 is not None:
-        allPrices.append(target12)
-    if target36 is not None:
-        allPrices.append(target36)
-        
-    maxPrice = max(allPrices) if allPrices else 100.0
-    
-    # Plot historical data (Past 3Y) in Royal Indigo
+    # --- Historical data with 3-day moving average ---
     if not dfHistorical.empty and "close" in dfHistorical.columns:
         dfCleanHist = dfHistorical.dropna(subset=["close"])
         if not dfCleanHist.empty:
             dates = [pd.Timestamp(r.get("dateNy", r.get("date"))).to_pydatetime() for _, r in dfCleanHist.iterrows()]
-            closes = dfCleanHist["close"].values
-            lastHistoricalClose = closes[-1]
-            ax.plot(dates, closes, color='#2563eb', linewidth=1.8, label='Historical (-3Y)')
-            ax.fill_between(dates, closes, 0, color='#2563eb', alpha=0.08)
+            closesRaw = dfCleanHist["close"].values
+            # Apply 3-day centered moving average to smooth spiky raw data
+            closesSmooth = getRollingMean(closesRaw, window=3)
+            lastHistoricalClose = closesSmooth[-1]
+            allPrices.extend(closesSmooth.tolist())
+            ax.plot(dates, closesSmooth, color='#2563eb', linewidth=1.8, label='Historical (-3Y)')
+            ax.fill_between(dates, closesSmooth, 0, color='#2563eb', alpha=0.08)
             
-    # Plot actual future data (Post simDate) in Warm Rose
+    # --- Future actual data with 3-day moving average ---
     if not dfFuture.empty and "close" in dfFuture.columns:
         dfCleanFuture = dfFuture.dropna(subset=["close"])
         if not dfCleanFuture.empty:
             dates = [pd.Timestamp(r.get("dateNy", r.get("date"))).to_pydatetime() for _, r in dfCleanFuture.iterrows()]
-            closes = dfCleanFuture["close"].values
-            ax.plot(dates, closes, color='#f43f5e', linewidth=1.8, label='Actual Performance')
-            ax.fill_between(dates, closes, 0, color='#f43f5e', alpha=0.08)
+            closesRaw = dfCleanFuture["close"].values
+            # Apply 3-day centered moving average to smooth spiky raw data
+            closesSmooth = getRollingMean(closesRaw, window=3)
+            allPrices.extend(closesSmooth.tolist())
+            ax.plot(dates, closesSmooth, color='#f43f5e', linewidth=1.8, label='Actual Performance')
+            ax.fill_between(dates, closesSmooth, 0, color='#f43f5e', alpha=0.08)
             
-    # Plot Target Projection Line in Electric Cyan (clean rounded cap, no arrow artifact)
-    if target36 is not None or target12 is not None:
-        startPrice = lastHistoricalClose if lastHistoricalClose is not None else (allPrices[0] if allPrices else 100.0)
-        targetDates = [simDateTs.to_pydatetime()]
-        targetPrices = [startPrice]
+    # --- Build target points list ---
+    if targets is None:
+        targets = []
+    
+    # Compute target dates and prices as numpy-compatible values (days from startDateTs)
+    startTime = startDateTs.timestamp()
+    simDateDaysFromStart = (simDateTs - startDateTs).total_seconds() / 86400.0
+    targetX = [simDateDaysFromStart]  # first point is at simDate, not at graph edge
+    targetY = [lastHistoricalClose if lastHistoricalClose is not None else (allPrices[0] if allPrices else 100.0)]
+    
+    for monthsOffset, price in targets:
+        targetDateTs = simDateTs + pd.DateOffset(months=int(monthsOffset))
+        daysFromStart = (targetDateTs - startDateTs).total_seconds() / 86400.0
+        targetX.append(daysFromStart)
+        targetY.append(price)
+        allPrices.append(price)
+    
+    maxPrice = max(allPrices) if allPrices else 100.0
+    
+    # --- Plot bezier-curved target projection ---
+    if len(targets) > 0:
+        # Compute smooth Catmull-Rom spline through target points
+        curveX, curveY = computeBezierThroughPoints(targetX, targetY, numSamples=400)
         
-        if target12 is not None:
-            t12Date = (simDateTs + pd.DateOffset(years=1)).to_pydatetime()
-            targetDates.append(t12Date)
-            targetPrices.append(target12)
-            
-        if target36 is not None:
-            t36Date = (simDateTs + pd.DateOffset(years=3)).to_pydatetime()
-            targetDates.append(t36Date)
-            targetPrices.append(target36)
-            
-        ax.plot(targetDates, targetPrices, color='#06b6d4', linewidth=2.8, linestyle='-', solid_capstyle='round', zorder=5)
-        ax.plot(targetDates[-1], targetPrices[-1], marker='o', markersize=4.5, color='#06b6d4', zorder=6)
+        # Convert days back to datetime for plotting
+        curveDates = [pd.Timestamp(startTime + x * 86400.0, unit='s', tz=NEW_YORK).to_pydatetime() for x in curveX]
+        
+        ax.plot(curveDates, curveY, color='#06b6d4', linewidth=2.8, solid_capstyle='round', zorder=5)
+        
+        # Plot larger markers at each actual target point
+        for i, (monthsOffset, price) in enumerate(targets):
+            targetDateTs = simDateTs + pd.DateOffset(months=int(monthsOffset))
+            ax.plot(targetDateTs.to_pydatetime(), price, marker='o',
+                    markersize=8, color='#06b6d4', zorder=6,
+                    markeredgecolor='#ffffff', markeredgewidth=1.5)
+        
+        # Also plot the start connection point (simDate) with a small marker
+        ax.plot(simDateTs.to_pydatetime(), targetY[0], marker='o',
+                markersize=5, color='#64748b', zorder=6,
+                markeredgecolor='#ffffff', markeredgewidth=1)
         
     # Vertical dashed line at simDate
     ax.axvline(x=simDateTs.to_pydatetime(), color='#1e293b', linestyle='--', linewidth=1.5, zorder=4)
     
-    # Configure X axis timeline
-    ax.set_xlim(startDateTs.to_pydatetime(), endDateTs.to_pydatetime())
+    # Configure X axis timeline — add right-side padding so the last marker isn't clipped
+    x_end = endDateTs.to_pydatetime()
+    if len(targets) > 0:
+        # Add ~2% extra padding on the right for marker visibility
+        x_range_seconds = (endDateTs - startDateTs).total_seconds()
+        x_end = endDateTs + pd.Timedelta(seconds=x_range_seconds * 0.02)
+    
+    ax.set_xlim(startDateTs.to_pydatetime(), x_end)
     ax.xaxis.set_major_locator(mdates.YearLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
     
@@ -186,23 +261,23 @@ def registerApiRoutes(app):
     def getOhlcvData():
         tickerParam = request.args.get("ticker", "NVDA").strip().upper()
         simDateParam = request.args.get("simDate", None)
-        target12Param = request.args.get("target12", None)
-        target36Param = request.args.get("target36", None)
         
-        target12Val = None
-        if target12Param and target12Param != "--":
-            try:
-                target12Val = float(target12Param.replace("$", "").strip())
-            except Exception:
-                target12Val = None
-
-        target36Val = None
-        if target36Param and target36Param != "--":
-            try:
-                target36Val = float(target36Param.replace("$", "").strip())
-            except Exception:
-                target36Val = None
-
+        # Parse dynamic targets: comma-separated "months:price" pairs (e.g. "12:75,36:100")
+        targetsRaw = request.args.get("targets", "")
+        targets = []
+        if targetsRaw and targetsRaw != "--":
+            for pair in targetsRaw.split(","):
+                pair = pair.strip()
+                if not pair or ":" not in pair:
+                    continue
+                parts = pair.split(":")
+                try:
+                    monthsOffset = int(parts[0].strip())
+                    price = float(parts[1].replace("$", "").strip())
+                    targets.append((monthsOffset, price))
+                except (ValueError, IndexError):
+                    pass
+        
         todayTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
         
         if not simDateParam:
@@ -220,7 +295,7 @@ def registerApiRoutes(app):
                 
         simDateStr = simDateTs.strftime("%Y-%m-%d")
         
-        chartImgStr = generateOhlcvChartImage(tickerParam, simDateTs, target12Val, target36Val)
+        chartImgStr = generateOhlcvChartImage(tickerParam, simDateTs, targets=targets)
         
         return jsonify({
             "ticker": tickerParam,

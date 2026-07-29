@@ -14,7 +14,7 @@ SCHEMAS = {
         "properties": {
             "limit": {
                 "type": "integer",
-                "description": "The maximum number of news stories to fetch (1-50). Defaults to 12.",
+                "description": "The maximum number of news stories to fetch (1-18). Defaults to 12.",
                 "default": 12
             }
         },
@@ -41,7 +41,7 @@ SCHEMAS = {
             },
             "limit": {
                 "type": "integer",
-                "description": "The maximum number of news stories to fetch (1-50). Defaults to 12.",
+                "description": "The maximum number of news stories to fetch (1-18). Defaults to 12.",
                 "default": 12
             }
         },

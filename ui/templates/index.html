@@ -984,13 +984,26 @@
                 simDateStr = new Date().toISOString().split("T")[0];
             }
 
+            // Collect all target elements dynamically (supports 3mo, 6mo, 12mo, 24mo, 36mo, etc.)
             const t12El = document.getElementById("receipt-target-12");
             const t36El = document.getElementById("receipt-target-36");
-            const target12 = (t12El && t12El.innerText && t12El.innerText !== "--") ? t12El.innerText.trim() : "";
-            const target36 = (t36El && t36El.innerText && t36El.innerText !== "--") ? t36El.innerText.trim() : "";
+            
+            // Build targets array: [months_offset, price] pairs
+            const targets = [];
+            if (t12El && t12El.innerText && t12El.innerText !== "--") {
+                const val = t12El.innerText.trim().replace("$", "");
+                if (val) targets.push(`12:${val}`);
+            }
+            if (t36El && t36El.innerText && t36El.innerText !== "--") {
+                const val = t36El.innerText.trim().replace("$", "");
+                if (val) targets.push(`36:${val}`);
+            }
 
             try {
-                const url = `/api/ohlcv?ticker=${encodeURIComponent(ticker)}&simDate=${encodeURIComponent(simDateStr)}&target12=${encodeURIComponent(target12)}&target36=${encodeURIComponent(target36)}`;
+                let url = `/api/ohlcv?ticker=${encodeURIComponent(ticker)}&simDate=${encodeURIComponent(simDateStr)}`;
+                if (targets.length > 0) {
+                    url += `&targets=${encodeURIComponent(targets.join(","))}`;
+                }
                 const res = await fetch(url);
                 if (res.ok) {
                     const json = await res.json();
