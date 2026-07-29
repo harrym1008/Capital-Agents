@@ -31,6 +31,8 @@ from llm.llamacpp.llamacpp_args import LlamaCppModel, LLAMACPP_PORT
 from ui.ui_hooks import setEventCallback, emitEvent
 import logging
 
+from ui.ws_api import registerApiRoutes
+
 class MetricsFilter(logging.Filter):
     def filter(self, record):
         return "/api/metrics" not in record.getMessage()
@@ -38,6 +40,7 @@ class MetricsFilter(logging.Filter):
 logging.getLogger('werkzeug').addFilter(MetricsFilter())
 
 app = Flask(__name__, template_folder=os.path.join(ROOT, "ui/templates"))
+registerApiRoutes(app)
 
 # Track active websocket connection and the event loop it runs on
 activeWebsocket = None
@@ -54,16 +57,6 @@ def broadcastEvent(eventData):
 def indexPage():
     return render_template("index.html")
 
-@app.route("/api/metrics")
-def getBoardroomMetrics():
-    url = f"http://127.0.0.1:{LLAMACPP_PORT}/metrics"
-    try:
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=1.5) as resp:
-            content = resp.read().decode('utf-8')
-            return content, 200, {'Content-Type': 'text/plain; charset=utf-8'}
-    except Exception as e:
-        return f"# Error reaching llama-server metrics: {e}", 503, {'Content-Type': 'text/plain; charset=utf-8'}
 
 
 def runSimulationThread(clientType, model, ticker, simulatedDate, fastMode, allowParallel, summaryHasOwnLocalServer):

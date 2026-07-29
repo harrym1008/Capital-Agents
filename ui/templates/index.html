@@ -70,6 +70,11 @@
             cursor: pointer;
         }
 
+        .config-group input[type="date"] {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            padding: 4px 8px;
+        }
+
         .run-btn {
             background-color: #2563eb;
             color: #fff;
@@ -373,7 +378,7 @@
             font-family: "JetBrains Mono", monospace;
             font-size: 11px;
             padding: 12px;
-            max-height: 160px;
+            max-height: 70%;
             overflow-y: auto;
             margin-bottom: 15px;
             box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
@@ -497,6 +502,8 @@
         .tool-call-block.collapsed .toggle-arrow {
             transform: rotate(-90deg);
         }
+
+
     </style>
 </head>
 <body>
@@ -619,6 +626,8 @@
         let currentStageNumber = 0;
         let timerInterval = null;
         let highestStageNumber = 0;
+        let currentTicker = "NVDA";
+        let currentSimulatedDate = null;
 
         function parseMarkdown(text) {
             if (!text) return "";
@@ -658,15 +667,15 @@
             formattedText = formattedText.replace(/_(.*?)_/g, '<em>$1</em>');
 
             // 4. Parse hashtag headings: # (H2) to ###### (H6)
-            formattedText = formattedText.replace(/^######\s+(.*?)$/gm, '<h6 style="font-size: 11px; font-weight: bold; margin: 8px 0 4px 0; color: #475569; text-transform: uppercase;">$1</h6>');
-            formattedText = formattedText.replace(/^#####\s+(.*?)$/gm, '<h6 style="font-size: 12px; font-weight: bold; margin: 8px 0 4px 0; color: #475569;">$1</h6>');
-            formattedText = formattedText.replace(/^####\s+(.*?)$/gm, '<h5 style="font-size: 13px; font-weight: bold; margin: 10px 0 5px 0; color: #334155;">$1</h5>');
-            formattedText = formattedText.replace(/^###\s+(.*?)$/gm, '<h4 style="font-size: 14px; font-weight: bold; margin: 10px 0 5px 0; color: #1e293b;">$1</h4>');
-            formattedText = formattedText.replace(/^##\s+(.*?)$/gm, '<h3 style="font-size: 16px; font-weight: bold; margin: 12px 0 6px 0; color: #0f172a;">$1</h3>');
-            formattedText = formattedText.replace(/^#\s+(.*?)$/gm, '<h2 style="font-size: 18px; font-weight: bold; margin: 14px 0 8px 0; color: #0f172a; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px;">$1</h2>');
+            formattedText = formattedText.replace(/^######\s+(.*?)$/gm, '<h6 style="font-size: 15px; font-weight: bold; >$1</h6>');
+            formattedText = formattedText.replace(/^#####\s+(.*?)$/gm, '<h6 style="font-size: 16px; font-weight: bold; ">$1</h6>');
+            formattedText = formattedText.replace(/^####\s+(.*?)$/gm, '<h5 style="font-size: 17px; font-weight: bold; ">$1</h5>');
+            formattedText = formattedText.replace(/^###\s+(.*?)$/gm, '<h4 style="font-size: 19px; font-weight: bold; ">$1</h4>');
+            formattedText = formattedText.replace(/^##\s+(.*?)$/gm, '<h3 style="font-size: 21px; font-weight: bold; ">$1</h3>');
+            formattedText = formattedText.replace(/^#\s+(.*?)$/gm, '<h2 style="font-size: 23px; font-weight: bold; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px;">$1</h2>');
             
             // 5. Parse horizontal rules: ---
-            formattedText = formattedText.replace(/^---+\s*$/gm, '<hr style="border: none; border-top: 1.5px solid #cbd5e1; margin: 15px 0;">');
+            formattedText = formattedText.replace(/^---+\s*$/gm, '<hr style="border: none; border-top: 1.5px solid #cbd5e1; margin: 10px 0 3px 0;">');
             
             return formattedText;
         }
@@ -701,7 +710,7 @@
         }
 
         const agentConfigs = {
-            "Macro Strategist": { class: "cyan", initials: "MS", name: "Macro Strategist" },
+            "Macro Analyst": { class: "cyan", initials: "MS", name: "Macro Analyst" },
             "Bullish Value Analyst": { class: "green", initials: "BA", name: "Bullish Analyst" },
             "Bearish Risk Analyst": { class: "red", initials: "RA", name: "Bearish Analyst" },
             "Aggressive Risk Analyst": { class: "yellow", initials: "AR", name: "Aggressive Risk" },
@@ -939,6 +948,10 @@
             if (target12El) target12El.innerText = target12Val;
             if (target36El) target36El.innerText = target36Val;
 
+            if (tickerVal !== "--") {
+                currentTicker = tickerVal;
+            }
+
             if (statusEl) {
                 statusEl.innerText = status;
                 statusEl.className = "tool-status-badge";
@@ -949,6 +962,44 @@
                 } else {
                     statusEl.classList.add("status-running");
                 }
+            }
+
+            renderStageChart();
+        }
+
+        async function renderStageChart() {
+            const img = document.getElementById("receiptChartImg");
+            if (!img) return;
+
+            const ticker = currentTicker || (document.getElementById("tickerInput") ? document.getElementById("tickerInput").value.trim().toUpperCase() : "NVDA");
+            
+            let simDateStr = currentSimulatedDate;
+            if (!simDateStr) {
+                const simCheckbox = document.getElementById("simulatedDateCheckbox");
+                if (simCheckbox && simCheckbox.checked) {
+                    simDateStr = document.getElementById("simulatedDateInput").value;
+                }
+            }
+            if (!simDateStr) {
+                simDateStr = new Date().toISOString().split("T")[0];
+            }
+
+            const t12El = document.getElementById("receipt-target-12");
+            const t36El = document.getElementById("receipt-target-36");
+            const target12 = (t12El && t12El.innerText && t12El.innerText !== "--") ? t12El.innerText.trim() : "";
+            const target36 = (t36El && t36El.innerText && t36El.innerText !== "--") ? t36El.innerText.trim() : "";
+
+            try {
+                const url = `/api/ohlcv?ticker=${encodeURIComponent(ticker)}&simDate=${encodeURIComponent(simDateStr)}&target12=${encodeURIComponent(target12)}&target36=${encodeURIComponent(target36)}`;
+                const res = await fetch(url);
+                if (res.ok) {
+                    const json = await res.json();
+                    if (json.chartImage) {
+                        img.src = json.chartImage;
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to fetch OHLCV chart image:", e);
             }
         }
 
@@ -1129,13 +1180,12 @@
 
                 const isDecisionUpload = stageName.includes("Decision Upload");
                 if (isDecisionUpload) {
-                    // Render a single-page confirmation card instead of agent columns
                     stageWorkspace.innerHTML = `
-                        <div class="upload-receipt-container" style="width: 100%; max-width: 600px; margin: 40px auto; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); align-self: flex-start;">
-                            <h2 style="font-size: 20px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 20px; text-align: center;">BOARDROOM DECISION UPLOAD REPORT</h2>
-                            <div style="display: grid; grid-template-columns: 180px 1fr; gap: 18px; font-size: 15px; line-height: 1.5;">
+                        <div class="upload-receipt-container" style="flex: 1; max-width: 440px; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); align-self: flex-start; height: calc(100vh - 270px); overflow-y: auto;">
+                            <h2 style="font-size: 18px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 16px; text-align: center;">BOARDROOM DECISION REPORT</h2>
+                            <div style="display: grid; grid-template-columns: 160px 1fr; gap: 14px; font-size: 14px; line-height: 1.2;">
                                 <div style="font-weight: 700; color: #475569;">Asset Ticker:</div>
-                                <div id="receipt-ticker" style="font-family: monospace; font-size: 16px; font-weight: bold;">--</div>
+                                <div id="receipt-ticker" style="font-family: monospace; font-size: 15px; font-weight: bold;">${currentTicker || '--'}</div>
                                 
                                 <div style="font-weight: 700; color: #475569;">Investment Rating:</div>
                                 <div><span id="receipt-rating" class="tool-status-badge status-running" style="font-size: 11px; margin-left: 0; font-weight: bold;">--</span></div>
@@ -1151,14 +1201,23 @@
                                 
                                 <div style="font-weight: 700; color: #475569;">Upload Status:</div>
                                 <div><span id="receipt-status" class="tool-status-badge status-running" style="font-size: 11px; margin-left: 0; font-weight: bold;">PENDING UPLOAD</span></div>
-                                
-                                <div id="finalTimeReportRow" style="grid-column: span 2; margin-top: 15px; padding-top: 15px; border-top: 1px dashed #cbd5e1; display: none; text-align: center;">
-                                    <div style="font-size: 16px; font-weight: 700; color: #10b981; margin-bottom: 5px;">✓ Simulation Completed Successfully</div>
-                                    <div id="finalTimeReportValue" style="font-size: 14px; font-weight: 600; color: #475569;">Time Taken: Running...</div>
-                                </div>
+                            </div>
+
+                            <div id="receiptChartContainer" style="margin-top: 16px; width: 100%; border: none; padding: 0; background-color: transparent; text-align: center;">
+                                <img id="receiptChartImg" style="width: 100%; height: auto; display: block;" src="" />
+                            </div>
+
+                            <div id="finalTimeReportRow" style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #cbd5e1; display: none; text-align: center;">
+                                <div style="font-size: 15px; font-weight: 700; color: #10b981; margin-bottom: 5px;">✓ Simulation Completed Successfully</div>
+                                <div id="finalTimeReportValue" style="font-size: 13px; font-weight: 600; color: #475569;">Time Taken: Running...</div>
                             </div>
                         </div>
                     `;
+                    createAgentPane(stageNum, "Impartial Portfolio Manager", "magenta", "Portfolio Manager");
+
+                    setTimeout(() => {
+                        renderStageChart();
+                    }, 50);
                 } else {
                     agents.forEach(agent => {
                         createAgentPane(stageNum, agent.role, agent.color, agent.name);
@@ -1684,6 +1743,8 @@
                     return;
                 }
             }
+            currentTicker = ticker;
+            currentSimulatedDate = simulatedDate || new Date().toISOString().split('T')[0];
             const parallel = document.getElementById("parallelCheckbox").checked;
             const summaryServer = document.getElementById("summaryServerCheckbox").checked;
 
@@ -1746,31 +1807,21 @@
             }));
         }
 
-        document.getElementById("modeSelect").onchange = (e) => {
-            initStagesBar(e.target.value);
-        };
+        let llamaCppModels = [];
 
-        const llamaCppModels = [
-            "GEMMA_4_26B_A4B",
-            "GEMMA_4_12B",
-            "GEMMA_4_E4B",
-            "GEMMA_4_E2B",
-            "GEMMA_4_E2B_CPU",
-            "GEMMA_4_E2B_MOBILE",
-            "QWEN_36_27B",
-            "QWEN_36_35B_A3B",
-            "QWEN_35_9B",
-            "QWEN_35_800M",
-            "QWEN_3_1700M",
-            "QWEN_3_600M",
-            "MINICPM5_1B",
-            "LFM25_8B_A1B",
-            "GPT_OSS_20B",
-            "TERNARY_BONSAI_27B"
-        ];
+        async function fetchLlamaCppModels() {
+            try {
+                const res = await fetch('/api/llamacpp-models');
+                if (!res.ok) throw new Error("HTTP error " + res.status);
+                const data = await res.json();
+                llamaCppModels = data.models || [];
+            } catch (e) {
+                console.error("Failed to fetch LlamaCpp models:", e);
+                llamaCppModels = [];
+            }
+        }
 
-        document.getElementById("clientSelect").onchange = (e) => {
-            const client = e.target.value;
+        function populateModelDropdown(client) {
             const container = document.getElementById("modelInputContainer");
             
             if (client === "LlamaCpp") {
@@ -1788,6 +1839,14 @@
                 container.innerHTML = `<label for="modelInput">Model:</label>
                 <input type="text" id="modelInput" value="${defaultValue}" style="width: 212px;">`;
             }
+        }
+
+        document.getElementById("clientSelect").onchange = (e) => {
+            populateModelDropdown(e.target.value);
+        };
+
+        document.getElementById("modeSelect").onchange = (e) => {
+            initStagesBar(e.target.value);
         };
 
         // Toggle simulated date container visibility based on checkbox
@@ -1800,6 +1859,10 @@
             }
         });
 
+        // Fetch models and populate initial dropdown, then start the UI
+        fetchLlamaCppModels().then(() => {
+            populateModelDropdown("LlamaCpp");
+        });
         initStagesBar("fast");
         connectWebsocket();
         startMetricsPolling();
