@@ -1,38 +1,51 @@
-from typing import Optional
+from typing import List, Optional
 
 import pandas as pd
 
 from cli.ansi import ANSI
 
-from llm.agents.agent_config import FinancialAgentConfig, THINKING_BUDGET, SUMMARISE_THINK_BUDGET, \
-                                    buildResearcherSysPrompt, buildUIFormatSysPrompt
+from llm.agents.agent_prompts import buildAgentSpecificSysPrompt, buildSummariseSysPrompt
 from llm.llm_client import BaseLLMClient, ResponsePrintMode
-from llm.tools.tool_registry import ToolRegistry
+from llm.tools.tool_registry import ToolRegistry, Tool
 
 from ui.ui_hooks import setCurrentAgent, setAgentPhase, emitEvent
 
-
+THINKING_BUDGET = 2048
+SUMMARISE_THINK_BUDGET = 180
 SUMMARISE_ENABLED = True
 
+
 class FinancialAgent:
-    def __init__(self, config: FinancialAgentConfig, dateStr: str):
+    def __init__(self, agentRole: str, tools: List[Tool], ansiColor: str = ANSI.RESET, dateStr: str = None):
         self.apiClient: BaseLLMClient = None
 
-        self.agentRole = config.agentRole
-        self.persona = config.systemPersona
-        self.tools = config.tools
-        self.color = config.color
+        self.agentRole = agentRole
+        self.tools: List[Tool] = tools 
+        self.color = ansiColor
 
-        self.config = config
-        self.researcherSystemMessage = buildResearcherSysPrompt(config, dateStr)
-        self.uiFormatSystemMessage = buildUIFormatSysPrompt(config)
+        self.simulatedDateStr = dateStr
+        self.messageHistory = []
 
-        self.messageHistory = [
-            {"role": "system", "content": self.researcherSystemMessage}
-        ]
 
     def setLLMClient(self, llmClient: BaseLLMClient):
         self.apiClient = llmClient
+
+
+    def getSpecificToolsStr(self) -> str:
+        return ", ".join([tool.name for tool in self.tools if tool.name not in ["executePythonCalculation"]])
+
+    def clearTools(self):
+        self.tools = []
+
+    def removeTool(self, toolName: str):
+        self.tools = [tool for tool in self.tools if tool.name != toolName]
+
+    def addTool(self, toolName: str, toolRegistry: ToolRegistry):
+        tool = toolRegistry.getTool(toolName)
+        if tool:
+            self.tools.append(tool)
+        else:
+            print(f"Tool '{toolName}' not found in the registry.")
 
 
     def executeInternalAnalysis(
@@ -40,30 +53,50 @@ class FinancialAgent:
             incomingMessage: str,
             toolRegistry: ToolRegistry,
             timestamp: pd.Timestamp,
-            responsePrint: ResponsePrintMode = ResponsePrintMode.FULL
+            systemPrompt: Optional[str] = None,
+            requireInitialTools: bool = False,
         ):
+        if systemPrompt:
+            if len(self.messageHistory) == 0:
+                self.messageHistory.append(None)
+            self.messageHistory[0] = {"role": "system", "content": systemPrompt}
+
+            if len(self.messageHistory) > 1:
+                self.messageHistory.append(
+                    {
+                        "role": "user", 
+                        "content": "Note: the above conversation history and prior tool outputs should be used to inform your response. "
+                                   "Your system prompt has been updated, you should now use this prompt to complete your next message."
+                                   "Do not re-fetch data that is already present in your history unless needed for new calculations."
+                    }
+                )
+
         self.messageHistory.append({"role": "user", "content": incomingMessage})
+        historyToUse = self.messageHistory
+
         print(f"\n{self.color}{ANSI.BOLD}========== [{self.agentRole}] is analysing... =========={ANSI.RESET}", end="")
         
         rawAnalysis = self.apiClient.runConversation(
-            self.messageHistory, 
+            historyToUse, 
             toolRegistry, 
             timestamp, 
             THINKING_BUDGET, 
-            responsePrint
+            responsePrint=ResponsePrintMode.FULL,
+            requireInitialTools=requireInitialTools            
         )
 
         self.messageHistory.append({"role": "assistant", "content": rawAnalysis})
+
         return rawAnalysis
 
 
     def generateUISummary(
             self, 
             rawAnalysis: str, 
-            responsePrint: ResponsePrintMode = ResponsePrintMode.SILENT
+            systemPrompt: Optional[str] = None
         ):
         tempHistory = [
-            {"role": "system", "content": self.uiFormatSystemMessage},
+            {"role": "system", "content": systemPrompt},
             {"role": "user", "content": f"Reformat the following raw analysis according to the instructions:\n\n{rawAnalysis}"}
         ]
 
@@ -72,7 +105,8 @@ class FinancialAgent:
             toolRegistry=None, 
             timestamp=pd.Timestamp.now(tz="UTC"), 
             thinkingBudget=SUMMARISE_THINK_BUDGET, 
-            responsePrint=responsePrint
+            responsePrint=ResponsePrintMode.ONE_TOKEN_ONLY,
+            requireInitialTools=False
         )
         return uiSummary
 
@@ -81,9 +115,9 @@ class FinancialAgent:
             incomingMessage: str, 
             toolRegistry: ToolRegistry,
             timestamp: pd.Timestamp,
-            responsePrintRawAnalysis: ResponsePrintMode = ResponsePrintMode.FULL,
-            responsePrintUISummary: ResponsePrintMode = ResponsePrintMode.ONE_TOKEN_ONLY,
-            summarisationOverride: Optional[bool] = None
+            subrole: Optional[str] = None,
+            requireInitialTools: bool = False,
+            summarisationOverride: Optional[bool] = None,
         ):
         generateSummary = SUMMARISE_ENABLED if summarisationOverride is None else summarisationOverride
         
@@ -92,7 +126,9 @@ class FinancialAgent:
         setAgentPhase("raw")
         emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.color, "phase": "raw"})
         
-        rawAnalysis = self.executeInternalAnalysis(incomingMessage, toolRegistry, timestamp, responsePrintRawAnalysis)        
+        rawAnalysis = self.executeInternalAnalysis(
+            incomingMessage, toolRegistry, timestamp, buildAgentSpecificSysPrompt(self.agentRole, self.getSpecificToolsStr(), subrole), requireInitialTools
+        )        
         
         emitEvent("agentRunEnd", {"agentRole": self.agentRole, "phase": "raw"})
         
@@ -102,16 +138,11 @@ class FinancialAgent:
         setAgentPhase("summary")
         emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.color, "phase": "summary"})
 
-        generatingSummaryAdvisory = responsePrintUISummary == ResponsePrintMode.SILENT and responsePrintRawAnalysis != ResponsePrintMode.SILENT
-        if generatingSummaryAdvisory:
-            print(f"\n{self.color}{ANSI.BOLD}========== [{self.agentRole}] is generating UI summary... =========={ANSI.RESET}", end="\r")
-
-        uiSummary = self.generateUISummary(rawAnalysis, responsePrintUISummary)
-
-        if generatingSummaryAdvisory or responsePrintUISummary == ResponsePrintMode.ONE_TOKEN_ONLY:
-            print(f"{self.color}{ANSI.BOLD}========== [{self.agentRole}] UI summary generation complete. =========={ANSI.RESET}\n")
+        uiSummary = self.generateUISummary(rawAnalysis, buildSummariseSysPrompt(self.agentRole, subrole))
 
         emitEvent("agentRunEnd", {"agentRole": self.agentRole, "phase": "summary"})
 
         return rawAnalysis, uiSummary
+
+
 

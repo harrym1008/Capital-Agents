@@ -227,7 +227,7 @@ class BaseLLMClient(ABC):
                     else:
                         self._safePrint(f" {ANSI.BOLD}{ANSI.GREEN}... done.  {ANSI.RESET}", flush=True)
 
-                if toolCalled.toolName == "executePythonCalculation":
+                if toolCalled.name == "executePythonCalculation":
                     with self.toolCallLock:
                         output = toolCalled.toolLog.pop()
                         success = output.get("success", False)
@@ -284,22 +284,28 @@ class BaseLLMClient(ABC):
             timestamp: pd.Timestamp,
             thinkingBudget: Optional[int] = None,
             responsePrint: ResponsePrintMode = ResponsePrintMode.FULL,
+            requireInitialTools: bool = False
         ):
         toolSchemas = [tool.getToolSchema() for tool in toolRegistry.tools.values()] if toolRegistry else []
-        maxIterations = 12
+        maxIterations = 10
         currentIteration = 0
         accumulatedContent = ""
 
         while currentIteration < maxIterations:
             currentIteration += 1
 
+            if currentIteration == 1 and requireInitialTools and toolSchemas:
+                toolChoiceSetting = "required"
+            else:
+                toolChoiceSetting = "auto" if toolSchemas else None
+
             self._applyRateLimit()
             responseStream = self.openaiClient.chat.completions.create(
                 model=self.defaultModel,
                 messages=messageHistory,
                 temperature=0.5,
-                tools=toolSchemas,
-                tool_choice="auto" if toolSchemas else None,
+                tools=toolSchemas if toolSchemas else None,
+                tool_choice=toolChoiceSetting,
                 max_tokens=8192,
                 stream=True,
                 extra_body=self._getExtraBody(thinkingBudget) if thinkingBudget is not None else None
@@ -312,20 +318,16 @@ class BaseLLMClient(ABC):
             if not toolCallsList:
                 return accumulatedContent.strip()
             
-            if self.__class__.__name__ == "LlamaCppClient":
-                assistantMessageDict = {
-                    "role": "assistant",
-                    "content": content,
-                    "reasoning_content": reasoning,
-                    "tool_calls": toolCallsList
-                }
-            else:
-                assistantMessageDict = {
-                    "role": "assistant",
-                    "content": content,
-                    "reasoning": reasoning,
-                    "tool_calls": toolCallsList
-                }
+            assistantMessageDict = {
+                "role": "assistant",
+                "content": content or "",
+                "tool_calls": toolCallsList
+            }
+            if reasoning:
+                if self.__class__.__name__ == "LlamaCppClient":
+                    assistantMessageDict["reasoning_content"] = reasoning
+                else:
+                    assistantMessageDict["reasoning"] = reasoning
 
             messageHistory.append(assistantMessageDict)
             
@@ -333,6 +335,7 @@ class BaseLLMClient(ABC):
             agentRole = parentAgent.get("role")
             agentColor = parentAgent.get("color")
             currentStageNum = getCurrentStage()
+
 
             resultsByIndex = [None] * len(toolCallsList)
             with ThreadPoolExecutor(max_workers=len(toolCallsList)) as executor:

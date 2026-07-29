@@ -8,12 +8,8 @@ from concurrent.futures import ThreadPoolExecutor
 from cli.ansi import ANSI
 
 from llm.client_duo import ClientDuo
-from llm.tools.registry_builder import buildToolRegistry, ToolRegistry
-from llm.tools.lru_cacher import startPrecacheThread
+from llm.tools.registry_builder import ToolRegistry
 from llm.agents.agent import FinancialAgent
-from llm.agents.agent_config import FinancialAgentConfig
-
-from collectors.constants import UTC, NEW_YORK
 
 from ui.ui_hooks import getCurrentStage, setCurrentStage, emitEvent
 
@@ -78,7 +74,7 @@ class BoardroomEngine:
         isFast = getattr(self, "fastMode", True)
         
         if phaseNumber == 1:
-            agents = [{"role": "Macro Strategist", "color": self.macroAnalyst.color, "name": "Macro Strategist"}]
+            agents = [{"role": "Macro Analyst", "color": self.macroAnalyst.color, "name": "Macro Analyst"}]
         elif phaseNumber == 2:
             agents = [
                 {"role": "Bullish Value Analyst", "color": self.bullAnalyst.color, "name": "Bullish Analyst"},
@@ -120,29 +116,39 @@ class BoardroomEngine:
     def executeFastSingleEquityRating(self, targetTicker):
         self.fastMode = True
         startTime = datetime.now()
+        dateStr = self.timestamp.strftime("%Y-%m-%d")
         print(f"\n{'='*70}\nStarting Fast Boardroom Evaluation for: {targetTicker}\n{'='*70}")        
 
         # Phase 1: Macro Environment Analysis
         self._newPhaseHeader(1, "Macro Environment Analysis")
+        macroPrompt = (
+            "Task: Conduct top-down macroeconomic analysis for the US financial markets.\n"
+            "Use your tools (fetchMacroContext, fetchMacroNews) to retrieve economic indicators and headlines. "
+            "Present a narrative macro summary and explicitly output your overall market regime classification as BULLISH, BEARISH, or NEUTRAL."
+        )
         macroRaw, macroUISummary = self.macroAnalyst.analyseAndReply(
-            f"Current Phase: *PHASE 1* - Macro Environment Analysis\n"
-            "Analyse the current financial environment via both of your tools and produce a concise summary under the rules marked for Phase 1.",
-            self.toolRegistry, self.timestamp
+            macroPrompt, self.toolRegistry, self.timestamp, subrole=None, requireInitialTools=True
         )
         
         # Phase 2: Specialist Research
         self._newPhaseHeader(2, f"Specialist Research on {targetTicker}")
         researchPrompt = (
-            f"Macroeconomic summary produced by the Macro Analyst:\n"
-            f"{macroRaw}\n\n"
-            f"Current Phase: *PHASE 2* - Specialist Research on {targetTicker}\n"
-            f"You must conduct your research on this ticker: {targetTicker}, under the rules marked for Phase 2. "
+            f"Macroeconomic Context:\n{macroRaw}\n\n"
+            f"Task: Conduct single-stock research on ticker {targetTicker}.\n"
+            f"Execute your data tools (valuation metrics, financial statements, stock price performance, company profile) to retrieve hard facts. "
+            f"Present your thesis and state: explicit BUY/HOLD/SELL rating, OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT weight, and preliminary 12-month and 36-month price targets."
         )
         
         (bullThesisRaw, bullThesisUISummary), (bearThesisRaw, bearThesisUISummary) = self._runAgentsConcurrently(
-            lambda: self.bullAnalyst.analyseAndReply(researchPrompt, self.toolRegistry, self.timestamp),
-            lambda: self.bearAnalyst.analyseAndReply(researchPrompt, self.toolRegistry, self.timestamp)
+            lambda: self.bullAnalyst.analyseAndReply(
+                researchPrompt, self.toolRegistry, self.timestamp, subrole="research", requireInitialTools=True,
+            ),
+            lambda: self.bearAnalyst.analyseAndReply(
+                researchPrompt, self.toolRegistry, self.timestamp, subrole="research", requireInitialTools=True,
+            )
         )
+
+
         # Phase 3/6: Final Executive Decision
         self._newPhaseHeader(3, f"Final Executive Decision on {targetTicker}")
         managerPrompt = (
@@ -150,18 +156,29 @@ class BoardroomEngine:
             f"Macro Conditions:\n{macroRaw}\n\n"
             f"Aggressive Allocation Case:\n{bullThesisRaw}\n\n"
             f"Conservative Allocation Case:\n{bearThesisRaw}\n\n"
-            f"Current Phase: *PHASE 6* - Final Executive Decision on {targetTicker}\n"
-            f"Weigh up the arguments and make the final executive decision under the rules marked for Phase 6."
+            f"Task: Produce the final executive investment decision for {targetTicker}.\n"
+            f"Weigh upside potential against solvency risks. You MUST verify your final price targets using the 'calculateDistFromCurrPrice' tool. "
+            f"Include a definitive rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and 12-month and 36-month price targets."
         )
-        finalDecisionRaw, finalDecisionUISummary = self.portManager.analyseAndReply(managerPrompt, self.toolRegistry, self.timestamp)
+        self.portManager.removeTool("confirmBoardroomDecision")
+        finalDecisionRaw, finalDecisionUISummary = self.portManager.analyseAndReply(
+            managerPrompt, self.toolRegistry, self.timestamp, subrole="decision", requireInitialTools=False
+        )
 
 
         # Phase 4/7: Decision Upload
         self._newPhaseHeader(4, "Decision Upload")
-        _, _ = self.portManager.analyseAndReply((
-            f"Current Phase: *PHASE 7* - Decision Upload on {targetTicker}\n"
-            f"Upload the final decision, weight allocation, and price targets via the 'confirmBoardroomDecision' tool, under the rules marked for Phase 7."
-        ), self.toolRegistry, self.timestamp, summarisationOverride=False)
+        uploadPrompt = (
+            f"Target Asset: {targetTicker}\n"
+            f"Final Decision Summary:\n{finalDecisionRaw}\n\n"
+            f"Task: Upload and log the final boardroom verdict for {targetTicker}.\n"
+            f"Execute the 'confirmBoardroomDecision' tool with ticker='{targetTicker}', rating, weighting, twelveMonthTarget, and threeYearTarget based on your final decision."
+        )
+        self.portManager.clearTools()
+        self.portManager.addTool("confirmBoardroomDecision", self.toolRegistry)
+        _, _ = self.portManager.analyseAndReply(
+            uploadPrompt, self.toolRegistry, self.timestamp, subrole="upload", requireInitialTools=False, summarisationOverride=False
+        )
 
         try:
             formattedExecutiveDecision = self.toolRegistry.getTool("confirmBoardroomDecision").toolLog[-1]
@@ -216,91 +233,110 @@ class BoardroomEngine:
 
 
 
-
     def executeCompleteSingleEquityRating(self, targetTicker):
         self.fastMode = False
         startTime = datetime.now()
+        dateStr = self.timestamp.strftime("%Y-%m-%d")
         print(f"\n{'='*70}\nStarting Live Boardroom Evaluation for: {targetTicker}\n{'='*70}")        
 
         # Phase 1: Macro Environment Analysis
         self._newPhaseHeader(1, "Macro Environment Analysis")
+        macroPrompt = (
+            "Task: Conduct top-down macroeconomic analysis for the US financial markets.\n"
+            "Use your tools (fetchMacroContext, fetchMacroNews) to retrieve economic indicators and headlines. "
+            "Present a narrative macro summary and explicitly output your overall market regime classification as BULLISH, BEARISH, or NEUTRAL."
+        )
         macroRaw, macroUISummary = self.macroAnalyst.analyseAndReply(
-            f"Current Phase: *PHASE 1* - Macro Environment Analysis\n"
-            "Analyse the current financial environment via both of your tools and produce a concise summary under the rules marked for Phase 1.",
-            self.toolRegistry, self.timestamp
+            macroPrompt, self.toolRegistry, self.timestamp, subrole=None, requireInitialTools=True
         )
         
         # Phase 2: Specialist Research
         self._newPhaseHeader(2, f"Specialist Research on {targetTicker}")
         researchPrompt = (
-            f"Macroeconomic summary produced by the Macro Analyst:\n"
-            f"{macroRaw}\n\n"
-            f"Current Phase: *PHASE 2* - Specialist Research on {targetTicker}\n"
-            f"You must conduct your research on this ticker: {targetTicker}, under the rules marked for Phase 2. "
+            f"Macroeconomic Context:\n{macroRaw}\n\n"
+            f"Task: Conduct single-stock research on ticker {targetTicker}.\n"
+            f"Execute your data tools (valuation metrics, financial statements, stock price performance, company profile) to retrieve hard facts. "
+            f"Present your thesis and state: explicit BUY/HOLD/SELL rating, OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT weight, and preliminary 12-month and 36-month price targets."
         )
         
         (bullThesisRaw, bullThesisUISummary), (bearThesisRaw, bearThesisUISummary) = self._runAgentsConcurrently(
-            lambda: self.bullAnalyst.analyseAndReply(researchPrompt, self.toolRegistry, self.timestamp),
-            lambda: self.bearAnalyst.analyseAndReply(researchPrompt, self.toolRegistry, self.timestamp)
+            lambda: self.bullAnalyst.analyseAndReply(
+                researchPrompt, self.toolRegistry, self.timestamp, subrole="research", requireInitialTools=True,
+            ),
+            lambda: self.bearAnalyst.analyseAndReply(
+                researchPrompt, self.toolRegistry, self.timestamp, subrole="research", requireInitialTools=True,
+            )
         )
 
         # Phase 3: Senior Risk Debate
         self._newPhaseHeader(3, f"Senior Risk Debate on {targetTicker}")
+        aggDebatePrompt = (
+            f"Macroeconomic Context:\n{macroRaw}\n\n"
+            f"Bearish Analyst's Thesis on {targetTicker}:\n{bearThesisRaw}\n\n"
+            f"Task: Challenge the Bearish Analyst's stance on {targetTicker}.\n"
+            f"Formulate 2-3 quantitative questions challenging their downside assumptions."
+        )
+        consDebatePrompt = (
+            f"Macroeconomic Context:\n{macroRaw}\n\n"
+            f"Bullish Analyst's Thesis on {targetTicker}:\n{bullThesisRaw}\n\n"
+            f"Task: Challenge the Bullish Analyst's stance on {targetTicker}.\n"
+            f"Formulate 2-3 quantitative questions challenging their upside assumptions."
+        )
         
         (aggQuestionsRaw, aggQuestionsUISummary), (consQuestionsRaw, consQuestionsUISummary) = self._runAgentsConcurrently(
             lambda: self.aggRiskAnalyst.analyseAndReply(
-                f"Macroeconomic summary produced by the Macro Analyst:\n{macroRaw}\n\n"
-                # f"Bullish Value Analyst's Thesis:\n{bullThesis}\n\n"
-                f"Bearish Value Analyst's Thesis:\n{bearThesisRaw}\n\n"
-                f"Current Phase: *PHASE 3* - Senior Risk Debate on {targetTicker}\n"
-                f"Review the theses and targets for {targetTicker} and produce 2-3 questions challenging this thesis under the rules marked for Phase 3.",
-                self.toolRegistry, self.timestamp
+                aggDebatePrompt, self.toolRegistry, self.timestamp, "critique", requireInitialTools=False
             ),
             lambda: self.consRiskAnalyst.analyseAndReply(
-                f"Macroeconomic summary produced by the Macro Analyst:\n{macroRaw}\n\n"
-                f"Bullish Value Analyst's Thesis:\n{bullThesisRaw}\n\n"
-                # f"Bearish Value Analyst's Thesis:\n{bearThesis}\n\n"
-                f"Current Phase: *PHASE 3* - Senior Risk Debate on {targetTicker}\n"
-                f"Review the theses and targets for {targetTicker} and produce 2-3 questions challenging this thesis under the rules marked for Phase 3.",
-                self.toolRegistry, self.timestamp
+                consDebatePrompt, self.toolRegistry, self.timestamp, "critique", requireInitialTools=False
             )
         )
         
         # Phase 4: Analyst Defense
         self._newPhaseHeader(4, f"Analyst Defense on {targetTicker}")
+        bullDefensePrompt = (
+            f"Questions Posed by Conservative Risk Analyst:\n{consQuestionsRaw}\n\n"
+            f"Task: Defend your bullish thesis and price targets for {targetTicker}.\n"
+            f"Answer each question quantitatively using your tools or Python models if needed. Revise your thesis, targets, or rating if substantiated deficiencies were highlighted."
+        )
+        bearDefensePrompt = (
+            f"Questions Posed by Aggressive Risk Analyst:\n{aggQuestionsRaw}\n\n"
+            f"Task: Defend your bearish risk analysis and price targets for {targetTicker}.\n"
+            f"Answer each question quantitatively using your tools or Python models if needed. Revise your risk assessment, targets, or rating if substantiated upside catalysts were highlighted."
+        )
         
         (bullDefenseRaw, bullDefenseUISummary), (bearDefenseRaw, bearDefenseUISummary) = self._runAgentsConcurrently(
             lambda: self.bullAnalyst.analyseAndReply(
-                f"Questions posed by the Conservative Risk Analyst:\n{consQuestionsRaw}\n\n"
-                f"Current Phase: *PHASE 4* - Analyst Defense on {targetTicker}\n"
-                f"Produce your response to these questions under the rules marked for Phase 4.",
-                self.toolRegistry, self.timestamp
+                bullDefensePrompt, self.toolRegistry, self.timestamp, "defense", requireInitialTools=False
             ),
             lambda: self.bearAnalyst.analyseAndReply(
-                f"Questions posed by the Aggressive Risk Analyst:\n{aggQuestionsRaw}\n\n"
-                f"Current Phase: *PHASE 4* - Analyst Defense on {targetTicker}\n"
-                f"Produce your response to these questions under the rules marked for Phase 4.",
-                self.toolRegistry, self.timestamp
+                bearDefensePrompt, self.toolRegistry, self.timestamp, "defense", requireInitialTools=False
             )
         )
 
         # Phase 5: Q&A Based Proposals
         self._newPhaseHeader(5, f"Q&A-Based Proposals on {targetTicker}")
+        aggProposalPrompt = (
+            f"Bearish Analyst's Defense:\n{bearDefenseRaw}\n\n"
+            f"Task: Formulate your final aggressive allocation proposal for {targetTicker}.\n"
+            f"Propose your 12-month and 36-month price targets and position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), justifying your high-upside growth assumptions."
+        )
+        consProposalPrompt = (
+            f"Bullish Analyst's Defense:\n{bullDefenseRaw}\n\n"
+            f"Task: Formulate your final conservative allocation proposal for {targetTicker}.\n"
+            f"Propose your 12-month and 36-month price targets and position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), incorporating a robust margin of safety."
+        )
         
         (aggProposalRaw, aggProposalUISummary), (consProposalRaw, consProposalUISummary) = self._runAgentsConcurrently(
             lambda: self.aggRiskAnalyst.analyseAndReply(
-                f"Bearish Analyst's Response/Defense:\n{bearDefenseRaw}\n\n"
-                f"Current Phase: *PHASE 5* - Q&A-Based Proposals on {targetTicker}\n"
-                f"Based on the defenses, make your final proposals with justification under the rules marked for Phase 5.",
-                self.toolRegistry, self.timestamp
+                aggProposalPrompt, self.toolRegistry, self.timestamp, subrole="proposal", requireInitialTools=False
             ),
             lambda: self.consRiskAnalyst.analyseAndReply(
-                f"Bullish Analyst's Response/Defense:\n{bullDefenseRaw}\n\n"
-                f"Current Phase: *PHASE 5* - Q&A-Based Proposals on {targetTicker}\n"
-                f"Based on the defenses, make your final proposals with justification under the rules marked for Phase 5.",
-                self.toolRegistry, self.timestamp
+                consProposalPrompt, self.toolRegistry, self.timestamp, subrole="proposal", requireInitialTools=False
             )
         )
+
+        
 
         # Phase 6: Final Executive Decision
         self._newPhaseHeader(6, f"Final Executive Decision on {targetTicker}")
@@ -309,22 +345,36 @@ class BoardroomEngine:
             f"Macro Conditions:\n{macroRaw}\n\n"
             f"Aggressive Allocation Case:\n{aggProposalRaw}\n\n"
             f"Conservative Allocation Case:\n{consProposalRaw}\n\n"
-            f"Current Phase: *PHASE 6* - Final Executive Decision on {targetTicker}\n"
-            f"Weigh up the arguments and make the final executive decision under the rules marked for Phase 6."
+            f"Task: Produce the final executive investment decision for {targetTicker}.\n"
+            f"Weigh upside potential against solvency risks. You MUST verify your final price targets using the 'calculateDistFromCurrPrice' tool. "
+            f"Include a definitive rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and 12-month and 36-month price targets. Do NOT call confirmBoardroomDecision yet."
         )
-        finalDecisionRaw, finalDecisionUISummary = self.portManager.analyseAndReply(managerPrompt, self.toolRegistry, self.timestamp)
+        self.portManager.removeTool("confirmBoardroomDecision")
+        finalDecisionRaw, finalDecisionUISummary = self.portManager.analyseAndReply(
+            managerPrompt, self.toolRegistry, self.timestamp, subrole="decision", requireInitialTools=True
+        )
+
         
         # Phase 7: Decision Upload
         self._newPhaseHeader(7, "Decision Upload")
-        _, _ = self.portManager.analyseAndReply((
-            f"Current Phase: *PHASE 7* - Decision Upload on {targetTicker}\n"
-            f"Upload the final decision, weight allocation, and price targets via the 'confirmBoardroomDecision' tool, under the rules marked for Phase 7."
-        ), self.toolRegistry, self.timestamp, summarisationOverride=False)
+        uploadPrompt = (
+            f"Target Asset: {targetTicker}\n"
+            f"Final Decision Summary:\n{finalDecisionRaw}\n\n"
+            f"Task: Upload and log the final boardroom verdict for {targetTicker}.\n"
+            f"Execute the 'confirmBoardroomDecision' tool with ticker='{targetTicker}', rating, weighting, twelveMonthTarget, and threeYearTarget based on your final decision."
+        )
+        self.portManager.clearTools()
+        self.portManager.addTool("confirmBoardroomDecision", self.toolRegistry)
+        _, _ = self.portManager.analyseAndReply(
+            uploadPrompt, self.toolRegistry, self.timestamp, subrole="upload", requireInitialTools=True
+        )
 
         try:
             formattedExecutiveDecision = self.toolRegistry.getTool("confirmBoardroomDecision").toolLog[-1]
         except Exception:
             formattedExecutiveDecision = "Decision not found."
+
+
 
         endTime = datetime.now()
         timeTaken = endTime - startTime
@@ -416,114 +466,102 @@ def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> Bo
     toolMap = toolRegistry.getToolMap()
 
     macroAgent = FinancialAgent(
-        config=FinancialAgentConfig(
-            agentRole="Macro Strategist",
-            tools=[
-                toolMap["fetchMacroContext"],
-                toolMap["fetchMacroNews"],
-                toolMap["executePythonCalculation"]
-            ],
-            color=ANSI.CYAN
-        ),
+        agentRole="Macro Analyst",
+        tools=[
+            toolMap["fetchMacroContext"],
+            toolMap["fetchMacroNews"],
+            toolMap["executePythonCalculation"]
+        ],
+        ansiColor=ANSI.CYAN,
         dateStr=timestampStr
     )
 
     bullAgent = FinancialAgent(
-        config=FinancialAgentConfig(
-            agentRole="Bullish Value Analyst",
-            tools=[
-                toolMap["fetchCompanyProfile"],
-                toolMap["fetchCompanyValuationMetrics"],
-                toolMap["fetchIncomeStatement"],
-                toolMap["fetchBalanceSheet"],
-                toolMap["fetchCashFlowStatement"],
-                toolMap["fetchStatementOfEquity"],
-                toolMap["fetchComprehensiveIncomeStatement"],
-                toolMap["fetchStockPricePerformance"],
-                toolMap["fetchCompanyRecentNews"],
-                toolMap["calculateDistFromCurrPrice"],
-                toolMap["executePythonCalculation"]
-            ],
-            color=ANSI.GREEN
-        ),
+        agentRole="Bullish Value Analyst",
+        tools=[
+            toolMap["fetchCompanyProfile"],
+            toolMap["fetchCompanyValuationMetrics"],
+            toolMap["fetchIncomeStatement"],
+            toolMap["fetchBalanceSheet"],
+            toolMap["fetchCashFlowStatement"],
+            toolMap["fetchStatementOfEquity"],
+            toolMap["fetchComprehensiveIncomeStatement"],
+            toolMap["fetchStockPricePerformance"],
+            toolMap["fetchCompanyRecentNews"],
+            toolMap["calculateDistFromCurrPrice"],
+            toolMap["executePythonCalculation"]
+        ],
+        ansiColor=ANSI.GREEN,
         dateStr=timestampStr
     )
 
     bearAgent = FinancialAgent(
-        config=FinancialAgentConfig(
-            agentRole="Bearish Risk Analyst",
-            tools=[
-                toolMap["fetchCompanyProfile"],
-                toolMap["fetchCompanyValuationMetrics"],
-                toolMap["fetchIncomeStatement"],
-                toolMap["fetchBalanceSheet"],
-                toolMap["fetchCashFlowStatement"],
-                toolMap["fetchStatementOfEquity"],
-                toolMap["fetchComprehensiveIncomeStatement"],
-                toolMap["fetchStockPricePerformance"],
-                toolMap["fetchCompanyRecentNews"],
-                toolMap["calculateDistFromCurrPrice"],
-                toolMap["executePythonCalculation"]
-            ],
-            color=ANSI.RED
-        ),
+        agentRole="Bearish Risk Analyst",
+        tools=[
+            toolMap["fetchCompanyProfile"],
+            toolMap["fetchCompanyValuationMetrics"],
+            toolMap["fetchIncomeStatement"],
+            toolMap["fetchBalanceSheet"],
+            toolMap["fetchCashFlowStatement"],
+            toolMap["fetchStatementOfEquity"],
+            toolMap["fetchComprehensiveIncomeStatement"],
+            toolMap["fetchStockPricePerformance"],
+            toolMap["fetchCompanyRecentNews"],
+            toolMap["calculateDistFromCurrPrice"],
+            toolMap["executePythonCalculation"]
+        ],
+        ansiColor=ANSI.RED,
         dateStr=timestampStr
     )
 
     aggRiskAnalystAgent = FinancialAgent(
-        config=FinancialAgentConfig(
-            agentRole="Aggressive Risk Analyst",
-            tools=[
-                toolMap["fetchCompanyProfile"],
-                toolMap["fetchCompanyValuationMetrics"],
-                toolMap["fetchIncomeStatement"],
-                toolMap["fetchBalanceSheet"],
-                toolMap["fetchCashFlowStatement"],
-                toolMap["fetchStatementOfEquity"],
-                toolMap["fetchComprehensiveIncomeStatement"],
-                toolMap["fetchStockPricePerformance"],
-                toolMap["fetchCompanyRecentNews"],
-                toolMap["calculateDistFromCurrPrice"],
-                toolMap["executePythonCalculation"]
-            ],
-            color=ANSI.YELLOW
-        ),
+        agentRole="Aggressive Risk Analyst",
+        tools=[
+            toolMap["fetchCompanyProfile"],
+            toolMap["fetchCompanyValuationMetrics"],
+            toolMap["fetchIncomeStatement"],
+            toolMap["fetchBalanceSheet"],
+            toolMap["fetchCashFlowStatement"],
+            toolMap["fetchStatementOfEquity"],
+            toolMap["fetchComprehensiveIncomeStatement"],
+            toolMap["fetchStockPricePerformance"],
+            toolMap["fetchCompanyRecentNews"],
+            toolMap["calculateDistFromCurrPrice"],
+            toolMap["executePythonCalculation"]
+        ],
+        ansiColor=ANSI.YELLOW,
         dateStr=timestampStr
     )
 
     consRiskAnalystAgent = FinancialAgent(
-        config=FinancialAgentConfig(
-            agentRole="Conservative Risk Analyst",
-            tools=[
-                toolMap["fetchCompanyProfile"],
-                toolMap["fetchCompanyValuationMetrics"],
-                toolMap["fetchIncomeStatement"],
-                toolMap["fetchBalanceSheet"],
-                toolMap["fetchCashFlowStatement"],
-                toolMap["fetchStatementOfEquity"],
-                toolMap["fetchComprehensiveIncomeStatement"],
-                toolMap["fetchStockPricePerformance"],
-                toolMap["fetchCompanyRecentNews"],
-                toolMap["calculateDistFromCurrPrice"],
-                toolMap["executePythonCalculation"]
-            ],
-            color=ANSI.BLUE
-        ),
+        agentRole="Conservative Risk Analyst",
+        tools=[
+            toolMap["fetchCompanyProfile"],
+            toolMap["fetchCompanyValuationMetrics"],
+            toolMap["fetchIncomeStatement"],
+            toolMap["fetchBalanceSheet"],
+            toolMap["fetchCashFlowStatement"],
+            toolMap["fetchStatementOfEquity"],
+            toolMap["fetchComprehensiveIncomeStatement"],
+            toolMap["fetchStockPricePerformance"],
+            toolMap["fetchCompanyRecentNews"],
+            toolMap["calculateDistFromCurrPrice"],
+            toolMap["executePythonCalculation"]
+        ],
+        ansiColor=ANSI.BLUE,
         dateStr=timestampStr
     )
 
     portfolioManager = FinancialAgent(
-        config=FinancialAgentConfig(
-            agentRole="Impartial Portfolio Manager",
-            tools=[
-                toolMap["fetchCompanyProfile"],
-                toolMap["fetchCompanyValuationMetrics"],
-                toolMap["executePythonCalculation"],
-                toolMap["calculateDistFromCurrPrice"],
-                toolMap["confirmBoardroomDecision"]
-            ],
-            color=ANSI.MAGENTA
-        ),
+        agentRole="Impartial Portfolio Manager",
+        tools=[
+            toolMap["fetchCompanyProfile"],
+            toolMap["fetchCompanyValuationMetrics"],
+            toolMap["executePythonCalculation"],
+            toolMap["calculateDistFromCurrPrice"],
+            toolMap["confirmBoardroomDecision"]
+        ],
+        ansiColor=ANSI.MAGENTA,
         dateStr=timestampStr
     )    
 

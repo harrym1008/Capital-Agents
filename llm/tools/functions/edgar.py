@@ -450,6 +450,23 @@ def fetchCompanyValuationMetrics(tool: Tool, data: DataProviders, timestamp: pd.
             "currencyNote": "Financials are reported in USD."
         }
 
+    filingForm = latestFiling.form
+    filingPeriod = latestFiling.period_of_report
+    filingDate = latestFiling.filing_date
+    if filingForm in ["10-K", "20-F", "40-F"]:
+        periodDesc = f"fiscal year ended {filingPeriod}"
+    else:
+        periodDesc = f"fiscal quarter ended {filingPeriod}"
+        
+    dataHeader |= {
+        "filingNote": f"Values are calculated using the {filingForm} filed on {filingDate}, "
+                      f"covering the {periodDesc}. TTM metrics combine this filing with prior-year "
+                      f"comparable filings (prior 10-K and same-quarter 10-Q) to represent a "
+                      f"trailing twelve-month window.\n"
+                      f"Consider the age of the filings used to calculate metrics when interpreting the results "
+                      f"and analysing the company."
+    }
+
     fundamentalData = cleanData({
         "sharesOutstanding": cleanNumber(sharesOutstanding, NumberType.LARGE_NUMBER),
         "marketCap": cleanNumber(marketCap, NumberType.LARGE_DOLLARS),
@@ -474,7 +491,22 @@ def fetchCompanyValuationMetrics(tool: Tool, data: DataProviders, timestamp: pd.
         "returnOnEquity": cleanNumber(returnOnEquity, NumberType.UNSCALED_PERCENTAGE)
     })
 
+    hiddenData = cleanData({
+        "ttmRevenue": cleanNumber(ttmRevenue, NumberType.LARGE_DOLLARS),
+        "ttmOperatingIncome": cleanNumber(ttmOperatingIncome, NumberType.LARGE_DOLLARS),
+        "ttmNetIncome": cleanNumber(ttmNetIncome, NumberType.LARGE_DOLLARS),
+        "ttmEbitda": cleanNumber(ttmEbitda, NumberType.LARGE_DOLLARS),
+        "ttmDA": cleanNumber(ttmDA, NumberType.LARGE_DOLLARS),
+        "totalAssets": cleanNumber(totalAssets, NumberType.LARGE_DOLLARS),
+        "totalLiabilities": cleanNumber(totalLiabilities, NumberType.LARGE_DOLLARS),
+        "stockholdersEquity": cleanNumber(stockholdersEquity, NumberType.LARGE_DOLLARS),
+        "totalDebt": cleanNumber(totalDebt, NumberType.LARGE_DOLLARS),
+        "cashAndEquivalents": cleanNumber(cashAndEquivalents, NumberType.LARGE_DOLLARS),
+        "yoyGrowthRate": cleanNumber(yoyGrowthRate, NumberType.UNSCALED_PERCENTAGE),
+    })
+
     jsonOutput = dataHeader | fundamentalData
+    jsonOutput["more"] = hiddenData
     data.cache.put(cacheKey, jsonOutput)
     return jsonOutput
 

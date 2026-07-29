@@ -24,31 +24,31 @@ class DataProviders:
 
 class Tool:
     def __init__(self, toolFunction: Callable, toolName: str, toolDescription: str, parameterSchema: Dict[str, Any]):
-        self.toolFunction = toolFunction
-        self.toolName = toolName
-        self.toolDescription = toolDescription
-        self.parameterSchema = parameterSchema
+        self.function = toolFunction
+        self.name = toolName
+        self.description = toolDescription
+        self.paramSchema = parameterSchema
         self.toolLog = []
 
     def getToolSchema(self) -> Dict[str, Any]:
         return {
             "type": "function",
             "function": {
-                "name": self.toolName,
-                "description": self.toolDescription,
-                "parameters": self.parameterSchema
+                "name": self.name,
+                "description": self.description,
+                "parameters": self.paramSchema
             }
         }
     
     def executeTool(self, data: DataProviders, timestamp: pd.Timestamp, args: Dict[str, Any]):
         try:
-            toolCall = self.toolFunction(self, data, timestamp, **args)
+            toolCall = self.function(self, data, timestamp, **args)
             return toolCall
         except Exception as e:
             import traceback
             tb = traceback.format_exc()
             error = {
-                "error": f"Uncaught error occurred while executing tool '{self.toolName}': {str(e)}",
+                "error": f"Uncaught error occurred while executing tool '{self.name}': {str(e)}",
                 "traceback": tb
             }
             # raise e
@@ -61,7 +61,7 @@ class ToolRegistry:
         self.tools: Dict[str, Tool] = {}
 
     def registerTool(self, tool: Tool):
-        self.tools[tool.toolName] = tool
+        self.tools[tool.name] = tool
 
     def registerTools(self, tools: List[Tool]):
         for tool in tools:
