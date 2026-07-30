@@ -72,6 +72,8 @@ class BaseLLMClient(ABC):
         currentState = "idle"
 
         for chunk in responseStream:
+            if isStopRequested():
+                raise SimulationStoppedException("Simulation stopped by user.")
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta

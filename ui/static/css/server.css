@@ -1,0 +1,133 @@
+.splash-container {
+    display: flex;
+    flex: 1;    
+    align-items: center;
+    justify-content: center;
+}
+
+.splash-load-model-window {
+    width: min(90vw, 600px);
+    background: #fff;
+    border-radius: 18px;
+    padding: 36px;
+
+    border: 1px solid #e0e6ed;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.15);
+
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 24px;
+    
+    margin-bottom: 6vh;
+}
+
+h1 {
+    text-align: center;
+    font-size: 1.8rem;
+    font-weight: 600;
+}
+
+.model-select-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+label {
+    font-weight: 600;
+}
+
+select, input[type="text"] {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+    width: 100%;
+    padding: 12px 14px;
+    
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    font-size: 16px;
+    color: #1e293b;
+}
+
+input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.parallel-checkbox {
+    display: flex; 
+    align-items: center;
+    gap: 8px; 
+    font-weight: normal; 
+    cursor: pointer;
+}
+
+button.btn-danger {
+    background-color: #ef4444;
+}
+
+button.btn-danger:hover {
+    background-color: #dc2626;
+}
+
+button.btn-secondary {
+    background-color: #64748b;
+}
+
+button.btn-secondary:hover {
+    background-color: #475569;
+}
+
+.error-alert-banner {
+    color: #dc2626;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.success-alert-banner {
+    color: #16a34a;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.llama-loading-log-window {
+    display: flex;
+    background-color: #111;
+    color: #ddd;
+    border: 1px solid #333;
+    border-radius: 6px;
+}
+
+.llama-loading-logs {
+    white-space: pre-wrap;
+    font-size: 10px;
+    max-height: 180px;
+    width: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 8px;
+}
+
+.llama-loading-logs::-webkit-scrollbar {
+    width: 6px;
+}
+
+.llama-loading-logs::-webkit-scrollbar-track {
+    background: #111;
+    border-radius: 6px;
+}
+
+.llama-loading-logs::-webkit-scrollbar-thumb {
+    background: #666;
+    border-radius: 6px;
+}
+
+.llama-loading-logs::-webkit-scrollbar-thumb:hover {
+    background: #888;
+}

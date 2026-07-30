@@ -169,9 +169,10 @@ class LlamaCppProcessInitiator:
                 if self.getState() == ServerState.STARTING:
                     self.printToTerminal(line.rstrip())
                     try:
-                        emitEvent("llamaCppStartupLog", {"log": line.rstrip()})
+                        from llm.server_manager import serverManager
+                        serverManager.recordLog(line.rstrip())
                     except Exception:
-                        pass
+                        emitEvent("llamaCppStartupLog", {"log": line.rstrip()})
                 self.logs.append(f"[{tag}] {line}")
         finally:
             stream.close()
@@ -225,7 +226,11 @@ class LlamaCppProcessInitiator:
         while waited < readyTimeout:
             if not self.isProcessAlive():
                 self.setState(ServerState.STOPPED)
-                print(f"[{self.serverName}] Llama.cpp process terminated unexpectedly")
+                exitCode = self.process.poll() if self.process else -1
+                errorMsg = f"[{self.serverName}] Llama.cpp process terminated unexpectedly (exit code {exitCode})"
+                print(errorMsg)
+                emitEvent("error", {"message": errorMsg})
+                raise RuntimeError(errorMsg)
             
             if self.isReady():
                 self.setState(ServerState.RUNNING)

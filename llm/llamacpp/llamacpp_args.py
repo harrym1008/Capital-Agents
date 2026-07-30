@@ -35,6 +35,8 @@ class LlamaCppModel(Enum):
 
     TERNARY_BONSAI_27B = "Ternary-Bonsai-27B"
 
+    FORCE_FAILURE_TEST = "FORCE_FAILURE_TEST"
+
     SUMMARY_MODEL = "Summary-Model"
 
 
@@ -406,6 +408,31 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--cache-ram":      "4096",
         "--ctx-size":       "131072",
         "-ngl":             "99",
+        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
+    },
+
+    #==============================================================
+
+    LlamaCppModel.FORCE_FAILURE_TEST: {
+        "-m":               f"{MODELS_FOLDER}Qwen\\MODEL_THAT_DOESNT_EXIST.gguf",
+        "--port":           str(LLAMACPP_PORT),
+        "--host":           "127.0.0.1",
+        "--temp":           "0.15",
+        "--top-p":          "0.8",
+        "--top-k":          "20",
+        "--repeat-penalty": "1.1",
+        "--flash-attn":     "on",
+        "--cache-type-k":   "q8_0",
+        "--cache-type-v":   "q8_0",
+        "--load-mode":      "mlock",
+        "--metrics":        _,
+        # "-b":               "8192",
+        # "-ub":              "2048",
+        "--jinja":          _,
+        "-np":              "2",
+        "--cache-ram":      "4096",
+        "--ctx-size":       "65536",    # Qwen 3 has max context of 32k per slot
+        "--reasoning":      "on",
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 

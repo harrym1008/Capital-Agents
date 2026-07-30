@@ -6,9 +6,23 @@ _local = threading.local()
 # Global callback function registered by the web UI server
 eventCallback = None
 
+stopRequestedEvent = threading.Event()
+
+class SimulationStoppedException(Exception):
+    pass
+
 def setEventCallback(callback):
     global eventCallback
     eventCallback = callback
+
+def requestStop():
+    stopRequestedEvent.set()
+
+def resetStop():
+    stopRequestedEvent.clear()
+
+def isStopRequested():
+    return stopRequestedEvent.is_set()
 
 def setCurrentAgent(agentRole, color):
     _local.agentRole = agentRole
@@ -34,6 +48,8 @@ def getCurrentStage():
 
 def emitEvent(eventType, data=None):
     global eventCallback
+    if eventType not in ["simStopped", "error"] and isStopRequested():
+        raise SimulationStoppedException("Simulation stopped by user.")
     if eventCallback:
         agentInfo = getCurrentAgent()
         payload = {
@@ -51,3 +67,4 @@ def emitEvent(eventType, data=None):
         except Exception as e:
             # Prevent crashing if callback fails
             print(f"Error in UI event callback: {e}")
+

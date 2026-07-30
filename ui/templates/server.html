@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CapitalAgents - Server Manager</title>
+
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/server.css">
+</head>
+<body>
+
+    {% include 'header.html' %}
+    
+
+    <div class="main-layout" style="display: flex; flex: 1; overflow: hidden; position: relative;">  
+
+        <div class="splash-container">
+
+            <div class="splash-load-model-window">
+                <h1 id="pageTitle">Manage LLM Server</h1>
+
+                <!-- Configuration Setup Form -->
+                <div id="setupForm" style="display: flex; flex-direction: column; gap: 20px;">
+                    <div class="model-select-form-group">
+                        <label for="provider">LLM Server:</label>
+                        <select id="provider">
+                            <option value="openrouter">OpenRouter</option>
+                            <option value="llamacpp">Llama.cpp</option>
+                        </select>
+                    </div>
+
+                    <div class="model-select-form-group" id="openrouterConfig">
+                        <label for="openrouterModelName">Selected Model Name:</label>
+                        <input
+                            id="openrouterModelName"
+                            type="text"
+                            placeholder="e.g. deepseek/deepseek-v4-flash"
+                        >
+                    </div>
+
+                    <div class="model-select-form-group hidden" id="llamacppConfig">
+                        <label for="llamaModel">Selected Model:</label>
+                        <select id="llamaModel">
+                            <option>Loading...</option>
+                        </select>
+                    </div>
+
+                    <div class="model-select-form-group" id="llamacppOptions" style="display: flex; flex-direction: column; gap: 12px;">
+                        <label for="parallelCheckbox" class="parallel-checkbox">
+                            <input type="checkbox" id="parallelCheckbox" checked>
+                            Two Slots in Parallel
+                        </label>
+                        <label for="summaryServerCheckbox" class="parallel-checkbox">
+                            <input type="checkbox" id="summaryServerCheckbox">
+                            Separate Simultaneous Summary Server
+                        </label>
+                    </div>
+
+                    <button id="loadModelBtn" style="width: 50%; margin: 10px 0 0 25%; font-size: 120%;">Start Server</button>
+                </div>
+
+                <!-- Active Server Management Panel (Simplified Plain Text View) -->
+                <div id="serverStatusPanel" class="hidden" style="display: flex; flex-direction: column; gap: 12px;">
+                    <div style="font-size: 14px; line-height: 1.6; color: #334155;">
+                        <p><strong>Provider:</strong> <span id="displayProvider">-</span></p>
+                        <p><strong>Model:</strong> <span id="displayModel">-</span></p>
+                        <p><strong>Parallel Slots:</strong> <span id="displayParallel">-</span></p>
+                        <p><strong>Summary Server:</strong> <span id="displaySummary">-</span></p>
+                    </div>
+
+                    <p style="font-size: 15px; font-weight: 600;">
+                        Status: <span id="statusBadgeText" style="color: #d97706;">Loading...</span>
+                    </p>
+
+                    <div id="errorAlertBanner" class="error-alert-banner hidden"></div>
+                    <div id="successAlertBanner" class="success-alert-banner hidden" style="display: flex; align-items: center; justify-content: space-between;">
+                        <span>Server loaded successfully</span>
+                        <a href="/single-equity-rating">Go to Boardroom &rarr;</a>
+                    </div>
+
+                    <div id="llamaLoadingContainer" class="llama-loading-log-window">
+                        <pre id="llamaLoadingLogs" class="llama-loading-logs"></pre>
+                    </div>
+
+                    <div style="display: flex; gap: 12px; justify-content: center; width: 100%; margin-top: 4px;">
+                        <button id="stopModelBtn" class="btn-danger" style="flex: 1; max-width: 220px; font-size: 110%;">Stop Server</button>
+                        <button id="reconfigureBtn" class="btn-secondary hidden" style="flex: 1; max-width: 220px; font-size: 110%;">Back to Setup</button>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        let socket = null;
+        let llamaCppModels = [];
+        let isServerLoading = false;
+
+        function updateWsStatus(isConnected) {
+            const cell = document.getElementById("wsStatusCell");
+            if (cell) {
+                cell.textContent = isConnected ? "Connected" : "Disconnected";
+                cell.style.color = isConnected ? "#22c55e" : "#ef4444";
+
+                if (!isConnected) {
+                    // If websocket disconnects, also mark server as disconnected
+                    updateServerStatus(false);
+                }
+            }
+        }
+
+        function updateServerStatus(isConnected) {
+            const cell = document.getElementById("serverStatusCell");
+            if (cell) {
+                cell.textContent = isConnected ? "Connected" : "Disconnected";
+                cell.style.color = isConnected ? "#22c55e" : "#ef4444";
+            }
+        }
+
+        function connectWebsocket() {
+            const wsUrl = `ws://${window.location.hostname}:9092`;
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => {
+                updateWsStatus(true);
+            };
+
+            socket.onclose = () => {
+                updateWsStatus(false);
+            };
+
+            socket.onerror = () => {
+                updateWsStatus(false);
+            };
+
+            socket.onmessage = (event) => {
+                const payload = JSON.parse(event.data);
+                handleSimulationEvent(payload);
+            };
+        }
+
+        function appendLlamaLog(logLine) {
+            const container = document.getElementById("llamaLoadingContainer");
+            const logsPre = document.getElementById("llamaLoadingLogs");
+            if (container.classList.contains("hidden")) {
+                container.classList.remove("hidden");
+            }
+            logsPre.textContent += logLine + "\n";
+            logsPre.scrollTop = logsPre.scrollHeight;
+        }
+
+        function clearLlamaLogs() {
+            const logsPre = document.getElementById("llamaLoadingLogs");
+            logsPre.textContent = "";
+        }
+
+        function setStatusState(state, text) {
+            const badgeText = document.getElementById("statusBadgeText");
+            badgeText.textContent = text;
+            if (state === "loading") {
+                badgeText.style.color = "#d97706";
+            } else if (state === "ready") {
+                badgeText.style.color = "#16a34a";
+            } else if (state === "error") {
+                badgeText.style.color = "#dc2626";
+            } else if (state === "stopped") {
+                badgeText.style.color = "#64748b";
+            }
+        }
+
+        function handleSimulationEvent(payload) {
+            switch (payload.type) {
+                case "llamaCppStartupLog":
+                    appendLlamaLog(payload.log);
+                    if (isServerLoading && (payload.log.includes("exiting due to model loading error") || payload.log.includes("failed to load model"))) {
+                        showError("Model loading failed: " + payload.log);
+                    }
+                    break;
+                case "error":
+                    appendLlamaLog("Error: " + (payload.message || JSON.stringify(payload)));
+                    if (isServerLoading) {
+                        showError("Server reported error: " + (payload.message || JSON.stringify(payload)));
+                    }
+                    break;
+                default:
+                    // Silently handle other events during server startup
+                    break;
+            }
+        }
+
+        // Toggle visibility based on provider selection
+        function updateProviderUI() {
+            const provider = document.getElementById("provider").value;
+            const openrouterConfig = document.getElementById("openrouterConfig");
+            const llamacppConfig = document.getElementById("llamacppConfig");
+            const llamacppOptions = document.getElementById("llamacppOptions");
+            const parallelCheckbox = document.getElementById("parallelCheckbox");
+
+            if (provider === "openrouter") {
+                openrouterConfig.classList.remove("hidden");
+                llamacppConfig.classList.add("hidden");
+                llamacppOptions.style.display = "none";
+                // OpenRouter forces parallel slots ON
+                parallelCheckbox.checked = true;
+            } else {
+                openrouterConfig.classList.add("hidden");
+                llamacppConfig.classList.remove("hidden");
+                llamacppOptions.style.display = "flex";
+            }
+        }
+
+        // Fetch Llama.cpp models from API and populate dropdown
+        async function fetchLlamaCppModels() {
+            try {
+                const res = await fetch('/api/llamacpp-models');
+                if (!res.ok) throw new Error("HTTP error " + res.status);
+                const data = await res.json();
+                llamaCppModels = data.models || [];
+
+                const select = document.getElementById("llamaModel");
+                select.innerHTML = "";
+                llamaCppModels.forEach(model => {
+                    const option = document.createElement("option");
+                    option.value = model;
+                    option.textContent = model;
+                    if (model === "GEMMA_4_12B") option.selected = true;
+                    select.appendChild(option);
+                });
+
+                if (llamaCppModels.length === 0) {
+                    const option = document.createElement("option");
+                    option.textContent = "No models found";
+                    select.appendChild(option);
+                }
+            } catch (e) {
+                console.error("Failed to fetch LlamaCpp models:", e);
+                const select = document.getElementById("llamaModel");
+                select.innerHTML = '<option>Failed to load</option>';
+            }
+        }
+
+        function showError(msg) {
+            isServerLoading = false;
+            setStatusState("error", "Loading Failed");
+            updateServerStatus(false);
+            const errorBanner = document.getElementById("errorAlertBanner");
+            errorBanner.textContent = msg;
+            errorBanner.classList.remove("hidden");
+            document.getElementById("successAlertBanner").classList.add("hidden");
+            
+            // Hide Stop Server button on crash/failure, show Back to Setup button
+            document.getElementById("stopModelBtn").classList.add("hidden");
+            document.getElementById("reconfigureBtn").classList.remove("hidden");
+        }
+
+        function showSuccess() {
+            isServerLoading = false;
+            setStatusState("ready", "Ready to Use");
+            updateServerStatus(true);
+            document.getElementById("errorAlertBanner").classList.add("hidden");
+            document.getElementById("successAlertBanner").classList.remove("hidden");
+            
+            // Show Stop Server button on success, hide Back to Setup button
+            document.getElementById("stopModelBtn").classList.remove("hidden");
+            document.getElementById("stopModelBtn").disabled = false;
+            document.getElementById("reconfigureBtn").classList.add("hidden");
+        }
+
+        // Check if server is already running on page load
+        async function checkExistingServerStatus() {
+            try {
+                const res = await fetch('/api/server/status');
+                if (res.ok) {
+                    const data = await res.json();
+                    const isRunning = data.running || data.llamacppRunning || data.summaryServerRunning || data.openrouterRunning;
+                    updateServerStatus(isRunning);
+
+                    if (isRunning) {
+                        // Present server status panel directly
+                        const provName = data.provider ? (data.provider === "openrouter" ? "OpenRouter" : "Llama.cpp") : "Active Server";
+                        document.getElementById("displayProvider").textContent = provName;
+                        document.getElementById("displayModel").textContent = data.modelName || "Active Server Process";
+                        document.getElementById("displayParallel").textContent = "Enabled";
+                        document.getElementById("displaySummary").textContent = data.summaryServerRunning ? "Enabled" : "Disabled";
+                        
+                        document.getElementById("setupForm").classList.add("hidden");
+                        document.getElementById("serverStatusPanel").classList.remove("hidden");
+                        
+                        if (data.startupLogs && Array.isArray(data.startupLogs) && data.startupLogs.length > 0) {
+                            const container = document.getElementById("llamaLoadingContainer");
+                            const logsPre = document.getElementById("llamaLoadingLogs");
+                            container.classList.remove("hidden");
+                            logsPre.textContent = data.startupLogs.join("\n") + "\n";
+                            logsPre.scrollTop = logsPre.scrollHeight;
+                        } else {
+                            clearLlamaLogs();
+                        }
+                        
+                        showSuccess();
+                    }
+                }
+            } catch (e) {
+                console.warn("Could not query server status:", e);
+                updateServerStatus(false);
+            }
+        }
+
+        // "Start Server" button listener
+        document.getElementById("loadModelBtn").addEventListener("click", async () => {
+            const provider = document.getElementById("provider").value;
+            const wantSummaryServer = (provider === "openrouter") ? false : document.getElementById("summaryServerCheckbox").checked;
+            const allowParallel = (provider === "openrouter") ? true : document.getElementById("parallelCheckbox").checked;
+
+            let modelName = "";
+
+            if (provider === "openrouter") {
+                modelName = document.getElementById("openrouterModelName").value.trim();
+                if (!modelName) {
+                    alert("Please enter a model name.");
+                    return;
+                }
+            } else {
+                modelName = document.getElementById("llamaModel").value;
+                if (!modelName || modelName === "No models found" || modelName === "Failed to load") {
+                    alert("Please select a valid model.");
+                    return;
+                }
+            }
+
+            // Populate status panel details
+            document.getElementById("displayProvider").textContent = provider === "openrouter" ? "OpenRouter" : "Llama.cpp";
+            document.getElementById("displayModel").textContent = modelName;
+            document.getElementById("displayParallel").textContent = allowParallel ? "Enabled" : "Disabled";
+            document.getElementById("displaySummary").textContent = wantSummaryServer ? "Enabled" : "Disabled";
+
+            // Switch views
+            document.getElementById("setupForm").classList.add("hidden");
+            document.getElementById("serverStatusPanel").classList.remove("hidden");
+            document.getElementById("errorAlertBanner").classList.add("hidden");
+            document.getElementById("successAlertBanner").classList.add("hidden");
+            document.getElementById("reconfigureBtn").classList.add("hidden");
+            document.getElementById("stopModelBtn").classList.remove("hidden");
+            document.getElementById("stopModelBtn").disabled = false;
+
+            clearLlamaLogs();
+            setStatusState("loading", "Loading Server...");
+            isServerLoading = true;
+
+            try {
+                const res = await fetch("/api/server/start", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        provider: provider,
+                        model: modelName,
+                        allowParallel: allowParallel,
+                        wantSummaryServer: wantSummaryServer
+                    })
+                });
+                const data = await res.json();
+
+                if (!data.ok) {
+                    showError(data.message || data.error || "Failed to start server");
+                    return;
+                }
+
+                showSuccess();
+
+            } catch (e) {
+                showError("Exception starting server: " + e.message);
+            }
+        });
+
+        // "Stop Server" button listener
+        document.getElementById("stopModelBtn").addEventListener("click", async () => {
+            const btn = document.getElementById("stopModelBtn");
+            btn.disabled = true;
+            setStatusState("loading", "Stopping...");
+
+            try {
+                await fetch("/api/server/stop", { method: "POST" });
+            } catch (e) {
+                console.warn("Error during stop call: " + e.message);
+            }
+
+            isServerLoading = false;
+            setStatusState("stopped", "Stopped");
+            btn.disabled = false;
+
+            // Return to setup form
+            document.getElementById("serverStatusPanel").classList.add("hidden");
+            document.getElementById("setupForm").classList.remove("hidden");
+        });
+
+        // "Back to Setup" button listener
+        document.getElementById("reconfigureBtn").addEventListener("click", () => {
+            isServerLoading = false;
+            document.getElementById("serverStatusPanel").classList.add("hidden");
+            document.getElementById("setupForm").classList.remove("hidden");
+            document.getElementById("stopModelBtn").classList.remove("hidden");
+        });
+
+        // Listen for provider change
+        document.getElementById("provider").addEventListener("change", updateProviderUI);
+
+        // Initialize on page load
+        connectWebsocket();
+        fetchLlamaCppModels();
+        updateProviderUI();
+        checkExistingServerStatus();
+
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,27 @@
+<header>
+    <h1>CapitalAgents Boardroom</h1>
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 24px;">
+        <div id="connectionStatusReadout" style="display: flex; flex-direction: column; align-items: flex-end; font-size: 13px; line-height: 1.25; font-weight: 700; color: #ffffff; font-family: system-ui, -apple-system, sans-serif; user-select: none;">
+            <div style="display: flex; gap: 12px; justify-content: space-between; width: 100%;">
+                <span style="color: #cbd5e1; font-weight: 600; flex: 1; text-align: right;">Websocket:</span>
+                <span id="wsStatusCell" style="min-width: 95px; text-align: left; color: #ef4444;">Disconnected</span>
+            </div>
+            <div style="display: flex; gap: 12px; justify-content: space-between; width: 100%;">
+                <span style="color: #cbd5e1; font-weight: 600; flex: 1; text-align: right;">Server:</span>
+                <span id="serverStatusCell" style="min-width: 95px; text-align: left; color: #ef4444;">Disconnected</span>
+            </div>
+        </div>
+        {% if show_token_metrics %}
+        <div id="tokenMetricsReadout" style="display: flex; flex-direction: column; align-items: flex-end; font-size: 13px; line-height: 1.25; font-weight: 700; color: #ffffff; font-family: system-ui, -apple-system, sans-serif;">
+            <div id="prefillMetricRow" style="display: flex; gap: 12px; justify-content: space-between;">
+                <span style="color: #cbd5e1; font-weight: 600;">Prefill:</span>
+                <span id="prefillSpeedVal" style="min-width: 80px; text-align: right;">0.0 tok/s</span>
+            </div>
+            <div style="display: flex; gap: 12px; justify-content: space-between;">
+                <span style="color: #cbd5e1; font-weight: 600;">Generation:</span>
+                <span id="genSpeedVal" style="min-width: 80px; text-align: right;">0.0 tok/s</span>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</header>

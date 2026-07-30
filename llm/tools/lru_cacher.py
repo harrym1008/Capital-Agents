@@ -13,22 +13,19 @@ class CachedToolCall:
         self.args = args
 
 
-def startPrecacheThread(toolRegistry: ToolRegistry, timestamp: pd.Timestamp, ticker: str):
+def startPrecacheThread(toolRegistry: ToolRegistry, timestamp: pd.Timestamp, ticker: str, includeMacro: bool = True):
     precacheThread = threading.Thread(
         target=precacheToolCalls,
-        args=(toolRegistry, timestamp, ticker)
+        args=(toolRegistry, timestamp, ticker, includeMacro)
     )
     precacheThread.start()
     return precacheThread
 
 
-def precacheToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Timestamp, ticker: str):
+def precacheToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Timestamp, ticker: str, includeMacro: bool):
     print(f"Starting precache of tool calls for ticker '{ticker}' at timestamp '{timestamp}'...")
 
     toolCalls = [
-        CachedToolCall("fetchMacroContext", timestamp),
-        CachedToolCall("fetchMacroNews", timestamp, {"limit": 12}),
-
         CachedToolCall("fetchCompanyProfile", timestamp, {"ticker": ticker}),
         CachedToolCall("fetchCompanyRecentNews", timestamp, {"ticker": ticker, "limit": 12}),
         CachedToolCall("fetchStockPricePerformance", timestamp, {"ticker": ticker}),
@@ -38,6 +35,12 @@ def precacheToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Timestamp, ticke
         CachedToolCall("fetchIncomeStatement", timestamp, {"ticker": ticker, "periodType": "annual"}),
         CachedToolCall("fetchBalanceSheet", timestamp, {"ticker": ticker, "periodType": "quarterly"}),
     ]
+
+    if includeMacro:
+        toolCalls += [
+            CachedToolCall("fetchMacroContext", timestamp),
+            CachedToolCall("fetchMacroNews", timestamp, {"limit": 12}),
+        ]
 
     with ThreadPoolExecutor(max_workers=len(toolCalls)) as executor:
         futureToTool = {

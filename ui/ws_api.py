@@ -13,6 +13,7 @@ from flask import request, jsonify
 from collectors.constants import NEW_YORK
 from dataquery import LRUCache, DailyPriceProvider, TickerDataProvider
 from llm.llamacpp.llamacpp_args import LlamaCppModel, LLAMACPP_PORT
+from llm.server_manager import serverManager
 
 globalCache = None
 globalTickerProvider = None
@@ -302,3 +303,36 @@ def registerApiRoutes(app):
             "simDate": simDateStr,
             "chartImage": chartImgStr
         })
+
+    @app.route("/api/server/start", methods=["POST"])
+    @app.route("/api/llamacpp/start", methods=["POST"])
+    @app.route("/api/openrouter/start", methods=["POST"])
+    def apiStartServer():
+        data = request.get_json(silent=True) or {}
+        provider = data.get("provider")
+        if not provider:
+            provider = "openrouter" if request.path.endswith("/openrouter/start") else "llamacpp"
+
+        modelName = data.get("model", "GEMMA_4_12B").strip()
+        allowParallel = data.get("allowParallel", True)
+        wantSummaryServer = data.get("wantSummaryServer", False)
+
+        success, message = serverManager.startServer(
+            provider=provider,
+            modelName=modelName,
+            allowParallel=allowParallel,
+            wantSummaryServer=wantSummaryServer
+        )
+        return jsonify({"ok": success, "message": message})
+
+    @app.route("/api/server/stop", methods=["POST"])
+    @app.route("/api/llamacpp/stop", methods=["POST"])
+    @app.route("/api/openrouter/stop", methods=["POST"])
+    @app.route("/api/llamacpp/summary/stop", methods=["POST"])
+    def apiStopServer():
+        message = serverManager.stopServer()
+        return jsonify({"ok": True, "message": message})
+
+    @app.route("/api/server/status")
+    def apiServerStatus():
+        return jsonify(serverManager.getStatus())
