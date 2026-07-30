@@ -89,7 +89,7 @@ def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timest
 
                 author = row.get("author", "").strip()
 
-                articleTimestamp = row["updated_at"].replace(tzinfo=timestamp.tzinfo)
+                articleTimestamp = row["date"].replace(tzinfo=timestamp.tzinfo)
                 age = timestamp - articleTimestamp
                 if age < pd.Timedelta(hours=1):
                     ageStr = f"{age.components.minutes}m old"
@@ -170,7 +170,7 @@ def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timest
 
             author = article.get("author", "").strip()
 
-            articleTimestamp = pd.Timestamp(article.get("updated_at")).tz_convert(timestamp.tzinfo)
+            articleTimestamp = pd.Timestamp(article.get("date")).tz_convert(timestamp.tzinfo)
             age = timestamp - articleTimestamp
             if age < pd.Timedelta(hours=1):
                 ageStr = f"{age.components.minutes}m old"

@@ -14,7 +14,8 @@ from llm.tools.tool_registry import Tool, ToolRegistry
 
 from ui.ui_hooks import (
     emitEvent, getCurrentAgent, setCurrentAgent,
-    getAgentPhase, setAgentPhase, getCurrentStage, setCurrentStage
+    getAgentPhase, setAgentPhase, getCurrentStage, setCurrentStage,
+    isStopRequested, SimulationStoppedException
 )
 
 

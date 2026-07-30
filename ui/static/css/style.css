@@ -68,7 +68,7 @@ header h1 {
     padding: 4px 8px;
 }
 
-a, button {
+.aref-button, button {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background-color: #2563eb;
     color: #fff;
@@ -79,14 +79,15 @@ a, button {
     font-size: 14px;
     cursor: pointer;
     transition: background-color 0.2s;
+    text-align: center;
     text-decoration: none;
 }
 
-a:hover, button:hover {
+.aref-button:hover, button:hover {
     background-color: #1d4ed8;
 }
 
-a:disabled, button:disabled {
+.aref-button:disabled, button:disabled {
     background-color: #94a3b8;
     cursor: not-allowed;
 }

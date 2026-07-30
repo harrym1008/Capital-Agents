@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CapitalAgents Boardroom</title>
+
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .landing-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+            gap: 20px;
+            padding: 40px;
+        }
+
+        .landing-btn {
+            width: 320px;
+            font-size: 20px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    {% include 'header.html' %}
+
+    <div class="landing-container">
+        <a href="/server" class="aref-button landing-btn">Server Configuration</a>
+        <a href="/single-equity-rating" class="aref-button landing-btn" style="margin-bottom: 6vh;">Single Equity Rating</a>
+    </div>
+
+    <script>
+        let socket = null;
+
+        function updateWsStatus(isConnected) {
+            const cell = document.getElementById("wsStatusCell");
+            if (cell) {
+                cell.textContent = isConnected ? "Connected" : "Disconnected";
+                cell.style.color = isConnected ? "#22c55e" : "#ef4444";
+            }
+        }
+
+        function updateServerStatus(isConnected) {
+            const cell = document.getElementById("serverStatusCell");
+            if (cell) {
+                cell.textContent = isConnected ? "Connected" : "Disconnected";
+                cell.style.color = isConnected ? "#22c55e" : "#ef4444";
+            }
+        }
+
+        async function checkServerStatus() {
+            try {
+                const res = await fetch('/api/server/status');
+                if (res.ok) {
+                    const data = await res.json();
+                    const isRunning = data.running || data.llamacppRunning || data.summaryServerRunning || data.openrouterRunning;
+                    updateServerStatus(isRunning);
+                    if (!isRunning) {
+                        window.location.href = "/server";
+                    }
+                }
+            } catch (e) {
+                updateServerStatus(false);
+            }
+        }
+
+        function connectWebsocket() {
+            const wsUrl = `ws://${window.location.hostname}:9092`;
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => { updateWsStatus(true); };
+            socket.onclose = () => { updateWsStatus(false); };
+            socket.onerror = () => { updateWsStatus(false); };
+        }
+
+        connectWebsocket();
+        checkServerStatus();
+        setInterval(checkServerStatus, 5000);
+    </script>
+</body>
+</html>

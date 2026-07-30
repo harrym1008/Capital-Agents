@@ -114,6 +114,7 @@ class ServerManager:
         self.summaryClient: Optional[BaseLLMClient] = None
         self.startupLogs: List[str] = []
         self.metricsThread: Optional[threading.Thread] = None
+        self.sharedToolRegistry: Optional[Any] = None
         self.serverLock = threading.Lock()
 
     @property
@@ -128,6 +129,14 @@ class ServerManager:
         """Append a log line to persistent startup logs list and emit WS event."""
         self.startupLogs.append(logLine)
         emitEvent("llamaCppStartupLog", {"log": logLine})
+
+    def getToolRegistry(self):
+        """Get or initialize the shared persistent ToolRegistry instance."""
+        with self.serverLock:
+            if self.sharedToolRegistry is None:
+                from llm.tools.registry_builder import buildToolRegistry
+                self.sharedToolRegistry = buildToolRegistry()
+            return self.sharedToolRegistry
 
     def getClients(self) -> Tuple[Optional[BaseLLMClient], Optional[BaseLLMClient]]:
         with self.serverLock:

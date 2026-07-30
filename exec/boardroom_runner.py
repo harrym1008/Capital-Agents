@@ -1,6 +1,7 @@
 import time
 import math
 import pandas as pd
+from typing import Any
 
 from collectors.constants import UTC, NEW_YORK
 from llm.llm_client import BaseLLMClient
@@ -16,7 +17,8 @@ def executeBoardroomRating(
     summaryClient: BaseLLMClient = None,
     tickerToEval: str = "NVDA",
     simulatedDate: str = None,
-    fastMode: bool = True
+    fastMode: bool = True,
+    toolRegistry: Any = None
 ) -> float:
     startTime = time.time()
 
@@ -24,7 +26,10 @@ def executeBoardroomRating(
         simulatedDate = time.strftime("%Y-%m-%d", time.localtime())
 
     timestamp = pd.Timestamp(f"{simulatedDate} 09:00").tz_localize(NEW_YORK).tz_convert(UTC)
-    toolRegistry = buildToolRegistry()
+
+    if toolRegistry is None:
+        from llm.server_manager import serverManager
+        toolRegistry = serverManager.getToolRegistry()
 
     precacheThread = startPrecacheThread(toolRegistry, timestamp, tickerToEval, includeMacro=True)
 

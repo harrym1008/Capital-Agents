@@ -81,6 +81,36 @@
         let currentTicker = "NVDA";
         let currentSimulatedDate = null;
 
+        function formatOrdinalDate(dateInput) {
+            if (!dateInput) {
+                dateInput = new Date().toISOString().split('T')[0];
+            }
+            let dateStr = String(dateInput).split('T')[0];
+            const parts = dateStr.split('-');
+            if (parts.length < 3) return dateStr;
+            
+            const year = parseInt(parts[0], 10);
+            const monthIdx = parseInt(parts[1], 10) - 1;
+            const day = parseInt(parts[2], 10);
+            
+            const months = [
+                "January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December"
+            ];
+            const monthName = months[monthIdx] || "";
+            
+            let suffix = "th";
+            const lastTwo = day % 100;
+            if (lastTwo < 11 || lastTwo > 13) {
+                const lastDigit = day % 10;
+                if (lastDigit === 1) suffix = "st";
+                else if (lastDigit === 2) suffix = "nd";
+                else if (lastDigit === 3) suffix = "rd";
+            }
+            
+            return `${day}${suffix} ${monthName} ${year}`;
+        }
+
         function parseMarkdown(text) {
             if (!text) return "";
             
@@ -316,7 +346,7 @@
                     break;
 
                 case "toolCallStart":
-                    initToolBlock(activeStage, agentRole, payload.toolName, payload.args, payload.callId, payload.toolIndex);
+                    startToolBlock(activeStage, agentRole, payload.toolName, payload.args, payload.callId, payload.toolIndex);
                     break;
 
                 case "toolCallEnd":
@@ -420,6 +450,7 @@
             }
 
             const tickerEl = document.getElementById("receipt-ticker");
+            const dateEl = document.getElementById("receipt-date");
             const ratingEl = document.getElementById("receipt-rating");
             const weightingEl = document.getElementById("receipt-weighting");
             const target12El = document.getElementById("receipt-target-12");
@@ -427,6 +458,7 @@
             const statusEl = document.getElementById("receipt-status");
 
             if (tickerEl) tickerEl.innerText = tickerVal;
+            if (dateEl) dateEl.innerText = formatOrdinalDate(currentSimulatedDate);
             
             if (ratingEl) {
                 ratingEl.innerText = ratingVal;
@@ -696,6 +728,9 @@
                                 <div style="font-weight: 700; color: #475569;">Asset Ticker:</div>
                                 <div id="receipt-ticker" style="font-family: monospace; font-size: 15px; font-weight: bold;">${currentTicker || '--'}</div>
                                 
+                                <div style="font-weight: 700; color: #475569;">Date of Analysis:</div>
+                                <div id="receipt-date" style="font-weight: bold;">${formatOrdinalDate(currentSimulatedDate)}</div>
+
                                 <div style="font-weight: 700; color: #475569;">Investment Rating:</div>
                                 <div><span id="receipt-rating" class="tool-status-badge status-running" style="font-size: 11px; margin-left: 0; font-weight: bold;">--</span></div>
                                 
@@ -703,10 +738,10 @@
                                 <div id="receipt-weighting" style="font-weight: bold;">--</div>
                                 
                                 <div style="font-weight: 700; color: #475569;">12-Month Price Target:</div>
-                                <div id="receipt-target-12" style="font-family: monospace; font-weight: bold;">--</div>
+                                <div id="receipt-target-12" style="font-weight: bold;">--</div>
                                 
                                 <div style="font-weight: 700; color: #475569;">3-Year Price Target:</div>
-                                <div id="receipt-target-36" style="font-family: monospace; font-weight: bold;">--</div>
+                                <div id="receipt-target-36" style="font-weight: bold;">--</div>
                                 
                                 <div style="font-weight: 700; color: #475569;">Upload Status:</div>
                                 <div><span id="receipt-status" class="tool-status-badge status-running" style="font-size: 11px; margin-left: 0; font-weight: bold;">PENDING UPLOAD</span></div>
@@ -1347,17 +1382,6 @@
         initStagesBar("fast");
         connectWebsocket();
         checkServerStatus();
-
-        // Upon loading the page, if server status is not running, redirect to the /server page
-        window.addEventListener("load", () => {
-            // in 3 seconds
-            setTimeout(() => {
-                checkServerStatus();
-                if (serverIsLoaded === false) {
-                    window.location.href = "/server";
-                }
-            }, 500);
-        }); 
     </script>
 </body>
 </html>

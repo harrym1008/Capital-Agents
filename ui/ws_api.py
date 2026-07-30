@@ -97,6 +97,93 @@ def computeBezierThroughPoints(pointsX, pointsY, numSamples=300):
     return np.array(xAll), np.array(yAll)
 
 
+def splitAndPlotPerformance(ax, futureDates, futureCloses, splineVals, yMin):
+    numPoints = len(futureCloses)
+    if numPoints == 0:
+        return
+        
+    if splineVals is None or len(splineVals) != numPoints:
+        ax.plot(futureDates, futureCloses, color='#f43f5e', linewidth=1.8, label='Actual Performance', zorder=3)
+        ax.fill_between(futureDates, futureCloses, yMin, color='#f43f5e', alpha=0.08, zorder=2)
+        return
+        
+    diffVals = futureCloses - splineVals
+    
+    refinedDates = []
+    refinedCloses = []
+    refinedDiffs = []
+    
+    for i in range(numPoints - 1):
+        d1 = futureDates[i]
+        c1 = futureCloses[i]
+        diff1 = diffVals[i]
+        
+        refinedDates.append(d1)
+        refinedCloses.append(c1)
+        refinedDiffs.append(diff1)
+        
+        diff2 = diffVals[i + 1]
+        
+        if (diff1 > 0 and diff2 < 0) or (diff1 < 0 and diff2 > 0):
+            d2 = futureDates[i + 1]
+            c2 = futureCloses[i + 1]
+            
+            t = diff1 / (diff1 - diff2)
+            
+            t1 = d1.timestamp()
+            t2 = d2.timestamp()
+            tCross = t1 + t * (t2 - t1)
+            if getattr(d1, 'tzinfo', None) is not None:
+                dCross = pd.Timestamp(tCross, unit='s', tz=d1.tzinfo).to_pydatetime()
+            else:
+                dCross = pd.Timestamp(tCross, unit='s').to_pydatetime()
+                
+            cCross = c1 + t * (c2 - c1)
+            diffCross = 0.0
+            
+            refinedDates.append(dCross)
+            refinedCloses.append(cCross)
+            refinedDiffs.append(diffCross)
+            
+    refinedDates.append(futureDates[-1])
+    refinedCloses.append(futureCloses[-1])
+    refinedDiffs.append(diffVals[-1])
+    
+    refinedDatesArr = np.array(refinedDates)
+    refinedClosesArr = np.array(refinedCloses)
+    refinedDiffsArr = np.array(refinedDiffs)
+    
+    isGreenPoint = refinedDiffsArr >= 0
+    isRedPoint = refinedDiffsArr <= 0
+    
+    def plotContiguousChunks(mask, color):
+        n = len(mask)
+        inChunk = False
+        chunkStart = 0
+        for idx in range(n):
+            if mask[idx]:
+                if not inChunk:
+                    inChunk = True
+                    chunkStart = idx
+            else:
+                if inChunk:
+                    cDates = refinedDatesArr[chunkStart:idx]
+                    cCloses = refinedClosesArr[chunkStart:idx]
+                    if len(cDates) >= 2:
+                        ax.plot(cDates, cCloses, color=color, linewidth=1.8, zorder=3)
+                        ax.fill_between(cDates, cCloses, yMin, color=color, alpha=0.08, zorder=2)
+                    inChunk = False
+        if inChunk:
+            cDates = refinedDatesArr[chunkStart:n]
+            cCloses = refinedClosesArr[chunkStart:n]
+            if len(cDates) >= 2:
+                ax.plot(cDates, cCloses, color=color, linewidth=1.8, zorder=3)
+                ax.fill_between(cDates, cCloses, yMin, color=color, alpha=0.08, zorder=2)
+
+    plotContiguousChunks(isGreenPoint, '#10b981')
+    plotContiguousChunks(isRedPoint, '#f43f5e')
+
+
 def generateOhlcvChartImage(ticker, simDateTs, targets=None):
     todayTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
     startDateTs = simDateTs - pd.DateOffset(years=3)
@@ -109,57 +196,45 @@ def generateOhlcvChartImage(ticker, simDateTs, targets=None):
         if profile.ipoDate > startDateTs:
             startDateTs = profile.ipoDate
             
-    # Fetch historical data (simDate - 3 years to simDate)
     dfHistorical = priceProvider.getPeriodDailyTickerData(ticker, startDateTs, simDateTs)
     dfHistorical = adjustPriceDataSplits(dfHistorical)
     
-    # Fetch future real data if simDate < todayTs
     dfFuture = pd.DataFrame()
     if simDateTs < todayTs:
         futureEndTs = min(endDateTs, todayTs)
         dfFuture = priceProvider.getPeriodDailyTickerData(ticker, simDateTs, futureEndTs)
         dfFuture = adjustPriceDataSplits(dfFuture)
         
-    fig, ax = plt.subplots(figsize=(5.6, 2.7), dpi=180)
-    fig.patch.set_facecolor('#ffffff')
-    ax.set_facecolor('#ffffff')
-    
     lastHistoricalClose = None
     allPrices = []
     
-    # --- Historical data with 3-day moving average ---
+    histDates = []
+    histClosesSmooth = []
     if not dfHistorical.empty and "close" in dfHistorical.columns:
         dfCleanHist = dfHistorical.dropna(subset=["close"])
         if not dfCleanHist.empty:
-            dates = [pd.Timestamp(r.get("dateNy", r.get("date"))).to_pydatetime() for _, r in dfCleanHist.iterrows()]
+            histDates = [pd.Timestamp(r.get("dateNy", r.get("date"))).to_pydatetime() for _, r in dfCleanHist.iterrows()]
             closesRaw = dfCleanHist["close"].values
-            # Apply 3-day centered moving average to smooth spiky raw data
-            closesSmooth = getRollingMean(closesRaw, window=3)
-            lastHistoricalClose = closesSmooth[-1]
-            allPrices.extend(closesSmooth.tolist())
-            ax.plot(dates, closesSmooth, color='#2563eb', linewidth=1.8, label='Historical (-3Y)')
-            ax.fill_between(dates, closesSmooth, 0, color='#2563eb', alpha=0.08)
+            histClosesSmooth = getRollingMean(closesRaw, window=3)
+            lastHistoricalClose = histClosesSmooth[-1]
+            allPrices.extend(histClosesSmooth.tolist())
             
-    # --- Future actual data with 3-day moving average ---
+    futureDates = []
+    futureClosesSmooth = []
     if not dfFuture.empty and "close" in dfFuture.columns:
         dfCleanFuture = dfFuture.dropna(subset=["close"])
         if not dfCleanFuture.empty:
-            dates = [pd.Timestamp(r.get("dateNy", r.get("date"))).to_pydatetime() for _, r in dfCleanFuture.iterrows()]
+            futureDates = [pd.Timestamp(r.get("dateNy", r.get("date"))).to_pydatetime() for _, r in dfCleanFuture.iterrows()]
             closesRaw = dfCleanFuture["close"].values
-            # Apply 3-day centered moving average to smooth spiky raw data
-            closesSmooth = getRollingMean(closesRaw, window=3)
-            allPrices.extend(closesSmooth.tolist())
-            ax.plot(dates, closesSmooth, color='#f43f5e', linewidth=1.8, label='Actual Performance')
-            ax.fill_between(dates, closesSmooth, 0, color='#f43f5e', alpha=0.08)
+            futureClosesSmooth = getRollingMean(closesRaw, window=3)
+            allPrices.extend(futureClosesSmooth.tolist())
             
-    # --- Build target points list ---
     if targets is None:
         targets = []
     
-    # Compute target dates and prices as numpy-compatible values (days from startDateTs)
     startTime = startDateTs.timestamp()
     simDateDaysFromStart = (simDateTs - startDateTs).total_seconds() / 86400.0
-    targetX = [simDateDaysFromStart]  # first point is at simDate, not at graph edge
+    targetX = [simDateDaysFromStart]
     targetY = [lastHistoricalClose if lastHistoricalClose is not None else (allPrices[0] if allPrices else 100.0)]
     
     for monthsOffset, price in targets:
@@ -168,49 +243,68 @@ def generateOhlcvChartImage(ticker, simDateTs, targets=None):
         targetX.append(daysFromStart)
         targetY.append(price)
         allPrices.append(price)
-    
+        
+    minPrice = min(allPrices) if allPrices else 0.0
     maxPrice = max(allPrices) if allPrices else 100.0
+    priceRange = maxPrice - minPrice
+    if priceRange == 0:
+        priceRange = maxPrice * 0.2 if maxPrice > 0 else 10.0
+        
+    leeway = max(priceRange * 0.08, minPrice * 0.05)
+    yMinCandidate = minPrice - leeway
     
-    # --- Plot bezier-curved target projection ---
+    if yMinCandidate <= 0 or minPrice < 1.0:
+        yMin = 0.0
+    else:
+        yMin = max(0.0, yMinCandidate)
+        
+    yMax = maxPrice + max(priceRange * 0.08, maxPrice * 0.05)
+    
+    fig, ax = plt.subplots(figsize=(5.6, 2.7), dpi=180)
+    fig.patch.set_facecolor('#ffffff')
+    ax.set_facecolor('#ffffff')
+    
+    if len(histDates) > 0:
+        ax.plot(histDates, histClosesSmooth, color='#2563eb', linewidth=1.8, label='Historical (-3Y)')
+        ax.fill_between(histDates, histClosesSmooth, yMin, color='#2563eb', alpha=0.08)
+        
+    curveX, curveY = None, None
     if len(targets) > 0:
-        # Compute smooth Catmull-Rom spline through target points
         curveX, curveY = computeBezierThroughPoints(targetX, targetY, numSamples=400)
-        
-        # Convert days back to datetime for plotting
         curveDates = [pd.Timestamp(startTime + x * 86400.0, unit='s', tz=NEW_YORK).to_pydatetime() for x in curveX]
-        
         ax.plot(curveDates, curveY, color='#06b6d4', linewidth=2.8, solid_capstyle='round', zorder=5)
         
-        # Plot larger markers at each actual target point
         for i, (monthsOffset, price) in enumerate(targets):
             targetDateTs = simDateTs + pd.DateOffset(months=int(monthsOffset))
             ax.plot(targetDateTs.to_pydatetime(), price, marker='o',
                     markersize=8, color='#06b6d4', zorder=6,
                     markeredgecolor='#ffffff', markeredgewidth=1.5)
-        
-        # Also plot the start connection point (simDate) with a small marker
+                    
         ax.plot(simDateTs.to_pydatetime(), targetY[0], marker='o',
                 markersize=5, color='#64748b', zorder=6,
                 markeredgecolor='#ffffff', markeredgewidth=1)
+                
+    if len(futureDates) > 0:
+        splineVals = None
+        if curveX is not None and len(curveX) > 0:
+            futureDays = np.array([(pd.Timestamp(d) - startDateTs).total_seconds() / 86400.0 for d in futureDates])
+            splineVals = np.interp(futureDays, curveX, curveY)
+            
+        splitAndPlotPerformance(ax, futureDates, futureClosesSmooth, splineVals, yMin)
         
-    # Vertical dashed line at simDate
     ax.axvline(x=simDateTs.to_pydatetime(), color='#1e293b', linestyle='--', linewidth=1.5, zorder=4)
     
-    # Configure X axis timeline — add right-side padding so the last marker isn't clipped
-    x_end = endDateTs.to_pydatetime()
+    xEnd = endDateTs.to_pydatetime()
     if len(targets) > 0:
-        # Add ~2% extra padding on the right for marker visibility
-        x_range_seconds = (endDateTs - startDateTs).total_seconds()
-        x_end = endDateTs + pd.Timedelta(seconds=x_range_seconds * 0.02)
-    
-    ax.set_xlim(startDateTs.to_pydatetime(), x_end)
+        xRangeSeconds = (endDateTs - startDateTs).total_seconds()
+        xEnd = endDateTs + pd.Timedelta(seconds=xRangeSeconds * 0.02)
+        
+    ax.set_xlim(startDateTs.to_pydatetime(), xEnd)
     ax.xaxis.set_major_locator(mdates.YearLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
     
-    # Set Y axis minimum EXACTLY at 0 with 0 gap!
-    ax.set_ylim(bottom=0, top=maxPrice * 1.08)
+    ax.set_ylim(bottom=yMin, top=yMax)
     
-    # Grid and styling
     ax.grid(True, linestyle=':', alpha=0.4, color='#cbd5e1')
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -219,7 +313,6 @@ def generateOhlcvChartImage(ticker, simDateTs, targets=None):
     ax.spines['bottom'].set_color('#334155')
     ax.spines['bottom'].set_linewidth(1.2)
     
-    # Typography & padding
     plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial', 'sans-serif']
     ax.tick_params(colors='#334155', labelsize=8.5, length=3)
     for t in ax.get_xticklabels():
