@@ -14,7 +14,7 @@ from dataquery.macro_provider import MacroSeries
 from collectors.constants import IPO_BEFORE_START_DATE
 
 from llm.tools.tool_registry import DataProviders, Tool
-from llm.tools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, isLocalDataAvailable, NumberType 
+from llm.tools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, isLocalDataAvailable, formatArticleAge, NumberType 
 
 
 def fetchCompanyProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str):
@@ -89,19 +89,17 @@ def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timest
 
                 author = row.get("author", "").strip()
 
-                articleTimestamp = row["date"].replace(tzinfo=timestamp.tzinfo)
-                age = timestamp - articleTimestamp
-                if age < pd.Timedelta(hours=1):
-                    ageStr = f"{age.components.minutes}m old"
-                if age < pd.Timedelta(days=1):
-                    ageStr = f"{age.components.hours}h {age.components.minutes}m old"
-                else:
-                    ageStr = f"{age.components.days}d old"
+                rawDate = row.get("date")
+                ageStr = formatArticleAge(rawDate, timestamp)
 
                 articleId = str(row.get("id", ""))
-                year = articleTimestamp.year % 100
-                month = articleTimestamp.month
-                url = f"https://www.benzinga.com/news/{year:02d}/{month:02d}/{articleId}"
+                rawTs = pd.to_datetime(rawDate)
+                if not pd.isna(rawTs):
+                    year = rawTs.year % 100
+                    month = rawTs.month
+                    url = f"https://www.benzinga.com/news/{year:02d}/{month:02d}/{articleId}"
+                else:
+                    url = f"https://www.benzinga.com/news/{articleId}"
 
                 jsonResult.append({
                     "index": idx,
@@ -170,14 +168,8 @@ def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timest
 
             author = article.get("author", "").strip()
 
-            articleTimestamp = pd.Timestamp(article.get("date")).tz_convert(timestamp.tzinfo)
-            age = timestamp - articleTimestamp
-            if age < pd.Timedelta(hours=1):
-                ageStr = f"{age.components.minutes}m old"
-            elif age < pd.Timedelta(days=1):
-                ageStr = f"{age.components.hours}h {age.components.minutes}m old"
-            else:
-                ageStr = f"{age.components.days}d old"
+            rawDate = article.get("date") or article.get("created_at") or article.get("updated_at")
+            ageStr = formatArticleAge(rawDate, timestamp)
 
             url = article.get("url", "")
 

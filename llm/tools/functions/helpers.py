@@ -196,3 +196,41 @@ def isLocalDataAvailable(timestamp: pd.Timestamp) -> bool:
 
     return ts <= endDate
 
+
+def formatArticleAge(dateVal, timestamp: pd.Timestamp) -> str:
+    if dateVal is None or pd.isna(dateVal) or dateVal == "":
+        return "unknown"
+    try:
+        if isinstance(dateVal, pd.Timestamp):
+            articleTimestamp = dateVal
+        else:
+            articleTimestamp = pd.Timestamp(dateVal)
+
+        if pd.isna(articleTimestamp):
+            return "unknown"
+
+        if articleTimestamp.tzinfo is not None:
+            if timestamp.tzinfo is not None:
+                articleTimestamp = articleTimestamp.tz_convert(timestamp.tzinfo)
+            else:
+                articleTimestamp = articleTimestamp.tz_localize(None)
+        else:
+            if timestamp.tzinfo is not None:
+                articleTimestamp = articleTimestamp.tz_localize(timestamp.tzinfo)
+
+        age = timestamp - articleTimestamp
+        if pd.isna(age) or not isinstance(age, pd.Timedelta):
+            return "unknown"
+
+        if age < pd.Timedelta(0):
+            return "0m old"
+        elif age < pd.Timedelta(hours=1):
+            return f"{age.components.minutes}m old"
+        elif age < pd.Timedelta(days=1):
+            return f"{age.components.hours}h {age.components.minutes}m old"
+        else:
+            return f"{age.components.days}d old"
+    except Exception:
+        return "unknown"
+
+
