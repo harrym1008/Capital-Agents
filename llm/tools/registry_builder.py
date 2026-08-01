@@ -221,10 +221,11 @@ def buildToolRegistry():
     toolReg.registerTool(Tool(
         toolFunction=executePythonCalculation,
         toolName="executePythonCalculation",
-        toolDescription="Executes standard mathematical formulas, statistics, multi-line assignments, or algorithms "
-                        "in a secure Python sandbox with math and numpy enabled."
-                        "Returns the stdout and the values of the assigned variables in scope after execution."
-                        "If an error occurs, returns the error message, traceback, and the line of code that failed.",
+        toolDescription="Executes concise mathematical formulas or short variable assignments (1-5 lines max) "
+                        "in a secure Python sandbox with math and numpy enabled. "
+                        "Do NOT pass complex scripts, functions, or loops. "
+                        "Returns stdout and assigned variable values. "
+                        "If an error occurs, returns the error message and hint.",
                         
         parameterSchema=SCHEMAS["pythonCode"]
     ))

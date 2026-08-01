@@ -140,7 +140,8 @@ def startWebsocketServer():
 
     asyncio.run(main())
 
-if __name__ == "__main__":
+
+def startServer():
     # Register global callback for agent simulation events
     setEventCallback(broadcastEvent)
 
@@ -153,3 +154,7 @@ if __name__ == "__main__":
         websocketThread.start()
 
     app.run(debug=True, threaded=True, host="127.0.0.1", port=UI_PORT)
+
+
+if __name__ == "__main__":
+    startServer()

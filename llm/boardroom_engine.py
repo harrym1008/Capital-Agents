@@ -39,7 +39,7 @@ class BoardroomEngine:
     def assignClientDuo(self, clientDuo: ClientDuo):
         self.clientDuo = clientDuo
         for agent in [self.macroAnalyst, self.bullAnalyst, self.bearAnalyst, self.aggRiskAnalyst, self.consRiskAnalyst, self.portManager]:
-            agent.setLLMClient(clientDuo.boardroomClient)
+            agent.setClientDuo(clientDuo)
         self.allowParallel = clientDuo.boardroomClient.allowParallel
 
 
@@ -136,15 +136,15 @@ class BoardroomEngine:
             f"Macroeconomic Context:\n{macroRaw}\n\n"
             f"Task: Conduct single-stock research on ticker {targetTicker}.\n"
             f"Execute your data tools (valuation metrics, financial statements, stock price performance, company profile) to retrieve hard facts. "
-            f"Present your thesis and state: explicit BUY/HOLD/SELL rating, OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT weight, and preliminary 12-month and 36-month price targets."
+            f"Present your thesis and state: explicit rating ({{permittedRatings}}), OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT weight, and preliminary 12-month and 36-month price targets."
         )
         
         (bullThesisRaw, bullThesisUISummary), (bearThesisRaw, bearThesisUISummary) = self._runAgentsConcurrently(
             lambda: self.bullAnalyst.analyseAndReply(
-                researchPrompt, self.toolRegistry, self.timestamp, subrole="research", requireInitialTools=True,
+                researchPrompt.format(permittedRatings="BUY/HOLD"), self.toolRegistry, self.timestamp, subrole="research", requireInitialTools=True,
             ),
             lambda: self.bearAnalyst.analyseAndReply(
-                researchPrompt, self.toolRegistry, self.timestamp, subrole="research", requireInitialTools=True,
+                researchPrompt.format(permittedRatings="HOLD/SELL"), self.toolRegistry, self.timestamp, subrole="research", requireInitialTools=True,
             )
         )
 
@@ -256,15 +256,15 @@ class BoardroomEngine:
             f"Macroeconomic Context:\n{macroRaw}\n\n"
             f"Task: Conduct single-stock research on ticker {targetTicker}.\n"
             f"Execute your data tools (valuation metrics, financial statements, stock price performance, company profile) to retrieve hard facts. "
-            f"Present your thesis and state: explicit BUY/HOLD/SELL rating, OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT weight, and preliminary 12-month and 36-month price targets."
+            f"Present your thesis and state: explicit rating ({{permittedRatings}}), OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT weight, and preliminary 12-month and 36-month price targets."
         )
         
         (bullThesisRaw, bullThesisUISummary), (bearThesisRaw, bearThesisUISummary) = self._runAgentsConcurrently(
             lambda: self.bullAnalyst.analyseAndReply(
-                researchPrompt, self.toolRegistry, self.timestamp, subrole="research", requireInitialTools=True,
+                researchPrompt.format(permittedRatings="BUY/HOLD"), self.toolRegistry, self.timestamp, subrole="research", requireInitialTools=True,
             ),
             lambda: self.bearAnalyst.analyseAndReply(
-                researchPrompt, self.toolRegistry, self.timestamp, subrole="research", requireInitialTools=True,
+                researchPrompt.format(permittedRatings="HOLD/SELL"), self.toolRegistry, self.timestamp, subrole="research", requireInitialTools=True,
             )
         )
 

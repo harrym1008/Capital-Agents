@@ -129,9 +129,15 @@ def executePythonCalculation(tool: Tool, data: DataProviders, timestamp: pd.Time
                 except Exception:
                     pass
 
+        lineCount = len(strippedCode.splitlines())
+        hintStr = "Keep Python calculations simple (1-5 lines max). Do NOT write functions, loops, or complex scripts."
+        if lineCount > 15:
+            hintStr = f"Your code was {lineCount} lines long, which caused errors. Simplify your code to a short 1-3 line direct arithmetic calculation."
+
         errorResult = {
             "success": False,
             "error": f"{e.__class__.__name__}: {str(e)}",
+            "hint": hintStr,
             "traceback": tb,
             "failedLine": failedLine
         }

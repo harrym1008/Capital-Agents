@@ -14,7 +14,8 @@ def buildSharedBaseSysPrompt(dateStr: str, toolsStr: str, agentRole: str, agentS
 
         f"*** CALCULATIONS ***:\n"
         f"Never perform arithmetic in your head. Always use the 'executePythonCalculation' tool. "
-        f"Assume any mental calculation is wrong. Write short Python code (less than 30 lines). Call it silently and analyse its output.\n\n"
+        f"Assume any mental calculation is wrong. Keep Python calculation snippets extremely short and direct (1 to 5 lines maximum). "
+        f"Do NOT write functions, loops, classes, or complex multi-step scripts. Just write simple arithmetic expressions or basic variable assignments (e.g., targetPrice = 150.0 * 1.12).\n\n"
 
         f"*** REASONING & OUTPUT RULES ***:\n"
         f"- Use existing tool outputs from your conversation history where available; batch new data-fetching tool calls only when needed.\n"
@@ -28,10 +29,22 @@ def buildSharedBaseSysPrompt(dateStr: str, toolsStr: str, agentRole: str, agentS
     )
 
 
+roleKeyMap = {
+    "Macro Analyst": "macroAnalyst",
+    "Bullish Value Analyst": "bullishAnalyst",
+    "Bearish Risk Analyst": "bearishAnalyst",
+    "Aggressive Risk Analyst": "aggressiveRiskAnalyst",
+    "Conservative Risk Analyst": "conservativeRiskAnalyst",
+    "Impartial Portfolio Manager": "portfolioManager",
+}
+
+
 def buildAgentSpecificSysPrompt(dateStr: str, agentRole: str, agentToolsStr: str, subrole: str = None) -> str:
-    role = f"{agentRole}_{subrole}" if subrole else agentRole
-    return buildSharedBaseSysPrompt(dateStr, agentToolsStr, role, 
-                                    AGENT_SPECIFIC_SYS_PROMPTS.get(role, "No specific prompt found for this agent role."))
+    roleKey = roleKeyMap.get(agentRole, agentRole)
+    role = f"{roleKey}_{subrole}" if subrole else roleKey
+    agentSpecificPrompt = AGENT_SPECIFIC_SYS_PROMPTS.get(role, "No specific prompt found for this agent role.")
+    return buildSharedBaseSysPrompt(dateStr, agentToolsStr, agentRole, agentSpecificPrompt)
+
 
 
 AGENT_SPECIFIC_SYS_PROMPTS = {
@@ -82,7 +95,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         f"For example, you could focus on capital preservation, downside risks, and unsustainable leverage. "
         f"It is most important that you provide a compelling case for why the stock is OVERVALUED and at risk of significant downside.\n\n"
 
-        f"It is also important that you can appreciate when a company is undervalued, and you should not be afraid to issue a HOLD rating if the stock is trading at a discount to its intrinsic value.\n\n"
+        f"It is also important that you can appreciate when a company is undervalued, and you should not be afraid to issue a HOLD rating if the stock is trading at a discount to its intrinsic value. "
+        f"As the Bearish Risk Analyst, your rating MUST ALWAYS be either HOLD or SELL. You must NEVER output a BUY rating under any circumstances.\n\n"
         
         f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
         f"You must call financial profile, valuation, statement, and stock performance tools on your initial turn to retrieve hard facts. "
@@ -144,7 +158,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
     ),
 
     "bearishAnalyst_defense": (
-        f"You will defend your bearish risk analysis against challenges raised by the Aggressive Risk Analyst.\n\n"
+        f"You will defend your bearish risk analysis against challenges raised by the Aggressive Risk Analyst. "
+        f"As the Bearish Risk Analyst, your final rating MUST ALWAYS be either HOLD or SELL. You must NEVER output a BUY rating under any circumstances.\n\n"
 
         f"*** TASK INSTRUCTIONS ***:\n"
         f"1. Answer each challenge question quantitatively.\n"
@@ -154,7 +169,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         f"*** EXPECTED OUTPUT SCHEMA ***:\n"
         f"- Quantitative Point-by-Point Responses\n"
         f"- Revised Bearish Risk Summary & Target Adjustments\n"
-        f"- Final Line: **Rating: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], 12-Month Target: $[PRICE], 36-Month Target: $[PRICE].**\n"
+        f"- Final Line: **Rating: [HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], 12-Month Target: $[PRICE], 36-Month Target: $[PRICE].**\n"
     ),
 
     
@@ -219,7 +234,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
 
 
 def buildSummariseSysPrompt(agentRole: str, agentSubrole: str) -> str:
-    role = f"{agentRole}_{agentSubrole}" if agentSubrole else agentRole
+    roleKey = roleKeyMap.get(agentRole, agentRole)
+    role = f"{roleKey}_{agentSubrole}" if agentSubrole else roleKey
 
     match role:
         case "macroAnalyst":
@@ -227,9 +243,19 @@ def buildSummariseSysPrompt(agentRole: str, agentSubrole: str) -> str:
                 "Include your final macro outlook and rating using these keys: "
                 "Market Regime: [HEAVILY/MODERATELY/MILDLY BULLISH/BEARISH/NEUTRAL]."
             )
-        case "bullishAnalyst_research" | "bearishAnalyst_research" | \
-             "bullishAnalyst_defense" | "bearishAnalyst_defense" | \
-             "aggressiveRiskAnalyst_proposal" | "conservativeRiskAnalyst_proposal":
+        case "bullishAnalyst_research" | "bullishAnalyst_defense":
+            agentSpecificPrompt = (
+                "Include your final rating, position weight, and price targets using these keys exactly: "
+                "Rating: [BUY/HOLD], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
+                "12-Month Target: $[PRICE], 36-Month Target: $[PRICE]."
+            )
+        case "bearishAnalyst_research" | "bearishAnalyst_defense":
+            agentSpecificPrompt = (
+                "Include your final rating, position weight, and price targets using these keys exactly: "
+                "Rating: [HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
+                "12-Month Target: $[PRICE], 36-Month Target: $[PRICE]."
+            )
+        case "aggressiveRiskAnalyst_proposal" | "conservativeRiskAnalyst_proposal":
             agentSpecificPrompt = (
                 "Include your final rating, position weight, and price targets using these keys exactly: "
                 "Rating: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "

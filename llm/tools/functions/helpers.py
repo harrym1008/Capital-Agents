@@ -228,6 +228,8 @@ def formatArticleAge(dateVal, timestamp: pd.Timestamp) -> str:
             return f"{age.components.minutes}m old"
         elif age < pd.Timedelta(days=1):
             return f"{age.components.hours}h {age.components.minutes}m old"
+        elif age < pd.Timedelta(days=7):
+            return f"{age.components.days}d {age.components.hours}h old"
         else:
             return f"{age.components.days}d old"
     except Exception:

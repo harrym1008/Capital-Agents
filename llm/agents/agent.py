@@ -6,18 +6,20 @@ from cli.ansi import ANSI
 
 from llm.agents.agent_prompts import buildAgentSpecificSysPrompt, buildSummariseSysPrompt
 from llm.llm_client import BaseLLMClient, ResponsePrintMode
+from llm.client_duo import ClientDuo
 from llm.tools.tool_registry import ToolRegistry, Tool
 
 from ui.ui_hooks import setCurrentAgent, setAgentPhase, emitEvent
 
 THINKING_BUDGET = 2048
-SUMMARISE_THINK_BUDGET = 180
+SUMMARISE_THINK_BUDGET = 128
 SUMMARISE_ENABLED = True
 
 
 class FinancialAgent:
     def __init__(self, agentRole: str, tools: List[Tool], ansiColor: str = ANSI.RESET, dateStr: str = None):
-        self.apiClient: BaseLLMClient = None
+        self.mainApiClient: BaseLLMClient = None
+        self.summaryApiClient: BaseLLMClient = None
 
         self.agentRole = agentRole
         self.tools: List[Tool] = tools 
@@ -27,8 +29,9 @@ class FinancialAgent:
         self.messageHistory = []
 
 
-    def setLLMClient(self, llmClient: BaseLLMClient):
-        self.apiClient = llmClient
+    def setClientDuo(self, clientDuo: ClientDuo):
+        self.mainApiClient = clientDuo.boardroomClient
+        self.summaryApiClient = clientDuo.summaryClient
 
 
     def getSpecificToolsStr(self) -> str:
@@ -76,7 +79,7 @@ class FinancialAgent:
 
         print(f"\n{self.color}{ANSI.BOLD}========== [{self.agentRole}] is analysing... =========={ANSI.RESET}", end="")
         
-        rawAnalysis = self.apiClient.runConversation(
+        rawAnalysis = self.mainApiClient.runConversation(
             historyToUse, 
             toolRegistry, 
             timestamp, 
@@ -100,7 +103,7 @@ class FinancialAgent:
             {"role": "user", "content": f"Reformat the following raw analysis according to the instructions:\n\n{rawAnalysis}"}
         ]
 
-        uiSummary = self.apiClient.runConversation(
+        uiSummary = self.summaryApiClient.runConversation(
             tempHistory, 
             toolRegistry=None, 
             timestamp=pd.Timestamp.now(tz="UTC"), 
@@ -126,8 +129,15 @@ class FinancialAgent:
         setAgentPhase("raw")
         emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.color, "phase": "raw"})
         
+        dateStr = self.simulatedDateStr if self.simulatedDateStr else timestamp.strftime("%Y-%m-%d")
+        sysPrompt = buildAgentSpecificSysPrompt(
+            dateStr=dateStr,
+            agentRole=self.agentRole,
+            agentToolsStr=self.getSpecificToolsStr(),
+            subrole=subrole
+        )
         rawAnalysis = self.executeInternalAnalysis(
-            incomingMessage, toolRegistry, timestamp, buildAgentSpecificSysPrompt(self.agentRole, self.getSpecificToolsStr(), subrole), requireInitialTools
+            incomingMessage, toolRegistry, timestamp, sysPrompt, requireInitialTools
         )        
         
         emitEvent("agentRunEnd", {"agentRole": self.agentRole, "phase": "raw"})

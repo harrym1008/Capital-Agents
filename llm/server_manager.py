@@ -4,11 +4,13 @@ import time
 import socket
 import urllib.request
 from enum import Enum
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Any
 
 from llm.llamacpp.llamacpp_args import LlamaCppModel, LLAMACPP_PORT, LLAMACPP_SUMMARY_PORT
 from llm.llamacpp.llamacpp_init import LlamaCppProcessInitiator
 from llm.summarise.local_summary import LlamaCppSummaryClient
+
+from llm.agents.agent import THINKING_BUDGET
 
 from llm.llamacpp.llamacpp_client import LlamaCppClient
 from llm.cloud.openrouter_client import OpenRouterClient
@@ -28,7 +30,6 @@ def isPortReachable(host: str, port: int, timeout: float = 0.5) -> bool:
 
 
 def parsePrometheusMetrics(text: str) -> dict:
-    """Parse Prometheus plain text metrics into a dict of gauge/counter floats."""
     metrics = {}
     if not text:
         return metrics
@@ -53,7 +54,6 @@ def parsePrometheusMetrics(text: str) -> dict:
 
 
 def extractTokSpeeds(text: str) -> Tuple[float, float]:
-    """Extract (prefillSpeed, genSpeed) floats from Prometheus metrics text."""
     metrics = parsePrometheusMetrics(text)
 
     prefillSpeed = metrics.get('llamacpp:prompt_tokens_seconds') or metrics.get('llamacpp_prompt_tokens_seconds') or metrics.get('llamacpp:prompt_tokens_per_second') or metrics.get('llamacpp_prompt_tokens_per_second')
@@ -305,7 +305,7 @@ class ServerManager:
         if self.summaryServerRunning:
             return
         try:
-            client = LlamaCppSummaryClient()
+            client = LlamaCppSummaryClient(thinkingBudget=THINKING_BUDGET)
             ready = False
             for _ in range(120):
                 if isPortReachable("127.0.0.1", LLAMACPP_SUMMARY_PORT):

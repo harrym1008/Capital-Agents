@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional
 from openai import OpenAI, APIStatusError, APIConnectionError
 from enum import Enum
 import math
@@ -67,7 +68,9 @@ class LlamaCppSummaryClient(BaseLLMClient):
     def _createOpenaiClient(self):
         return OpenAI(base_url=self.processInitiator.apiUrl, api_key="xyz")  # API key is unused
     
-    def _getExtraBody(self):
+    def _getExtraBody(self, thinkingBudget: Optional[int] = None):
+        if self.thinkingBudget is None:
+            return {"reasoning": {"enabled": False}}
         return {
             "thinking_budget_tokens": self.thinkingBudget,
             "reasoning_budget": self.thinkingBudget
