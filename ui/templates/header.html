@@ -7,21 +7,55 @@
                 <span id="wsStatusCell" style="min-width: 95px; text-align: left; color: #ef4444;">Disconnected</span>
             </div>
             <div style="display: flex; gap: 12px; justify-content: space-between; width: 100%;">
-                <span style="color: #cbd5e1; font-weight: 600; flex: 1; text-align: right;">Server:</span>
+                <span id="serverStatusLabel" style="color: #cbd5e1; font-weight: 600; flex: 1; text-align: right;">Server:</span>
                 <span id="serverStatusCell" style="min-width: 95px; text-align: left; color: #ef4444;">Disconnected</span>
             </div>
         </div>
-        {% if show_token_metrics %}
-        <div id="tokenMetricsReadout" style="display: flex; flex-direction: column; align-items: flex-end; font-size: 13px; line-height: 1.25; font-weight: 700; color: #ffffff; font-family: system-ui, -apple-system, sans-serif;">
+
+        <div id="tokenMetricsReadout" style="display: none; flex-direction: column; align-items: flex-end; font-size: 13px; line-height: 1.25; font-weight: 700; color: #ffffff; font-family: system-ui, -apple-system, sans-serif;">
             <div id="prefillMetricRow" style="display: flex; gap: 12px; justify-content: space-between;">
                 <span style="color: #cbd5e1; font-weight: 600;">Prefill:</span>
                 <span id="prefillSpeedVal" style="min-width: 80px; text-align: right;">0.0 tok/s</span>
             </div>
-            <div style="display: flex; gap: 12px; justify-content: space-between;">
+            <div id="genMetricRow" style="display: flex; gap: 12px; justify-content: space-between;">
                 <span style="color: #cbd5e1; font-weight: 600;">Generation:</span>
                 <span id="genSpeedVal" style="min-width: 80px; text-align: right;">0.0 tok/s</span>
             </div>
         </div>
-        {% endif %}
+
+        <div id="costMetricsReadout" style="display: none; grid-template-columns: auto auto auto auto auto; gap: 4px 12px; align-items: center; font-size: 13px; line-height: 1.25; font-weight: 700; color: #ffffff; font-family: system-ui, -apple-system, sans-serif; user-select: none;">
+            <!-- Task Row -->
+            <span style="color: #cbd5e1; font-weight: 600; text-align: right;">Task:</span>
+            <span style="display: flex; align-items: center; gap: 4px; color: #e2e8f0;" title="Input Tokens">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                <span id="taskInputToksVal">0</span>
+            </span>
+            <span style="display: flex; align-items: center; gap: 4px; color: #e2e8f0;" title="Output Tokens">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+                <span id="taskOutputToksVal">0</span>
+            </span>
+            <span style="display: flex; align-items: center; gap: 4px; color: #e2e8f0;" title="Cache Hit Rate">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                <span id="taskCacheHitVal">0.0%</span>
+            </span>
+            <span id="taskCostVal" style="text-align: right; min-width: 60px;" title="Task Cost">$0.0000</span>
+
+            <!-- Session Row -->
+            <span style="color: #cbd5e1; font-weight: 600; text-align: right;">Session:</span>
+            <span style="display: flex; align-items: center; gap: 4px; color: #e2e8f0;" title="Input Tokens">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                <span id="sessionInputToksVal">0</span>
+            </span>
+            <span style="display: flex; align-items: center; gap: 4px; color: #e2e8f0;" title="Output Tokens">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+                <span id="sessionOutputToksVal">0</span>
+            </span>
+            <span style="display: flex; align-items: center; gap: 4px; color: #e2e8f0;" title="Cache Hit Rate">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                <span id="sessionCacheHitVal">0.0%</span>
+            </span>
+            <span id="sessionCostVal" style="text-align: right; min-width: 60px;" title="Session Cost">$0.0000</span>
+        </div>
+
     </div>
 </header>

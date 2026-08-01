@@ -1,14 +1,14 @@
 from openai import OpenAI
-from typing import Optional
+from typing import Optional, Any
 
 from llm.llm_client import BaseLLMClient
 from llm.llamacpp.llamacpp_init import LlamaCppProcessInitiator
 
 
 class LlamaCppClient(BaseLLMClient):
-    def __init__(self, processInitiator: LlamaCppProcessInitiator, allowParallel=True):
+    def __init__(self, processInitiator: LlamaCppProcessInitiator, allowParallel=True, costTracker: Optional[Any] = None):
         self.processInitiator = processInitiator
-        super().__init__(defaultModel="model", allowParallel=allowParallel)
+        super().__init__(defaultModel="model", allowParallel=allowParallel, costTracker=costTracker)
 
     def _createOpenaiClient(self) -> OpenAI:
         return OpenAI(base_url=self.processInitiator.apiUrl, api_key="xyz")  # API key is unused

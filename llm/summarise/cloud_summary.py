@@ -37,6 +37,9 @@ class OpenRouterSummaryClient(BaseLLMClient):
             }
         )
 
+    def _getStreamOptions(self):
+        return {"include_usage": True}
+
     def _getExtraBody(self, thinkingBudget: Optional[int] = None):
         return {
             "chat_template_kwargs": {
@@ -74,9 +77,11 @@ class OpenRouterSummaryClient(BaseLLMClient):
                 messages=messages,
                 temperature=0.25,
                 extra_body=self._getExtraBody(),
-                stream=True
+                stream=True,
+                stream_options=self._getStreamOptions()
             )
-            content, _, _ = self.handleResponseStream(stream, responsePrint=ResponsePrintMode.SILENT)
+            content, _, _, usage = self.handleResponseStream(stream, responsePrint=ResponsePrintMode.SILENT)
+            self.costTracker.recordUsage(usage)
             return content.strip()
 
         except Exception as e:

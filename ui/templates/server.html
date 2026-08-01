@@ -31,13 +31,46 @@
                     </div>
 
                     <div class="model-select-form-group" id="openrouterConfig">
-                        <label for="openrouterModelName">Selected Model Name:</label>
-                        <input
-                            id="openrouterModelName"
-                            type="text"
-                            placeholder="e.g. deepseek/deepseek-v4-flash"
-                        >
+                        <!-- Full-Width Model Selector -->
+                        <div style="margin-bottom: 10px;">
+                            <label for="openrouterModelName" style="margin-bottom: 6px; display: block;">Selected Model:</label>
+                            <div class="openrouter-autocomplete-wrapper">
+                                <div class="openrouter-input-box">
+                                    <input
+                                        id="openrouterModelName"
+                                        type="text"
+                                        placeholder="Search or enter OpenRouter model ID..."
+                                        autocomplete="off"
+                                    >
+                                </div>
+                                <div id="openrouterDropdown" class="openrouter-dropdown hidden"></div>
+                            </div>
+                        </div>
+
+                        <!-- Provider Router & Pricing Info Row (only shown when a model is selected) -->
+                        <div class="hidden" id="openrouterRouterGroup" style="display: flex; gap: 20px; align-items: flex-start; margin-top: 10px;">
+                            <!-- Left Half (50%): Provider Router Dropdown -->
+                            <div style="flex: 1.8; min-width: 0;">
+                                <label style="margin-bottom: 6px; display: block;">Selected Provider:</label>
+                                <div class="openrouter-router-wrapper">
+                                    <div id="openrouterRouterTrigger" class="openrouter-router-trigger">
+                                        <span id="openrouterRouterSelectedText">Automatic</span>
+                                        <span style="font-size: 10px; color: #64748b;">▼</span>
+                                    </div>
+                                    <div id="openrouterRouterDropdown" class="openrouter-router-dropdown hidden"></div>
+                                </div>
+                                <input type="hidden" id="openrouterProviderRouter" value="auto">
+                            </div>
+
+                            <!-- Right Half (50%): Simple Pricing Grid -->
+                            <div id="openrouterPricingInfo" class="openrouter-simple-info hidden" style="flex: 1; min-width: 0; padding: 12px 0px 0px 12px;"></div>
+                        </div>
                     </div>
+
+
+
+
+
 
                     <div class="model-select-form-group hidden" id="llamacppConfig">
                         <label for="llamaModel">Selected Model:</label>
@@ -113,11 +146,44 @@
             }
         }
 
-        function updateServerStatus(isConnected) {
+        let activeProviderName = "";
+
+        function updateServerStatus(isConnected, provider = "") {
+            if (provider) activeProviderName = provider;
             const cell = document.getElementById("serverStatusCell");
+            const label = document.getElementById("serverStatusLabel");
+            const tokEl = document.getElementById("tokenMetricsReadout");
+            const costEl = document.getElementById("costMetricsReadout");
+
             if (cell) {
                 cell.textContent = isConnected ? "Connected" : "Disconnected";
                 cell.style.color = isConnected ? "#22c55e" : "#ef4444";
+            }
+            const p = (provider || activeProviderName).toLowerCase();
+            if (label) {
+                if (p === "openrouter") {
+                    label.textContent = "OpenRouter:";
+                } else if (p === "llamacpp") {
+                    label.textContent = "Llama.cpp:";
+                } else {
+                    label.textContent = "Server:";
+                }
+            }
+
+            if (isConnected) {
+                if (p === "llamacpp") {
+                    if (tokEl) tokEl.style.display = "flex";
+                    if (costEl) costEl.style.display = "none";
+                } else if (p === "openrouter") {
+                    if (tokEl) tokEl.style.display = "none";
+                    if (costEl) costEl.style.display = "grid";
+                } else {
+                    if (tokEl) tokEl.style.display = "none";
+                    if (costEl) costEl.style.display = "none";
+                }
+            } else {
+                if (tokEl) tokEl.style.display = "none";
+                if (costEl) costEl.style.display = "none";
             }
         }
 
@@ -243,6 +309,373 @@
             }
         }
 
+        let openRouterModelsList = [];
+        let activeDropdownIndex = -1;
+
+        async function fetchOpenRouterModels() {
+            try {
+                let res = await fetch('/api/openrouter-models');
+                if (!res.ok) {
+                    res = await fetch('https://openrouter.ai/api/v1/models');
+                }
+                if (res.ok) {
+                    const data = await res.json();
+                    openRouterModelsList = data.models || data.data || [];
+                    updatePricingBadge();
+                }
+            } catch (e) {
+                console.warn("Could not fetch OpenRouter models:", e);
+            }
+        }
+
+        function calculatePricingPer1M(pricing) {
+            if (!pricing) return { input: 0, output: 0, cacheHit: null };
+            const promptPrice = parseFloat(pricing.prompt || 0);
+            const completionPrice = parseFloat(pricing.completion || 0);
+
+            let cacheHitPrice = null;
+            if (pricing.input_cache_read !== undefined && pricing.input_cache_read !== null) {
+                cacheHitPrice = parseFloat(pricing.input_cache_read) * 1000000;
+            }
+
+            return {
+                input: promptPrice * 1000000,
+                output: completionPrice * 1000000,
+                cacheHit: cacheHitPrice
+            };
+        }
+
+        let openRouterEndpointsList = [];
+        let currentFetchedRouterModel = "";
+        let selectedOpenRouterRouter = "auto";
+
+        function calculatePricingPer1M(pricing) {
+            if (!pricing) return { input: 0, output: 0, cacheHit: null };
+            const promptPrice = parseFloat(pricing.prompt || 0);
+            const completionPrice = parseFloat(pricing.completion || 0);
+
+            let cacheHitPrice = null;
+            if (pricing.input_cache_read !== undefined && pricing.input_cache_read !== null) {
+                cacheHitPrice = parseFloat(pricing.input_cache_read) * 1000000;
+            }
+
+            return {
+                input: promptPrice * 1000000,
+                output: completionPrice * 1000000,
+                cacheHit: cacheHitPrice
+            };
+        }
+
+        function formatThroughputStr(throughputVal) {
+            if (throughputVal === undefined || throughputVal === null || isNaN(throughputVal)) {
+                return "N/A";
+            }
+            return `${parseFloat(throughputVal).toFixed(1)} tok/s`;
+        }
+
+        function getContextWarningHtml(contextLength) {
+            if (contextLength && contextLength < 50000) {
+                return `
+                    <div style="width: 100%; margin-top: 6px; padding: 7px 12px; background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; color: #dc2626; font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                        <span>⚠️</span>
+                        <span>Warning: This model has a limited context window, which may lead to processing failures or unexpected crashes.</span>
+                    </div>
+                `;
+            }
+            return "";
+        }
+
+        async function updateOpenRouterRouterGroup(modelId) {
+            const routerGroup = document.getElementById("openrouterRouterGroup");
+            const hiddenRouterInput = document.getElementById("openrouterProviderRouter");
+            const routerDropdown = document.getElementById("openrouterRouterDropdown");
+            const routerTriggerText = document.getElementById("openrouterRouterSelectedText");
+            if (!routerGroup || !hiddenRouterInput || !routerDropdown) return;
+
+            const matchedModel = openRouterModelsList.find(m => m.id === modelId);
+
+            if (!modelId || !matchedModel) {
+                routerGroup.classList.add("hidden");
+                hiddenRouterInput.value = "auto";
+                selectedOpenRouterRouter = "auto";
+                if (routerTriggerText) routerTriggerText.textContent = "Automatic";
+                currentFetchedRouterModel = "";
+                openRouterEndpointsList = [];
+                return;
+            }
+
+            // Show router group when valid catalog model is selected
+            routerGroup.classList.remove("hidden");
+
+            if (currentFetchedRouterModel === modelId) return;
+            currentFetchedRouterModel = modelId;
+
+            routerDropdown.innerHTML = '<div class="openrouter-dropdown-no-results">Loading provider routers...</div>';
+
+            try {
+                let endpoints = [];
+                let res = await fetch(`/api/openrouter-endpoints?model=${encodeURIComponent(modelId)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    endpoints = data.endpoints || [];
+                }
+
+                openRouterEndpointsList = endpoints;
+                routerDropdown.innerHTML = "";
+
+                // Option 1: Automatic
+                const autoPrices = calculatePricingPer1M(matchedModel.pricing);
+                const autoDiv = document.createElement("div");
+                autoDiv.className = "openrouter-dropdown-item" + (selectedOpenRouterRouter === "auto" ? " active" : "");
+                autoDiv.innerHTML = `
+                    <span class="model-id-text">Automatic</span>
+                    <span class="model-price-tag">$${autoPrices.input.toFixed(2)} / $${autoPrices.output.toFixed(2)}</span>
+                `;
+                autoDiv.addEventListener("click", () => {
+                    selectOpenRouterRouter("auto", "Automatic");
+                });
+                routerDropdown.appendChild(autoDiv);
+
+                // Option 2..N: Unique Endpoints
+                if (endpoints.length > 0) {
+                    const seen = new Set();
+                    endpoints.forEach(ep => {
+                        const pName = ep.provider_name;
+                        if (pName && !seen.has(pName)) {
+                            seen.add(pName);
+                            const epTag = ep.tag || pName;
+                            const prices = calculatePricingPer1M(ep.pricing);
+
+                            const epDiv = document.createElement("div");
+                            epDiv.className = "openrouter-dropdown-item" + (selectedOpenRouterRouter === pName ? " active" : "");
+                            epDiv.innerHTML = `
+                                <span class="model-id-text">${epTag}</span>
+                                <span class="model-price-tag">$${prices.input.toFixed(2)} / $${prices.output.toFixed(2)}</span>
+                            `;
+                            epDiv.addEventListener("click", () => {
+                                selectOpenRouterRouter(pName, epTag);
+                            });
+                            routerDropdown.appendChild(epDiv);
+                        }
+                    });
+                }
+            } catch (e) {
+                console.warn("Error fetching provider endpoints for model:", modelId, e);
+                openRouterEndpointsList = [];
+            }
+        }
+
+        function selectOpenRouterRouter(routerVal, routerLabel) {
+            const hiddenRouterInput = document.getElementById("openrouterProviderRouter");
+            const routerTriggerText = document.getElementById("openrouterRouterSelectedText");
+            const routerDropdown = document.getElementById("openrouterRouterDropdown");
+
+            selectedOpenRouterRouter = routerVal;
+            if (hiddenRouterInput) hiddenRouterInput.value = routerVal;
+            if (routerTriggerText) routerTriggerText.textContent = routerLabel;
+            if (routerDropdown) routerDropdown.classList.add("hidden");
+
+            updatePricingBadge();
+        }
+
+        function formatPriceStr(val) {
+            if (val === null || val === undefined) return "N/A";
+            if (val === 0) return "$0";
+            let s = val.toFixed(4);
+            if (s.includes(".")) {
+                s = s.replace(/(\.\d{2}[1-9]*)0+$/, "$1");
+                s = s.replace(/\.0000$/, ".00");
+            }
+            return "$" + s;
+        }
+
+        function updatePricingBadge() {
+            const input = document.getElementById("openrouterModelName");
+            const badge = document.getElementById("openrouterPricingInfo");
+            const hiddenRouterInput = document.getElementById("openrouterProviderRouter");
+            if (!input || !badge) return;
+
+            const val = input.value.trim();
+            if (!val) {
+                badge.classList.add("hidden");
+                updateOpenRouterRouterGroup("");
+                return;
+            }
+
+            const matchedModel = openRouterModelsList.find(m => m.id === val);
+            badge.classList.remove("hidden");
+
+            if (!matchedModel) {
+                updateOpenRouterRouterGroup("");
+                badge.innerHTML = `
+                    <div style="font-weight:600; color:#dc2626; margin-bottom: 2px;">❌ Model Not Found</div>
+                    <div style="font-size:12px; color:#64748b;">Model '${val}' does not exist on OpenRouter catalog.</div>
+                `;
+                return;
+            }
+
+            updateOpenRouterRouterGroup(val);
+
+            const selectedRouter = hiddenRouterInput ? hiddenRouterInput.value : "auto";
+
+            // Check if specific endpoint router is selected
+            let matchedEndpoint = null;
+            if (selectedRouter && selectedRouter !== "auto" && openRouterEndpointsList.length > 0) {
+                matchedEndpoint = openRouterEndpointsList.find(ep => ep.provider_name === selectedRouter);
+            }
+
+            const targetObj = matchedEndpoint || matchedModel;
+            const prices = calculatePricingPer1M(targetObj.pricing);
+            const contextLength = targetObj.context_length || matchedModel.context_length;
+
+            const inputStr = formatPriceStr(prices.input);
+            const outputStr = formatPriceStr(prices.output);
+            const cacheStr = formatPriceStr(prices.cacheHit);
+
+            badge.innerHTML = `
+                <div style="display: grid; grid-template-columns: auto 1fr; gap: 0px 6px; font-size: 13px; align-items: center;">
+                    <span style="font-weight: 400; color: #64748b;">Input/1M:</span>
+                    <span style="font-weight: 600; color: #0f172a;">${inputStr}</span>
+
+                    <span style="font-weight: 400; color: #64748b;">Output/1M:</span>
+                    <span style="font-weight: 600; color: #0f172a;">${outputStr}</span>
+
+                    <span style="font-weight: 400; color: #64748b;">Cache/1M:</span>
+                    <span style="font-weight: 600; color: #0f172a;">${cacheStr}</span>
+                </div>
+                ${getContextWarningHtml(contextLength)}
+            `;
+        }
+
+
+
+        function renderOpenRouterDropdown() {
+            const input = document.getElementById("openrouterModelName");
+            const dropdown = document.getElementById("openrouterDropdown");
+            if (!input || !dropdown) return;
+
+            const query = input.value.trim().toLowerCase();
+
+            if (openRouterModelsList.length === 0) {
+                dropdown.classList.add("hidden");
+                return;
+            }
+
+            let filtered = [];
+            if (!query) {
+                filtered = openRouterModelsList.slice(0, 30);
+            } else {
+                filtered = openRouterModelsList.filter(m => 
+                    m.id.toLowerCase().includes(query) || (m.name && m.name.toLowerCase().includes(query))
+                ).slice(0, 30);
+            }
+
+            dropdown.innerHTML = "";
+            activeDropdownIndex = -1;
+
+            if (filtered.length === 0 && query) {
+                const noResultDiv = document.createElement("div");
+                noResultDiv.className = "openrouter-dropdown-no-results";
+                noResultDiv.textContent = `No OpenRouter models found matching "${input.value.trim()}"`;
+                dropdown.appendChild(noResultDiv);
+            } else {
+                filtered.forEach((model, index) => {
+                    const div = document.createElement("div");
+                    div.className = "openrouter-dropdown-item";
+                    div.dataset.index = index;
+                    div.dataset.modelId = model.id;
+
+                    const prices = calculatePricingPer1M(model.pricing);
+                    div.innerHTML = `
+                        <span class="model-id-text">${model.id}</span>
+                        <span class="model-price-tag">$${prices.input.toFixed(2)} / $${prices.output.toFixed(2)}</span>
+                    `;
+
+                    div.addEventListener("click", () => {
+                        selectOpenRouterModel(model.id);
+                    });
+
+                    dropdown.appendChild(div);
+                });
+            }
+
+            dropdown.classList.remove("hidden");
+        }
+
+        function selectOpenRouterModel(modelId) {
+            const input = document.getElementById("openrouterModelName");
+            const dropdown = document.getElementById("openrouterDropdown");
+            if (input) {
+                input.value = modelId;
+            }
+            if (dropdown) {
+                dropdown.classList.add("hidden");
+            }
+            updatePricingBadge();
+        }
+
+        function initOpenRouterAutocomplete() {
+            const input = document.getElementById("openrouterModelName");
+            const dropdown = document.getElementById("openrouterDropdown");
+
+            const routerTrigger = document.getElementById("openrouterRouterTrigger");
+            const routerDropdown = document.getElementById("openrouterRouterDropdown");
+
+            if (!input) return;
+
+            input.addEventListener("focus", () => {
+                renderOpenRouterDropdown();
+            });
+
+            input.addEventListener("input", () => {
+                renderOpenRouterDropdown();
+                updatePricingBadge();
+            });
+
+            input.addEventListener("keydown", (e) => {
+                if (!dropdown || dropdown.classList.contains("hidden")) return;
+                const items = dropdown.querySelectorAll(".openrouter-dropdown-item");
+                if (items.length === 0) return;
+
+                if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    activeDropdownIndex = (activeDropdownIndex + 1) % items.length;
+                    highlightDropdownItem(items);
+                } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    activeDropdownIndex = (activeDropdownIndex - 1 + items.length) % items.length;
+                    highlightDropdownItem(items);
+                } else if (e.key === "Enter") {
+                    if (activeDropdownIndex >= 0 && activeDropdownIndex < items.length) {
+                        e.preventDefault();
+                        items[activeDropdownIndex].click();
+                    }
+                } else if (e.key === "Escape") {
+                    dropdown.classList.add("hidden");
+                }
+            });
+
+            if (routerTrigger && routerDropdown) {
+                routerTrigger.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    routerDropdown.classList.toggle("hidden");
+                });
+            }
+
+
+            document.addEventListener("click", (e) => {
+                if (!e.target.closest(".openrouter-autocomplete-wrapper")) {
+                    if (dropdown) dropdown.classList.add("hidden");
+                }
+                if (!e.target.closest(".openrouter-router-wrapper")) {
+                    if (routerDropdown) routerDropdown.classList.add("hidden");
+                }
+            });
+        }
+
+
+
+
         function showError(msg) {
             isServerLoading = false;
             setStatusState("error", "Loading Failed");
@@ -277,7 +710,11 @@
                 if (res.ok) {
                     const data = await res.json();
                     const isRunning = data.running || data.llamacppRunning || data.summaryServerRunning || data.openrouterRunning;
-                    updateServerStatus(isRunning);
+                    const provider = data.provider || (data.openrouterRunning ? "openrouter" : (data.llamacppRunning ? "llamacpp" : ""));
+                    updateServerStatus(isRunning, provider);
+                    if (data.costData) {
+                        updateCostUI(data.costData);
+                    }
 
                     if (isRunning) {
                         // Present server status panel directly
@@ -316,12 +753,18 @@
             const allowParallel = (provider === "openrouter") ? true : document.getElementById("parallelCheckbox").checked;
 
             let modelName = "";
+            let providerRouter = "auto";
 
             if (provider === "openrouter") {
                 modelName = document.getElementById("openrouterModelName").value.trim();
-                if (!modelName) {
-                    alert("Please enter a model name.");
+                const matchedModel = openRouterModelsList.find(m => m.id === modelName);
+                if (!modelName || !matchedModel) {
+                    alert("Invalid model: '" + modelName + "' does not exist on OpenRouter. All models must exist in OpenRouter catalog.");
                     return;
+                }
+                const hiddenInput = document.getElementById("openrouterProviderRouter");
+                if (hiddenInput) {
+                    providerRouter = hiddenInput.value;
                 }
             } else {
                 modelName = document.getElementById("llamaModel").value;
@@ -331,9 +774,13 @@
                 }
             }
 
+
             // Populate status panel details
+            const displayModelStr = (provider === "openrouter" && providerRouter && providerRouter !== "auto")
+                ? `${modelName} [Router: ${providerRouter}]`
+                : modelName;
             document.getElementById("displayProvider").textContent = provider === "openrouter" ? "OpenRouter" : "Llama.cpp";
-            document.getElementById("displayModel").textContent = modelName;
+            document.getElementById("displayModel").textContent = displayModelStr;
             document.getElementById("displayParallel").textContent = allowParallel ? "Enabled" : "Disabled";
             document.getElementById("displaySummary").textContent = wantSummaryServer ? "Enabled" : "Disabled";
 
@@ -357,10 +804,12 @@
                     body: JSON.stringify({
                         provider: provider,
                         model: modelName,
+                        providerRouter: providerRouter,
                         allowParallel: allowParallel,
                         wantSummaryServer: wantSummaryServer
                     })
                 });
+
                 const data = await res.json();
 
                 if (!data.ok) {
@@ -407,11 +856,75 @@
         // Listen for provider change
         document.getElementById("provider").addEventListener("change", updateProviderUI);
 
+        function formatTokenCount(val) {
+            if (val === undefined || val === null || isNaN(val) || val <= 0) return "0";
+            const num = Math.abs(parseFloat(val));
+            if (num >= 1e9) return Number((num / 1e9).toPrecision(3)) + "b";
+            if (num >= 1e6) return Number((num / 1e6).toPrecision(3)) + "m";
+            if (num >= 1e3) return Number((num / 1e3).toPrecision(3)) + "k";
+            return Number(num.toPrecision(3)).toString();
+        }
+
+        function formatCacheHitRate(val) {
+            if (val === undefined || val === null || isNaN(val)) return "0.0%";
+            return parseFloat(val).toFixed(1) + "%";
+        }
+
+        function formatCost(val) {
+            if (val === undefined || val === null || isNaN(val)) return "$0.0000";
+            const num = parseFloat(val);
+            if (num < 10) return "$" + num.toFixed(4);
+            return "$" + num.toFixed(2);
+        }
+
+        function updateCostUI(payload) {
+            if (!payload) return;
+            if (payload.task) {
+                if (payload.task.input !== undefined) {
+                    const el = document.getElementById("taskInputToksVal");
+                    if (el) el.innerText = formatTokenCount(payload.task.input);
+                }
+                if (payload.task.output !== undefined) {
+                    const el = document.getElementById("taskOutputToksVal");
+                    if (el) el.innerText = formatTokenCount(payload.task.output);
+                }
+                if (payload.task.cacheHitRate !== undefined) {
+                    const el = document.getElementById("taskCacheHitVal");
+                    if (el) el.innerText = formatCacheHitRate(payload.task.cacheHitRate);
+                }
+                if (payload.task.cost !== undefined) {
+                    const el = document.getElementById("taskCostVal");
+                    if (el) el.innerText = formatCost(payload.task.cost);
+                }
+            }
+            if (payload.session) {
+                if (payload.session.input !== undefined) {
+                    const el = document.getElementById("sessionInputToksVal");
+                    if (el) el.innerText = formatTokenCount(payload.session.input);
+                }
+                if (payload.session.output !== undefined) {
+                    const el = document.getElementById("sessionOutputToksVal");
+                    if (el) el.innerText = formatTokenCount(payload.session.output);
+                }
+                if (payload.session.cacheHitRate !== undefined) {
+                    const el = document.getElementById("sessionCacheHitVal");
+                    if (el) el.innerText = formatCacheHitRate(payload.session.cacheHitRate);
+                }
+                if (payload.session.cost !== undefined) {
+                    const el = document.getElementById("sessionCostVal");
+                    if (el) el.innerText = formatCost(payload.session.cost);
+                }
+            }
+        }
+
         // Initialize on page load
         connectWebsocket();
         fetchLlamaCppModels();
+        fetchOpenRouterModels();
+        initOpenRouterAutocomplete();
         updateProviderUI();
         checkExistingServerStatus();
+
 
     </script>
 

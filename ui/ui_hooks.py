@@ -48,7 +48,14 @@ def getCurrentStage():
 
 def emitEvent(eventType, data=None):
     global eventCallback
-    if eventType not in ["simStopped", "error"] and isStopRequested():
+    # Allow cleanup/finalisation events to fire even when stop is requested,
+    # so that the UI can properly close streaming states and display the stop message.
+    stopSafeEvents = {
+        "simStopped", "simComplete", "error",
+        "toolCallEnd", "agentRunEnd",
+        "contentEnd", "reasoningEnd"
+    }
+    if eventType not in stopSafeEvents and isStopRequested():
         raise SimulationStoppedException("Simulation stopped by user.")
     if eventCallback:
         agentInfo = getCurrentAgent()

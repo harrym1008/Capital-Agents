@@ -99,6 +99,8 @@ def runBoardroom(ticker: str, simulatedDate: str = None, fastMode: bool = True, 
         import traceback
         traceback.print_exc()
         emitEvent("error", {"message": f"{e.__class__.__name__}: {str(e)}"})
+    finally:
+        resetStop()
 
 
 async def websocketHandler(websocket):
@@ -126,7 +128,6 @@ async def websocketHandler(websocket):
                 simThread.start()
             elif action == "stop":
                 requestStop()
-                emitEvent("simStopped", {"message": "Simulation stopped by user."})
     except websockets.exceptions.ConnectionClosed:
         print("Client disconnected from Boardroom WebSocket")
     finally:

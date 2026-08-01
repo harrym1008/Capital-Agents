@@ -98,6 +98,11 @@ FRED_MACRO_SERIES = {
         "unit": "Billions of Dollars",
         "id": "GDP"
     },
+    "TREAS_30Y": {
+        "desc": "US 30-Year Treasury Yield",
+        "unit": "Percent",
+        "id": "DGS30"
+    },
     "TREAS_10Y": {
         "desc": "US 10-Year Treasury Yield",
         "unit": "Percent",
@@ -112,7 +117,7 @@ FRED_MACRO_SERIES = {
         "desc": "US 3-Month Treasury Yield",
         "unit": "Percent",
         "id": "DGS3MO"
-    }
+    },
 }
 
 

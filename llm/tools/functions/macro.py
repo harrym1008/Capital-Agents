@@ -47,6 +47,12 @@ FRED_SERIES_MAP = {
         "unit": "Billions of Dollars",
         "numType": NumberType.LARGE_DOLLARS
     },
+    "TREAS_30Y": {
+        "id": "DGS30",
+        "desc": "30-Year Treasury Yield",
+        "unit": "Percent",
+        "numType": NumberType.PERCENTAGE
+    },
     "TREAS_10Y": {
         "id": "DGS10",
         "desc": "10-Year Treasury Yield",
@@ -64,7 +70,7 @@ FRED_SERIES_MAP = {
         "desc": "3-Month Treasury Yield",
         "unit": "Percent",
         "numType": NumberType.PERCENTAGE
-    }
+    },
 }
 
 

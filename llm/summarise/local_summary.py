@@ -105,7 +105,8 @@ class LlamaCppSummaryClient(BaseLLMClient):
                 extra_body=self._getExtraBody(),
                 stream=True
             )
-            content, _, _ = self.handleResponseStream(stream, responsePrint=ResponsePrintMode.SILENT)
+            content, _, _, usage = self.handleResponseStream(stream, responsePrint=ResponsePrintMode.SILENT)
+            self.costTracker.recordUsage(usage)
             return content.strip()
         
 

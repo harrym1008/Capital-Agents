@@ -10,7 +10,8 @@ from openai import OpenAI
 import pandas as pd
 
 from cli.ansi import ANSI
-from llm.tools.tool_registry import Tool, ToolRegistry
+from llm.tools.tool_registry import ToolRegistry
+from llm.token_cost_tracker import TokenCostTracker
 
 from ui.ui_hooks import (
     emitEvent, getCurrentAgent, setCurrentAgent,
@@ -33,13 +34,19 @@ class ResponsePrintMode(Enum):
 
 
 class BaseLLMClient(ABC):
-    def __init__(self, defaultModel: str, allowParallel: bool = False):
+    def __init__(self, defaultModel: str, allowParallel: bool = False, costTracker: Optional[TokenCostTracker] = None):
         self.defaultModel = defaultModel
         self.openaiClient: OpenAI = self._createOpenaiClient()
         self.toolCallLock = threading.Lock()
         
         self.allowParallel = allowParallel
         self.printLock = threading.Lock() if allowParallel else None
+
+        if costTracker is not None:
+            self.costTracker = costTracker
+        else:
+            from llm.server_manager import serverManager
+            self.costTracker = serverManager.costTracker
 
 
     @abstractmethod
@@ -48,9 +55,15 @@ class BaseLLMClient(ABC):
 
     def _getExtraBody(self, thinkingBudget: Optional[int] = None) -> Dict[str, Any]:
         return {}
-    
+
+    def _getStreamOptions(self) -> Optional[Dict[str, Any]]:
+        return None
+
     def _applyRateLimit(self):
         pass
+
+    def newTask(self):
+        return self.costTracker.newTask()
 
     def _safePrint(self, *args, **kwargs):
         if self.allowParallel:
@@ -71,10 +84,17 @@ class BaseLLMClient(ABC):
         
         isToolCallStreaming = False
         currentState = "idle"
+        lastUsage = None
 
         for chunk in responseStream:
             if isStopRequested():
                 raise SimulationStoppedException("Simulation stopped by user.")
+
+            # Final stream chunks carries usage statistics
+            usage = getattr(chunk, "usage", None)
+            if usage is not None:
+                lastUsage = usage
+
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta
@@ -166,10 +186,14 @@ class BaseLLMClient(ABC):
                             })
 
         # Close active streaming states at the end of the response stream
-        if currentState == "reasoning":
-            emitEvent("reasoningEnd")
-        elif currentState == "content":
-            emitEvent("contentEnd")
+        # Wrap in try/except so cleanup events don't crash during a stop
+        try:
+            if currentState == "reasoning":
+                emitEvent("reasoningEnd")
+            elif currentState == "content":
+                emitEvent("contentEnd")
+        except SimulationStoppedException:
+            pass
 
         if ((fullContent and responsePrint.printResponse()) or 
             (fullReasoning and responsePrint.printThinking())) and len(toolCallsList) == 0:
@@ -180,7 +204,7 @@ class BaseLLMClient(ABC):
         if len(toolCallsList) > 1:
             self._safePrint()
 
-        return fullContent, fullReasoning, toolCallsList
+        return fullContent, fullReasoning, toolCallsList, lastUsage
 
 
     def executeSingleToolCall(
@@ -251,6 +275,8 @@ class BaseLLMClient(ABC):
                             self._safePrint()
 
             
+            except SimulationStoppedException:
+                raise
             except Exception as e:
                 stringResult = json.dumps({"error": f"{e.__class__.__name__}: {e}"})
                 with self.toolCallLock:
@@ -299,11 +325,14 @@ class BaseLLMClient(ABC):
 
             if currentIteration == 1 and requireInitialTools and toolSchemas:
                 toolChoiceSetting = "required"
+                # Thinking mode on certain providers (e.g. OpenRouter / Alibaba / Qwen) does not support tool_choice="required"
+                if thinkingBudget is not None and thinkingBudget > 0:
+                    toolChoiceSetting = "auto"
             else:
                 toolChoiceSetting = "auto" if toolSchemas else None
 
             self._applyRateLimit()
-            responseStream = self.openaiClient.chat.completions.create(
+            responseKwargs = dict(
                 model=self.defaultModel,
                 messages=messageHistory,
                 temperature=0.5,
@@ -311,9 +340,26 @@ class BaseLLMClient(ABC):
                 tool_choice=toolChoiceSetting,
                 max_tokens=8192,
                 stream=True,
-                extra_body=self._getExtraBody(thinkingBudget) if thinkingBudget is not None else None
             )
-            content, reasoning, toolCallsList = self.handleResponseStream(responseStream, responsePrint)
+            streamOptions = self._getStreamOptions()
+            if streamOptions is not None:
+                responseKwargs["stream_options"] = streamOptions
+
+            extraBody = self._getExtraBody(thinkingBudget) if thinkingBudget is not None else None
+            if extraBody is not None:
+                responseKwargs["extra_body"] = extraBody
+
+            try:
+                responseStream = self.openaiClient.chat.completions.create(**responseKwargs)
+            except Exception as reqErr:
+                errStr = str(reqErr)
+                if "tool_choice" in errStr and responseKwargs.get("tool_choice") == "required":
+                    responseKwargs["tool_choice"] = "auto"
+                    responseStream = self.openaiClient.chat.completions.create(**responseKwargs)
+                else:
+                    raise reqErr
+            content, reasoning, toolCallsList, usage = self.handleResponseStream(responseStream, responsePrint)
+            self.costTracker.recordUsage(usage)
 
             if content and content.strip():
                 accumulatedContent += content + "\n"
@@ -348,10 +394,19 @@ class BaseLLMClient(ABC):
                                   for idx, call in enumerate(toolCallsList)}
                 for future in as_completed(futureToIndex):
                     idx = futureToIndex[future]
-                    toolCallId, stringResult, status = future.result()
+                    try:
+                        toolCallId, stringResult, status = future.result()
+                    except SimulationStoppedException:
+                        # Cancel remaining futures and propagate the stop
+                        for f in futureToIndex:
+                            f.cancel()
+                        raise
                     resultsByIndex[idx] = (toolCallId, stringResult, status)
 
-                for toolCallId, stringResult, status in resultsByIndex:
+                for entry in resultsByIndex:
+                    if entry is None:
+                        continue
+                    toolCallId, stringResult, status = entry
                     messageHistory.append({
                         "role": "tool",
                         "tool_call_id": toolCallId,
@@ -381,16 +436,25 @@ class BaseLLMClient(ABC):
         })
 
         self._applyRateLimit()
-        finalResponseStream = self.openaiClient.chat.completions.create(
+        finalResponseKwargs = dict(
             model=self.defaultModel,
             messages=messageHistory,
             tools=[],
             temperature=0.5,
             max_tokens=8192,
             stream=True,
-            extra_body=self._getExtraBody(thinkingBudget) if thinkingBudget is not None else None
         )
-        finalContent, _, _ = self.handleResponseStream(finalResponseStream, responsePrint)
+        finalStreamOptions = self._getStreamOptions()
+        if finalStreamOptions is not None:
+            finalResponseKwargs["stream_options"] = finalStreamOptions
+
+        finalExtraBody = self._getExtraBody(thinkingBudget) if thinkingBudget is not None else None
+        if finalExtraBody is not None:
+            finalResponseKwargs["extra_body"] = finalExtraBody
+            
+        finalResponseStream = self.openaiClient.chat.completions.create(**finalResponseKwargs)
+        finalContent, _, _, finalUsage = self.handleResponseStream(finalResponseStream, responsePrint)
+        self.costTracker.recordUsage(finalUsage)
         
         if finalContent and finalContent.strip():
             accumulatedContent += finalContent

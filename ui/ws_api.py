@@ -1,5 +1,7 @@
 import io
 import base64
+import json
+import time
 import urllib.request
 import urllib.error
 import numpy as np
@@ -330,6 +332,12 @@ def generateOhlcvChartImage(ticker, simDateTs, targets=None):
     imgB64 = base64.b64encode(buf.getvalue()).decode('utf-8')
     return f"data:image/png;base64,{imgB64}"
 
+
+
+openRouterModelsCache = None
+openRouterCacheTime = 0
+
+
 def registerApiRoutes(app):
     @app.route("/api/llamacpp-models")
     def getLlamaCppModels():
@@ -340,62 +348,50 @@ def registerApiRoutes(app):
         ]
         return jsonify({"models": models})
 
-    @app.route("/api/metrics")
-    def getBoardroomMetrics():
-        metricsUrl = f"http://127.0.0.1:{LLAMACPP_PORT}/metrics"
-        try:
-            req = urllib.request.Request(metricsUrl)
-            with urllib.request.urlopen(req, timeout=1.5) as resp:
-                content = resp.read().decode('utf-8')
-                return content, 200, {'Content-Type': 'text/plain; charset=utf-8'}
-        except Exception as e:
-            return f"# Error reaching llama-server metrics: {e}", 503, {'Content-Type': 'text/plain; charset=utf-8'}
+    @app.route("/api/openrouter-models")
+    def getOpenRouterModels():
+        global openRouterModelsCache, openRouterCacheTime
+        currentTime = time.time()
+        if openRouterModelsCache is not None and (currentTime - openRouterCacheTime) < 3600:
+            return jsonify({"models": openRouterModelsCache})
 
-    @app.route("/api/ohlcv")
-    def getOhlcvData():
-        tickerParam = request.args.get("ticker", "NVDA").strip().upper()
-        simDateParam = request.args.get("simDate", None)
-        
-        # Parse dynamic targets: comma-separated "months:price" pairs (e.g. "12:75,36:100")
-        targetsRaw = request.args.get("targets", "")
-        targets = []
-        if targetsRaw and targetsRaw != "--":
-            for pair in targetsRaw.split(","):
-                pair = pair.strip()
-                if not pair or ":" not in pair:
-                    continue
-                parts = pair.split(":")
-                try:
-                    monthsOffset = int(parts[0].strip())
-                    price = float(parts[1].replace("$", "").strip())
-                    targets.append((monthsOffset, price))
-                except (ValueError, IndexError):
-                    pass
-        
-        todayTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
-        
-        if not simDateParam:
-            simDateTs = todayTs
-        else:
-            try:
-                simDateTs = pd.Timestamp(simDateParam)
-                if simDateTs.tzinfo is None:
-                    simDateTs = simDateTs.tz_localize(NEW_YORK)
-                else:
-                    simDateTs = simDateTs.tz_convert(NEW_YORK)
-                simDateTs = simDateTs.normalize()
-            except Exception:
-                simDateTs = todayTs
-                
-        simDateStr = simDateTs.strftime("%Y-%m-%d")
-        
-        chartImgStr = generateOhlcvChartImage(tickerParam, simDateTs, targets=targets)
-        
-        return jsonify({
-            "ticker": tickerParam,
-            "simDate": simDateStr,
-            "chartImage": chartImgStr
-        })
+        try:
+            url = "https://openrouter.ai/api/v1/models"
+            req = urllib.request.Request(url, headers={"User-Agent": "CapitalAgents"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                modelsData = data.get("data", [])
+                openRouterModelsCache = modelsData
+                openRouterCacheTime = currentTime
+                return jsonify({"models": modelsData})
+        except Exception as e:
+            if openRouterModelsCache is not None:
+                return jsonify({"models": openRouterModelsCache})
+            return jsonify({"models": [], "error": str(e)}), 500
+
+    @app.route("/api/openrouter-endpoints")
+    def getOpenRouterEndpoints():
+        modelId = request.args.get("model", "").strip()
+        if not modelId:
+            return jsonify({"providers": [], "endpoints": []})
+
+        try:
+            url = f"https://openrouter.ai/api/v1/models/{modelId}/endpoints"
+            req = urllib.request.Request(url, headers={"User-Agent": "CapitalAgents"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                endpointsData = data.get("data", {}).get("endpoints", [])
+                providers = []
+                seen = set()
+                for ep in endpointsData:
+                    pName = ep.get("provider_name")
+                    if pName and pName not in seen:
+                        seen.add(pName)
+                        providers.append(pName)
+                return jsonify({"providers": providers, "endpoints": endpointsData})
+        except Exception as e:
+            return jsonify({"providers": [], "endpoints": [], "error": str(e)})
+
 
     @app.route("/api/server/start", methods=["POST"])
     @app.route("/api/llamacpp/start", methods=["POST"])
@@ -407,16 +403,19 @@ def registerApiRoutes(app):
             provider = "openrouter" if request.path.endswith("/openrouter/start") else "llamacpp"
 
         modelName = data.get("model", "GEMMA_4_12B").strip()
+        providerRouter = data.get("providerRouter") or data.get("router")
         allowParallel = data.get("allowParallel", True)
         wantSummaryServer = data.get("wantSummaryServer", False)
 
         success, message = serverManager.startServer(
             provider=provider,
             modelName=modelName,
+            providerRouter=providerRouter,
             allowParallel=allowParallel,
             wantSummaryServer=wantSummaryServer
         )
         return jsonify({"ok": success, "message": message})
+
 
     @app.route("/api/server/stop", methods=["POST"])
     @app.route("/api/llamacpp/stop", methods=["POST"])

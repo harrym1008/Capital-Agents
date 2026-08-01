@@ -16,6 +16,7 @@ from llm.llamacpp.llamacpp_client import LlamaCppClient
 from llm.cloud.openrouter_client import OpenRouterClient
 
 from llm.llm_client import BaseLLMClient
+from llm.token_cost_tracker import TokenCostTracker
 from ui.ui_hooks import emitEvent
 
 
@@ -78,7 +79,7 @@ def testLlmClient(client: BaseLLMClient, modelName: str) -> Tuple[bool, str]:
         response = client.openaiClient.chat.completions.create(
             model=modelName,
             messages=[{"role": "user", "content": "This is a test. Exit <think> immediately. Reply solely with the word 'OK'."}],
-            max_tokens=40,
+            max_tokens=5,
             temperature=0.0,
             stream=False
         )
@@ -115,6 +116,7 @@ class ServerManager:
         self.startupLogs: List[str] = []
         self.metricsThread: Optional[threading.Thread] = None
         self.sharedToolRegistry: Optional[Any] = None
+        self.costTracker = TokenCostTracker()
         self.serverLock = threading.Lock()
 
     @property
@@ -167,21 +169,23 @@ class ServerManager:
         self.metricsThread = threading.Thread(target=metricsLoop, daemon=True)
         self.metricsThread.start()
 
-    def startServer(self, provider: str, modelName: str, allowParallel: bool = True, wantSummaryServer: bool = False):
+    def startServer(self, provider: str, modelName: str, providerRouter: Optional[str] = None, allowParallel: bool = True, wantSummaryServer: bool = False):
         with self.serverLock:
             if self.loadedModelType != LoadedModelType.NONE:
                 self.stopServerInternal()
 
             self.startupLogs.clear()
+            self.costTracker.reset()
             providerClean = provider.strip().lower()
 
             match providerClean:
                 case "openrouter":
                     try:
                         apiKey = os.getenv("OPENROUTER_API_KEY", "")
-                        self.recordLog(f"Initializing OpenRouter test for model '{modelName}'...")
+                        routerMsg = f" ({providerRouter})" if providerRouter else ""
+                        self.recordLog(f"Initializing OpenRouter test for model '{modelName}'{routerMsg}...")
 
-                        client = OpenRouterClient(apiKey=apiKey, model=modelName)
+                        client = OpenRouterClient(apiKey=apiKey, model=modelName, providerRouter=providerRouter)
                         success, result = testLlmClient(client, modelName)
 
                         if not success:
@@ -192,6 +196,7 @@ class ServerManager:
                         self.loadedModelType = LoadedModelType.OPENROUTER
                         self.loadedModelName = modelName
                         return True, f"OpenRouter server active and verified (Response: '{result}')."
+
 
                     except Exception as e:
                         errorMsg = f"OpenRouter setup failed: {e.__class__.__name__}: {str(e)}"
@@ -299,6 +304,7 @@ class ServerManager:
         prevType = self.loadedModelType.value
         self.loadedModelType = LoadedModelType.NONE
         self.loadedModelName = ""
+        self.costTracker.reset()
         return f"Server ({prevType}) stopped"
 
     def startSummServerInternal(self):
@@ -329,6 +335,7 @@ class ServerManager:
             "openrouterRunning": self.loadedModelType == LoadedModelType.OPENROUTER,
             "openrouterModel": self.loadedModelName if self.loadedModelType == LoadedModelType.OPENROUTER else "",
             "startupLogs": self.startupLogs,
+            "costData": self.costTracker.getPayload(),
         }
 
 

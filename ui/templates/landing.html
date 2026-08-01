@@ -45,11 +45,44 @@
             }
         }
 
-        function updateServerStatus(isConnected) {
+        let activeProviderName = "";
+
+        function updateServerStatus(isConnected, provider = "") {
+            if (provider) activeProviderName = provider;
             const cell = document.getElementById("serverStatusCell");
+            const label = document.getElementById("serverStatusLabel");
+            const tokEl = document.getElementById("tokenMetricsReadout");
+            const costEl = document.getElementById("costMetricsReadout");
+
             if (cell) {
                 cell.textContent = isConnected ? "Connected" : "Disconnected";
                 cell.style.color = isConnected ? "#22c55e" : "#ef4444";
+            }
+            const p = (provider || activeProviderName).toLowerCase();
+            if (label) {
+                if (p === "openrouter") {
+                    label.textContent = "OpenRouter:";
+                } else if (p === "llamacpp") {
+                    label.textContent = "Llama.cpp:";
+                } else {
+                    label.textContent = "Server:";
+                }
+            }
+
+            if (isConnected) {
+                if (p === "llamacpp") {
+                    if (tokEl) tokEl.style.display = "flex";
+                    if (costEl) costEl.style.display = "none";
+                } else if (p === "openrouter") {
+                    if (tokEl) tokEl.style.display = "none";
+                    if (costEl) costEl.style.display = "grid";
+                } else {
+                    if (tokEl) tokEl.style.display = "none";
+                    if (costEl) costEl.style.display = "none";
+                }
+            } else {
+                if (tokEl) tokEl.style.display = "none";
+                if (costEl) costEl.style.display = "none";
             }
         }
 
@@ -59,7 +92,11 @@
                 if (res.ok) {
                     const data = await res.json();
                     const isRunning = data.running || data.llamacppRunning || data.summaryServerRunning || data.openrouterRunning;
-                    updateServerStatus(isRunning);
+                    const provider = data.provider || (data.openrouterRunning ? "openrouter" : (data.llamacppRunning ? "llamacpp" : ""));
+                    updateServerStatus(isRunning, provider);
+                    if (data.costData) {
+                        updateCostUI(data.costData);
+                    }
                     if (!isRunning) {
                         window.location.href = "/server";
                     }
@@ -76,6 +113,67 @@
             socket.onopen = () => { updateWsStatus(true); };
             socket.onclose = () => { updateWsStatus(false); };
             socket.onerror = () => { updateWsStatus(false); };
+        }
+
+        function formatTokenCount(val) {
+            if (val === undefined || val === null || isNaN(val) || val <= 0) return "0";
+            const num = Math.abs(parseFloat(val));
+            if (num >= 1e9) return Number((num / 1e9).toPrecision(3)) + "b";
+            if (num >= 1e6) return Number((num / 1e6).toPrecision(3)) + "m";
+            if (num >= 1e3) return Number((num / 1e3).toPrecision(3)) + "k";
+            return Number(num.toPrecision(3)).toString();
+        }
+
+        function formatCacheHitRate(val) {
+            if (val === undefined || val === null || isNaN(val)) return "0.0%";
+            return parseFloat(val).toFixed(1) + "%";
+        }
+
+        function formatCost(val) {
+            if (val === undefined || val === null || isNaN(val)) return "$0.0000";
+            const num = parseFloat(val);
+            if (num < 10) return "$" + num.toFixed(4);
+            return "$" + num.toFixed(2);
+        }
+
+        function updateCostUI(payload) {
+            if (!payload) return;
+            if (payload.task) {
+                if (payload.task.input !== undefined) {
+                    const el = document.getElementById("taskInputToksVal");
+                    if (el) el.innerText = formatTokenCount(payload.task.input);
+                }
+                if (payload.task.output !== undefined) {
+                    const el = document.getElementById("taskOutputToksVal");
+                    if (el) el.innerText = formatTokenCount(payload.task.output);
+                }
+                if (payload.task.cacheHitRate !== undefined) {
+                    const el = document.getElementById("taskCacheHitVal");
+                    if (el) el.innerText = formatCacheHitRate(payload.task.cacheHitRate);
+                }
+                if (payload.task.cost !== undefined) {
+                    const el = document.getElementById("taskCostVal");
+                    if (el) el.innerText = formatCost(payload.task.cost);
+                }
+            }
+            if (payload.session) {
+                if (payload.session.input !== undefined) {
+                    const el = document.getElementById("sessionInputToksVal");
+                    if (el) el.innerText = formatTokenCount(payload.session.input);
+                }
+                if (payload.session.output !== undefined) {
+                    const el = document.getElementById("sessionOutputToksVal");
+                    if (el) el.innerText = formatTokenCount(payload.session.output);
+                }
+                if (payload.session.cacheHitRate !== undefined) {
+                    const el = document.getElementById("sessionCacheHitVal");
+                    if (el) el.innerText = formatCacheHitRate(payload.session.cacheHitRate);
+                }
+                if (payload.session.cost !== undefined) {
+                    const el = document.getElementById("sessionCostVal");
+                    if (el) el.innerText = formatCost(payload.session.cost);
+                }
+            }
         }
 
         connectWebsocket();

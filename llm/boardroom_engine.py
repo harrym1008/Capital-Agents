@@ -11,7 +11,7 @@ from llm.client_duo import ClientDuo
 from llm.tools.registry_builder import ToolRegistry
 from llm.agents.agent import FinancialAgent
 
-from ui.ui_hooks import getCurrentStage, setCurrentStage, emitEvent
+from ui.ui_hooks import getCurrentStage, setCurrentStage, emitEvent, SimulationStoppedException
 
 
 class BoardroomEngine:
@@ -55,7 +55,16 @@ class BoardroomEngine:
 
         with ThreadPoolExecutor() as executor:
             futures = [executor.submit(wrappedTask, task) for task in tasks]
-            return [future.result() for future in futures]
+            results = []
+            try:
+                for future in futures:
+                    results.append(future.result())
+            except SimulationStoppedException:
+                # Cancel any remaining futures and propagate the stop
+                for f in futures:
+                    f.cancel()
+                raise
+            return results
 
 
     def _newPhaseHeader(self, phaseNumber, phaseName):
@@ -453,7 +462,11 @@ class BoardroomEngine:
     def executeSingleEquityRating(self, targetTicker, fastMode=False):
         if self.clientDuo is None:
             raise ValueError("ClientDuo is not assigned. Please assign a ClientDuo before executing the boardroom.")
-        
+
+        self.clientDuo.boardroomClient.newTask()
+        if self.clientDuo.summaryClient is not self.clientDuo.boardroomClient:
+            self.clientDuo.summaryClient.newTask()
+
         if fastMode:
             self.executeFastSingleEquityRating(targetTicker)
         else:

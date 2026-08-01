@@ -29,6 +29,7 @@ class MacroSeries(Enum):
     UNEMPLOYMENT = ("UNEMPLOYMENT", "fred", "value")
     FEDFUNDS = ("FEDFUNDS", "fred", "value")
     GDP = ("GDP", "fred", "value")
+    TREAS_30Y = ("TREAS_30Y", "fred", "value")
     TREAS_10Y = ("TREAS_10Y", "fred", "value")
     TREAS_2Y = ("TREAS_2Y", "fred", "value")
     TREAS_3MO = ("TREAS_3MO", "fred", "value")
