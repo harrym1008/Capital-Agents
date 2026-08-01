@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from cli.ansi import ANSI
 
 from llm.client_duo import ClientDuo
-from llm.tools.registry_builder import ToolRegistry
+from tools.registry_builder import ToolRegistry
 from llm.agents.agent import FinancialAgent
 
 from ui.ui_hooks import getCurrentStage, setCurrentStage, emitEvent, SimulationStoppedException

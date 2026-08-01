@@ -428,3 +428,34 @@ def registerApiRoutes(app):
     @app.route("/api/server/status")
     def apiServerStatus():
         return jsonify(serverManager.getStatus())
+
+    @app.route("/api/ohlcv")
+    def getOhlcvChart():
+        ticker = request.args.get("ticker", "NVDA").strip()
+        simDateStr = request.args.get("simDate")
+
+        if not simDateStr:
+            simDateTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
+        else:
+            try:
+                simDateTs = pd.Timestamp(simDateStr, tz=NEW_YORK)
+            except Exception:
+                simDateTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
+
+        targetsRaw = request.args.get("targets", "")
+        targetsList = []
+        if targetsRaw:
+            for item in targetsRaw.split(","):
+                if ":" in item:
+                    try:
+                        monthsOffset, price = item.split(":")
+                        targetsList.append((float(monthsOffset), float(price)))
+                    except ValueError:
+                        pass
+
+        try:
+            chartImage = generateOhlcvChartImage(ticker, simDateTs, targets=targetsList)
+            return jsonify({"chartImage": chartImage})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+

@@ -12,8 +12,8 @@ load_dotenv()
 
 from collectors.macro_dl_client import YFINANCE_MACRO_TICKERS
 
-from llm.tools.tool_registry import DataProviders, Tool
-from llm.tools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, isLocalDataAvailable, formatArticleAge, NumberType 
+from tools.tool_registry import DataProviders, Tool
+from tools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, isLocalDataAvailable, formatArticleAge, NumberType 
 
 
 FRED_SERIES_MAP = {

@@ -9,8 +9,8 @@ from edgar import Filing
 from edgar.xbrl import XBRL
 from edgar.financials import Statement
 
-from llm.tools.tool_registry import DataProviders, Tool
-from llm.tools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, isLocalDataAvailable, NumberType 
+from tools.tool_registry import DataProviders, Tool
+from tools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, isLocalDataAvailable, NumberType 
 
 from dataquery.price_provider import DailyPriceProvider
 from dataquery.edgar_provider import EdgarDataProvider, FormType, CompanyRef

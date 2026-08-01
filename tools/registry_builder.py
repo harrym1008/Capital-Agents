@@ -1,9 +1,9 @@
-from llm.tools.tool_registry import ToolRegistry, Tool
-from llm.tools.functions.macro import fetchMacroContext, fetchMacroNews
-from llm.tools.functions.company import fetchCompanyProfile, fetchCompanyRecentNews, fetchStockPricePerformance, calculateDistFromCurrPrice
-from llm.tools.functions.edgar import fetchCompanyValuationMetrics, fetchIncomeStatement, fetchBalanceSheet, \
+from tools.tool_registry import ToolRegistry, Tool
+from tools.functions.macro import fetchMacroContext, fetchMacroNews
+from tools.functions.company import fetchCompanyProfile, fetchCompanyRecentNews, fetchStockPricePerformance, calculateDistFromCurrPrice
+from tools.functions.edgar import fetchCompanyValuationMetrics, fetchIncomeStatement, fetchBalanceSheet, \
                                       fetchCashFlowStatement, fetchStatementOfEquity, fetchComprehensiveIncomeStatement 
-from llm.tools.functions.other import executePythonCalculation, confirmBoardroomDecision
+from tools.functions.other import executePythonCalculation, confirmBoardroomDecision
 
 
 SCHEMAS = {

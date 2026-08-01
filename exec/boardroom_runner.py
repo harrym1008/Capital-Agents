@@ -7,8 +7,8 @@ from collectors.constants import UTC, NEW_YORK
 from llm.llm_client import BaseLLMClient
 from llm.client_duo import ClientDuo
 from llm.boardroom_engine import generateBoardroom
-from llm.tools.registry_builder import buildToolRegistry
-from llm.tools.lru_cacher import startPrecacheThread
+from tools.registry_builder import buildToolRegistry
+from tools.lru_cacher import startPrecacheThread
 from ui.ui_hooks import emitEvent
 
 

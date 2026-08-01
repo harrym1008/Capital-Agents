@@ -136,7 +136,7 @@ class ServerManager:
         """Get or initialize the shared persistent ToolRegistry instance."""
         with self.serverLock:
             if self.sharedToolRegistry is None:
-                from llm.tools.registry_builder import buildToolRegistry
+                from tools.registry_builder import buildToolRegistry
                 self.sharedToolRegistry = buildToolRegistry()
             return self.sharedToolRegistry
 

@@ -3,7 +3,7 @@ import pandas as pd
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from llm.tools.tool_registry import ToolRegistry
+from tools.tool_registry import ToolRegistry
 
 
 class CachedToolCall:

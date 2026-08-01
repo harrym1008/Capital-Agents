@@ -13,8 +13,8 @@ from dataquery.ticker_provider import CompanyProfile
 from dataquery.macro_provider import MacroSeries
 from collectors.constants import IPO_BEFORE_START_DATE
 
-from llm.tools.tool_registry import DataProviders, Tool
-from llm.tools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, isLocalDataAvailable, formatArticleAge, NumberType 
+from tools.tool_registry import DataProviders, Tool
+from tools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, isLocalDataAvailable, formatArticleAge, NumberType 
 
 
 def fetchCompanyProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str):
