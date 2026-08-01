@@ -17,7 +17,6 @@ from collectors.rate_limiter import GlobalRateLimiters
 from collectors.constants import (
     NEWS_BATCHES_DIR,
     NEWS_PARQUET_PATH,
-    NEWS_INDEX_PARQUET_PATH,
     NEWS_BATCH_SIZE,
     NEWS_ROW_GROUP_SIZE,
     ALL_TICKERS_FILE,
@@ -347,45 +346,4 @@ class NewsClient:
 
         badDf.to_parquet("data/newsfiltered.parquet", engine="pyarrow", index=False)
         return goodDf.drop(columns=["removeReason", "wordCount"])
-
-
-    def buildInvertedIndex(self, pbar=None):
-        if not os.path.exists(NEWS_PARQUET_PATH):
-            return
-
-        df = pd.read_parquet(NEWS_PARQUET_PATH, engine="pyarrow", columns=["id", "tickers"])
-        indices = {}
-
-        if pbar is None:
-            pbar = tqdm(
-                total=len(df),
-                desc="Building inverted index",
-                smoothing=0.1,
-                bar_format="{desc} | {percentage:3.2f}% |{bar}| [{elapsed} elapsed, {remaining} remaining] ",
-                colour="green",
-                dynamic_ncols=True
-            )
-        else:
-            pbar.reset(total=len(df))
-            pbar.set_description("News: Building index")
-
-        for row in df.itertuples(index=False):
-            articleId = row.id
-            tickersVal = row.tickers
-            tickersList = tickersVal if tickersVal is not None else []
-
-            for symbol in tickersList:
-                if symbol not in indices:
-                    indices[symbol] = []
-                indices[symbol].append(articleId)
-
-            pbar.update(1)
-
-        if pbar is not None and not hasattr(pbar, '_external'):
-            pbar.close()
-        out = pd.DataFrame(
-            {"symbol": list(indices.keys()), "ids": list(indices.values())}
-        ).sort_values("symbol")
-
-        out.to_parquet(NEWS_INDEX_PARQUET_PATH, engine="pyarrow", index=False)
 

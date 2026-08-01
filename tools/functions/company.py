@@ -73,8 +73,8 @@ def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timest
         newsWithContent = data.news.getRecentNewsForTicker(ticker, before=timestamp, limit=limit, mustHaveContent=True)
 
         idx = 0
-        if not newsWithContent.empty:
-            for _, row in newsWithContent.iterrows():
+        if newsWithContent is not None and not newsWithContent.empty:
+            for _, row in newsWithContent.head(limit).iterrows():
                 headline = row.get("headline", "").strip()
                 if not headline:
                     continue
@@ -86,6 +86,8 @@ def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timest
                     content = "Article has no content available."
                 else:
                     content = cleanHtmlContent(content)
+                    if len(content) > 2500:
+                        content = content[:2500] + "... [content truncated]"
 
                 author = row.get("author", "").strip()
 
@@ -153,7 +155,7 @@ def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timest
             jsonResult.append({"error": f"Error fetching news from Alpaca API: {str(e)}"})
             return cleanData(jsonResult)
         
-        for idx, article in enumerate(rawNews):
+        for idx, article in enumerate(rawNews[:limit]):
             headline = article.get("headline", "").strip()
             if not headline:
                 continue
@@ -165,6 +167,8 @@ def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timest
                 content = "Article has no content available."       # Should not occur due to exclude_contentless=true
             else:
                 content = cleanHtmlContent(content)
+                if len(content) > 2500:
+                    content = content[:2500] + "... [content truncated]"
 
             author = article.get("author", "").strip()
 
@@ -381,10 +385,10 @@ def fetchStockPricePerformance(tool: Tool, data: DataProviders, timestamp: pd.Ti
     # Calculate periodic returns
     periods = {
         "5d": timestamp - pd.DateOffset(days=5),
-        "1m": timestamp - pd.DateOffset(months=1),
-        "3m": timestamp - pd.DateOffset(months=3),
-        "6m": timestamp - pd.DateOffset(months=6),
-        "1y": timestamp - pd.DateOffset(years=1),
+        "1mo": timestamp - pd.DateOffset(months=1),
+        "3mo": timestamp - pd.DateOffset(months=3),
+        "6mo": timestamp - pd.DateOffset(months=6),
+        "12mo": timestamp - pd.DateOffset(years=1),
         "3y": timestamp - pd.DateOffset(years=3),
         "5y": timestamp - pd.DateOffset(years=5)
     }

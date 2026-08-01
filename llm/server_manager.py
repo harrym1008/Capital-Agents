@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Tuple, Optional, List, Any
 
 from llm.llamacpp.llamacpp_args import LlamaCppModel, LLAMACPP_PORT, LLAMACPP_SUMMARY_PORT
-from llm.llamacpp.llamacpp_init import LlamaCppProcessInitiator
+from llm.llamacpp.llamacpp_init import LlamaCppProcessInitiator, rudimentaryVramClear
 from llm.summarise.local_summary import LlamaCppSummaryClient
 
 from llm.agents.agent import THINKING_BUDGET
@@ -215,11 +215,14 @@ class ServerManager:
                             argOverrides["-np"] = "1"
                             argOverrides["--ctx-size"] = "65536"
 
+                        self.recordLog(f"Clearing VRAM...")
+                        rudimentaryVramClear()
+                        self.recordLog("VRAM cleared, starting Llama.cpp boardroom server...")
                         serverProcess = LlamaCppProcessInitiator(
                             serverName="boardroom",
                             model=modelEnum,
                             printLogsToTerminal=False,
-                            killExistingProcesses=False,
+                            killExistingProcesses=True,
                             argOverrides=argOverrides,
                         )
 

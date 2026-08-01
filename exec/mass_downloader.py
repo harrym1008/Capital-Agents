@@ -5,8 +5,9 @@ from collectors.ohlcv_dl_client import OHLCVDataClient
 from collectors.ticker_dl_client import TickerDataClient
 from collectors.news_dl_client import NewsClient
 from collectors.macro_dl_client import MacroDataClient
-from collectors.shortdata_dl_client import ShortDataClient
 from collectors.forex_dl_client import CurrencyDataClient
+from collectors.shortdata_dl_client import ShortDataClient
+# from collectors.news_sentiment_client import NewsSentimentClient
 from collectors.rate_limiter import GlobalRateLimiters
 from collectors.constants import *
 
@@ -78,7 +79,11 @@ def runMassDownloadTool(presetDownloads=None):
                 "confirm": input("Download short data? (yes/no)     > ").lower() == "yes",
                 "desc": f"FINRA short interest data from {'Jun 2021' if \
                             START_DATE < pd.Timestamp('2021-06-01', tz=NEW_YORK) else dateStartStr} to {dateEndStr}"
-            }
+            },
+            # "newssentiment": {
+            #     "confirm": input("Cache news sentiment? (yes/no)    > ").lower() == "yes",
+            #     "desc": f"Precalculate news sentiment scores for all downloaded news articles from {dateStartStr} to {dateEndStr}"
+            # }
         }
 
     if not any(d["confirm"] for d in downloading.values()):
@@ -140,8 +145,8 @@ def runMassDownloadTool(presetDownloads=None):
 
     if downloading["news"]["confirm"]:
         tasks.append(("news", NewsClient, (START_DATE_STR, END_DATE_STR, limiters),
-                              lambda c: (c.threadedMassDownload(threads=8, pbar=pbars["news"]), c.buildInvertedIndex(pbar=pbars["news"]))))
-
+                              lambda c: c.threadedMassDownload(threads=8, pbar=pbars["news"])))
+        
     if downloading["macro"]["confirm"]:
         tasks.append(("macro", MacroDataClient, (START_DATE_STR, END_DATE_STR, limiters),
                               lambda c: c.massDownload(pbar=pbars["macro"])))
@@ -177,10 +182,15 @@ def runMassDownloadTool(presetDownloads=None):
             pbars[name].close()
             tqdm.write(f"Completed downloading: {downloading[name]['desc']}\n")
 
-
     # Close all progress bars
     for pbar in pbars.values():
         pbar.close()
+
+    # Step 3: Precalculate news sentiment scores if requested
+    # if downloading["newssentiment"]["confirm"]:
+    #     sentimentClient = NewsSentimentClient()
+    #     sentimentClient.processAllNews(None)
+
 
     print("\n" + "=" * 60)
     print("All downloads complete!")

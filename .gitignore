@@ -184,11 +184,12 @@ cython_debug/
 .roo/
 
 # For CapitalAgents specifically
+# Folders
 docs/
 _old/
 data/
-sim_test.py
 output/
 art/
-summtest.py
-providertest.py
+
+# Files
+newtooltest.py

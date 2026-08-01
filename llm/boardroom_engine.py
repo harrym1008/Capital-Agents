@@ -132,7 +132,7 @@ class BoardroomEngine:
         self._newPhaseHeader(1, "Macro Environment Analysis")
         macroPrompt = (
             "Task: Conduct top-down macroeconomic analysis for the US financial markets.\n"
-            "Use your tools (fetchMacroContext, fetchMacroNews) to retrieve economic indicators and headlines. "
+            "Use your macro-specific tools to retrieve economic indicators, headlines, and sentiment history. "
             "Present a narrative macro summary and explicitly output your overall market regime classification as BULLISH, BEARISH, or NEUTRAL."
         )
         macroRaw, macroUISummary = self.macroAnalyst.analyseAndReply(
@@ -144,7 +144,7 @@ class BoardroomEngine:
         researchPrompt = (
             f"Macroeconomic Context:\n{macroRaw}\n\n"
             f"Task: Conduct single-stock research on ticker {targetTicker}.\n"
-            f"Execute your data tools (valuation metrics, financial statements, stock price performance, company profile) to retrieve hard facts. "
+            f"Execute your data tools (valuation metrics, financial statements, stock price performance, company profile, etc.) to retrieve hard facts. "
             f"Present your thesis and state: explicit rating ({{permittedRatings}}), OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT weight, and preliminary 12-month and 36-month price targets."
         )
         
@@ -252,7 +252,7 @@ class BoardroomEngine:
         self._newPhaseHeader(1, "Macro Environment Analysis")
         macroPrompt = (
             "Task: Conduct top-down macroeconomic analysis for the US financial markets.\n"
-            "Use your tools (fetchMacroContext, fetchMacroNews) to retrieve economic indicators and headlines. "
+            "Use your macro-specific tools to retrieve economic indicators, headlines, and sentiment history. "
             "Present a narrative macro summary and explicitly output your overall market regime classification as BULLISH, BEARISH, or NEUTRAL."
         )
         macroRaw, macroUISummary = self.macroAnalyst.analyseAndReply(
@@ -483,6 +483,7 @@ def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> Bo
         tools=[
             toolMap["fetchMacroContext"],
             toolMap["fetchMacroNews"],
+            toolMap["fetchMacroSentimentHistory"],
             toolMap["executePythonCalculation"]
         ],
         ansiColor=ANSI.CYAN,
@@ -497,10 +498,12 @@ def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> Bo
             toolMap["fetchIncomeStatement"],
             toolMap["fetchBalanceSheet"],
             toolMap["fetchCashFlowStatement"],
-            toolMap["fetchStatementOfEquity"],
-            toolMap["fetchComprehensiveIncomeStatement"],
+            # toolMap["fetchStatementOfEquity"],
+            # toolMap["fetchComprehensiveIncomeStatement"],
             toolMap["fetchStockPricePerformance"],
             toolMap["fetchCompanyRecentNews"],
+            toolMap["fetchTickerSentimentHistory"],
+            toolMap["fetchSentimentDivergence"],
             toolMap["calculateDistFromCurrPrice"],
             toolMap["executePythonCalculation"]
         ],
@@ -516,10 +519,12 @@ def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> Bo
             toolMap["fetchIncomeStatement"],
             toolMap["fetchBalanceSheet"],
             toolMap["fetchCashFlowStatement"],
-            toolMap["fetchStatementOfEquity"],
-            toolMap["fetchComprehensiveIncomeStatement"],
+            # toolMap["fetchStatementOfEquity"],
+            # toolMap["fetchComprehensiveIncomeStatement"],
             toolMap["fetchStockPricePerformance"],
             toolMap["fetchCompanyRecentNews"],
+            toolMap["fetchTickerSentimentHistory"],
+            toolMap["fetchSentimentDivergence"],
             toolMap["calculateDistFromCurrPrice"],
             toolMap["executePythonCalculation"]
         ],
@@ -535,10 +540,12 @@ def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> Bo
             toolMap["fetchIncomeStatement"],
             toolMap["fetchBalanceSheet"],
             toolMap["fetchCashFlowStatement"],
-            toolMap["fetchStatementOfEquity"],
-            toolMap["fetchComprehensiveIncomeStatement"],
+            # toolMap["fetchStatementOfEquity"],
+            # toolMap["fetchComprehensiveIncomeStatement"],
             toolMap["fetchStockPricePerformance"],
             toolMap["fetchCompanyRecentNews"],
+            toolMap["fetchTickerSentimentHistory"],
+            toolMap["fetchSentimentDivergence"],
             toolMap["calculateDistFromCurrPrice"],
             toolMap["executePythonCalculation"]
         ],
@@ -554,10 +561,12 @@ def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> Bo
             toolMap["fetchIncomeStatement"],
             toolMap["fetchBalanceSheet"],
             toolMap["fetchCashFlowStatement"],
-            toolMap["fetchStatementOfEquity"],
-            toolMap["fetchComprehensiveIncomeStatement"],
+            # toolMap["fetchStatementOfEquity"],
+            # toolMap["fetchComprehensiveIncomeStatement"],
             toolMap["fetchStockPricePerformance"],
             toolMap["fetchCompanyRecentNews"],
+            toolMap["fetchTickerSentimentHistory"],
+            toolMap["fetchSentimentDivergence"],
             toolMap["calculateDistFromCurrPrice"],
             toolMap["executePythonCalculation"]
         ],
@@ -569,7 +578,6 @@ def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> Bo
         agentRole="Impartial Portfolio Manager",
         tools=[
             toolMap["fetchCompanyProfile"],
-            toolMap["fetchCompanyValuationMetrics"],
             toolMap["executePythonCalculation"],
             toolMap["calculateDistFromCurrPrice"],
             toolMap["confirmBoardroomDecision"]

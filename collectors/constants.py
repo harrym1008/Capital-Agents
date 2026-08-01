@@ -55,9 +55,13 @@ TEMP_TICKERS_FILE = "data/all_tickers.parquet"
 # For news_dl_client.py
 NEWS_BATCHES_DIR = "data/newsbatches"
 NEWS_PARQUET_PATH = "data/news.parquet"
-NEWS_INDEX_PARQUET_PATH = "data/newsindex.parquet"
 NEWS_BATCH_SIZE = 2_000
 NEWS_ROW_GROUP_SIZE = 200_000
+
+# For news_sentiment_client.py
+NEWS_SENTIMENT_PARQUET_PATH = "data/newssentiment.parquet"
+NEWS_SENTIMENT_BATCHES_DIR = "data/sentiment_batches"
+
 
 
 # For ohlcv_dl_client.py
@@ -79,3 +83,8 @@ MACRO_DIRECTORY = "data/macro/"
 
 # For forex_dl_client.py
 FOREX_DIRECTORY = "data/forex/"
+
+
+# For news_sentiment_client.py
+NEWS_SENTIMENT_PARQUET_PATH = "data/newssentiment.parquet"
+NEWS_SENTIMENT_BATCHES_DIR = "data/sentiment_batches"

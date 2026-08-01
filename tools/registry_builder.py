@@ -3,6 +3,7 @@ from tools.functions.macro import fetchMacroContext, fetchMacroNews
 from tools.functions.company import fetchCompanyProfile, fetchCompanyRecentNews, fetchStockPricePerformance, calculateDistFromCurrPrice
 from tools.functions.edgar import fetchCompanyValuationMetrics, fetchIncomeStatement, fetchBalanceSheet, \
                                       fetchCashFlowStatement, fetchStatementOfEquity, fetchComprehensiveIncomeStatement 
+from tools.functions.sentiment import fetchTickerSentimentHistory, fetchSentimentDivergence, fetchMacroSentimentHistory
 from tools.functions.other import executePythonCalculation, confirmBoardroomDecision
 
 
@@ -214,6 +215,29 @@ def buildToolRegistry():
         toolName="fetchComprehensiveIncomeStatement",
         toolDescription="Fetches the most recent comprehensive income statement (annual or quarterly, if it exists) for a given stock ticker.",
         parameterSchema=SCHEMAS["finStatement"]
+    ))
+
+
+    # sentiment.py
+    toolReg.registerTool(Tool(
+        toolFunction=fetchTickerSentimentHistory,
+        toolName="fetchTickerSentimentHistory",
+        toolDescription="Fetches the history of the news sentiment for a given stock ticker.",
+        parameterSchema=SCHEMAS["justTicker"]
+    ))
+
+    toolReg.registerTool(Tool(
+        toolFunction=fetchSentimentDivergence,
+        toolName="fetchSentimentDivergence",
+        toolDescription="Analyzes the divergence between stock price performance and news sentiment over a 3-month period.",
+        parameterSchema=SCHEMAS["justTicker"]
+    ))
+
+    toolReg.registerTool(Tool(
+        toolFunction=fetchMacroSentimentHistory,
+        toolName="fetchMacroSentimentHistory",
+        toolDescription="Fetches the history of the news sentiment for major macroeconomic and geopolitical topics.",
+        parameterSchema=SCHEMAS["empty"]
     ))
 
 

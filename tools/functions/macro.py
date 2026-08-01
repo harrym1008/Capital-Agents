@@ -92,7 +92,7 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
             "1mo": timestamp - pd.DateOffset(months=1),
             "3mo": timestamp - pd.DateOffset(months=3),
             "6mo": timestamp - pd.DateOffset(months=6),
-            "1y": timestamp - pd.DateOffset(years=1),
+            "12mo": timestamp - pd.DateOffset(years=1),
             "3y": timestamp - pd.DateOffset(years=3),
             "5y": timestamp - pd.DateOffset(years=5)
         }
@@ -131,7 +131,7 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
                 pastPrice = snapshot.loc[snapshot["series"] == series, "value"].iloc[0]
                 priceChangePct = ((latestPrice - pastPrice) / pastPrice) * 100 if pastPrice != 0 else 0
 
-                if seriesOrigin == "yfinance" and period == "1y":
+                if seriesOrigin == "yfinance" and period == "12mo":
                     fiftyTwoWeekMin = cleanNumber(data.macro.getLowest(series, pastDates[period], timestamp)[1], numberType)
                     fiftyTwoWeekMax = cleanNumber(data.macro.getHighest(series, pastDates[period], timestamp)[1], numberType)
                 
@@ -223,7 +223,7 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
                 "1mo": pd.DateOffset(months=1),
                 "3mo": pd.DateOffset(months=3),
                 "6mo": pd.DateOffset(months=6),
-                "1y": pd.DateOffset(years=1),
+                "12mo": pd.DateOffset(years=1),
                 "3y": pd.DateOffset(years=3),
             }
 
@@ -261,7 +261,7 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
             "1mo": pd.DateOffset(months=1),
             "3mo": pd.DateOffset(months=3),
             "6mo": pd.DateOffset(months=6),
-            "1y": pd.DateOffset(years=1),
+            "12mo": pd.DateOffset(years=1),
             "3y": pd.DateOffset(years=3),
             "5y": pd.DateOffset(years=5)
         }
@@ -354,12 +354,22 @@ def fetchMacroNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, lim
             tickers=["SPY", "QQQ", "DIA", "GLD", "SLV", "VIX", "USO", "TLT"],
             before=timestamp,
             limit=limit,
-            mustHaveContent=True
+            mustHaveContent=True,
+            maxReferencedTickers=15
         )
 
+        if newsWithContent is None or newsWithContent.empty:
+            newsWithContent = data.news.getRecentNewsForTickers(
+                tickers=["SPY", "QQQ", "DIA", "GLD", "SLV", "VIX", "USO", "TLT"],
+                before=timestamp,
+                limit=limit,
+                mustHaveContent=False,
+                maxReferencedTickers=15
+            )
+
         idx = 0
-        if not newsWithContent.empty:
-            for _, row in newsWithContent.iterrows():
+        if newsWithContent is not None and not newsWithContent.empty:
+            for _, row in newsWithContent.head(limit).iterrows():
                 headline = row.get("headline", "").strip()
                 if not headline:
                     continue
@@ -371,6 +381,8 @@ def fetchMacroNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, lim
                     content = "Article has no content available."
                 else:
                     content = cleanHtmlContent(content)
+                    if len(content) > 2500:
+                        content = content[:2500] + "... [content truncated]"
 
                 author = row.get("author", "").strip()
 
@@ -440,7 +452,7 @@ def fetchMacroNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, lim
             return cleanData(jsonResult)
         
         
-        for idx, article in enumerate(rawNews):
+        for idx, article in enumerate(rawNews[:limit]):
             headline = article.get("headline", "").strip()
             if not headline:
                 continue
@@ -452,6 +464,8 @@ def fetchMacroNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, lim
                 content = "Article has no content available."       # Should not occur due to exclude_contentless=true
             else:
                 content = cleanHtmlContent(content)
+                if len(content) > 2500:
+                    content = content[:2500] + "... [content truncated]"
 
             author = article.get("author", "").strip()
 
@@ -470,7 +484,8 @@ def fetchMacroNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, lim
             }) 
 
 
-    if len(jsonResult) < limit:
-        jsonResult.append({"info": f"Only {len(jsonResult)} articles could be retrieved."})
+    validArticlesCount = len([item for item in jsonResult if "headline" in item])
+    if validArticlesCount > 0 and validArticlesCount < limit:
+        jsonResult.append({"info": f"Only {validArticlesCount} articles could be retrieved."})
 
     return {"date": timestamp.strftime("%Y-%m-%d"), "news": cleanData(jsonResult)}

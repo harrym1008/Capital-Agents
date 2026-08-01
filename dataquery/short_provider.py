@@ -1,4 +1,5 @@
 import os
+import threading
 import pandas as pd
 from dataclasses import dataclass, field
 
@@ -24,6 +25,7 @@ class ShortDataProvider:
         self.cache = cache
         self.shortDataPath = SHORT_PARQUET_PATH
         self.con = duckdb.connect(database=":memory:")
+        self.lock = threading.Lock()
 
 
     def normaliseTimestamp(self, before: pd.Timestamp) -> pd.Timestamp:
@@ -74,7 +76,8 @@ class ShortDataProvider:
         if not pd.isna(endParam):
             params.append(endParam)
 
-        df = self.con.execute(sql, params).df()
+        with self.lock:
+            df = self.con.execute(sql, params).df()
         if df.empty:
             self.cache.put(key, df)
             return df
