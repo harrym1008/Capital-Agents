@@ -1,3 +1,5 @@
+from typing import Dict, Optional
+
 
 def buildSharedBaseSysPrompt(dateStr: str, toolsStr: str, agentRole: str, agentSpecificPrompt: str) -> str:
     return (
@@ -39,10 +41,14 @@ roleKeyMap = {
 }
 
 
-def buildAgentSpecificSysPrompt(dateStr: str, agentRole: str, agentToolsStr: str, subrole: str = None) -> str:
+def buildAgentSpecificSysPrompt(dateStr: str, agentRole: str, agentToolsStr: str, subrole: str = None, promptArgs: Dict[str, str] = None) -> str:
+    if not promptArgs:
+        from boardroom.boardroom_config import TIME_HORIZON_INFO, TimeHorizon
+        promptArgs = TIME_HORIZON_INFO[TimeHorizon.LONG]
     roleKey = roleKeyMap.get(agentRole, agentRole)
     role = f"{roleKey}_{subrole}" if subrole else roleKey
     agentSpecificPrompt = AGENT_SPECIFIC_SYS_PROMPTS.get(role, "No specific prompt found for this agent role.")
+    agentSpecificPrompt = agentSpecificPrompt.format(**promptArgs)
     return buildSharedBaseSysPrompt(dateStr, agentToolsStr, agentRole, agentSpecificPrompt)
 
 
@@ -71,8 +77,10 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         f"For example, you could focus on competitive advantage, compounding revenue growth, and margin expansion.\n\n"
         f"It is most important that you provide a compelling case for why the stock is UNDERVALUED and has significant upside potential.\n\n"
 
-        f"It is also important that you can appreciate when a company is overvalued, and you should not be afraid to issue a HOLD rating if the stock is trading at a premium to its intrinsic value.\n\n"
-
+        f"It is also important that you can appreciate when a company is overvalued, "
+        f"and you should not be afraid to issue a HOLD rating if the stock is trading at a premium to its intrinsic value.\n"
+        f"As the Bullish Value Analyst, your rating MUST ALWAYS be either BUY or HOLD. You must NEVER output a SELL rating under any circumstances.\n\n"
+                
         f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
         f"You must call financial profile, valuation, statement, and stock performance tools on your initial turn to retrieve hard facts. "
         f"You must also call the company news tool to retrieve recent announcements and general sentiment for the company.\n\n"
@@ -80,14 +88,14 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         f"*** TASK INSTRUCTIONS ***:\n"
         f"1. Retrieve and analyse fundamental financial statements, valuation metrics, and price performance.\n"
         f"2. Use 'executePythonCalculation' to run quantitative growth and target price models.\n"
-        f"3. Synthesise your bullish thesis with explicit 12-month and 36-month price targets.\n"
+        f"3. Synthesise your bullish thesis with two explicit price targets: {{llmPriceTargets}}.\n"
         f"4. State explicit rating (BUY/HOLD) and position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT).\n\n"
 
         f"*** EXPECTED OUTPUT SCHEMA ***:\n"
         f"- Short Financial & Valuation Metrics Table\n"
         f"- Core Investment Thesis & Growth Catalysts\n"
         f"- Valuation Model & Target Price Rationale\n"
-        f"- Final Line: **Rating: [BUY/HOLD], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], 12-Month Target: $[PRICE], 36-Month Target: $[PRICE].**\n"
+        f"- Final Line: **Rating: [BUY/HOLD], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], {{llmFinalLinePriceTargets}}.**\n"
     ),
 
     "bearishAnalyst_research": (
@@ -95,7 +103,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         f"For example, you could focus on capital preservation, downside risks, and unsustainable leverage. "
         f"It is most important that you provide a compelling case for why the stock is OVERVALUED and at risk of significant downside.\n\n"
 
-        f"It is also important that you can appreciate when a company is undervalued, and you should not be afraid to issue a HOLD rating if the stock is trading at a discount to its intrinsic value. "
+        f"It is also important that you can appreciate when a company is undervalued, "
+        f"and you should not be afraid to issue a HOLD rating if the stock is trading at a discount to its intrinsic value.\n"
         f"As the Bearish Risk Analyst, your rating MUST ALWAYS be either HOLD or SELL. You must NEVER output a BUY rating under any circumstances.\n\n"
         
         f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
@@ -105,14 +114,14 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         f"*** TASK INSTRUCTIONS ***:\n"
         f"1. Retrieve and analyse fundamental financial statements, valuation metrics, and price performance.\n"
         f"2. Use 'executePythonCalculation' to run solvency stress tests and downside price models.\n"
-        f"3. Synthesise your bearish thesis with explicit 12-month and 36-month price targets.\n"
+        f"3. Synthesise your bearish thesis with two explicit price targets: {{llmPriceTargets}}.\n"
         f"4. State explicit rating (HOLD/SELL) and position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT).\n\n"
 
         f"*** EXPECTED OUTPUT SCHEMA ***:\n"
         f"- Short Financial & Valuation Metrics Table\n"
         f"- Core Bearish Thesis & Key Vulnerabilities\n"
         f"- Valuation Model & Target Price Rationale\n"
-        f"- Final Line: **Rating: [HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], 12-Month Target: $[PRICE], 36-Month Target: $[PRICE].**\n"
+        f"- Final Line: **Rating: [HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], {{llmFinalLinePriceTargets}}.**\n"
     ),
 
     "aggressiveRiskAnalyst_critique": (
@@ -154,7 +163,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         f"*** EXPECTED OUTPUT SCHEMA ***:\n"
         f"- Quantitative Point-by-Point Responses\n"
         f"- Revised Bullish Thesis & Target Adjustments\n"
-        f"- Final Line: **Rating: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], 12-Month Target: $[PRICE], 36-Month Target: $[PRICE].**\n"
+        f"- Final Line: **Rating: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], {{llmFinalLinePriceTargets}}.**\n"
     ),
 
     "bearishAnalyst_defense": (
@@ -169,7 +178,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         f"*** EXPECTED OUTPUT SCHEMA ***:\n"
         f"- Quantitative Point-by-Point Responses\n"
         f"- Revised Bearish Risk Summary & Target Adjustments\n"
-        f"- Final Line: **Rating: [HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], 12-Month Target: $[PRICE], 36-Month Target: $[PRICE].**\n"
+        f"- Final Line: **Rating: [HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], {{llmFinalLinePriceTargets}}.**\n"
     ),
 
     
@@ -178,12 +187,12 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
 
         f"*** TASK INSTRUCTIONS ***:\n"
         f"1. Review the Bearish Analyst's defense.\n"
-        f"2. Based on your own analysis and the debate, formulate your aggressive target prices (12m & 36m) and position weight.\n"
+        f"2. Based on your own analysis and the debate, formulate your aggressive {{llmPriceTargets}} and position weight.\n"
         f"3. Provide numerical justification for your growth expectations.\n\n"
 
         f"*** EXPECTED OUTPUT SCHEMA ***:\n"
         f"- Growth Rationale & Catalyst Summary\n"
-        f"- Final Line: **Proposed Rating: [BUY/HOLD/SELL], Proposed Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], Proposed 12-Month Target: $[PRICE], Proposed 36-Month Target: $[PRICE].**\n"
+        f"- Final Line: **Proposed Rating: [BUY/HOLD/SELL], Proposed Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], Proposed {{llmFinalLinePriceTargets}}.**\n"
     ),
 
     "conservativeRiskAnalyst_proposal": (
@@ -191,12 +200,12 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
 
         f"*** TASK INSTRUCTIONS ***:\n"
         f"1. Review the Bullish Analyst's defense.\n"
-        f"2. Based on your own analysis and the debate, formulate your conservative target prices (12m & 36m) and position weight.\n"
+        f"2. Based on your own analysis and the debate, formulate your conservative {{llmPriceTargets}} and position weight.\n"
         f"3. Provide numerical justification for your safety parameters.\n\n"
 
         f"*** EXPECTED OUTPUT SCHEMA ***:\n"
         f"- Solvency & Safety Margin Justification\n"
-        f"- Final Line: **Proposed Rating: [BUY/HOLD/SELL], Proposed Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], Proposed 12-Month Target: $[PRICE], Proposed 36-Month Target: $[PRICE].**\n"
+        f"- Final Line: **Proposed Rating: [BUY/HOLD/SELL], Proposed Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], Proposed {{llmFinalLinePriceTargets}}.**\n"
     ),
 
 
@@ -210,13 +219,13 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         f"*** TASK INSTRUCTIONS ***:\n"
         f"1. Review the final proposals from the Aggressive and Conservative Risk Analysts.\n"
         f"2. Balance upside expected value against solvency and downside risks.\n"
-        f"3. Execute 'calculateDistFromCurrPrice' for your balanced 12-month and 36-month target prices.\n"
-        f"4. State explicit final Verdict, Weight, and 12-month & 36-month price targets.\n\n"
+        f"3. Execute 'calculateDistFromCurrPrice' for your balanced {{llmPriceTargets}}.\n"
+        f"4. State explicit final Verdict, Weight, and {{llmPriceTargets}}.\n\n"
 
         f"*** EXPECTED OUTPUT SCHEMA ***:\n"
         f"- Executive Boardroom Decision & Synthesis\n"
         f"- Distance Verification & Valuation Rationale\n"
-        f"- Final Line: **Verdict: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], 12-Month Target: $[PRICE], 36-Month Target: $[PRICE].**\n"
+        f"- Final Line: **Verdict: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], {{llmFinalLinePriceTargets}}.**\n"
     ),
 
 
@@ -224,42 +233,45 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         f"You log the final decision into the system database.\n\n"
 
         f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
-        f"You must call 'confirmBoardroomDecision' with ticker, rating, weighting, twelveMonthTarget, and threeYearTarget.\n\n"
+        f"You must call '{{llmSubmitToolName}}' with ticker, rating, weighting and your two price targets.\n\n"
 
         f"*** TASK INSTRUCTIONS ***:\n"
-        f"1. Execute 'confirmBoardroomDecision' using exact numbers from your decision.\n"
+        f"1. Execute '{{llmSubmitToolName}}' using exact numbers from your decision.\n"
         f"2. Recite a brief 2-paragraph summary confirming the uploaded verdict.\n"
     )
 }
 
 
-def buildSummariseSysPrompt(agentRole: str, agentSubrole: str) -> str:
+def buildSummariseSysPrompt(agentRole: str, agentSubrole: str, promptArgs: Optional[Dict[str, str]] = None) -> str:
+    if not promptArgs:
+        from boardroom.boardroom_config import TIME_HORIZON_INFO, TimeHorizon
+        promptArgs = TIME_HORIZON_INFO[TimeHorizon.LONG]
     roleKey = roleKeyMap.get(agentRole, agentRole)
     role = f"{roleKey}_{agentSubrole}" if agentSubrole else roleKey
 
     match role:
         case "macroAnalyst":
             agentSpecificPrompt = (
-                "Include your final macro outlook and rating using these keys: "
-                "Market Regime: [HEAVILY/MODERATELY/MILDLY BULLISH/BEARISH/NEUTRAL]."
+                f"Include your final macro outlook and rating using these keys:\n "
+                f"Market Regime: [HEAVILY/MODERATELY/MILDLY BULLISH/BEARISH/NEUTRAL]."
             )
         case "bullishAnalyst_research" | "bullishAnalyst_defense":
             agentSpecificPrompt = (
-                "Include your final rating, position weight, and price targets using these keys exactly: "
-                "Rating: [BUY/HOLD], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
-                "12-Month Target: $[PRICE], 36-Month Target: $[PRICE]."
+                f"Include your final rating, position weight, and price targets using these keys exactly:\n "
+                f"Rating: [BUY/HOLD], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
+                f"{{llmFinalLinePriceTargets}}."
             )
         case "bearishAnalyst_research" | "bearishAnalyst_defense":
             agentSpecificPrompt = (
-                "Include your final rating, position weight, and price targets using these keys exactly: "
-                "Rating: [HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
-                "12-Month Target: $[PRICE], 36-Month Target: $[PRICE]."
+                f"Include your final rating, position weight, and price targets using these keys exactly:\n "
+                f"Rating: [HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
+                f"{{llmFinalLinePriceTargets}}."
             )
         case "aggressiveRiskAnalyst_proposal" | "conservativeRiskAnalyst_proposal":
             agentSpecificPrompt = (
-                "Include your final rating, position weight, and price targets using these keys exactly: "
-                "Rating: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
-                "12-Month Target: $[PRICE], 36-Month Target: $[PRICE]."
+                f"Include your final rating, position weight, and price targets using these keys exactly:\n "
+                f"Rating: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
+                f"{{llmFinalLinePriceTargets}}."
             )
         case "aggressiveRiskAnalyst_critique" | "conservativeRiskAnalyst_critique":
 
@@ -284,9 +296,9 @@ def buildSummariseSysPrompt(agentRole: str, agentSubrole: str) -> str:
         
         case "portfolioManager_decision" | "portfolioManager_upload":
             agentSpecificPrompt = (
-                "Include your final boardroom verdict, weight allocation, and targets using exactly these keys: "
-                "Verdict: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
-                "12-Month Target: $[PRICE], 36-Month Target: $[PRICE]. "
+                f"Include your final boardroom verdict, weight allocation, and targets using exactly these keys: "
+                f"Verdict: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
+                f"{{llmFinalLinePriceTargets}}. "
             )
         case _:
             agentSpecificPrompt = "Could not find agent specific prompt!"
@@ -311,4 +323,5 @@ def buildSummariseSysPrompt(agentRole: str, agentSubrole: str) -> str:
         f"Base your summary entirely on the raw internal analysis provided in the message. Do not add your own external facts, "
         f"and do not lose the core quantitative targets, arguments, or numbers from the raw source.\n\n"
     )
-    return systemPrompt
+
+    return systemPrompt.format(**promptArgs)

@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import pandas as pd
 
@@ -120,6 +120,7 @@ class FinancialAgent:
             timestamp: pd.Timestamp,
             subrole: Optional[str] = None,
             requireInitialTools: bool = False,
+            promptArgs: Optional[Dict[str, str]] = None,
             summarisationOverride: Optional[bool] = None,
         ):
         generateSummary = SUMMARISE_ENABLED if summarisationOverride is None else summarisationOverride
@@ -134,7 +135,8 @@ class FinancialAgent:
             dateStr=dateStr,
             agentRole=self.agentRole,
             agentToolsStr=self.getSpecificToolsStr(),
-            subrole=subrole
+            subrole=subrole,
+            promptArgs=promptArgs
         )
         rawAnalysis = self.executeInternalAnalysis(
             incomingMessage, toolRegistry, timestamp, sysPrompt, requireInitialTools
@@ -148,7 +150,7 @@ class FinancialAgent:
         setAgentPhase("summary")
         emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.color, "phase": "summary"})
 
-        uiSummary = self.generateUISummary(rawAnalysis, buildSummariseSysPrompt(self.agentRole, subrole))
+        uiSummary = self.generateUISummary(rawAnalysis, buildSummariseSysPrompt(self.agentRole, subrole, promptArgs))
 
         emitEvent("agentRunEnd", {"agentRole": self.agentRole, "phase": "summary"})
 

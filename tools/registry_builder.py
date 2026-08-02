@@ -4,7 +4,13 @@ from tools.functions.company import fetchCompanyProfile, fetchCompanyRecentNews,
 from tools.functions.edgar import fetchCompanyValuationMetrics, fetchIncomeStatement, fetchBalanceSheet, \
                                       fetchCashFlowStatement, fetchStatementOfEquity, fetchComprehensiveIncomeStatement 
 from tools.functions.sentiment import fetchTickerSentimentHistory, fetchSentimentDivergence, fetchMacroSentimentHistory
-from tools.functions.other import executePythonCalculation, confirmBoardroomDecision
+from tools.functions.other import (
+    executePythonCalculation, 
+    confirmBoardroomDecisionShortTerm, 
+    confirmBoardroomDecisionMediumTerm, 
+    confirmBoardroomDecisionLongTerm, 
+    confirmBoardroomDecisionDistantTerm
+)
 
 
 SCHEMAS = {
@@ -65,13 +71,10 @@ SCHEMAS = {
         "required": ["ticker"]
     },
 
-    "confirmDecision": {
+    "confirmDecisionShortTerm": {
         "type": "object",
         "properties": {
-            "ticker": {
-                "type": "string",
-                "description": "The stock ticker symbol."
-            },
+            "ticker": {"type": "string", "description": "The stock ticker symbol."},
             "rating": {
                 "type": "string",
                 "enum": ["STRONG BUY", "BUY", "HOLD", "SELL", "STRONG SELL"],
@@ -82,16 +85,70 @@ SCHEMAS = {
                 "enum": ["UNDERWEIGHT", "EQUAL-WEIGHT", "OVERWEIGHT"],
                 "description": "The final weighting assigned to the stock (UNDERWEIGHT/EQUAL-WEIGHT/OVERWEIGHT)."
             },
-            "twelveMonthTarget": {
-                "type": "number",
-                "description": "The final 12-month (1-year) target price for the stock."
+            "oneMonthTarget": {"type": "number", "description": "The final 1-month target price for the stock."},
+            "threeMonthTarget": {"type": "number", "description": "The final 3-month target price for the stock."}
+        },
+        "required": ["ticker", "rating", "weighting", "oneMonthTarget", "threeMonthTarget"]
+    },
+
+    "confirmDecisionMediumTerm": {
+        "type": "object",
+        "properties": {
+            "ticker": {"type": "string", "description": "The stock ticker symbol."},
+            "rating": {
+                "type": "string",
+                "enum": ["STRONG BUY", "BUY", "HOLD", "SELL", "STRONG SELL"],
+                "description": "The final stock rating made by the boardroom (STRONG BUY/BUY/HOLD/SELL/STRONG SELL)."
             },
-            "threeYearTarget": {
-                "type": "number",
-                "description": "The final 3-year (36-month) target price for the stock."
-            }
+            "weighting": {
+                "type": "string",
+                "enum": ["UNDERWEIGHT", "EQUAL-WEIGHT", "OVERWEIGHT"],
+                "description": "The final weighting assigned to the stock (UNDERWEIGHT/EQUAL-WEIGHT/OVERWEIGHT)."
+            },
+            "threeMonthTarget": {"type": "number", "description": "The final 3-month target price for the stock."},
+            "twelveMonthTarget": {"type": "number", "description": "The final 12-month (1-year) target price for the stock."}
+        },
+        "required": ["ticker", "rating", "weighting", "threeMonthTarget", "twelveMonthTarget"]
+    },
+
+    "confirmDecisionLongTerm": {
+        "type": "object",
+        "properties": {
+            "ticker": {"type": "string", "description": "The stock ticker symbol."},
+            "rating": {
+                "type": "string",
+                "enum": ["STRONG BUY", "BUY", "HOLD", "SELL", "STRONG SELL"],
+                "description": "The final stock rating made by the boardroom (STRONG BUY/BUY/HOLD/SELL/STRONG SELL)."
+            },
+            "weighting": {
+                "type": "string",
+                "enum": ["UNDERWEIGHT", "EQUAL-WEIGHT", "OVERWEIGHT"],
+                "description": "The final weighting assigned to the stock (UNDERWEIGHT/EQUAL-WEIGHT/OVERWEIGHT)."
+            },
+            "twelveMonthTarget": {"type": "number", "description": "The final 12-month (1-year) target price for the stock."},
+            "threeYearTarget": {"type": "number", "description": "The final 3-year (36-month) target price for the stock."}
         },
         "required": ["ticker", "rating", "weighting", "twelveMonthTarget", "threeYearTarget"]
+    },
+
+    "confirmDecisionDistantTerm": {
+        "type": "object",
+        "properties": {
+            "ticker": {"type": "string", "description": "The stock ticker symbol."},
+            "rating": {
+                "type": "string",
+                "enum": ["STRONG BUY", "BUY", "HOLD", "SELL", "STRONG SELL"],
+                "description": "The final stock rating made by the boardroom (STRONG BUY/BUY/HOLD/SELL/STRONG SELL)."
+            },
+            "weighting": {
+                "type": "string",
+                "enum": ["UNDERWEIGHT", "EQUAL-WEIGHT", "OVERWEIGHT"],
+                "description": "The final weighting assigned to the stock (UNDERWEIGHT/EQUAL-WEIGHT/OVERWEIGHT)."
+            },
+            "threeYearTarget": {"type": "number", "description": "The final 3-year (36-month) target price for the stock."},
+            "tenYearTarget": {"type": "number", "description": "The final 10-year target price for the stock."}
+        },
+        "required": ["ticker", "rating", "weighting", "threeYearTarget", "tenYearTarget"]
     },
 
     "stockPriceChange": {
@@ -255,11 +312,35 @@ def buildToolRegistry():
     ))
 
     toolReg.registerTool(Tool(
-        toolFunction=confirmBoardroomDecision,
-        toolName="confirmBoardroomDecision",
-        toolDescription="Confirms the final stock rating, weighting, and target prices for a given stock ticker "
-                        "after the boardroom has produced its final consensus.",
-        parameterSchema=SCHEMAS["confirmDecision"]
+        toolFunction=confirmBoardroomDecisionShortTerm,
+        toolName="confirmBoardroomDecisionShortTerm",
+        toolDescription="Confirms the final stock rating, weighting, and 1-month & 3-month target prices for a stock "
+                        "after the boardroom has produced its final consensus for a short-term horizon.",
+        parameterSchema=SCHEMAS["confirmDecisionShortTerm"]
+    ))
+
+    toolReg.registerTool(Tool(
+        toolFunction=confirmBoardroomDecisionMediumTerm,
+        toolName="confirmBoardroomDecisionMediumTerm",
+        toolDescription="Confirms the final stock rating, weighting, and 3-month & 12-month target prices for a stock "
+                        "after the boardroom has produced its final consensus for a medium-term horizon.",
+        parameterSchema=SCHEMAS["confirmDecisionMediumTerm"]
+    ))
+
+    toolReg.registerTool(Tool(
+        toolFunction=confirmBoardroomDecisionLongTerm,
+        toolName="confirmBoardroomDecisionLongTerm",
+        toolDescription="Confirms the final stock rating, weighting, and 12-month & 3-year target prices for a stock "
+                        "after the boardroom has produced its final consensus for a long-term horizon.",
+        parameterSchema=SCHEMAS["confirmDecisionLongTerm"]
+    ))
+
+    toolReg.registerTool(Tool(
+        toolFunction=confirmBoardroomDecisionDistantTerm,
+        toolName="confirmBoardroomDecisionDistantTerm",
+        toolDescription="Confirms the final stock rating, weighting, and 3-year & 10-year target prices for a stock "
+                        "after the boardroom has produced its final consensus for a distant-term horizon.",
+        parameterSchema=SCHEMAS["confirmDecisionDistantTerm"]
     ))
 
     return toolReg

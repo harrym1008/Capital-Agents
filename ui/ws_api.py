@@ -186,10 +186,43 @@ def splitAndPlotPerformance(ax, futureDates, futureCloses, splineVals, yMin):
     plotContiguousChunks(isRedPoint, '#f43f5e')
 
 
-def generateOhlcvChartImage(ticker, simDateTs, targets=None):
+def generateOhlcvChartImage(ticker, simDateTs, targets=None, horizon="long"):
     todayTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
-    startDateTs = simDateTs - pd.DateOffset(years=3)
-    endDateTs = simDateTs + pd.DateOffset(years=3)
+    if targets is None:
+        targets = []
+
+    horizonStr = (horizon or "long").lower()
+    
+    # Auto-infer horizon from targets if default 'long' was passed but targets indicate another horizon
+    if targets and horizonStr == "long":
+        maxMonths = max([t[0] for t in targets])
+        if maxMonths <= 3:
+            horizonStr = "short"
+        elif maxMonths <= 12:
+            horizonStr = "medium"
+        elif maxMonths > 36:
+            horizonStr = "distant"
+
+    if horizonStr == "short":
+        startDateTs = simDateTs - pd.DateOffset(months=3)
+        endDateTs = simDateTs + pd.DateOffset(months=3)
+        xLocator = mdates.MonthLocator(interval=1)
+        xFormatter = mdates.DateFormatter("%b '%y")
+    elif horizonStr in ["medium", "med"]:
+        startDateTs = simDateTs - pd.DateOffset(months=12)
+        endDateTs = simDateTs + pd.DateOffset(months=12)
+        xLocator = mdates.MonthLocator(interval=3)
+        xFormatter = mdates.DateFormatter("%b '%y")
+    elif horizonStr == "distant":
+        startDateTs = simDateTs - pd.DateOffset(years=5)
+        endDateTs = simDateTs + pd.DateOffset(years=10)
+        xLocator = mdates.YearLocator(base=2)
+        xFormatter = mdates.DateFormatter('%Y')
+    else:  # "long" default
+        startDateTs = simDateTs - pd.DateOffset(years=3)
+        endDateTs = simDateTs + pd.DateOffset(years=3)
+        xLocator = mdates.YearLocator(base=1)
+        xFormatter = mdates.DateFormatter('%Y')
     
     tickerProvider, priceProvider = getOhlcvProviders()
     profile = tickerProvider.getTickerProfile(ticker)
@@ -231,9 +264,6 @@ def generateOhlcvChartImage(ticker, simDateTs, targets=None):
             futureClosesSmooth = getRollingMean(closesRaw, window=3)
             allPrices.extend(futureClosesSmooth.tolist())
             
-    if targets is None:
-        targets = []
-    
     startTime = startDateTs.timestamp()
     simDateDaysFromStart = (simDateTs - startDateTs).total_seconds() / 86400.0
     targetX = [simDateDaysFromStart]
@@ -267,13 +297,13 @@ def generateOhlcvChartImage(ticker, simDateTs, targets=None):
     ax.set_facecolor('#ffffff')
     
     if len(histDates) > 0:
-        ax.plot(histDates, histClosesSmooth, color='#2563eb', linewidth=1.8, label='Historical (-3Y)')
+        ax.plot(histDates, histClosesSmooth, color='#2563eb', linewidth=1.8, label='Historical')
         ax.fill_between(histDates, histClosesSmooth, yMin, color='#2563eb', alpha=0.08)
         
     curveX, curveY = None, None
     if len(targets) > 0:
         curveX, curveY = computeBezierThroughPoints(targetX, targetY, numSamples=400)
-        curveDates = [pd.Timestamp(startTime + x * 86400.0, unit='s', tz=NEW_YORK).to_pydatetime() for x in curveX]
+        curveDates = [pd.Timestamp(round(startTime + x * 86400.0), unit='s', tz=NEW_YORK).to_pydatetime() for x in curveX]
         ax.plot(curveDates, curveY, color='#06b6d4', linewidth=2.8, solid_capstyle='round', zorder=5)
         
         for i, (monthsOffset, price) in enumerate(targets):
@@ -299,11 +329,11 @@ def generateOhlcvChartImage(ticker, simDateTs, targets=None):
     xEnd = endDateTs.to_pydatetime()
     if len(targets) > 0:
         xRangeSeconds = (endDateTs - startDateTs).total_seconds()
-        xEnd = endDateTs + pd.Timedelta(seconds=xRangeSeconds * 0.02)
+        xEnd = (endDateTs + pd.Timedelta(seconds=xRangeSeconds * 0.02)).to_pydatetime()
         
     ax.set_xlim(startDateTs.to_pydatetime(), xEnd)
-    ax.xaxis.set_major_locator(mdates.YearLocator())
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+    ax.xaxis.set_major_locator(xLocator)
+    ax.xaxis.set_major_formatter(xFormatter)
     
     ax.set_ylim(bottom=yMin, top=yMax)
     
@@ -433,6 +463,7 @@ def registerApiRoutes(app):
     def getOhlcvChart():
         ticker = request.args.get("ticker", "NVDA").strip()
         simDateStr = request.args.get("simDate")
+        horizon = request.args.get("horizon", "long").strip().lower()
 
         if not simDateStr:
             simDateTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
@@ -454,7 +485,7 @@ def registerApiRoutes(app):
                         pass
 
         try:
-            chartImage = generateOhlcvChartImage(ticker, simDateTs, targets=targetsList)
+            chartImage = generateOhlcvChartImage(ticker, simDateTs, targets=targetsList, horizon=horizon)
             return jsonify({"chartImage": chartImage})
         except Exception as e:
             return jsonify({"error": str(e)}), 500

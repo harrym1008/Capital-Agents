@@ -17,6 +17,7 @@ from llm.cloud.openrouter_client import OpenRouterClient
 
 from llm.llm_client import BaseLLMClient
 from llm.token_cost_tracker import TokenCostTracker
+from tools.functions.sentiment import preloadSentimentModelAsync
 from ui.ui_hooks import emitEvent
 
 
@@ -217,6 +218,8 @@ class ServerManager:
 
                         self.recordLog(f"Clearing VRAM...")
                         rudimentaryVramClear()
+                        preloadSentimentModelAsync()    # Do this after vram clearing since the model needs to be in vram
+
                         self.recordLog("VRAM cleared, starting Llama.cpp boardroom server...")
                         serverProcess = LlamaCppProcessInitiator(
                             serverName="boardroom",

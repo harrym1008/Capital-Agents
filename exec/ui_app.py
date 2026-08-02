@@ -74,10 +74,10 @@ def broadcastEvent(eventData):
 
 
 
-def runBoardroom(ticker: str, simulatedDate: str = None, fastMode: bool = True, allowParallel: bool = True):
+def runBoardroom(config, allowParallel: bool = True):
     """Run boardroom simulation using active clients from serverManager."""
     try:
-        from exec.boardroom_runner import executeBoardroomRating
+        from boardroom.boardroom_runner import executeBoardroomConfig
 
         boardroomClient, summaryClient = serverManager.getClients()
 
@@ -85,12 +85,10 @@ def runBoardroom(ticker: str, simulatedDate: str = None, fastMode: bool = True, 
             emitEvent("error", {"message": "No active LLM server found. Please start a server from the manager setup page."})
             return
 
-        executeBoardroomRating(
+        executeBoardroomConfig(
+            config=config,
             boardroomClient=boardroomClient,
-            summaryClient=summaryClient,
-            tickerToEval=ticker,
-            simulatedDate=simulatedDate,
-            fastMode=fastMode
+            summaryClient=summaryClient
         )
     except SimulationStoppedException:
         print("Boardroom evaluation stopped by user.")
@@ -115,14 +113,13 @@ async def websocketHandler(websocket):
             action = data.get("action")
             if action == "start":
                 resetStop()
-                ticker = data.get("ticker", "NVDA")
-                mode = data.get("mode", "fast")
-                simulatedDate = data.get("simulatedDate") or None
+                from boardroom.boardroom_config import SingleEquityRatingConfig
+                config = SingleEquityRatingConfig.fromDict(data)
                 allowParallel = data.get("allowParallel", True)
 
                 simThread = threading.Thread(
                     target=runBoardroom,
-                    args=(ticker, simulatedDate, mode == "fast", allowParallel),
+                    args=(config, allowParallel),
                     daemon=True
                 )
                 simThread.start()

@@ -114,13 +114,6 @@ def rudimentaryVramClear():
             gc.collect()
             time.sleep(1)
 
-            # Post-clear: Trigger background preloading of ModernFinBERT model into the newly freed VRAM
-            try:
-                from tools.functions.sentiment import preloadSentimentModelAsync
-                preloadSentimentModelAsync()
-            except Exception as e:
-                print(f"Post VRAM clear sentiment preloading issue: {e}")
-
     except Exception as e:
         print(f"Error during rudimentary VRAM clearing: {e}. Continuing without clearing VRAM.")
 

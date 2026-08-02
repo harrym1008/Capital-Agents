@@ -25,6 +25,15 @@
             </select>
         </div>
         <div class="config-group">
+            <label for="horizonSelect">Horizon:</label>
+            <select id="horizonSelect">
+                <option value="short">Short (1wk & 1mo)</option>
+                <option value="medium">Medium (3mo & 12mo)</option>
+                <option value="long" selected>Long (12mo & 3y)</option>
+                <option value="distant">Distant (3y & 10y)</option>
+            </select>
+        </div>
+        <div class="config-group">
             <label for="simulatedDateCheckbox">Use Sim Date:</label>
             <input type="checkbox" id="simulatedDateCheckbox">
         </div>
@@ -385,7 +394,7 @@
                     break;
 
                 case "toolCallEnd":
-                    if (payload.toolName === "confirmBoardroomDecision") {
+                    if (payload.toolName && payload.toolName.startsWith("confirmBoardroomDecision")) {
                         updateUploadReceipt(payload.result, payload.status === "success" ? "UPLOADED" : "FAILED");
                     } else {
                         endToolBlock(activeStage, agentRole, payload.toolName, payload.callId, payload.status, payload.result, payload.stdout, payload.variables, payload.toolIndex);
@@ -475,19 +484,60 @@
             const tickerVal = data.ticker || "--";
             const ratingVal = data.rating || "--";
             const weightingVal = data.weighting || "--";
-            let target12Val = data.twelveMonthTarget || "--";
-            if (target12Val !== "--" && !String(target12Val).startsWith("$")) {
-                target12Val = `$${target12Val}`;
+
+            let label1 = "12-Month Price Target:";
+            let label2 = "3-Year Price Target:";
+            let val1 = "--";
+            let val2 = "--";
+            let months1 = "12";
+            let months2 = "36";
+
+            if (data.oneMonthTarget !== undefined && data.threeMonthTarget !== undefined) {
+                label1 = "1-Month Price Target:";
+                val1 = data.oneMonthTarget;
+                months1 = "1";
+                label2 = "3-Month Price Target:";
+                val2 = data.threeMonthTarget;
+                months2 = "3";
+            } else if (data.threeMonthTarget !== undefined && data.twelveMonthTarget !== undefined) {
+                label1 = "3-Month Price Target:";
+                val1 = data.threeMonthTarget;
+                months1 = "3";
+                label2 = "12-Month Price Target:";
+                val2 = data.twelveMonthTarget;
+                months2 = "12";
+            } else if (data.twelveMonthTarget !== undefined && data.threeYearTarget !== undefined) {
+                label1 = "12-Month Price Target:";
+                val1 = data.twelveMonthTarget;
+                months1 = "12";
+                label2 = "3-Year Price Target:";
+                val2 = data.threeYearTarget;
+                months2 = "36";
+            } else if (data.threeYearTarget !== undefined && data.tenYearTarget !== undefined) {
+                label1 = "3-Year Price Target:";
+                val1 = data.threeYearTarget;
+                months1 = "36";
+                label2 = "10-Year Price Target:";
+                val2 = data.tenYearTarget;
+                months2 = "120";
+            } else {
+                val1 = data.twelveMonthTarget || "--";
+                val2 = data.threeYearTarget || "--";
             }
-            let target36Val = data.threeYearTarget || "--";
-            if (target36Val !== "--" && !String(target36Val).startsWith("$")) {
-                target36Val = `$${target36Val}`;
+
+            if (val1 !== "--" && !String(val1).startsWith("$")) {
+                val1 = `$${val1}`;
+            }
+            if (val2 !== "--" && !String(val2).startsWith("$")) {
+                val2 = `$${val2}`;
             }
 
             const tickerEl = document.getElementById("receipt-ticker");
             const dateEl = document.getElementById("receipt-date");
             const ratingEl = document.getElementById("receipt-rating");
             const weightingEl = document.getElementById("receipt-weighting");
+            const label1El = document.getElementById("receipt-label-1");
+            const label2El = document.getElementById("receipt-label-2");
             const target12El = document.getElementById("receipt-target-12");
             const target36El = document.getElementById("receipt-target-36");
             const statusEl = document.getElementById("receipt-status");
@@ -498,9 +548,9 @@
             if (ratingEl) {
                 ratingEl.innerText = ratingVal;
                 ratingEl.className = "tool-status-badge";
-                if (ratingVal === "BUY" || ratingVal === "OVERWEIGHT") {
+                if (ratingVal === "BUY" || ratingVal === "OVERWEIGHT" || ratingVal === "STRONG BUY") {
                     ratingEl.classList.add("status-success");
-                } else if (ratingVal === "SELL" || ratingVal === "UNDERWEIGHT") {
+                } else if (ratingVal === "SELL" || ratingVal === "UNDERWEIGHT" || ratingVal === "STRONG SELL") {
                     ratingEl.classList.add("status-error");
                 } else {
                     ratingEl.classList.add("status-running");
@@ -508,8 +558,16 @@
             }
 
             if (weightingEl) weightingEl.innerText = weightingVal;
-            if (target12El) target12El.innerText = target12Val;
-            if (target36El) target36El.innerText = target36Val;
+            if (label1El) label1El.innerText = label1;
+            if (label2El) label2El.innerText = label2;
+            if (target12El) {
+                target12El.innerText = val1;
+                target12El.dataset.months = months1;
+            }
+            if (target36El) {
+                target36El.innerText = val2;
+                target36El.dataset.months = months2;
+            }
 
             if (tickerVal !== "--") {
                 currentTicker = tickerVal;
@@ -547,23 +605,25 @@
                 simDateStr = new Date().toISOString().split("T")[0];
             }
 
-            // Collect all target elements dynamically (supports 3mo, 6mo, 12mo, 24mo, 36mo, etc.)
+            // Collect all target elements dynamically
             const t12El = document.getElementById("receipt-target-12");
             const t36El = document.getElementById("receipt-target-36");
             
-            // Build targets array: [months_offset, price] pairs
             const targets = [];
             if (t12El && t12El.innerText && t12El.innerText !== "--") {
                 const val = t12El.innerText.trim().replace("$", "");
-                if (val) targets.push(`12:${val}`);
+                const m = t12El.dataset.months || "12";
+                if (val) targets.push(`${m}:${val}`);
             }
             if (t36El && t36El.innerText && t36El.innerText !== "--") {
                 const val = t36El.innerText.trim().replace("$", "");
-                if (val) targets.push(`36:${val}`);
+                const m = t36El.dataset.months || "36";
+                if (val) targets.push(`${m}:${val}`);
             }
 
+            const horizon = document.getElementById("horizonSelect") ? document.getElementById("horizonSelect").value : "long";
             try {
-                let url = `/api/ohlcv?ticker=${encodeURIComponent(ticker)}&simDate=${encodeURIComponent(simDateStr)}`;
+                let url = `/api/ohlcv?ticker=${encodeURIComponent(ticker)}&simDate=${encodeURIComponent(simDateStr)}&horizon=${encodeURIComponent(horizon)}`;
                 if (targets.length > 0) {
                     url += `&targets=${encodeURIComponent(targets.join(","))}`;
                 }
@@ -843,10 +903,10 @@
                                 <div style="font-weight: 700; color: #475569;">Portfolio Weighting:</div>
                                 <div id="receipt-weighting" style="font-weight: bold;">--</div>
                                 
-                                <div style="font-weight: 700; color: #475569;">12-Month Price Target:</div>
+                                <div id="receipt-label-1" style="font-weight: 700; color: #475569;">12-Month Price Target:</div>
                                 <div id="receipt-target-12" style="font-weight: bold;">--</div>
                                 
-                                <div style="font-weight: 700; color: #475569;">3-Year Price Target:</div>
+                                <div id="receipt-label-2" style="font-weight: 700; color: #475569;">3-Year Price Target:</div>
                                 <div id="receipt-target-36" style="font-weight: bold;">--</div>
                                 
                                 <div style="font-weight: 700; color: #475569;">Upload Status:</div>
@@ -1462,10 +1522,13 @@
             currentStageNumber = 0;
             highestStageNumber = 0;
 
+            const horizon = document.getElementById("horizonSelect").value;
+
             socket.send(JSON.stringify({
                 action: "start",
                 ticker,
                 mode,
+                timeHorizon: horizon,
                 useSimDate: useSimDate,
                 simulatedDate: simulatedDate
             }));

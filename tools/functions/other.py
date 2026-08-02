@@ -162,9 +162,16 @@ def executePythonCalculation(tool: Tool, data: DataProviders, timestamp: pd.Time
 
 
 
-def confirmBoardroomDecision(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, 
-                             ticker: str, rating: str, weighting: str, twelveMonthTarget: float, threeYearTarget: float) -> Dict[str, Any]:
-    from cli.ansi import ANSI
+def confirmBoardroomDecisionBase(
+    tool: Tool, 
+    ticker: str, 
+    rating: str, 
+    weighting: str, 
+    targetKey1: str, 
+    targetVal1: float, 
+    targetKey2: str, 
+    targetVal2: float
+) -> Dict[str, Any]:
     try:
         rating = rating.upper()
         weighting = weighting.upper()
@@ -174,24 +181,40 @@ def confirmBoardroomDecision(tool: Tool, data: DataProviders, timestamp: pd.Time
         if weighting not in ["UNDERWEIGHT", "EQUAL-WEIGHT", "OVERWEIGHT"]:
             return {"error": f"Invalid weighting value: {weighting}. Must be one of UNDERWEIGHT, EQUAL-WEIGHT, OVERWEIGHT."}
 
-        finalDecisionStr = f"""{ANSI.BOLD}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃  Completed boardroom decision confirmation of {(ticker+':'):<12}   ┃
-┃                                                              ┃
-┃        Rating:  {ANSI.ITALIC}{rating:<12}{ANSI.RESET}{ANSI.BOLD}                                 ┃
-┃     Weighting:  {ANSI.ITALIC}{weighting:<12}{ANSI.RESET}{ANSI.BOLD}                                 ┃
-┃  12-Mo Target:  {cleanNumber(twelveMonthTarget, NumberType.STOCK_PRICE):<12}                                 ┃
-┃   3-Yr Target:  {cleanNumber(threeYearTarget, NumberType.STOCK_PRICE):<12}                                 ┃ 
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n{ANSI.RESET}"""
-        
+        cleanedVal1 = cleanNumber(targetVal1, NumberType.STOCK_PRICE)
+        cleanedVal2 = cleanNumber(targetVal2, NumberType.STOCK_PRICE)
+
+        summaryLogStr = f"Boardroom decision confirmed for {ticker}: Rating: {rating}, Weighting: {weighting}, {targetKey1}: {cleanedVal1}, {targetKey2}: {cleanedVal2}."
+
         result = {
             "ticker": ticker,
             "rating": rating,
             "weighting": weighting,
-            "twelveMonthTarget": cleanNumber(twelveMonthTarget, NumberType.STOCK_PRICE),
-            "threeYearTarget": cleanNumber(threeYearTarget, NumberType.STOCK_PRICE)
+            targetKey1: cleanedVal1,
+            targetKey2: cleanedVal2
         }
-        tool.toolLog.append(finalDecisionStr)
+        tool.toolLog.append(summaryLogStr)
 
         return cleanData(result)
     except Exception as e:
         return {"error": f"An error occurred while confirming boardroom decision: {str(e)}"}
+
+
+def confirmBoardroomDecisionShortTerm(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, 
+                                      ticker: str, rating: str, weighting: str, oneMonthTarget: float, threeMonthTarget: float) -> Dict[str, Any]:
+    return confirmBoardroomDecisionBase(tool, ticker, rating, weighting, "oneMonthTarget", oneMonthTarget, "threeMonthTarget", threeMonthTarget)
+
+
+def confirmBoardroomDecisionMediumTerm(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, 
+                                       ticker: str, rating: str, weighting: str, threeMonthTarget: float, twelveMonthTarget: float) -> Dict[str, Any]:
+    return confirmBoardroomDecisionBase(tool, ticker, rating, weighting, "threeMonthTarget", threeMonthTarget, "twelveMonthTarget", twelveMonthTarget)
+
+
+def confirmBoardroomDecisionLongTerm(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, 
+                                     ticker: str, rating: str, weighting: str, twelveMonthTarget: float, threeYearTarget: float) -> Dict[str, Any]:
+    return confirmBoardroomDecisionBase(tool, ticker, rating, weighting, "twelveMonthTarget", twelveMonthTarget, "threeYearTarget", threeYearTarget)
+
+
+def confirmBoardroomDecisionDistantTerm(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, 
+                                        ticker: str, rating: str, weighting: str, threeYearTarget: float, tenYearTarget: float) -> Dict[str, Any]:
+    return confirmBoardroomDecisionBase(tool, ticker, rating, weighting, "threeYearTarget", threeYearTarget, "tenYearTarget", tenYearTarget)

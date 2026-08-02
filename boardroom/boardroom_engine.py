@@ -10,6 +10,7 @@ from cli.ansi import ANSI
 from llm.client_duo import ClientDuo
 from tools.registry_builder import ToolRegistry
 from llm.agents.agent import FinancialAgent
+from boardroom.boardroom_config import BoardroomConfig, SingleEquityRatingConfig, TimeHorizon, TIME_HORIZON_INFO
 
 from ui.ui_hooks import getCurrentStage, setCurrentStage, emitEvent, SimulationStoppedException
 
@@ -122,8 +123,11 @@ class BoardroomEngine:
         })
 
 
-    def executeFastSingleEquityRating(self, targetTicker):
-        self.fastMode = True
+    def executeFastSingleEquityRating(self, config: SingleEquityRatingConfig):
+        targetTicker, _, timeHorizon, _ = config.unpack()
+        timeHorizonInfo = config.getTimeHorizonInfo()
+        finalSubmitToolName = timeHorizonInfo["llmSubmitToolName"]
+
         startTime = datetime.now()
         dateStr = self.timestamp.strftime("%Y-%m-%d")
         print(f"\n{'='*70}\nStarting Fast Boardroom Evaluation for: {targetTicker}\n{'='*70}")        
@@ -136,7 +140,7 @@ class BoardroomEngine:
             "Present a narrative macro summary and explicitly output your overall market regime classification as BULLISH, BEARISH, or NEUTRAL."
         )
         macroRaw, macroUISummary = self.macroAnalyst.analyseAndReply(
-            macroPrompt, self.toolRegistry, self.timestamp, subrole=None, requireInitialTools=True
+            macroPrompt, self.toolRegistry, self.timestamp, subrole=None, requireInitialTools=True, promptArgs=timeHorizonInfo
         )
         
         # Phase 2: Specialist Research
@@ -145,15 +149,17 @@ class BoardroomEngine:
             f"Macroeconomic Context:\n{macroRaw}\n\n"
             f"Task: Conduct single-stock research on ticker {targetTicker}.\n"
             f"Execute your data tools (valuation metrics, financial statements, stock price performance, company profile, etc.) to retrieve hard facts. "
-            f"Present your thesis and state: explicit rating ({{permittedRatings}}), OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT weight, and preliminary 12-month and 36-month price targets."
+            f"Present your thesis and state: explicit rating ({{permittedRatings}}), OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT weight, and preliminary {timeHorizonInfo['llmPriceTargets']}."
         )
         
         (bullThesisRaw, bullThesisUISummary), (bearThesisRaw, bearThesisUISummary) = self._runAgentsConcurrently(
             lambda: self.bullAnalyst.analyseAndReply(
-                researchPrompt.format(permittedRatings="BUY/HOLD"), self.toolRegistry, self.timestamp, subrole="research", requireInitialTools=True,
+                researchPrompt.format(permittedRatings="BUY/HOLD"), self.toolRegistry, self.timestamp, 
+                subrole="research", requireInitialTools=True, promptArgs=timeHorizonInfo
             ),
             lambda: self.bearAnalyst.analyseAndReply(
-                researchPrompt.format(permittedRatings="HOLD/SELL"), self.toolRegistry, self.timestamp, subrole="research", requireInitialTools=True,
+                researchPrompt.format(permittedRatings="HOLD/SELL"), self.toolRegistry, self.timestamp, 
+                subrole="research", requireInitialTools=True, promptArgs=timeHorizonInfo
             )
         )
 
@@ -167,11 +173,11 @@ class BoardroomEngine:
             f"Conservative Allocation Case:\n{bearThesisRaw}\n\n"
             f"Task: Produce the final executive investment decision for {targetTicker}.\n"
             f"Weigh upside potential against solvency risks. You MUST verify your final price targets using the 'calculateDistFromCurrPrice' tool. "
-            f"Include a definitive rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and 12-month and 36-month price targets."
+            f"Include a definitive rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and {timeHorizonInfo['llmFinalLinePriceTargets']}."
         )
-        self.portManager.removeTool("confirmBoardroomDecision")
+        self.portManager.removeTool(finalSubmitToolName)
         finalDecisionRaw, finalDecisionUISummary = self.portManager.analyseAndReply(
-            managerPrompt, self.toolRegistry, self.timestamp, subrole="decision", requireInitialTools=False
+            managerPrompt, self.toolRegistry, self.timestamp, subrole="decision", requireInitialTools=False, promptArgs=timeHorizonInfo
         )
 
 
@@ -181,16 +187,16 @@ class BoardroomEngine:
             f"Target Asset: {targetTicker}\n"
             f"Final Decision Summary:\n{finalDecisionRaw}\n\n"
             f"Task: Upload and log the final boardroom verdict for {targetTicker}.\n"
-            f"Execute the 'confirmBoardroomDecision' tool with ticker='{targetTicker}', rating, weighting, twelveMonthTarget, and threeYearTarget based on your final decision."
+            f"Execute the {finalSubmitToolName} tool with ticker='{targetTicker}', rating, weighting and the {timeHorizonInfo['llmFinalLinePriceTargets']} based on your final decision."
         )
         self.portManager.clearTools()
-        self.portManager.addTool("confirmBoardroomDecision", self.toolRegistry)
+        self.portManager.addTool(finalSubmitToolName, self.toolRegistry)
         _, _ = self.portManager.analyseAndReply(
-            uploadPrompt, self.toolRegistry, self.timestamp, subrole="upload", requireInitialTools=False, summarisationOverride=False
+            uploadPrompt, self.toolRegistry, self.timestamp, subrole="upload", requireInitialTools=False, promptArgs=timeHorizonInfo, summarisationOverride=False
         )
 
         try:
-            formattedExecutiveDecision = self.toolRegistry.getTool("confirmBoardroomDecision").toolLog[-1]
+            formattedExecutiveDecision = self.toolRegistry.getTool(finalSubmitToolName).toolLog[-1]
         except Exception:
             formattedExecutiveDecision = "Decision not found."        
                 
@@ -242,8 +248,11 @@ class BoardroomEngine:
 
 
 
-    def executeCompleteSingleEquityRating(self, targetTicker):
-        self.fastMode = False
+    def executeCompleteSingleEquityRating(self, config: SingleEquityRatingConfig):
+        targetTicker, _, timeHorizon, _ = config.unpack()
+        timeHorizonInfo = config.getTimeHorizonInfo()
+        finalSubmitToolName = timeHorizonInfo["llmSubmitToolName"]
+
         startTime = datetime.now()
         dateStr = self.timestamp.strftime("%Y-%m-%d")
         print(f"\n{'='*70}\nStarting Live Boardroom Evaluation for: {targetTicker}\n{'='*70}")        
@@ -256,7 +265,7 @@ class BoardroomEngine:
             "Present a narrative macro summary and explicitly output your overall market regime classification as BULLISH, BEARISH, or NEUTRAL."
         )
         macroRaw, macroUISummary = self.macroAnalyst.analyseAndReply(
-            macroPrompt, self.toolRegistry, self.timestamp, subrole=None, requireInitialTools=True
+            macroPrompt, self.toolRegistry, self.timestamp, subrole=None, requireInitialTools=True, promptArgs=timeHorizonInfo
         )
         
         # Phase 2: Specialist Research
@@ -265,15 +274,17 @@ class BoardroomEngine:
             f"Macroeconomic Context:\n{macroRaw}\n\n"
             f"Task: Conduct single-stock research on ticker {targetTicker}.\n"
             f"Execute your data tools (valuation metrics, financial statements, stock price performance, company profile) to retrieve hard facts. "
-            f"Present your thesis and state: explicit rating ({{permittedRatings}}), OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT weight, and preliminary 12-month and 36-month price targets."
+            f"Present your thesis and state: explicit rating ({{permittedRatings}}), OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT weight, and preliminary {timeHorizonInfo['llmPriceTargets']}."
         )
         
         (bullThesisRaw, bullThesisUISummary), (bearThesisRaw, bearThesisUISummary) = self._runAgentsConcurrently(
             lambda: self.bullAnalyst.analyseAndReply(
-                researchPrompt.format(permittedRatings="BUY/HOLD"), self.toolRegistry, self.timestamp, subrole="research", requireInitialTools=True,
+                researchPrompt.format(permittedRatings="BUY/HOLD"), self.toolRegistry, self.timestamp, 
+                subrole="research", requireInitialTools=True, promptArgs=timeHorizonInfo
             ),
             lambda: self.bearAnalyst.analyseAndReply(
-                researchPrompt.format(permittedRatings="HOLD/SELL"), self.toolRegistry, self.timestamp, subrole="research", requireInitialTools=True,
+                researchPrompt.format(permittedRatings="HOLD/SELL"), self.toolRegistry, self.timestamp, 
+                subrole="research", requireInitialTools=True, promptArgs=timeHorizonInfo
             )
         )
 
@@ -294,10 +305,10 @@ class BoardroomEngine:
         
         (aggQuestionsRaw, aggQuestionsUISummary), (consQuestionsRaw, consQuestionsUISummary) = self._runAgentsConcurrently(
             lambda: self.aggRiskAnalyst.analyseAndReply(
-                aggDebatePrompt, self.toolRegistry, self.timestamp, "critique", requireInitialTools=False
+                aggDebatePrompt, self.toolRegistry, self.timestamp, "critique", requireInitialTools=False, promptArgs=timeHorizonInfo
             ),
             lambda: self.consRiskAnalyst.analyseAndReply(
-                consDebatePrompt, self.toolRegistry, self.timestamp, "critique", requireInitialTools=False
+                consDebatePrompt, self.toolRegistry, self.timestamp, "critique", requireInitialTools=False, promptArgs=timeHorizonInfo
             )
         )
         
@@ -316,10 +327,10 @@ class BoardroomEngine:
         
         (bullDefenseRaw, bullDefenseUISummary), (bearDefenseRaw, bearDefenseUISummary) = self._runAgentsConcurrently(
             lambda: self.bullAnalyst.analyseAndReply(
-                bullDefensePrompt, self.toolRegistry, self.timestamp, "defense", requireInitialTools=False
+                bullDefensePrompt, self.toolRegistry, self.timestamp, "defense", requireInitialTools=False, promptArgs=timeHorizonInfo
             ),
             lambda: self.bearAnalyst.analyseAndReply(
-                bearDefensePrompt, self.toolRegistry, self.timestamp, "defense", requireInitialTools=False
+                bearDefensePrompt, self.toolRegistry, self.timestamp, "defense", requireInitialTools=False, promptArgs=timeHorizonInfo
             )
         )
 
@@ -328,20 +339,20 @@ class BoardroomEngine:
         aggProposalPrompt = (
             f"Bearish Analyst's Defense:\n{bearDefenseRaw}\n\n"
             f"Task: Formulate your final aggressive allocation proposal for {targetTicker}.\n"
-            f"Propose your 12-month and 36-month price targets and position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), justifying your high-upside growth assumptions."
+            f"Propose your {timeHorizonInfo['llmPriceTargets']} and position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), justifying your high-upside growth assumptions."
         )
         consProposalPrompt = (
             f"Bullish Analyst's Defense:\n{bullDefenseRaw}\n\n"
             f"Task: Formulate your final conservative allocation proposal for {targetTicker}.\n"
-            f"Propose your 12-month and 36-month price targets and position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), incorporating a robust margin of safety."
+            f"Propose your {timeHorizonInfo['llmPriceTargets']} and position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), incorporating a robust margin of safety."
         )
         
         (aggProposalRaw, aggProposalUISummary), (consProposalRaw, consProposalUISummary) = self._runAgentsConcurrently(
             lambda: self.aggRiskAnalyst.analyseAndReply(
-                aggProposalPrompt, self.toolRegistry, self.timestamp, subrole="proposal", requireInitialTools=False
+                aggProposalPrompt, self.toolRegistry, self.timestamp, subrole="proposal", requireInitialTools=False, promptArgs=timeHorizonInfo
             ),
             lambda: self.consRiskAnalyst.analyseAndReply(
-                consProposalPrompt, self.toolRegistry, self.timestamp, subrole="proposal", requireInitialTools=False
+                consProposalPrompt, self.toolRegistry, self.timestamp, subrole="proposal", requireInitialTools=False, promptArgs=timeHorizonInfo
             )
         )
 
@@ -356,11 +367,11 @@ class BoardroomEngine:
             f"Conservative Allocation Case:\n{consProposalRaw}\n\n"
             f"Task: Produce the final executive investment decision for {targetTicker}.\n"
             f"Weigh upside potential against solvency risks. You MUST verify your final price targets using the 'calculateDistFromCurrPrice' tool. "
-            f"Include a definitive rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and 12-month and 36-month price targets. Do NOT call confirmBoardroomDecision yet."
+            f"Include a definitive rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and {timeHorizonInfo['llmFinalLinePriceTargets']}."
         )
-        self.portManager.removeTool("confirmBoardroomDecision")
+        self.portManager.removeTool(finalSubmitToolName)
         finalDecisionRaw, finalDecisionUISummary = self.portManager.analyseAndReply(
-            managerPrompt, self.toolRegistry, self.timestamp, subrole="decision", requireInitialTools=True
+            managerPrompt, self.toolRegistry, self.timestamp, subrole="decision", requireInitialTools=True, promptArgs=timeHorizonInfo
         )
 
         
@@ -370,16 +381,16 @@ class BoardroomEngine:
             f"Target Asset: {targetTicker}\n"
             f"Final Decision Summary:\n{finalDecisionRaw}\n\n"
             f"Task: Upload and log the final boardroom verdict for {targetTicker}.\n"
-            f"Execute the 'confirmBoardroomDecision' tool with ticker='{targetTicker}', rating, weighting, twelveMonthTarget, and threeYearTarget based on your final decision."
+            f"Execute the {finalSubmitToolName} tool with ticker='{targetTicker}', rating, weighting and the {timeHorizonInfo['llmFinalLinePriceTargets']} based on your final decision."
         )
         self.portManager.clearTools()
-        self.portManager.addTool("confirmBoardroomDecision", self.toolRegistry)
+        self.portManager.addTool(finalSubmitToolName, self.toolRegistry)
         _, _ = self.portManager.analyseAndReply(
-            uploadPrompt, self.toolRegistry, self.timestamp, subrole="upload", requireInitialTools=True
+            uploadPrompt, self.toolRegistry, self.timestamp, subrole="upload", requireInitialTools=True, promptArgs=timeHorizonInfo
         )
 
         try:
-            formattedExecutiveDecision = self.toolRegistry.getTool("confirmBoardroomDecision").toolLog[-1]
+            formattedExecutiveDecision = self.toolRegistry.getTool(finalSubmitToolName).toolLog[-1]
         except Exception:
             formattedExecutiveDecision = "Decision not found."
 
@@ -458,8 +469,7 @@ class BoardroomEngine:
             f.write(fullConvSummary)       
         
 
-
-    def executeSingleEquityRating(self, targetTicker, fastMode=False):
+    def executeSingleEquityRating(self, config: SingleEquityRatingConfig):
         if self.clientDuo is None:
             raise ValueError("ClientDuo is not assigned. Please assign a ClientDuo before executing the boardroom.")
 
@@ -467,10 +477,18 @@ class BoardroomEngine:
         if self.clientDuo.summaryClient is not self.clientDuo.boardroomClient:
             self.clientDuo.summaryClient.newTask()
 
-        if fastMode:
-            self.executeFastSingleEquityRating(targetTicker)
+        if config.fastMode:
+            self.executeFastSingleEquityRating(config)
         else:
-            self.executeCompleteSingleEquityRating(targetTicker)
+            self.executeCompleteSingleEquityRating(config)
+
+
+    def execute(self, config: BoardroomConfig):
+        if isinstance(config, SingleEquityRatingConfig):
+            self.executeSingleEquityRating(config)
+        else:
+            raise NotImplementedError(f"BoardroomConfig type '{type(config).__name__}' is not supported yet.")
+
 
 
 
@@ -580,7 +598,7 @@ def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> Bo
             toolMap["fetchCompanyProfile"],
             toolMap["executePythonCalculation"],
             toolMap["calculateDistFromCurrPrice"],
-            toolMap["confirmBoardroomDecision"]
+            toolMap["confirmBoardroomDecisionLongTerm"]
         ],
         ansiColor=ANSI.MAGENTA,
         dateStr=timestampStr

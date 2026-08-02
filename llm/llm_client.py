@@ -415,7 +415,7 @@ class BaseLLMClient(ABC):
 
                 # Check for 'confirmBoardroomDecision' tool call and handle it
                 for toolCall in toolCallsList:
-                    if toolCall["function"]["name"] == "confirmBoardroomDecision":
+                    if toolCall["function"]["name"].startswith("confirmBoardroomDecision"):
                         # Find this tool call's id from messageHistory and if its status is 'success' assume the agent made the decision
                         for msg in messageHistory:
                             if msg.get("role") == "tool" and msg.get("tool_call_id") == toolCall["id"]:
