@@ -7,7 +7,7 @@ load_dotenv()
 from tools.functions.company import fetchStockPricePerformance
 
 from tools.tool_registry import DataProviders, Tool
-from tools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, isLocalDataAvailable, NumberType
+from tools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, NumberType
 
 
 # Singleton model pipeline and re-entrant lock
