@@ -99,8 +99,8 @@ def rudimentaryVramClear():
                     torch.cuda.empty_cache()
                     torch.cuda.ipc_collect()
 
-            for module in ["torch", "psutil"]:
-                sys.modules.pop(module, None)
+            # for module in ["torch", "psutil"]:
+            #     sys.modules.pop(module, None)
 
             gc.collect()
             time.sleep(1)
@@ -110,7 +110,7 @@ def rudimentaryVramClear():
                 usedVramAfter = round(memInfo.used / (1024 ** 3), 2)
                 print(f"\n  -> After: {usedVramAfter:.2f} GB | Freed: {usedVramBefore - usedVramAfter:.2f} GB")
 
-            sys.modules.pop("pynvml", None)
+            # sys.modules.pop("pynvml", None)
             gc.collect()
             time.sleep(1)
 

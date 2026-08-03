@@ -10,7 +10,7 @@ from openai import OpenAI
 import pandas as pd
 
 from cli.ansi import ANSI
-from tools.tool_registry import ToolRegistry
+from tools.tool_registry import ToolRegistry, Tool
 from llm.token_cost_tracker import TokenCostTracker
 
 from ui.ui_hooks import (
@@ -215,7 +215,8 @@ class BaseLLMClient(ABC):
         agentRole=None, 
         agentColor=None, 
         stageNum=0, 
-        toolIndex=0
+        toolIndex=0,
+        permittedTools: Optional[List[Tool]] = None
     ):
         if agentRole:
             setCurrentAgent(agentRole, agentColor)
@@ -241,7 +242,9 @@ class BaseLLMClient(ABC):
             # Failed to parse the tool's arguments 
             funcArgsDict = {}
 
-        if funcName in toolRegistry.tools:
+        permittedToolNames = {tool.name for tool in permittedTools} if permittedTools is not None else None
+
+        if funcName in toolRegistry.tools and (permittedToolNames is None or funcName in permittedToolNames):
             toolCalled = toolRegistry.tools[funcName]
             try:
                 toolResult = toolRegistry.executeTool(funcName, timestamp, funcArgsDict)
@@ -313,9 +316,13 @@ class BaseLLMClient(ABC):
             timestamp: pd.Timestamp,
             thinkingBudget: Optional[int] = None,
             responsePrint: ResponsePrintMode = ResponsePrintMode.FULL,
-            requireInitialTools: bool = False
+            requireInitialTools: bool = False,
+            permittedTools: Optional[List[Tool]] = None
         ):
-        toolSchemas = [tool.getToolSchema() for tool in toolRegistry.tools.values()] if toolRegistry else []
+        if permittedTools is not None:
+            toolSchemas = [tool.getToolSchema() for tool in permittedTools]
+        else:
+            toolSchemas = [tool.getToolSchema() for tool in toolRegistry.tools.values()] if toolRegistry else []
         maxIterations = 10
         currentIteration = 0
         accumulatedContent = ""
@@ -390,7 +397,7 @@ class BaseLLMClient(ABC):
             with ThreadPoolExecutor(max_workers=len(toolCallsList)) as executor:
                 futureToIndex =  {executor.submit(
                     self.executeSingleToolCall, 
-                    call, toolRegistry, timestamp, agentRole, agentColor, currentStageNum, idx): idx
+                    call, toolRegistry, timestamp, agentRole, agentColor, currentStageNum, idx, permittedTools): idx
                                   for idx, call in enumerate(toolCallsList)}
                 for future in as_completed(futureToIndex):
                     idx = futureToIndex[future]

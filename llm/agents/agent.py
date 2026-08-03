@@ -85,7 +85,8 @@ class FinancialAgent:
             timestamp, 
             THINKING_BUDGET, 
             responsePrint=ResponsePrintMode.FULL,
-            requireInitialTools=requireInitialTools            
+            requireInitialTools=requireInitialTools,
+            permittedTools=self.tools
         )
 
         self.messageHistory.append({"role": "assistant", "content": rawAnalysis})
@@ -109,7 +110,8 @@ class FinancialAgent:
             timestamp=pd.Timestamp.now(tz="UTC"), 
             thinkingBudget=SUMMARISE_THINK_BUDGET, 
             responsePrint=ResponsePrintMode.ONE_TOKEN_ONLY,
-            requireInitialTools=False
+            requireInitialTools=False,
+            permittedTools=[]
         )
         return uiSummary
 

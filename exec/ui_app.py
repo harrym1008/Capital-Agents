@@ -74,7 +74,7 @@ def broadcastEvent(eventData):
 
 
 
-def runBoardroom(config, allowParallel: bool = True):
+def runBoardroom(config):
     """Run boardroom simulation using active clients from serverManager."""
     try:
         from boardroom.boardroom_runner import executeBoardroomConfig
@@ -115,11 +115,10 @@ async def websocketHandler(websocket):
                 resetStop()
                 from boardroom.boardroom_config import SingleEquityRatingConfig
                 config = SingleEquityRatingConfig.fromDict(data)
-                allowParallel = data.get("allowParallel", True)
 
                 simThread = threading.Thread(
                     target=runBoardroom,
-                    args=(config, allowParallel),
+                    args=(config,),
                     daemon=True
                 )
                 simThread.start()

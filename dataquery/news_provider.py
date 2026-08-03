@@ -5,8 +5,9 @@ import duckdb
 import pandas as pd
 from dotenv import load_dotenv
 
-from collectors.constants import NEWS_PARQUET_PATH, UTC, IPO_BEFORE_START_DATE, ALL_TICKERS_FILE
+from collectors.constants import NEWS_PARQUET_PATH, UTC, IPO_BEFORE_START_DATE
 from collectors.rate_limiter import GlobalRateLimiters
+from collectors.news_dl_client import cleanAndFilterArticlesDf
 from dataquery.lru_cache import LRUCache
 
 load_dotenv()
