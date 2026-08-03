@@ -64,7 +64,35 @@ class DailyPriceProvider:
         except Exception:
             return pd.DataFrame()
 
-    def getSingleDayTickerData(self, ticker: str, date: pd.Timestamp):
+    def adjustPriceDataSplits(self, df: pd.DataFrame, ticker: str, referenceDate: pd.Timestamp = None) -> pd.DataFrame:
+        if df.empty or "splitFactor" not in df.columns:
+            return df
+
+        df = df.copy()
+        refSplitFactor = None
+        if referenceDate is not None:
+            refNy = self.timestampToNyDay(referenceDate)
+            if "dateNy" in df.columns and (df["dateNy"] == refNy).any():
+                refSplitFactor = df.loc[df["dateNy"] == refNy, "splitFactor"].iloc[0]
+            elif df.index.name == "dateNy" and refNy in df.index:
+                row = df.loc[refNy]
+                refSplitFactor = row["splitFactor"].iloc[0] if isinstance(row, pd.DataFrame) else row["splitFactor"]
+            else:
+                refRow = self.getSingleDayTickerData(ticker, referenceDate)
+                if refRow is not None and "splitFactor" in refRow:
+                    refSplitFactor = refRow["splitFactor"]
+
+        if refSplitFactor is None or pd.isna(refSplitFactor):
+            refSplitFactor = df["splitFactor"].iloc[-1]
+
+        if pd.notna(refSplitFactor) and refSplitFactor != 0:
+            for col in ["open", "high", "low", "close", "vwap"]:
+                if col in df.columns:
+                    df[col] = df[col] * (df["splitFactor"] / refSplitFactor)
+            df["splitFactor"] = refSplitFactor
+        return df
+
+    def getSingleDayTickerData(self, ticker: str, date: pd.Timestamp, referenceDate: pd.Timestamp = None):
         if not self.tickerDataProvider.isTickerListed(ticker, date):
             return None
 
@@ -72,16 +100,15 @@ class DailyPriceProvider:
         key = f"ohlcv|single_{ticker}_{dateNy.strftime('%Y-%m-%d')}"
         with self.lock:
             cached = self.cache.get(key)
+            result = None
             if cached is not None:
-                return cached
-
-            if dateNy > self.endDate:
+                result = cached
+            elif dateNy > self.endDate:
                 dfOnline = self.downloadNonLocalOhlcv(ticker, dateNy - pd.Timedelta(days=7), dateNy)
                 if not dfOnline.empty and dateNy in dfOnline.index:
                     row = dfOnline.loc[dateNy]
                     result = row.iloc[0] if isinstance(row, pd.DataFrame) else row
                     self.cache.put(key, result)
-                    return result
                 elif not dfOnline.empty:
                     validDates = dfOnline.index[dfOnline.index <= dateNy]
                     if not validDates.empty:
@@ -89,36 +116,41 @@ class DailyPriceProvider:
                         row = dfOnline.loc[nearestDate]
                         result = row.iloc[0] if isinstance(row, pd.DataFrame) else row
                         self.cache.put(key, result)
-                        return result
 
-            dfYear = self.getYear(ticker, date.year)
-            if dateNy.dayofyear <= 7 and dateNy.year >= 2016:
-                dfPrevYear = self.getYear(ticker, dateNy.year - 1)
-                dfYear = pd.concat([dfPrevYear, dfYear]).sort_index()        
-            
-            if dfYear.empty:
-                return None
-            
-            if dateNy in dfYear.index:
-                row = dfYear.loc[dateNy]
-                result = row.iloc[0] if isinstance(row, pd.DataFrame) else row
-                self.cache.put(key, result)
-                return result
-            
-            validDates = dfYear.index[dfYear.index < dateNy]
-            if validDates.empty:
-                return None
-            
-            nearestDate = validDates.max()
-            if (dateNy - nearestDate).days > 7:
-                return None
-            
-            row = dfYear.loc[nearestDate]
-            result = row.iloc[0] if isinstance(row, pd.DataFrame) else row
-            self.cache.put(key, result)
+            if result is None:
+                dfYear = self.getYear(ticker, date.year)
+                if dateNy.dayofyear <= 7 and dateNy.year >= 2016:
+                    dfPrevYear = self.getYear(ticker, dateNy.year - 1)
+                    dfYear = pd.concat([dfPrevYear, dfYear]).sort_index()        
+                
+                if not dfYear.empty:
+                    if dateNy in dfYear.index:
+                        row = dfYear.loc[dateNy]
+                        result = row.iloc[0] if isinstance(row, pd.DataFrame) else row
+                        self.cache.put(key, result)
+                    else:
+                        validDates = dfYear.index[dfYear.index < dateNy]
+                        if not validDates.empty:
+                            nearestDate = validDates.max()
+                            if (dateNy - nearestDate).days <= 7:
+                                row = dfYear.loc[nearestDate]
+                                result = row.iloc[0] if isinstance(row, pd.DataFrame) else row
+                                self.cache.put(key, result)
+
+            if referenceDate is not None and result is not None and "splitFactor" in result:
+                refRow = self.getSingleDayTickerData(ticker, referenceDate)
+                if refRow is not None and "splitFactor" in refRow:
+                    refSplitFactor = refRow["splitFactor"]
+                    if pd.notna(refSplitFactor) and refSplitFactor != 0:
+                        result = result.copy()
+                        for col in ["open", "high", "low", "close", "vwap"]:
+                            if col in result:
+                                result[col] = result[col] * (result["splitFactor"] / refSplitFactor)
+                        result["splitFactor"] = refSplitFactor
+
             return result
 
-    def getPeriodDailyTickerData(self, ticker: str, startDate: pd.Timestamp, endDate: pd.Timestamp):
+    def getPeriodDailyTickerData(self, ticker: str, startDate: pd.Timestamp, endDate: pd.Timestamp, referenceDate: pd.Timestamp = None):
         if not self.tickerDataProvider.isTickerListed(ticker, startDate) and  \
            not self.tickerDataProvider.isTickerListed(ticker, endDate):
             return pd.DataFrame()
@@ -132,31 +164,32 @@ class DailyPriceProvider:
         with self.lock:
             cached = self.cache.get(key)
             if isinstance(cached, pd.DataFrame):
-                return cached
+                df = cached
+            else:
+                parts = []
+                if startNy <= self.endDate:
+                    localEndNy = min(endNy, self.endDate)
+                    years = range(startNy.year, localEndNy.year + 1)
+                    for year in years:
+                        dfYear = self.getYear(ticker, year)
+                        if not dfYear.empty:
+                            parts.append(dfYear)
 
-            parts = []
-            if startNy <= self.endDate:
-                localEndNy = min(endNy, self.endDate)
-                years = range(startNy.year, localEndNy.year + 1)
-                for year in years:
-                    dfYear = self.getYear(ticker, year)
-                    if not dfYear.empty:
-                        parts.append(dfYear)
+                if endNy > self.endDate:
+                    gapStart = max(startNy, self.endDate)
+                    dfOnline = self.downloadNonLocalOhlcv(ticker, gapStart, endNy)
+                    if not dfOnline.empty:
+                        parts.append(dfOnline)
 
-            if endNy > self.endDate:
-                gapStart = max(startNy, self.endDate)
-                dfOnline = self.downloadNonLocalOhlcv(ticker, gapStart, endNy)
-                if not dfOnline.empty:
-                    parts.append(dfOnline)
+                if not parts:
+                    return pd.DataFrame()
 
-            if not parts:
-                return pd.DataFrame()
+                df = pd.concat(parts).sort_index()
+                df = df[~df.index.duplicated(keep="last")]
+                df = df.loc[startNy:endNy].reset_index(drop=True)
+                self.cache.put(key, df)
 
-            df = pd.concat(parts).sort_index()
-            df = df[~df.index.duplicated(keep="last")]
-            df = df.loc[startNy:endNy].reset_index(drop=True)
-            self.cache.put(key, df)
-            return df
+            return self.adjustPriceDataSplits(df, ticker, referenceDate=referenceDate)
 
     def getYear(self, ticker: str, year: int):
         key = f"ohlcv|{ticker}_{year}"

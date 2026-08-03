@@ -13,6 +13,7 @@ import pandas as pd
 from flask import request, jsonify
 
 from collectors.constants import NEW_YORK
+from collectors.rate_limiter import GlobalRateLimiters
 from dataquery import LRUCache, DailyPriceProvider, TickerDataProvider
 from llm.llamacpp.llamacpp_args import LlamaCppModel, LLAMACPP_PORT
 from llm.server_manager import serverManager
@@ -20,21 +21,34 @@ from llm.server_manager import serverManager
 globalCache = None
 globalTickerProvider = None
 globalPriceProvider = None
+globalRateLimiters = None
 
 def getOhlcvProviders():
-    global globalCache, globalTickerProvider, globalPriceProvider
+    global globalCache, globalTickerProvider, globalPriceProvider, globalRateLimiters
     if globalPriceProvider is None:
         globalCache = LRUCache(256 * 1024 ** 2)
         globalTickerProvider = TickerDataProvider()
-        globalPriceProvider = DailyPriceProvider(globalTickerProvider, globalCache)
+        globalRateLimiters = GlobalRateLimiters()
+        globalPriceProvider = DailyPriceProvider(globalTickerProvider, globalCache, globalRateLimiters)
     return globalTickerProvider, globalPriceProvider
 
-def adjustPriceDataSplits(priceData):
+def adjustPriceDataSplits(priceData, referenceDate=None, referenceSplitFactor=None):
     if priceData.empty or "splitFactor" not in priceData.columns:
         return priceData
     
     priceData = priceData.copy()
-    finalSplitFactor = priceData["splitFactor"].iloc[-1]
+    if referenceSplitFactor is not None:
+        finalSplitFactor = referenceSplitFactor
+    elif referenceDate is not None and "dateNy" in priceData.columns:
+        refNy = pd.Timestamp(referenceDate).normalize()
+        matches = priceData[priceData["dateNy"] == refNy]
+        if not matches.empty:
+            finalSplitFactor = matches["splitFactor"].iloc[0]
+        else:
+            finalSplitFactor = priceData["splitFactor"].iloc[-1]
+    else:
+        finalSplitFactor = priceData["splitFactor"].iloc[-1]
+
     if pd.notna(finalSplitFactor) and finalSplitFactor != 0:
         for col in ["open", "high", "low", "close", "vwap"]:
             if col in priceData.columns:
@@ -231,14 +245,14 @@ def generateOhlcvChartImage(ticker, simDateTs, targets=None, horizon="long"):
         if profile.ipoDate > startDateTs:
             startDateTs = profile.ipoDate
             
-    dfHistorical = priceProvider.getPeriodDailyTickerData(ticker, startDateTs, simDateTs)
-    dfHistorical = adjustPriceDataSplits(dfHistorical)
+    dfHistorical = priceProvider.getPeriodDailyTickerData(ticker, startDateTs, simDateTs, referenceDate=simDateTs)
+    dfHistorical = adjustPriceDataSplits(dfHistorical, referenceDate=simDateTs)
     
     dfFuture = pd.DataFrame()
     if simDateTs < todayTs:
         futureEndTs = min(endDateTs, todayTs)
-        dfFuture = priceProvider.getPeriodDailyTickerData(ticker, simDateTs, futureEndTs)
-        dfFuture = adjustPriceDataSplits(dfFuture)
+        dfFuture = priceProvider.getPeriodDailyTickerData(ticker, simDateTs, futureEndTs, referenceDate=simDateTs)
+        dfFuture = adjustPriceDataSplits(dfFuture, referenceDate=simDateTs)
         
     lastHistoricalClose = None
     allPrices = []
@@ -352,6 +366,11 @@ def generateOhlcvChartImage(ticker, simDateTs, targets=None, horizon="long"):
     for t in ax.get_yticklabels():
         t.set_fontweight('bold')
         
+    ax.text(0.02, 0.94, "Accounts for stock-splits", transform=ax.transAxes,
+            fontsize=7, color='#64748b', fontstyle='italic', fontweight='bold',
+            bbox=dict(boxstyle='round,pad=0.25', facecolor='#f8fafc', edgecolor='#cbd5e1', alpha=0.85),
+            zorder=10)
+
     fig.subplots_adjust(left=0.08, right=0.98, top=0.95, bottom=0.13)
     
     buf = io.BytesIO()

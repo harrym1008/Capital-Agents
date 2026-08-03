@@ -61,8 +61,6 @@
                 <pre id="llamaLoadingLogs" style="margin: 0; white-space: pre-wrap;"></pre>
             </div>
 
-            <div id="currentStageTitle" class="stage-title">No Active Simulation</div>
-            
             <div class="panes-container" id="panesContainer">
                 <!-- Dynamic workspace stages will go here -->
             </div>
@@ -444,7 +442,6 @@
                         timerInterval = null;
                     }
                     stopMetricsPolling();
-                    document.getElementById("currentStageTitle").innerText = "Simulation Stopped";
                     break;
 
                 case "error":
@@ -832,10 +829,6 @@
             }
 
             const stageItem = document.getElementById(`stageStep-${stageNum}`);
-            if (stageItem) {
-                const stageName = stageItem.innerText.split(": ")[1];
-                document.getElementById("currentStageTitle").innerText = `Stage ${stageNum}: ${stageName} (Viewing)`;
-            }
 
             const items = document.querySelectorAll(".stage-item");
             items.forEach(item => {
@@ -859,7 +852,6 @@
             }
 
             document.getElementById("llamaLoadingContainer").style.display = "none";
-            document.getElementById("currentStageTitle").innerText = `Stage ${stageNum}: ${stageName}`;
 
             const items = document.querySelectorAll(".stage-item");
             items.forEach(item => {
@@ -888,7 +880,7 @@
                 const isDecisionUpload = stageName.includes("Decision Upload");
                 if (isDecisionUpload) {
                     stageWorkspace.innerHTML = `
-                        <div class="upload-receipt-container" style="flex: 1; max-width: 440px; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); align-self: flex-start; height: calc(100vh - 270px); overflow-y: auto;">
+                        <div class="upload-receipt-container" style="flex: 1; max-width: 440px; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); align-self: flex-start; height: calc(100vh - 230px); overflow-y: auto;">
                             <h2 style="font-size: 18px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 16px; text-align: center;">BOARDROOM DECISION REPORT</h2>
                             <div style="display: grid; grid-template-columns: 160px 1fr; gap: 14px; font-size: 14px; line-height: 1.2;">
                                 <div style="font-weight: 700; color: #475569;">Asset Ticker:</div>
@@ -1450,7 +1442,6 @@
             if (socket && socket.readyState === WebSocket.OPEN) {
                 socket.send(JSON.stringify({ action: "stop" }));
             }
-            document.getElementById("currentStageTitle").innerText = "Stopping Simulation...";
         }
 
         function startSimulation() {
@@ -1516,7 +1507,6 @@
             if (sidebarContent) {
                 sidebarContent.innerHTML = "";
             }
-            document.getElementById("currentStageTitle").innerText = "Starting Simulation...";
             activeAgentPanes = {};
             activeBlocks = {};
             currentStageNumber = 0;

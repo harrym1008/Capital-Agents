@@ -152,7 +152,6 @@ button.btn-secondary:hover {
 
 .openrouter-dropdown {
     position: absolute;
-    top: calc(100% + 4px);
     left: 0;
     right: 0;
     max-height: 280px;
@@ -264,7 +263,6 @@ button.btn-secondary:hover {
 
 .openrouter-router-dropdown {
     position: absolute;
-    top: calc(100% + 4px);
     left: 0;
     right: 0;
     max-height: 250px;
