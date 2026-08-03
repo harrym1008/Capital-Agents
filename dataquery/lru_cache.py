@@ -14,7 +14,10 @@ def getSize(obj):
 
     # Pandas Dataframes and Series
     if isinstance(obj, (pd.DataFrame, pd.Series)):
-        return int(obj.memory_usage(deep=True, index=True).sum())
+        mem = obj.memory_usage(deep=True, index=True)
+        if isinstance(mem, pd.Series):
+            return int(mem.sum())
+        return int(mem)
 
     # Numpy arrays
     if isinstance(obj, np.ndarray):

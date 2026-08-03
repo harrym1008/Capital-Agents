@@ -1,4 +1,5 @@
 import os
+import threading
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import Optional, List, Tuple, Union, Dict, Any
@@ -49,12 +50,12 @@ class CompanyRef:
         return self.cik or self.ticker or None
 
 
-
 class EdgarDataProvider:
     def __init__(self, tickerProvider: TickerDataProvider, cache: LRUCache, rateLimiter: RateLimiter):
         self.tickerProvider = tickerProvider
         self.cache = cache
         self.rateLimiter = rateLimiter
+        self.lock = threading.RLock()
         set_identity(SEC_EDGAR_IDENTITY) 
 
     def normaliseTimestamp(self, before: pd.Timestamp) -> pd.Timestamp:
@@ -64,33 +65,37 @@ class EdgarDataProvider:
         else:
             ts = ts.tz_convert(UTC)
         return ts.tz_localize(None)
-    
+
     def loadFilingRefsForCompany(self, companyRef: CompanyRef, formType: FormType|List[FormType] = None) -> List[Filing]:
         companyRef.loadCik(self.tickerProvider)
         formCodes = [formType.formCode] if isinstance(formType, FormType) else [f.formCode for f in formType]
         
-        key = f"edgar|rawFilings_{companyRef}_{"&".join(formCodes)}"
+        key = f"edgar|rawFilings_{companyRef}_{'&'.join(formCodes)}"
         cached = self.cache.get(key)
         if cached is not None:
             return cached
-        try:
-            company = Company(str(companyRef))
-            self.rateLimiter.wait()
-            if formType is not None:
-                filings = company.get_filings(form=formCodes)
-            else:
-                filings = company.get_filings()
 
-            if filings is None or len(filings) == 0:
+        with self.lock:
+            cached = self.cache.get(key)
+            if cached is not None:
+                return cached
+            try:
+                company = Company(str(companyRef))
+                self.rateLimiter.wait()
+                if formType is not None:
+                    filings = company.get_filings(form=formCodes)
+                else:
+                    filings = company.get_filings()
+
+                if filings is None or len(filings) == 0:
+                    self.cache.put(key, None)
+                    return None
+
+                self.cache.put(key, filings)
+                return filings
+            except Exception:
                 self.cache.put(key, None)
                 return None
-
-            self.cache.put(key, filings)
-            return filings
-        except Exception:
-            self.cache.put(key, None)
-            return None
-
 
     def getLatestFilingRef(self, companyRef: CompanyRef, formType: FormType = None, before: pd.Timestamp = None) -> Filing:
         companyRef.loadCik(self.tickerProvider)
@@ -104,12 +109,12 @@ class EdgarDataProvider:
         cached = self.cache.get(key)
         if cached is not None:
             return cached
-        
+
         filings = self.loadFilingRefsForCompany(companyRef, formType=formType)
         if filings is None or len(filings) == 0:
             self.cache.put(key, None)
             return None
-        
+
         validFilings = []
         for filing in filings:
             try:
@@ -128,14 +133,12 @@ class EdgarDataProvider:
         if not validFilings:
             self.cache.put(key, None)
             return None
-        
-        # Sort chronologically ascending and return the last one
+
         validFilings.sort(key=lambda x: x[0])
         latestFiling: Filing = validFilings[-1][1]
 
         self.cache.put(key, latestFiling)
         return latestFiling
-    
 
     def getFilingRefBeforeAnother(self, companyRef: CompanyRef, formType: FormType, beforeFiling: Filing) -> Filing:
         if beforeFiling is None:
@@ -152,7 +155,6 @@ class EdgarDataProvider:
             return None
 
         return self.getLatestFilingRef(companyRef, formType=formType, before=beforeDate)
-    
 
     def downloadFilingObjects(self, filing: Filing) -> Tuple[CompanyReport, XBRL]:
         if filing is None:
@@ -165,17 +167,20 @@ class EdgarDataProvider:
         if cached is not None:
             return cached
 
-        try:
-            self.rateLimiter.wait()
-            parsedObj = filing.obj()
-            self.rateLimiter.wait()
-            parsedXbrl = filing.xbrl()
+        with self.lock:
+            cached = self.cache.get(cacheKey)
+            if cached is not None:
+                return cached
+            try:
+                self.rateLimiter.wait()
+                parsedObj = filing.obj()
+                self.rateLimiter.wait()
+                parsedXbrl = filing.xbrl()
 
-            self.cache.put(cacheKey, (parsedObj, parsedXbrl))
-            return parsedObj, parsedXbrl
-        except Exception:
-            return None, None
-
+                self.cache.put(cacheKey, (parsedObj, parsedXbrl))
+                return parsedObj, parsedXbrl
+            except Exception:
+                return None, None
 
     def findRefAndDownloadFilingObjects(self, companyRef: CompanyRef, formType: FormType, before: pd.Timestamp = None):
         latestFiling = self.getLatestFilingRef(companyRef, formType=formType, before=before)

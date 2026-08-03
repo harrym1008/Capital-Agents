@@ -13,12 +13,12 @@ class DataProviders:
         self.rateLimiters = GlobalRateLimiters()
 
         self.tickers = TickerDataProvider()
-        self.macro = MacroDataProvider(self.cache)
-        self.news = NewsDataProvider(self.cache)
-        self.ohlcv = DailyPriceProvider(self.tickers, self.cache)
-        self.short = ShortDataProvider(self.cache)
+        self.macro = MacroDataProvider(self.cache, self.rateLimiters)
+        self.news = NewsDataProvider(self.cache, self.rateLimiters)
+        self.ohlcv = DailyPriceProvider(self.tickers, self.cache, self.rateLimiters)
+        self.short = ShortDataProvider(self.cache, self.rateLimiters)
         self.edgar = EdgarDataProvider(self.tickers, self.cache, self.rateLimiters.edgarLimiter)
-        self.forex = ForexDataProvider(START_DATE, END_DATE, self.cache)
+        self.forex = ForexDataProvider(START_DATE, END_DATE, self.cache, self.rateLimiters)
 
 
 

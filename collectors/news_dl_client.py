@@ -47,6 +47,40 @@ def splitDateRange(startDate, endDate, threadCount):
 
 
 
+def cleanAndFilterArticlesDf(df):
+    tickersDf = pd.read_parquet(ALL_TICKERS_FILE, engine="pyarrow")
+    validTickers = set(tickersDf["ticker"].tolist())
+    validTickers.update(["SPY", "QQQ", "DIA", "GLD", "SLV", "VIX", "USO", "TLT"])
+
+    df["removeReason"] = None
+    df["wordCount"] = df["content"].apply(lambda x: len(str(x).split()))
+
+    df["content"] = df["content"].apply(cleanHtmlContent)
+    df["content"] = df.apply(lambda row: removeDuplicateHeadline(row["headline"], row["content"]), axis=1)
+    df["content"] = df["content"].apply(removeBenzingaFooter)
+
+    for filterFunc, reason in [
+        # (filterEmpty, "EMPTY"),
+        (filterAutomated, "AUTOMATED"),
+        (filterTranscripts, "TRANSCRIPT"),
+        (filterOptions, "OPTIONS"),
+        (filterIfYouInvested, "IF_YOU_INVESTED")
+    ]:
+        mask = df["removeReason"].isna()
+        df.loc[mask, "removeReason"] = df[mask].apply(filterFunc, axis=1)
+
+    if not df["removeReason"].all():  # Only apply if there are still articles to check
+        mask = df["removeReason"].isna()
+        df.loc[mask, "removeReason"] = df[mask].apply(lambda row: filterBadTicker(row, validTickers), axis=1)
+
+    badDf = df[df["removeReason"].notna()].copy()
+    goodDf = df[df["removeReason"].isna()].copy()
+
+    badDf.to_parquet("data/newsfiltered.parquet", engine="pyarrow", index=False)
+    return goodDf.drop(columns=["removeReason", "wordCount"])
+
+
+
 class NewsClient:
     def __init__(self, startDate, endDate, rateLimiterDatabase: GlobalRateLimiters):
         load_dotenv()
@@ -264,7 +298,7 @@ class NewsClient:
         if batchFiles:
             dfs = [pd.read_parquet(f, engine="pyarrow") for f in batchFiles]
             consolidatedDf = pd.concat(dfs, ignore_index=True)
-            consolidatedDf = self.filterOutBadArticles(consolidatedDf)
+            consolidatedDf = cleanAndFilterArticlesDf(consolidatedDf)
 
             # Sort the consolidated DataFrame by "date" to maintain stability
             consolidatedDf = consolidatedDf.sort_values("date", kind="mergesort")
@@ -315,35 +349,5 @@ class NewsClient:
 
 
 
-    def filterOutBadArticles(self, df):
-        tickersDf = pd.read_parquet(ALL_TICKERS_FILE, engine="pyarrow")
-        validTickers = set(tickersDf["ticker"].tolist())
-        validTickers.update(["SPY", "QQQ", "DIA", "GLD", "SLV", "VIX", "USO", "TLT"])
-
-        df["removeReason"] = None
-        df["wordCount"] = df["content"].apply(lambda x: len(str(x).split()))
-
-        df["content"] = df["content"].apply(cleanHtmlContent)
-        df["content"] = df.apply(lambda row: removeDuplicateHeadline(row["headline"], row["content"]), axis=1)
-        df["content"] = df["content"].apply(removeBenzingaFooter)
-
-        for filterFunc, reason in [
-            # (filterEmpty, "EMPTY"),
-            (filterAutomated, "AUTOMATED"),
-            (filterTranscripts, "TRANSCRIPT"),
-            (filterOptions, "OPTIONS"),
-            (filterIfYouInvested, "IF_YOU_INVESTED")
-        ]:
-            mask = df["removeReason"].isna()
-            df.loc[mask, "removeReason"] = df[mask].apply(filterFunc, axis=1)
-
-        if not df["removeReason"].all():  # Only apply if there are still articles to check
-            mask = df["removeReason"].isna()
-            df.loc[mask, "removeReason"] = df[mask].apply(lambda row: filterBadTicker(row, validTickers), axis=1)
-
-        badDf = df[df["removeReason"].notna()].copy()
-        goodDf = df[df["removeReason"].isna()].copy()
-
-        badDf.to_parquet("data/newsfiltered.parquet", engine="pyarrow", index=False)
-        return goodDf.drop(columns=["removeReason", "wordCount"])
+    
 

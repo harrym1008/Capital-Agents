@@ -70,11 +70,18 @@ class TickerDataProvider:
         profile = self.getTickerProfile(ticker)
         if profile is None:
             return False
-        
-        if profile.ipoDate is not None and date < profile.ipoDate:
-            return False
-        
-        if profile.delistDate is not None and date > profile.delistDate:
-            return False
-        
+
+        ts = pd.Timestamp(date)
+        tsNorm = ts.tz_localize(None) if ts.tzinfo is not None else ts
+
+        if profile.ipoDate is not None:
+            ipoNorm = profile.ipoDate.tz_localize(None) if profile.ipoDate.tzinfo is not None else profile.ipoDate
+            if tsNorm < ipoNorm:
+                return False
+
+        if profile.delistDate is not None:
+            delistNorm = profile.delistDate.tz_localize(None) if profile.delistDate.tzinfo is not None else profile.delistDate
+            if tsNorm > delistNorm:
+                return False
+
         return True
