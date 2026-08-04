@@ -59,3 +59,208 @@
 
     </div>
 </header>
+<script>
+    let activeProviderName = "";
+
+    function updateWsStatus(isConnected) {
+        const cell = document.getElementById("wsStatusCell");
+        if (cell) {
+            cell.textContent = isConnected ? "Connected" : "Disconnected";
+            cell.style.color = isConnected ? "#22c55e" : "#ef4444";
+            if (!isConnected) {
+                updateServerStatus(false);
+            }
+        }
+    }
+
+    function updateServerStatus(isConnected, provider = "") {
+        if (typeof serverIsLoaded !== 'undefined') {
+            serverIsLoaded = isConnected;
+        }
+        if (provider) activeProviderName = provider;
+        const cell = document.getElementById("serverStatusCell");
+        const label = document.getElementById("serverStatusLabel");
+        const tokEl = document.getElementById("tokenMetricsReadout");
+        const costEl = document.getElementById("costMetricsReadout");
+
+        if (cell) {
+            cell.textContent = isConnected ? "Connected" : "Disconnected";
+            cell.style.color = isConnected ? "#22c55e" : "#ef4444";
+        }
+        const p = (provider || activeProviderName).toLowerCase();
+        if (label) {
+            if (p === "openrouter") {
+                label.textContent = "OpenRouter:";
+            } else if (p === "llamacpp") {
+                label.textContent = "Llama.cpp:";
+            } else {
+                label.textContent = "Server:";
+            }
+        }
+
+        if (isConnected) {
+            if (p === "llamacpp") {
+                if (tokEl) tokEl.style.display = "flex";
+                if (costEl) costEl.style.display = "none";
+                startMetricsPolling();
+            } else if (p === "openrouter") {
+                if (tokEl) tokEl.style.display = "none";
+                if (costEl) costEl.style.display = "grid";
+                stopMetricsPolling();
+            } else {
+                if (tokEl) tokEl.style.display = "none";
+                if (costEl) costEl.style.display = "none";
+                stopMetricsPolling();
+            }
+        } else {
+            if (tokEl) tokEl.style.display = "none";
+            if (costEl) costEl.style.display = "none";
+            stopMetricsPolling();
+        }
+    }
+
+    let metricsPollInterval = null;
+
+    function formatTokSpeed(val) {
+        if (val === undefined || val === null || isNaN(val) || val <= 0) return "0.0 tok/s";
+        if (val < 1000) {
+            return val.toFixed(1) + " tok/s";
+        } else {
+            return Math.round(val).toString() + " tok/s";
+        }
+    }
+
+    function parsePrometheusMetrics(text) {
+        const metrics = {};
+        if (!text) return metrics;
+        const lines = text.split('\n');
+        for (let line of lines) {
+            line = line.trim();
+            if (!line || line.startsWith('#')) continue;
+            const spaceIdx = line.lastIndexOf(' ');
+            if (spaceIdx === -1) continue;
+            let key = line.substring(0, spaceIdx).trim();
+            const val = parseFloat(line.substring(spaceIdx + 1).trim());
+            if (isNaN(val)) continue;
+            const braceIdx = key.indexOf('{');
+            if (braceIdx !== -1) {
+                key = key.substring(0, braceIdx);
+            }
+            metrics[key] = val;
+            metrics[key.replace(/:/g, '_')] = val;
+        }
+        return metrics;
+    }
+
+    function updateMetricsReadout() {
+        if (activeProviderName && activeProviderName.toLowerCase() !== "llamacpp") return;
+        fetch('/api/metrics')
+            .then(res => {
+                if (!res.ok) throw new Error("HTTP error " + res.status);
+                return res.text();
+            })
+            .then(text => {
+                const metrics = parsePrometheusMetrics(text);
+
+                let prefillSpeed = metrics['llamacpp:prompt_tokens_seconds'] ?? metrics['llamacpp_prompt_tokens_seconds'] ?? metrics['llamacpp:prompt_tokens_per_second'] ?? metrics['llamacpp_prompt_tokens_per_second'];
+                let genSpeed = metrics['llamacpp:predicted_tokens_seconds'] ?? metrics['llamacpp_predicted_tokens_seconds'] ?? metrics['llamacpp:tokens_predicted_per_second'] ?? metrics['llamacpp_tokens_predicted_per_second'] ?? metrics['llamacpp:tokens_predicted_seconds'] ?? metrics['llamacpp_tokens_predicted_seconds'];
+
+                if (prefillSpeed === undefined || genSpeed === undefined) {
+                    const predTokens = metrics['llamacpp:tokens_predicted_total'] ?? metrics['llamacpp_tokens_predicted_total'] ?? metrics['llamacpp:predicted_tokens_total'] ?? metrics['llamacpp_predicted_tokens_total'] ?? 0;
+                    const predSecs = metrics['llamacpp:tokens_predicted_seconds_total'] ?? metrics['llamacpp_tokens_predicted_seconds_total'] ?? metrics['llamacpp:predicted_seconds_total'] ?? metrics['llamacpp_predicted_seconds_total'] ?? metrics['llamacpp_generation_seconds_total'] ?? 0;
+
+                    const promptTokens = metrics['llamacpp:prompt_tokens_total'] ?? metrics['llamacpp_prompt_tokens_total'] ?? metrics['llamacpp:tokens_evaluated_total'] ?? metrics['llamacpp_tokens_evaluated_total'] ?? 0;
+                    const promptSecs = metrics['llamacpp:prompt_seconds_total'] ?? metrics['llamacpp_prompt_seconds_total'] ?? metrics['llamacpp:prompt_processing_seconds_total'] ?? metrics['llamacpp_prompt_processing_seconds_total'] ?? metrics['llamacpp_prompt_evaluation_seconds_total'] ?? 0;
+
+                    genSpeed = (predTokens > 0 && predSecs > 0) ? (predTokens / predSecs) : 0;
+                    prefillSpeed = (promptTokens > 0 && promptSecs > 0) ? (promptTokens / promptSecs) : 0;
+                }
+
+                const prefillEl = document.getElementById("prefillSpeedVal");
+                const genEl = document.getElementById("genSpeedVal");
+                if (prefillEl) prefillEl.innerText = formatTokSpeed(prefillSpeed);
+                if (genEl) genEl.innerText = formatTokSpeed(genSpeed);
+            })
+            .catch(err => {
+                const prefillEl = document.getElementById("prefillSpeedVal");
+                const genEl = document.getElementById("genSpeedVal");
+                if (prefillEl) prefillEl.innerText = "0.0 tok/s";
+                if (genEl) genEl.innerText = "0.0 tok/s";
+            });
+    }
+
+    function startMetricsPolling() {
+        stopMetricsPolling();
+        updateMetricsReadout();
+        metricsPollInterval = setInterval(updateMetricsReadout, 1000);
+    }
+
+    function stopMetricsPolling() {
+        if (metricsPollInterval) {
+            clearInterval(metricsPollInterval);
+            metricsPollInterval = null;
+        }
+    }
+    }
+
+    function formatTokenCount(val) {
+        if (val === undefined || val === null || isNaN(val) || val <= 0) return "0";
+        const num = Math.abs(parseFloat(val));
+        if (num >= 1e9) return Number((num / 1e9).toPrecision(3)) + "b";
+        if (num >= 1e6) return Number((num / 1e6).toPrecision(3)) + "m";
+        if (num >= 1e3) return Number((num / 1e3).toPrecision(3)) + "k";
+        return Number(num.toPrecision(3)).toString();
+    }
+
+    function formatCacheHitRate(val) {
+        if (val === undefined || val === null || isNaN(val)) return "0.0%";
+        return parseFloat(val).toFixed(1) + "%";
+    }
+
+    function formatCost(val) {
+        if (val === undefined || val === null || isNaN(val)) return "$0.0000";
+        const num = parseFloat(val);
+        if (num < 10) return "$" + num.toFixed(4);
+        return "$" + num.toFixed(2);
+    }
+
+    function updateCostUI(payload) {
+        if (!payload) return;
+        if (payload.task) {
+            if (payload.task.input !== undefined) {
+                const el = document.getElementById("taskInputToksVal");
+                if (el) el.innerText = formatTokenCount(payload.task.input);
+            }
+            if (payload.task.output !== undefined) {
+                const el = document.getElementById("taskOutputToksVal");
+                if (el) el.innerText = formatTokenCount(payload.task.output);
+            }
+            if (payload.task.cacheHitRate !== undefined) {
+                const el = document.getElementById("taskCacheHitVal");
+                if (el) el.innerText = formatCacheHitRate(payload.task.cacheHitRate);
+            }
+            if (payload.task.cost !== undefined) {
+                const el = document.getElementById("taskCostVal");
+                if (el) el.innerText = formatCost(payload.task.cost);
+            }
+        }
+        if (payload.session) {
+            if (payload.session.input !== undefined) {
+                const el = document.getElementById("sessionInputToksVal");
+                if (el) el.innerText = formatTokenCount(payload.session.input);
+            }
+            if (payload.session.output !== undefined) {
+                const el = document.getElementById("sessionOutputToksVal");
+                if (el) el.innerText = formatTokenCount(payload.session.output);
+            }
+            if (payload.session.cacheHitRate !== undefined) {
+                const el = document.getElementById("sessionCacheHitVal");
+                if (el) el.innerText = formatCacheHitRate(payload.session.cacheHitRate);
+            }
+            if (payload.session.cost !== undefined) {
+                const el = document.getElementById("sessionCostVal");
+                if (el) el.innerText = formatCost(payload.session.cost);
+            }
+        }
+    }
+</script>

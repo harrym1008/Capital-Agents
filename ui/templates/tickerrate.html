@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CapitalAgents Boardroom</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
@@ -231,57 +232,7 @@
             ]
         };
 
-        function updateWsStatus(isConnected) {
-            const cell = document.getElementById("wsStatusCell");
-            if (cell) {
-                cell.textContent = isConnected ? "Connected" : "Disconnected";
-                cell.style.color = isConnected ? "#22c55e" : "#ef4444";
-            }
-        }
 
-        let activeProviderName = "";
-
-        function updateServerStatus(isConnected, provider = "") {
-            serverIsLoaded = isConnected;
-            if (provider) {
-                activeProviderName = provider;
-            }
-            const cell = document.getElementById("serverStatusCell");
-            const label = document.getElementById("serverStatusLabel");
-            const tokEl = document.getElementById("tokenMetricsReadout");
-            const costEl = document.getElementById("costMetricsReadout");
-
-            if (cell) {
-                cell.textContent = isConnected ? "Connected" : "Disconnected";
-                cell.style.color = isConnected ? "#22c55e" : "#ef4444";
-            }
-            const p = (provider || activeProviderName).toLowerCase();
-            if (label) {
-                if (p === "openrouter") {
-                    label.textContent = "OpenRouter:";
-                } else if (p === "llamacpp") {
-                    label.textContent = "Llama.cpp:";
-                } else {
-                    label.textContent = "Server:";
-                }
-            }
-
-            if (isConnected) {
-                if (p === "llamacpp") {
-                    if (tokEl) tokEl.style.display = "flex";
-                    if (costEl) costEl.style.display = "none";
-                } else if (p === "openrouter") {
-                    if (tokEl) tokEl.style.display = "none";
-                    if (costEl) costEl.style.display = "grid";
-                } else {
-                    if (tokEl) tokEl.style.display = "none";
-                    if (costEl) costEl.style.display = "none";
-                }
-            } else {
-                if (tokEl) tokEl.style.display = "none";
-                if (costEl) costEl.style.display = "none";
-            }
-        }
 
         async function checkServerStatus() {
             try {
@@ -591,9 +542,217 @@
             renderStageChart();
         }
 
+        let stageChartInstance = null;
+
+        const simDateLinePlugin = {
+            id: 'simDateLine',
+            afterDraw: (chart) => {
+                const simDate = chart.config.options.simDate;
+                if (!simDate) return;
+                const xAxis = chart.scales.x;
+                const yAxis = chart.scales.y;
+                if (!xAxis || !yAxis) return;
+                const xPixel = xAxis.getPixelForValue(simDate);
+                if (xPixel !== undefined && xPixel >= xAxis.left && xPixel <= xAxis.right) {
+                    const ctx = chart.ctx;
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.setLineDash([4, 4]);
+                    ctx.strokeStyle = '#1e293b';
+                    ctx.lineWidth = 1.5;
+                    ctx.moveTo(xPixel, yAxis.top);
+                    ctx.lineTo(xPixel, yAxis.bottom);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+        };
+
+        function createOrUpdateChart(chartData) {
+            const canvas = document.getElementById("receiptChartCanvas");
+            if (!canvas) return;
+
+            if (stageChartInstance) {
+                stageChartInstance.destroy();
+                stageChartInstance = null;
+            }
+
+            const dateSet = new Set();
+            if (chartData.historical) chartData.historical.forEach(pt => dateSet.add(pt.x));
+            if (chartData.targetCurve) chartData.targetCurve.forEach(pt => dateSet.add(pt.x));
+            if (chartData.targetPoints) chartData.targetPoints.forEach(pt => dateSet.add(pt.x));
+            if (chartData.simAnchor) dateSet.add(chartData.simAnchor.x);
+            if (chartData.futureChunks) {
+                chartData.futureChunks.forEach(chunk => {
+                    if (chunk.points) chunk.points.forEach(pt => dateSet.add(pt.x));
+                });
+            }
+
+            const allDates = Array.from(dateSet).sort();
+            const datasets = [];
+
+            if (chartData.historical && chartData.historical.length > 0) {
+                datasets.push({
+                    label: 'Historical',
+                    data: chartData.historical,
+                    borderColor: '#2563eb',
+                    borderWidth: 1.8,
+                    backgroundColor: 'rgba(37, 99, 235, 0.08)',
+                    fill: 'start',
+                    tension: 0.1,
+                    pointRadius: 0,
+                    pointHoverRadius: 3
+                });
+            }
+
+            if (chartData.futureChunks && chartData.futureChunks.length > 0) {
+                chartData.futureChunks.forEach(chunk => {
+                    const color = chunk.color || '#f43f5e';
+                    const isGreen = color === '#10b981';
+                    const bg = isGreen ? 'rgba(16, 185, 129, 0.08)' : 'rgba(244, 63, 94, 0.08)';
+                    datasets.push({
+                        label: isGreen ? 'Outperforming' : 'Underperforming',
+                        data: chunk.points,
+                        borderColor: color,
+                        borderWidth: 1.8,
+                        backgroundColor: bg,
+                        fill: 'start',
+                        tension: 0.1,
+                        pointRadius: 0,
+                        pointHoverRadius: 3
+                    });
+                });
+            }
+
+            if (chartData.targetCurve && chartData.targetCurve.length > 0) {
+                datasets.push({
+                    label: 'Prediction Curve',
+                    data: chartData.targetCurve,
+                    borderColor: '#06b6d4',
+                    borderWidth: 2.8,
+                    fill: false,
+                    tension: 0,
+                    pointRadius: 0,
+                    pointHoverRadius: 0
+                });
+            }
+
+            if (chartData.targetPoints && chartData.targetPoints.length > 0) {
+                datasets.push({
+                    label: 'Target Points',
+                    data: chartData.targetPoints,
+                    borderColor: '#ffffff',
+                    borderWidth: 1.5,
+                    backgroundColor: '#06b6d4',
+                    pointRadius: 6,
+                    pointHoverRadius: 8,
+                    showLine: false
+                });
+            }
+
+            if (chartData.simAnchor) {
+                datasets.push({
+                    label: 'Analysis Date',
+                    data: [chartData.simAnchor],
+                    borderColor: '#ffffff',
+                    borderWidth: 1,
+                    backgroundColor: '#64748b',
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    showLine: false
+                });
+            }
+
+            Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+
+            const ctx = canvas.getContext('2d');
+            stageChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: allDates,
+                    datasets: datasets
+                },
+                plugins: [simDateLinePlugin],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    simDate: chartData.simDate,
+                    interaction: {
+                        mode: 'nearest',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => {
+                                    const val = context.parsed.y;
+                                    return `${context.dataset.label}: $${val.toFixed(2)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'category',
+                            grid: {
+                                color: '#cbd5e1',
+                                borderDash: [2, 2],
+                                tickColor: 'transparent'
+                            },
+                            ticks: {
+                                color: '#334155',
+                                font: {
+                                    family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+                                    weight: '700',
+                                    size: 10
+                                },
+                                maxTicksLimit: 7,
+                                callback: function(val, index) {
+                                    const dateStr = this.getLabelForValue(val);
+                                    if (!dateStr) return '';
+                                    const parts = dateStr.split('-');
+                                    if (parts.length < 3) return dateStr;
+                                    const year = parts[0];
+                                    const monthIdx = parseInt(parts[1], 10) - 1;
+                                    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                                    return `${monthNames[monthIdx] || ''} '${year.slice(2)}`;
+                                }
+                            },
+                            border: {
+                                color: '#334155',
+                                width: 1.2
+                            }
+                        },
+                        y: {
+                            suggestedMin: chartData.yMin,
+                            suggestedMax: chartData.yMax,
+                            grid: {
+                                color: '#cbd5e1',
+                                borderDash: [2, 2]
+                            },
+                            ticks: {
+                                color: '#334155',
+                                font: {
+                                    family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+                                    weight: '700',
+                                    size: 10
+                                },
+                                callback: (val) => '$' + val
+                            },
+                            border: {
+                                color: '#334155',
+                                width: 1.2
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
         async function renderStageChart() {
-            const img = document.getElementById("receiptChartImg");
-            if (!img) return;
+            const canvas = document.getElementById("receiptChartCanvas");
+            if (!canvas) return;
 
             const ticker = currentTicker || (document.getElementById("tickerInput") ? document.getElementById("tickerInput").value.trim().toUpperCase() : "NVDA");
             
@@ -608,7 +767,6 @@
                 simDateStr = new Date().toISOString().split("T")[0];
             }
 
-            // Collect all target elements dynamically
             const t12El = document.getElementById("receipt-target-12");
             const t36El = document.getElementById("receipt-target-36");
             
@@ -632,171 +790,15 @@
                 }
                 const res = await fetch(url);
                 if (res.ok) {
-                    const json = await res.json();
-                    if (json.chartImage) {
-                        img.src = json.chartImage;
-                    }
+                    const data = await res.json();
+                    createOrUpdateChart(data);
                 }
             } catch (e) {
-                console.error("Failed to fetch OHLCV chart image:", e);
+                console.error("Failed to fetch OHLCV chart data:", e);
             }
         }
 
-        let metricsPollInterval = null;
-        let lastMetricsData = null;
 
-        function formatTokSpeed(val) {
-            if (val === undefined || val === null || isNaN(val) || val <= 0) return "0.0 tok/s";
-            if (val < 1000) {
-                return val.toFixed(1) + " tok/s";
-            } else {
-                return Math.round(val).toString() + " tok/s";
-            }
-        }
-
-        function formatTokenCount(val) {
-            if (val === undefined || val === null || isNaN(val) || val <= 0) return "0";
-            const num = Math.abs(parseFloat(val));
-            if (num >= 1e9) {
-                return Number((num / 1e9).toPrecision(3)) + "b";
-            }
-            if (num >= 1e6) {
-                return Number((num / 1e6).toPrecision(3)) + "m";
-            }
-            if (num >= 1e3) {
-                return Number((num / 1e3).toPrecision(3)) + "k";
-            }
-            return Number(num.toPrecision(3)).toString();
-        }
-
-        function formatCacheHitRate(val) {
-            if (val === undefined || val === null || isNaN(val)) return "0.0%";
-            const num = parseFloat(val);
-            return num.toFixed(1) + "%";
-        }
-
-        function updateCostUI(payload) {
-            if (!payload) return;
-            if (payload.task) {
-                if (payload.task.input !== undefined) {
-                    const el = document.getElementById("taskInputToksVal");
-                    if (el) el.innerText = formatTokenCount(payload.task.input);
-                }
-                if (payload.task.output !== undefined) {
-                    const el = document.getElementById("taskOutputToksVal");
-                    if (el) el.innerText = formatTokenCount(payload.task.output);
-                }
-                if (payload.task.cacheHitRate !== undefined) {
-                    const el = document.getElementById("taskCacheHitVal");
-                    if (el) el.innerText = formatCacheHitRate(payload.task.cacheHitRate);
-                }
-                if (payload.task.cost !== undefined) {
-                    const el = document.getElementById("taskCostVal");
-                    if (el) el.innerText = formatCost(payload.task.cost);
-                }
-            }
-            if (payload.session) {
-                if (payload.session.input !== undefined) {
-                    const el = document.getElementById("sessionInputToksVal");
-                    if (el) el.innerText = formatTokenCount(payload.session.input);
-                }
-                if (payload.session.output !== undefined) {
-                    const el = document.getElementById("sessionOutputToksVal");
-                    if (el) el.innerText = formatTokenCount(payload.session.output);
-                }
-                if (payload.session.cacheHitRate !== undefined) {
-                    const el = document.getElementById("sessionCacheHitVal");
-                    if (el) el.innerText = formatCacheHitRate(payload.session.cacheHitRate);
-                }
-                if (payload.session.cost !== undefined) {
-                    const el = document.getElementById("sessionCostVal");
-                    if (el) el.innerText = formatCost(payload.session.cost);
-                }
-            }
-        }
-
-        function formatCost(val) {
-            if (val === undefined || val === null || isNaN(val)) return "$0.0000";
-            const num = parseFloat(val);
-            if (num < 10) {
-                return "$" + num.toFixed(4);
-            } else {
-                return "$" + num.toFixed(2);
-            }
-        }
-
-        function parsePrometheusMetrics(text) {
-            const metrics = {};
-            if (!text) return metrics;
-            const lines = text.split('\n');
-            for (let line of lines) {
-                line = line.trim();
-                if (!line || line.startsWith('#')) continue;
-                const spaceIdx = line.lastIndexOf(' ');
-                if (spaceIdx === -1) continue;
-                let key = line.substring(0, spaceIdx).trim();
-                const val = parseFloat(line.substring(spaceIdx + 1).trim());
-                if (isNaN(val)) continue;
-                const braceIdx = key.indexOf('{');
-                if (braceIdx !== -1) {
-                    key = key.substring(0, braceIdx);
-                }
-                metrics[key] = val;
-                metrics[key.replace(/:/g, '_')] = val;
-            }
-            return metrics;
-        }
-
-        function updateMetricsReadout() {
-            fetch('/api/metrics')
-                .then(res => {
-                    if (!res.ok) throw new Error("HTTP error " + res.status);
-                    return res.text();
-                })
-                .then(text => {
-                    const metrics = parsePrometheusMetrics(text);
-
-                    // Direct server-calculated metrics: llamacpp:prompt_tokens_seconds and llamacpp:predicted_tokens_seconds
-                    let prefillSpeed = metrics['llamacpp:prompt_tokens_seconds'] ?? metrics['llamacpp_prompt_tokens_seconds'] ?? metrics['llamacpp:prompt_tokens_per_second'] ?? metrics['llamacpp_prompt_tokens_per_second'];
-                    let genSpeed = metrics['llamacpp:predicted_tokens_seconds'] ?? metrics['llamacpp_predicted_tokens_seconds'] ?? metrics['llamacpp:tokens_predicted_per_second'] ?? metrics['llamacpp_tokens_predicted_per_second'] ?? metrics['llamacpp:tokens_predicted_seconds'] ?? metrics['llamacpp_tokens_predicted_seconds'];
-
-                    // Fallback to cumulative average if server gauges are omitted
-                    if (prefillSpeed === undefined || genSpeed === undefined) {
-                        const predTokens = metrics['llamacpp:tokens_predicted_total'] ?? metrics['llamacpp_tokens_predicted_total'] ?? metrics['llamacpp:predicted_tokens_total'] ?? metrics['llamacpp_predicted_tokens_total'] ?? 0;
-                        const predSecs = metrics['llamacpp:tokens_predicted_seconds_total'] ?? metrics['llamacpp_tokens_predicted_seconds_total'] ?? metrics['llamacpp:predicted_seconds_total'] ?? metrics['llamacpp_predicted_seconds_total'] ?? metrics['llamacpp_generation_seconds_total'] ?? 0;
-
-                        const promptTokens = metrics['llamacpp:prompt_tokens_total'] ?? metrics['llamacpp_prompt_tokens_total'] ?? metrics['llamacpp:tokens_evaluated_total'] ?? metrics['llamacpp_tokens_evaluated_total'] ?? 0;
-                        const promptSecs = metrics['llamacpp:prompt_seconds_total'] ?? metrics['llamacpp_prompt_seconds_total'] ?? metrics['llamacpp:prompt_processing_seconds_total'] ?? metrics['llamacpp_prompt_processing_seconds_total'] ?? metrics['llamacpp_prompt_evaluation_seconds_total'] ?? 0;
-
-                        genSpeed = (predTokens > 0 && predSecs > 0) ? (predTokens / predSecs) : 0;
-                        prefillSpeed = (promptTokens > 0 && promptSecs > 0) ? (promptTokens / promptSecs) : 0;
-                    }
-
-                    const prefillEl = document.getElementById("prefillSpeedVal");
-                    const genEl = document.getElementById("genSpeedVal");
-                    if (prefillEl) prefillEl.innerText = formatTokSpeed(prefillSpeed);
-                    if (genEl) genEl.innerText = formatTokSpeed(genSpeed);
-                })
-                .catch(err => {
-                    const prefillEl = document.getElementById("prefillSpeedVal");
-                    const genEl = document.getElementById("genSpeedVal");
-                    if (prefillEl) prefillEl.innerText = "0.0 tok/s";
-                    if (genEl) genEl.innerText = "0.0 tok/s";
-                });
-        }
-
-        function startMetricsPolling() {
-            stopMetricsPolling();
-            updateMetricsReadout();
-            metricsPollInterval = setInterval(updateMetricsReadout, 1000);
-        }
-
-        function stopMetricsPolling() {
-            if (metricsPollInterval) {
-                clearInterval(metricsPollInterval);
-                metricsPollInterval = null;
-            }
-        }
 
         function initStagesBar(mode) {
             const bar = document.getElementById("stagesBar");
@@ -911,8 +913,8 @@
                                 <div><span id="receipt-status" class="tool-status-badge status-running" style="font-size: 11px; margin-left: 0; font-weight: bold;">PENDING UPLOAD</span></div>
                             </div>
 
-                            <div id="receiptChartContainer" style="margin-top: 16px; width: 100%; border: none; padding: 0; background-color: transparent; text-align: center;">
-                                <img id="receiptChartImg" style="width: 100%; height: auto; display: block;" src="" />
+                            <div id="receiptChartContainer" style="margin-top: 16px; width: 100%; position: relative; border: none; padding: 0; background-color: #ffffff; text-align: center;">
+                                <canvas id="receiptChartCanvas" style="width: 100%; height: 210px; display: block;"></canvas>
                             </div>
 
                             <div id="finalTimeReportRow" style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #cbd5e1; display: none; text-align: center;">

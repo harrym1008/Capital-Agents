@@ -1,14 +1,8 @@
-import io
-import base64
 import json
 import time
 import urllib.request
 import urllib.error
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import pandas as pd
 from flask import request, jsonify
 
@@ -113,15 +107,14 @@ def computeBezierThroughPoints(pointsX, pointsY, numSamples=300):
     return np.array(xAll), np.array(yAll)
 
 
-def splitAndPlotPerformance(ax, futureDates, futureCloses, splineVals, yMin):
+def getFuturePerformanceChunks(futureDates, futureCloses, splineVals):
     numPoints = len(futureCloses)
     if numPoints == 0:
-        return
+        return []
         
     if splineVals is None or len(splineVals) != numPoints:
-        ax.plot(futureDates, futureCloses, color='#f43f5e', linewidth=1.8, label='Actual Performance', zorder=3)
-        ax.fill_between(futureDates, futureCloses, yMin, color='#f43f5e', alpha=0.08, zorder=2)
-        return
+        pts = [{"x": pd.Timestamp(d).strftime("%Y-%m-%d"), "y": round(float(c), 2)} for d, c in zip(futureDates, futureCloses)]
+        return [{"color": "#f43f5e", "points": pts}]
         
     diffVals = futureCloses - splineVals
     
@@ -169,10 +162,9 @@ def splitAndPlotPerformance(ax, futureDates, futureCloses, splineVals, yMin):
     refinedClosesArr = np.array(refinedCloses)
     refinedDiffsArr = np.array(refinedDiffs)
     
-    isGreenPoint = refinedDiffsArr >= 0
-    isRedPoint = refinedDiffsArr <= 0
+    chunks = []
     
-    def plotContiguousChunks(mask, color):
+    def extractChunksForMask(mask, color):
         n = len(mask)
         inChunk = False
         chunkStart = 0
@@ -186,21 +178,22 @@ def splitAndPlotPerformance(ax, futureDates, futureCloses, splineVals, yMin):
                     cDates = refinedDatesArr[chunkStart:idx]
                     cCloses = refinedClosesArr[chunkStart:idx]
                     if len(cDates) >= 2:
-                        ax.plot(cDates, cCloses, color=color, linewidth=1.8, zorder=3)
-                        ax.fill_between(cDates, cCloses, yMin, color=color, alpha=0.08, zorder=2)
+                        pts = [{"x": pd.Timestamp(d).strftime("%Y-%m-%d"), "y": round(float(c), 2)} for d, c in zip(cDates, cCloses)]
+                        chunks.append({"color": color, "points": pts})
                     inChunk = False
         if inChunk:
             cDates = refinedDatesArr[chunkStart:n]
             cCloses = refinedClosesArr[chunkStart:n]
             if len(cDates) >= 2:
-                ax.plot(cDates, cCloses, color=color, linewidth=1.8, zorder=3)
-                ax.fill_between(cDates, cCloses, yMin, color=color, alpha=0.08, zorder=2)
+                pts = [{"x": pd.Timestamp(d).strftime("%Y-%m-%d"), "y": round(float(c), 2)} for d, c in zip(cDates, cCloses)]
+                chunks.append({"color": color, "points": pts})
 
-    plotContiguousChunks(isGreenPoint, '#10b981')
-    plotContiguousChunks(isRedPoint, '#f43f5e')
+    extractChunksForMask(refinedDiffsArr >= 0, '#10b981')
+    extractChunksForMask(refinedDiffsArr <= 0, '#f43f5e')
+    return chunks
 
 
-def generateOhlcvChartImage(ticker, simDateTs, targets=None, horizon="long"):
+def generateOhlcvChartData(ticker, simDateTs, targets=None, horizon="long"):
     todayTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
     if targets is None:
         targets = []
@@ -220,23 +213,15 @@ def generateOhlcvChartImage(ticker, simDateTs, targets=None, horizon="long"):
     if horizonStr == "short":
         startDateTs = simDateTs - pd.DateOffset(months=3)
         endDateTs = simDateTs + pd.DateOffset(months=3)
-        xLocator = mdates.MonthLocator(interval=1)
-        xFormatter = mdates.DateFormatter("%b '%y")
     elif horizonStr in ["medium", "med"]:
         startDateTs = simDateTs - pd.DateOffset(months=12)
         endDateTs = simDateTs + pd.DateOffset(months=12)
-        xLocator = mdates.MonthLocator(interval=3)
-        xFormatter = mdates.DateFormatter("%b '%y")
     elif horizonStr == "distant":
         startDateTs = simDateTs - pd.DateOffset(years=5)
         endDateTs = simDateTs + pd.DateOffset(years=10)
-        xLocator = mdates.YearLocator(base=2)
-        xFormatter = mdates.DateFormatter('%Y')
     else:  # "long" default
         startDateTs = simDateTs - pd.DateOffset(years=3)
         endDateTs = simDateTs + pd.DateOffset(years=3)
-        xLocator = mdates.YearLocator(base=1)
-        xFormatter = mdates.DateFormatter('%Y')
     
     tickerProvider, priceProvider = getOhlcvProviders()
     profile = tickerProvider.getTickerProfile(ticker)
@@ -257,8 +242,7 @@ def generateOhlcvChartImage(ticker, simDateTs, targets=None, horizon="long"):
     lastHistoricalClose = None
     allPrices = []
     
-    histDates = []
-    histClosesSmooth = []
+    historicalPoints = []
     if not dfHistorical.empty and "close" in dfHistorical.columns:
         dfCleanHist = dfHistorical.dropna(subset=["close"])
         if not dfCleanHist.empty:
@@ -267,6 +251,8 @@ def generateOhlcvChartImage(ticker, simDateTs, targets=None, horizon="long"):
             histClosesSmooth = getRollingMean(closesRaw, window=3)
             lastHistoricalClose = histClosesSmooth[-1]
             allPrices.extend(histClosesSmooth.tolist())
+            for d, c in zip(histDates, histClosesSmooth):
+                historicalPoints.append({"x": d.strftime("%Y-%m-%d"), "y": round(float(c), 2)})
             
     futureDates = []
     futureClosesSmooth = []
@@ -283,12 +269,21 @@ def generateOhlcvChartImage(ticker, simDateTs, targets=None, horizon="long"):
     targetX = [simDateDaysFromStart]
     targetY = [lastHistoricalClose if lastHistoricalClose is not None else (allPrices[0] if allPrices else 100.0)]
     
+    simDateStr = simDateTs.strftime("%Y-%m-%d")
+    simAnchorPoint = {"x": simDateStr, "y": round(float(targetY[0]), 2)}
+
+    targetPoints = []
     for monthsOffset, price in targets:
         targetDateTs = simDateTs + pd.DateOffset(months=int(monthsOffset))
         daysFromStart = (targetDateTs - startDateTs).total_seconds() / 86400.0
         targetX.append(daysFromStart)
         targetY.append(price)
         allPrices.append(price)
+        targetPoints.append({
+            "x": targetDateTs.strftime("%Y-%m-%d"),
+            "y": round(float(price), 2),
+            "months": int(monthsOffset)
+        })
         
     minPrice = min(allPrices) if allPrices else 0.0
     maxPrice = max(allPrices) if allPrices else 100.0
@@ -305,81 +300,36 @@ def generateOhlcvChartImage(ticker, simDateTs, targets=None, horizon="long"):
         yMin = max(0.0, yMinCandidate)
         
     yMax = maxPrice + max(priceRange * 0.08, maxPrice * 0.05)
-    
-    fig, ax = plt.subplots(figsize=(5.6, 2.7), dpi=180)
-    fig.patch.set_facecolor('#ffffff')
-    ax.set_facecolor('#ffffff')
-    
-    if len(histDates) > 0:
-        ax.plot(histDates, histClosesSmooth, color='#2563eb', linewidth=1.8, label='Historical')
-        ax.fill_between(histDates, histClosesSmooth, yMin, color='#2563eb', alpha=0.08)
-        
+
+    curvePoints = []
+    splineVals = None
     curveX, curveY = None, None
     if len(targets) > 0:
         curveX, curveY = computeBezierThroughPoints(targetX, targetY, numSamples=400)
-        curveDates = [pd.Timestamp(round(startTime + x * 86400.0), unit='s', tz=NEW_YORK).to_pydatetime() for x in curveX]
-        ax.plot(curveDates, curveY, color='#06b6d4', linewidth=2.8, solid_capstyle='round', zorder=5)
-        
-        for i, (monthsOffset, price) in enumerate(targets):
-            targetDateTs = simDateTs + pd.DateOffset(months=int(monthsOffset))
-            ax.plot(targetDateTs.to_pydatetime(), price, marker='o',
-                    markersize=8, color='#06b6d4', zorder=6,
-                    markeredgecolor='#ffffff', markeredgewidth=1.5)
-                    
-        ax.plot(simDateTs.to_pydatetime(), targetY[0], marker='o',
-                markersize=5, color='#64748b', zorder=6,
-                markeredgecolor='#ffffff', markeredgewidth=1)
-                
+        for x, y in zip(curveX, curveY):
+            dt = pd.Timestamp(round(startTime + x * 86400.0), unit='s', tz=NEW_YORK)
+            curvePoints.append({"x": dt.strftime("%Y-%m-%d"), "y": round(float(y), 2)})
+
+    futureChunks = []
     if len(futureDates) > 0:
-        splineVals = None
         if curveX is not None and len(curveX) > 0:
             futureDays = np.array([(pd.Timestamp(d) - startDateTs).total_seconds() / 86400.0 for d in futureDates])
             splineVals = np.interp(futureDays, curveX, curveY)
-            
-        splitAndPlotPerformance(ax, futureDates, futureClosesSmooth, splineVals, yMin)
-        
-    ax.axvline(x=simDateTs.to_pydatetime(), color='#1e293b', linestyle='--', linewidth=1.5, zorder=4)
-    
-    xEnd = endDateTs.to_pydatetime()
-    if len(targets) > 0:
-        xRangeSeconds = (endDateTs - startDateTs).total_seconds()
-        xEnd = (endDateTs + pd.Timedelta(seconds=xRangeSeconds * 0.02)).to_pydatetime()
-        
-    ax.set_xlim(startDateTs.to_pydatetime(), xEnd)
-    ax.xaxis.set_major_locator(xLocator)
-    ax.xaxis.set_major_formatter(xFormatter)
-    
-    ax.set_ylim(bottom=yMin, top=yMax)
-    
-    ax.grid(True, linestyle=':', alpha=0.4, color='#cbd5e1')
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_color('#334155')
-    ax.spines['left'].set_linewidth(1.2)
-    ax.spines['bottom'].set_color('#334155')
-    ax.spines['bottom'].set_linewidth(1.2)
-    
-    plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial', 'sans-serif']
-    ax.tick_params(colors='#334155', labelsize=8.5, length=3)
-    for t in ax.get_xticklabels():
-        t.set_fontweight('bold')
-    for t in ax.get_yticklabels():
-        t.set_fontweight('bold')
-        
-    ax.text(0.02, 0.94, "Accounts for stock-splits", transform=ax.transAxes,
-            fontsize=7, color='#64748b', fontstyle='italic', fontweight='bold',
-            bbox=dict(boxstyle='round,pad=0.25', facecolor='#f8fafc', edgecolor='#cbd5e1', alpha=0.85),
-            zorder=10)
+        futureChunks = getFuturePerformanceChunks(futureDates, futureClosesSmooth, splineVals)
 
-    fig.subplots_adjust(left=0.08, right=0.98, top=0.95, bottom=0.13)
-    
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png', dpi=180, facecolor='#ffffff', edgecolor='none', bbox_inches='tight', pad_inches=0.02)
-    plt.close(fig)
-    buf.seek(0)
-    
-    imgB64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-    return f"data:image/png;base64,{imgB64}"
+    return {
+        "ticker": ticker,
+        "simDate": simDateStr,
+        "startDate": startDateTs.strftime("%Y-%m-%d"),
+        "endDate": endDateTs.strftime("%Y-%m-%d"),
+        "yMin": round(float(yMin), 2),
+        "yMax": round(float(yMax), 2),
+        "historical": historicalPoints,
+        "simAnchor": simAnchorPoint,
+        "targetPoints": targetPoints,
+        "targetCurve": curvePoints,
+        "futureChunks": futureChunks
+    }
 
 
 
@@ -504,8 +454,8 @@ def registerApiRoutes(app):
                         pass
 
         try:
-            chartImage = generateOhlcvChartImage(ticker, simDateTs, targets=targetsList, horizon=horizon)
-            return jsonify({"chartImage": chartImage})
+            chartData = generateOhlcvChartData(ticker, simDateTs, targets=targetsList, horizon=horizon)
+            return jsonify(chartData)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
