@@ -3,39 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CapitalAgents Boardroom</title>
+    <title>CapitalAgents</title>
 
+    <link rel="icon" type="image/png" href="/static/favicon.png">
     <link rel="stylesheet" href="/static/css/style.css">
-    <style>
-        .landing-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            flex: 1;
-            gap: 20px;
-            padding: 40px;
-        }
-
-        .landing-btn {
-            width: 320px;
-            font-size: 20px;
-            margin-bottom: 30px;
-            text-align: center;
-        }
-    </style>
+    <link rel="stylesheet" href="/static/css/landing.css">
 </head>
 <body>
 
     {% include 'header.html' %}
 
     <div class="landing-container">
-        <a href="/server" class="aref-button landing-btn">Server Configuration</a>
-        <a href="/single-equity-rating" class="aref-button landing-btn" style="margin-bottom: 6vh;">Single Equity Rating</a>
+        <div class="splash-load-model-window">
+            
+            <img src="/static/favicon.png" alt="CapitalAgents Logo" class="landing-logo">
+            <h1 style="margin-bottom: 30px">Welcome to CapitalAgents</h1>
+
+            <p id="serverErrorMsg" class="landing-error-msg" style="display: none; margin-bottom: 18px;">You need to set up an LLM server first.</p>
+            <a href="/server" class="aref-button landing-btn">Server Configuration</a>
+            <a href="/single-equity-rating" id="singleEquityBtn" class="aref-button landing-btn disabled">Single Equity Rating</a>
+            <a href="/single-equity-rating" id="portfolioCreateBtn" class="aref-button landing-btn disabled">Portfolio Creation</a>
+            <a href="/single-equity-rating" id="portfolioRebalanceBtn" class="aref-button landing-btn disabled">Portfolio Rebalancing</a>
+            <a href="/single-equity-rating" id="portfolioSimulateBtn" class="aref-button landing-btn">LLM-less Portfolio Simulation</a>
+        </div>
     </div>
 
     <script>
-        let socket = null;
+        function setServerConnectedState(isConnected) {
+            const singleEquityBtn = document.getElementById('singleEquityBtn');
+            const portfolioCreateBtn = document.getElementById('portfolioCreateBtn');
+            const portfolioRebalanceBtn = document.getElementById('portfolioRebalanceBtn');
+            const serverDependentButtons = [singleEquityBtn, portfolioCreateBtn, portfolioRebalanceBtn];
+            
+            const errorMsg = document.getElementById('serverErrorMsg');
+            if (isConnected) {
+                errorMsg.style.display = 'none';
+            } else {
+                errorMsg.style.display = 'block';
+            }
+
+            for (const btn of serverDependentButtons) {
+                if (isConnected) {
+                    if (btn) {
+                        btn.classList.remove('disabled');
+                        btn.style.pointerEvents = 'auto';
+                    }
+                } else {
+                    if (btn) {
+                        btn.classList.add('disabled');
+                        btn.style.pointerEvents = 'none';
+                    }
+                }
+            }
+        }
 
         async function checkServerStatus() {
             try {
@@ -48,25 +68,17 @@
                     if (data.costData) {
                         updateCostUI(data.costData);
                     }
-                    if (!isRunning) {
-                        window.location.href = "/server";
-                    }
+                    setServerConnectedState(isRunning);
+                } else {
+                    updateServerStatus(false);
+                    setServerConnectedState(false);
                 }
             } catch (e) {
                 updateServerStatus(false);
+                setServerConnectedState(false);
             }
         }
 
-        function connectWebsocket() {
-            const wsUrl = `ws://${window.location.hostname}:9092`;
-            socket = new WebSocket(wsUrl);
-
-            socket.onopen = () => { updateWsStatus(true); };
-            socket.onclose = () => { updateWsStatus(false); };
-            socket.onerror = () => { updateWsStatus(false); };
-        }
-
-        connectWebsocket();
         checkServerStatus();
         setInterval(checkServerStatus, 5000);
     </script>

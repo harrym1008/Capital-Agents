@@ -47,8 +47,6 @@ registerApiRoutes(app)
 
 @app.route("/")
 def landingPage():
-    if serverManager.loadedModelType == LoadedModelType.NONE:
-        return redirect("/server")
     return render_template("landing.html")
 
 @app.route("/server")
@@ -58,7 +56,7 @@ def serverSetupPage():
 @app.route("/single-equity-rating")
 def indexPage():
     if serverManager.loadedModelType == LoadedModelType.NONE:
-        return redirect("/server")
+        return redirect("/")
     return render_template("tickerrate.html")
 
 # Track active websocket connection and the event loop it runs on

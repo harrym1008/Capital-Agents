@@ -1,0 +1,51 @@
+.landing-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    gap: 20px;
+    padding: 40px;
+}
+
+.landing-btn {
+    width: 320px;
+    font-size: 20px;
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+.landing-btn:last-child {
+    margin-bottom: 16px;
+}
+
+.splash-load-model-window {
+    width: min(90vw, 600px);
+    background: #fff;
+    border-radius: 18px;
+    padding: 36px;
+
+    border: 1px solid #e0e6ed;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.15);
+
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    
+    margin-bottom: 6vh;
+}
+
+.landing-logo {
+    width: 120px;
+    height: 120px;
+}
+
+.landing-error-msg {
+    color: #ef4444;
+    font-size: 14px;
+    font-weight: 600;
+    margin-top: 4px;
+    text-align: center;
+}

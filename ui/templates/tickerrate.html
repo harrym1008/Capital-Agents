@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CapitalAgents Boardroom</title>
+    <title>CapitalAgents - Single Ticker Rating</title>
+
+    <link rel="icon" type="image/png" href="/static/favicon.png">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -80,7 +82,6 @@
     </div>
 
     <script>
-        let socket = null;
         let serverIsLoaded = false;
         let activeAgentPanes = {}; // Map of "stageNum_agentRole" -> { pane, feed }
         let activeBlocks = {}; // Map of "stageNum_agentRole" -> { type, element, block }
@@ -251,28 +252,7 @@
             }
         }
 
-        function connectWebsocket() {
-            const wsUrl = `ws://${window.location.hostname}:9092`;
-            socket = new WebSocket(wsUrl);
 
-            socket.onopen = () => {
-                updateWsStatus(true);
-            };
-
-            socket.onclose = () => {
-                updateWsStatus(false);
-                setControlsRunningState(false);
-            };
-
-            socket.onerror = () => {
-                updateWsStatus(false);
-            };
-
-            socket.onmessage = (event) => {
-                const payload = JSON.parse(event.data);
-                handleSimulationEvent(payload);
-            };
-        }
 
         function handleSimulationEvent(payload) {
             const { type, agentRole, agentColor, phase, stageNum } = payload;

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CapitalAgents - Server Manager</title>
 
+    <link rel="icon" type="image/png" href="/static/favicon.png">
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="stylesheet" href="/static/css/server.css">
 </head>
@@ -129,33 +130,12 @@
     </div>
 
     <script>
-        let socket = null;
         let llamaCppModels = [];
         let isServerLoading = false;
 
 
 
-        function connectWebsocket() {
-            const wsUrl = `ws://${window.location.hostname}:9092`;
-            socket = new WebSocket(wsUrl);
 
-            socket.onopen = () => {
-                updateWsStatus(true);
-            };
-
-            socket.onclose = () => {
-                updateWsStatus(false);
-            };
-
-            socket.onerror = () => {
-                updateWsStatus(false);
-            };
-
-            socket.onmessage = (event) => {
-                const payload = JSON.parse(event.data);
-                handleSimulationEvent(payload);
-            };
-        }
 
         function appendLlamaLog(logLine) {
             const container = document.getElementById("llamaLoadingContainer");

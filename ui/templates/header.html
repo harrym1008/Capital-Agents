@@ -1,5 +1,13 @@
 <header>
-    <h1><a href="/" style="color: inherit; text-decoration: none;">CapitalAgents Boardroom</a></h1>
+    
+    <a href="/" style="display: flex; align-items: center; gap: 12px; text-decoration: none;">
+        <img src="/static/favicon.png" alt="CapitalAgents Logo" style="width: 32px; height: 32px; margin-right: 12px;">
+    </a>
+
+    <h1 style="margin-bottom: 4px;">
+        <a href="/" style="color: inherit; text-decoration: none;">CapitalAgents</a>
+    </h1>
+    
     <div style="margin-left: auto; display: flex; align-items: center; gap: 24px;">
         <div id="connectionStatusReadout" style="display: flex; flex-direction: column; align-items: flex-end; font-size: 13px; line-height: 1.25; font-weight: 700; color: #ffffff; font-family: system-ui, -apple-system, sans-serif; user-select: none;">
             <div style="display: flex; gap: 12px; justify-content: space-between; width: 100%;">
@@ -77,6 +85,9 @@
         if (typeof serverIsLoaded !== 'undefined') {
             serverIsLoaded = isConnected;
         }
+        if (typeof setServerConnectedState === 'function') {
+            setServerConnectedState(isConnected);
+        }
         if (provider) activeProviderName = provider;
         const cell = document.getElementById("serverStatusCell");
         const label = document.getElementById("serverStatusLabel");
@@ -102,24 +113,20 @@
             if (p === "llamacpp") {
                 if (tokEl) tokEl.style.display = "flex";
                 if (costEl) costEl.style.display = "none";
-                startMetricsPolling();
             } else if (p === "openrouter") {
                 if (tokEl) tokEl.style.display = "none";
                 if (costEl) costEl.style.display = "grid";
-                stopMetricsPolling();
             } else {
                 if (tokEl) tokEl.style.display = "none";
                 if (costEl) costEl.style.display = "none";
-                stopMetricsPolling();
             }
         } else {
             if (tokEl) tokEl.style.display = "none";
             if (costEl) costEl.style.display = "none";
-            stopMetricsPolling();
         }
     }
 
-    let metricsPollInterval = null;
+    let socket = null;
 
     function formatTokSpeed(val) {
         if (val === undefined || val === null || isNaN(val) || val <= 0) return "0.0 tok/s";
@@ -130,77 +137,56 @@
         }
     }
 
-    function parsePrometheusMetrics(text) {
-        const metrics = {};
-        if (!text) return metrics;
-        const lines = text.split('\n');
-        for (let line of lines) {
-            line = line.trim();
-            if (!line || line.startsWith('#')) continue;
-            const spaceIdx = line.lastIndexOf(' ');
-            if (spaceIdx === -1) continue;
-            let key = line.substring(0, spaceIdx).trim();
-            const val = parseFloat(line.substring(spaceIdx + 1).trim());
-            if (isNaN(val)) continue;
-            const braceIdx = key.indexOf('{');
-            if (braceIdx !== -1) {
-                key = key.substring(0, braceIdx);
-            }
-            metrics[key] = val;
-            metrics[key.replace(/:/g, '_')] = val;
+    function connectWebsocket() {
+        if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+            return;
         }
-        return metrics;
-    }
+        const wsUrl = `ws://${window.location.hostname}:9092`;
+        socket = new WebSocket(wsUrl);
 
-    function updateMetricsReadout() {
-        if (activeProviderName && activeProviderName.toLowerCase() !== "llamacpp") return;
-        fetch('/api/metrics')
-            .then(res => {
-                if (!res.ok) throw new Error("HTTP error " + res.status);
-                return res.text();
-            })
-            .then(text => {
-                const metrics = parsePrometheusMetrics(text);
+        socket.onopen = () => {
+            updateWsStatus(true);
+        };
 
-                let prefillSpeed = metrics['llamacpp:prompt_tokens_seconds'] ?? metrics['llamacpp_prompt_tokens_seconds'] ?? metrics['llamacpp:prompt_tokens_per_second'] ?? metrics['llamacpp_prompt_tokens_per_second'];
-                let genSpeed = metrics['llamacpp:predicted_tokens_seconds'] ?? metrics['llamacpp_predicted_tokens_seconds'] ?? metrics['llamacpp:tokens_predicted_per_second'] ?? metrics['llamacpp_tokens_predicted_per_second'] ?? metrics['llamacpp:tokens_predicted_seconds'] ?? metrics['llamacpp_tokens_predicted_seconds'];
+        socket.onclose = () => {
+            updateWsStatus(false);
+            if (typeof setControlsRunningState === 'function') {
+                setControlsRunningState(false);
+            }
+        };
 
-                if (prefillSpeed === undefined || genSpeed === undefined) {
-                    const predTokens = metrics['llamacpp:tokens_predicted_total'] ?? metrics['llamacpp_tokens_predicted_total'] ?? metrics['llamacpp:predicted_tokens_total'] ?? metrics['llamacpp_predicted_tokens_total'] ?? 0;
-                    const predSecs = metrics['llamacpp:tokens_predicted_seconds_total'] ?? metrics['llamacpp_tokens_predicted_seconds_total'] ?? metrics['llamacpp:predicted_seconds_total'] ?? metrics['llamacpp_predicted_seconds_total'] ?? metrics['llamacpp_generation_seconds_total'] ?? 0;
+        socket.onerror = () => {
+            updateWsStatus(false);
+        };
 
-                    const promptTokens = metrics['llamacpp:prompt_tokens_total'] ?? metrics['llamacpp_prompt_tokens_total'] ?? metrics['llamacpp:tokens_evaluated_total'] ?? metrics['llamacpp_tokens_evaluated_total'] ?? 0;
-                    const promptSecs = metrics['llamacpp:prompt_seconds_total'] ?? metrics['llamacpp_prompt_seconds_total'] ?? metrics['llamacpp:prompt_processing_seconds_total'] ?? metrics['llamacpp_prompt_processing_seconds_total'] ?? metrics['llamacpp_prompt_evaluation_seconds_total'] ?? 0;
+        socket.onmessage = (event) => {
+            try {
+                const payload = JSON.parse(event.data);
 
-                    genSpeed = (predTokens > 0 && predSecs > 0) ? (predTokens / predSecs) : 0;
-                    prefillSpeed = (promptTokens > 0 && promptSecs > 0) ? (promptTokens / promptSecs) : 0;
+                // Automatically update header token speeds and cost metrics from WS push events
+                if (payload.type === "metricsUpdate") {
+                    updateServerStatus(true);
+                    if (payload.prefillSpeed !== undefined) {
+                        const prefillEl = document.getElementById("prefillSpeedVal");
+                        if (prefillEl) prefillEl.innerText = formatTokSpeed(payload.prefillSpeed);
+                    }
+                    if (payload.genSpeed !== undefined) {
+                        const genEl = document.getElementById("genSpeedVal");
+                        if (genEl) genEl.innerText = formatTokSpeed(payload.genSpeed);
+                    }
+                } else if (payload.type === "costUpdate") {
+                    updateServerStatus(true);
+                    updateCostUI(payload);
                 }
 
-                const prefillEl = document.getElementById("prefillSpeedVal");
-                const genEl = document.getElementById("genSpeedVal");
-                if (prefillEl) prefillEl.innerText = formatTokSpeed(prefillSpeed);
-                if (genEl) genEl.innerText = formatTokSpeed(genSpeed);
-            })
-            .catch(err => {
-                const prefillEl = document.getElementById("prefillSpeedVal");
-                const genEl = document.getElementById("genSpeedVal");
-                if (prefillEl) prefillEl.innerText = "0.0 tok/s";
-                if (genEl) genEl.innerText = "0.0 tok/s";
-            });
-    }
-
-    function startMetricsPolling() {
-        stopMetricsPolling();
-        updateMetricsReadout();
-        metricsPollInterval = setInterval(updateMetricsReadout, 1000);
-    }
-
-    function stopMetricsPolling() {
-        if (metricsPollInterval) {
-            clearInterval(metricsPollInterval);
-            metricsPollInterval = null;
-        }
-    }
+                // Delegate to page-specific handler if defined
+                if (typeof handleSimulationEvent === 'function') {
+                    handleSimulationEvent(payload);
+                }
+            } catch (e) {
+                console.error("Error parsing WS message:", e);
+            }
+        };
     }
 
     function formatTokenCount(val) {
