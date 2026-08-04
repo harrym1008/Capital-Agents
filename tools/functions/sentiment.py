@@ -1,4 +1,5 @@
 import os
+import hashlib
 import threading
 import pandas as pd
 from dotenv import load_dotenv
@@ -36,7 +37,7 @@ def getModernFinbertPipeline():
                 dtype=torch.float16 if cudaAvailable else torch.float32,
                 cache_dir=modelDir,
                 truncation=True,
-                max_length=3172
+                max_length=1024
             )
 
             # Force PyTorch/CUDA kernel compilation and memory buffer allocation during preloading
@@ -63,11 +64,79 @@ def preloadSentimentModelAsync():
 # preloadSentimentModelAsync()
 
 
+def getTextHash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def clearTorchCache():
+    import gc
+    import torch
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
 def scoreHeadlinesBatch(headlines: list[str]) -> list[dict]:
+    if not headlines:
+        return []
+    import torch
     classifier = getModernFinbertPipeline()
     batchSize = 64 if cudaAvailable else 8
-    predictions = classifier(headlines, batch_size=batchSize)
-    return predictions
+    try:
+        with torch.inference_mode():
+            predictions = classifier(headlines, batch_size=batchSize)
+        return predictions
+    finally:
+        clearTorchCache()
+
+
+def scoreTextsWithCache(texts: list[str], data: DataProviders = None) -> list[dict]:
+    if not texts:
+        return []
+
+    sentimentCache = getattr(data, "sentimentCache", None) if data is not None else None
+
+    results = [None] * len(texts)
+    uncachedIndices = []
+    uncachedTexts = []
+
+    for i, text in enumerate(texts):
+        key = f"sent|{getTextHash(text)}"
+        if sentimentCache is not None:
+            cachedVal = sentimentCache.get(key)
+            if cachedVal is not None:
+                results[i] = cachedVal
+                continue
+        uncachedIndices.append(i)
+        uncachedTexts.append(text)
+
+    if uncachedTexts:
+        newPredictions = scoreHeadlinesBatch(uncachedTexts)
+        for idx, text, pred in zip(uncachedIndices, uncachedTexts, newPredictions):
+            results[idx] = pred
+            if sentimentCache is not None:
+                key = f"sent|{getTextHash(text)}"
+                sentimentCache.put(key, pred)
+
+    return results
+
+
+def sampleMonthlyArticles(newsDf: pd.DataFrame, maxPerMonth: int = 20) -> pd.DataFrame:
+    if newsDf is None or newsDf.empty:
+        return newsDf
+
+    newsDfCopy = newsDf.copy()
+    newsDfCopy["periodGroup"] = newsDfCopy["date"].dt.to_period("M")
+
+    sampledGroups = []
+    for _, group in newsDfCopy.groupby("periodGroup"):
+        if len(group) > maxPerMonth:
+            sampledGroups.append(group.sample(n=maxPerMonth, random_state=42))
+        else:
+            sampledGroups.append(group)
+
+    resultDf = pd.concat(sampledGroups, ignore_index=True).drop(columns=["periodGroup"])
+    return resultDf.sort_values(by="date").reset_index(drop=True)
 
 
 def normaliseTs(ts: pd.Timestamp) -> pd.Timestamp:
@@ -83,13 +152,13 @@ def getHeadlineWeight(articleRow: pd.Series, bestMinTickers=2) -> float:
     contentLength = len(articleRow["content"].strip())
 
     if contentLength == 0:
-        score = 1.2     # Lots of analyst ratings have no content... analyst ratings are important (also weigh more because they will not get additional content rating)
+        score = 1.2     # Analyst ratings often have empty content... weigh heavily
     elif contentLength < 300:     
         score = 0.70   
     elif contentLength < 1000:
         score = 0.85  
     elif contentLength > 6000:
-        score = 0.75     # Too long, likely to be too complex for the model to accurately classify 
+        score = 0.75     
     else:
         score = 1.0
 
@@ -102,43 +171,47 @@ def getContentWeight(articleRow: pd.Series, bestMinTickers=1) -> float:
     numTickers = len(articleRow["tickers"])
     contentLength = len(articleRow["content"].strip())
 
-    # Base weights are 
     if contentLength < 300:
         score = 0.16
     elif contentLength < 1000:
         score = 0.28
     elif contentLength > 6000:
-        score = 0.22     # Too long, likely to be too complex for the model to accurately classify  
+        score = 0.22     
     else:
-        score = 0.33    # Between 1200 and 6000 chars, good length for the model
+        score = 0.33    
 
     if numTickers <= bestMinTickers:
         return score
     return score * 0.82 ** (numTickers - bestMinTickers)
 
 
-def getClassificationDf(newsDf: pd.DataFrame, bestMinTickers: int = 2, contentTruncate=600) -> list[str]:
+def getClassificationDf(newsDf: pd.DataFrame, bestMinTickers: int = 2, contentTruncate=1024) -> pd.DataFrame:
+    # Prioritise headlines; only fall back to body content if headline is missing or empty
+    headlineText = newsDf["headline"].str.strip()
+    hasHeadline = headlineText.str.len() > 0
+
     headlines = pd.DataFrame({
-        "articleIndex": newsDf.index,
-        "date": newsDf["date"],
-        "text": newsDf["headline"].str.strip(),
+        "articleIndex": newsDf.index[hasHeadline],
+        "date": newsDf.loc[hasHeadline, "date"],
+        "text": headlineText[hasHeadline],
         "type": "headline",
-        "weight": newsDf.apply(getHeadlineWeight, axis=1, bestMinTickers=bestMinTickers)
+        "weight": newsDf[hasHeadline].apply(getHeadlineWeight, axis=1, bestMinTickers=bestMinTickers)
     })
 
-    if contentTruncate is False:
-        return headlines
+    missingHeadlineMask = ~hasHeadline
+    if missingHeadlineMask.any():
+        contents = newsDf.loc[missingHeadlineMask & (newsDf["content"].str.strip().str.len() > 5)].copy()
+        if not contents.empty:
+            contentDf = pd.DataFrame({
+                "articleIndex": contents.index,
+                "date": contents["date"],
+                "text": contents["content"].str.strip().str.slice(0, contentTruncate),
+                "type": "content",
+                "weight": contents.apply(getContentWeight, axis=1, bestMinTickers=bestMinTickers)
+            })
+            return pd.concat([headlines, contentDf], ignore_index=True)
 
-    contents = newsDf.loc[newsDf["content"].str.strip().str.len() > 5].copy()
-    contents = pd.DataFrame({
-        "articleIndex": contents.index,
-        "date": contents["date"],
-        "text": contents["content"].str.strip().str.slice(0, contentTruncate),
-        "type": "content",
-        "weight": contents.apply(getContentWeight, axis=1, bestMinTickers=bestMinTickers)
-    })
-
-    return pd.concat([headlines, contents], ignore_index=True)
+    return headlines
 
 
 def fetchTickerSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str):
@@ -173,14 +246,17 @@ def fetchTickerSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.T
         if newsDf["date"].dt.tz is not None:
             newsDf["date"] = newsDf["date"].dt.tz_convert("UTC").dt.tz_localize(None)
 
-        classificationDf = getClassificationDf(newsDf, bestMinTickers=2, contentTruncate=4096)
-        rawPredictions = scoreHeadlinesBatch(classificationDf["text"].tolist())
+        # Stratified monthly sampling: up to 20 articles per month max (max 240/year)
+        newsDf = sampleMonthlyArticles(newsDf, maxPerMonth=20)
+
+        classificationDf = getClassificationDf(newsDf, bestMinTickers=2, contentTruncate=1024)
+        rawPredictions = scoreTextsWithCache(classificationDf["text"].tolist(), data=data)
 
         classificationDf["sentimentLabel"] = [pred["label"].lower() for pred in rawPredictions]
         classificationDf["sentimentScore"] = [pred["score"] for pred in rawPredictions]
 
         classificationDf["netScore"] = classificationDf["sentimentScore"] * \
-                                    classificationDf["sentimentLabel"].map({"bullish": 1, "bearish": -1, "neutral": 0})
+                                     classificationDf["sentimentLabel"].map({"bullish": 1, "bearish": -1, "neutral": 0})
 
         netSentimentScores = {}
         breakdowns = {}
@@ -282,7 +358,6 @@ def fetchSentimentDivergence(tool: Tool, data: DataProviders, timestamp: pd.Time
             return {"error": f"Failed to get data: {str(e)}"}
 
 
-
 def fetchMacroSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
     baseTs = normaliseTs(timestamp)
 
@@ -292,7 +367,6 @@ def fetchMacroSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.Ti
         "3mo": baseTs - pd.DateOffset(months=3),
         "6mo": baseTs - pd.DateOffset(months=6),
         "12mo": baseTs - pd.DateOffset(months=12),
-        # "2y": baseTs - pd.DateOffset(years=2)
     }
 
     with sentimentLock:
@@ -316,15 +390,18 @@ def fetchMacroSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.Ti
         if newsDf["date"].dt.tz is not None:
             newsDf["date"] = newsDf["date"].dt.tz_convert("UTC").dt.tz_localize(None)
 
-        classificationDf = getClassificationDf(newsDf, bestMinTickers=8, contentTruncate=512)   # Allow lots more tickers for macro sentiment given more are requested
+        # Stratified monthly sampling: up to 20 articles per month max (max 240/year)
+        newsDf = sampleMonthlyArticles(newsDf, maxPerMonth=20)
+
+        classificationDf = getClassificationDf(newsDf, bestMinTickers=8, contentTruncate=1024)
         classificationDf["weight"] = 1.0
-        rawPredictions = scoreHeadlinesBatch(classificationDf["text"].tolist())                 # Truncate article content to 512 chars (otherwise, much too slow)
+        rawPredictions = scoreTextsWithCache(classificationDf["text"].tolist(), data=data)
 
         classificationDf["sentimentLabel"] = [pred["label"].lower() for pred in rawPredictions]
         classificationDf["sentimentScore"] = [pred["score"] for pred in rawPredictions]
 
         classificationDf["netScore"] = classificationDf["sentimentScore"] * \
-                                    classificationDf["sentimentLabel"].map({"bullish": 1, "bearish": -1, "neutral": 0})
+                                     classificationDf["sentimentLabel"].map({"bullish": 1, "bearish": -1, "neutral": 0})
 
         netSentimentScores = {}
         breakdowns = {}
@@ -332,7 +409,6 @@ def fetchMacroSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.Ti
         endDate = baseTs
         for windowName, startDate in windows.items():
             windowDf = classificationDf[(classificationDf["date"] >= startDate) & (classificationDf["date"] <= endDate)]
-            # endDate = startDate
 
             posCount = (windowDf["sentimentLabel"] == "bullish").sum()
             negCount = (windowDf["sentimentLabel"] == "bearish").sum()
@@ -354,7 +430,6 @@ def fetchMacroSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.Ti
 
 
         momentum = round(netSentimentScores["1mo"] - netSentimentScores["6mo"], 3)
-        # Classify momentum more finely than ticker, given single tickers are more volatile than macro sentiment which is generally more stable
         if momentum > 0.24:
             momentumLabel = "Heavily optimistic"
         elif momentum > 0.16:

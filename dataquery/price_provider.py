@@ -54,11 +54,72 @@ class DailyPriceProvider:
                 dateCol = dateCol.dt.tz_convert("UTC")
 
             dfOnline["date"] = dateCol
-            dateNy = dateCol.dt.tz_convert(NEW_YORK).dt.normalize()
+
+            if "vwap" not in dfOnline.columns:
+                dfOnline["vwap"] = dfOnline["close"]
+            if "volume" not in dfOnline.columns:
+                dfOnline["volume"] = 0
+
             dfOnline["splitFactor"] = 1.0
+            dfOnline["corpActionToday"] = False
+
+            try:
+                sharesSeries = yfTicker.get_shares_full(
+                    start=startDate.strftime("%Y-%m-%d"),
+                    end=(endDate + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+                )
+                if sharesSeries is not None and not sharesSeries.empty:
+                    sdf = sharesSeries.reset_index()
+                    sdf.columns = ["date", "outstandingShares"]
+                    sDate = pd.to_datetime(sdf["date"])
+                    if sDate.dt.tz is None:
+                        sDate = sDate.dt.tz_localize("UTC")
+                    else:
+                        sDate = sDate.dt.tz_convert("UTC")
+                    sdf["date"] = sDate
+                    dfOnline = pd.merge_asof(
+                        dfOnline.sort_values("date"),
+                        sdf.sort_values("date"),
+                        on="date",
+                        direction="backward"
+                    )
+                    dfOnline["outstandingShares"] = dfOnline["outstandingShares"].ffill().bfill()
+                else:
+                    fallbackShares = getattr(yfTicker, "fast_info", {}).get("shares_outstanding") or yfTicker.info.get("sharesOutstanding", 0)
+                    dfOnline["outstandingShares"] = float(fallbackShares or 0)
+            except Exception:
+                fallbackShares = getattr(yfTicker, "fast_info", {}).get("shares_outstanding") or yfTicker.info.get("sharesOutstanding", 0)
+                dfOnline["outstandingShares"] = float(fallbackShares or 0)
+
+            def formatMarketCap(marketCap):
+                def clean(number):
+                    if number >= 100:
+                        return f"{number:.0f}"
+                    if number >= 10:
+                        return f"{number:.1f}"
+                    return f"{number:.2f}"
+                
+                if pd.isna(marketCap) or marketCap == 0:
+                    return "N/A"
+                elif marketCap >= 1e12:
+                    return f"{clean(marketCap / 1_000_000_000_000)}tn"
+                elif marketCap >= 1e9:
+                    return f"{clean(marketCap / 1_000_000_000)}bn"
+                elif marketCap >= 1e6:
+                    return f"{clean(marketCap / 1_000_000)}mn"
+                elif marketCap >= 1e3:
+                    return f"{clean(marketCap / 1_000)}k"
+                else:
+                    return f"{clean(marketCap)}"
+
+            dfOnline["marketCapNumber"] = dfOnline["close"] * dfOnline["outstandingShares"]
+            dfOnline["marketCap"] = dfOnline["marketCapNumber"].map(formatMarketCap)
+            dfOnline.drop(columns=["marketCapNumber"], inplace=True)
+
+            dateNy = dateCol.dt.tz_convert(NEW_YORK).dt.normalize()
             dfOnline = dfOnline.assign(dateNy=dateNy).set_index("dateNy").sort_index()
 
-            cols = ["date", "open", "high", "low", "close", "splitFactor"]
+            cols = ["date", "open", "high", "low", "close", "volume", "vwap", "splitFactor", "corpActionToday", "outstandingShares", "marketCap"]
             validCols = [c for c in cols if c in dfOnline.columns]
             return dfOnline[validCols]
         except Exception:

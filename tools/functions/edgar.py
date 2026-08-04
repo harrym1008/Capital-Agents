@@ -290,8 +290,11 @@ def fetchCompanyValuationMetrics(tool: Tool, data: DataProviders, timestamp: pd.
 
     formsToFetch = [FormType.FORM_10K, FormType.FORM_10Q, FormType.FORM_20F, FormType.FORM_40F]
     validFilings = fetchValidFilings(companyRef, data, timestamp, formsToFetch)
-    latestFiling = validFilings[0]
-    print(f"Latest filing for {ticker} before {timestamp}: {latestFiling.filing_url} ")
+    latestFiling = validFilings[0] if validFilings else None
+    if latestFiling:
+        print(f"Latest filing for {ticker} before {timestamp}: {latestFiling.filing_url} ")
+    else:
+        print(f"Could not find a valid filing for {ticker} before {timestamp}.")
 
     # Calculate recent price, shares outstanding, mkt cap
     todayRow = data.ohlcv.getSingleDayTickerData(ticker, timestamp)
@@ -436,7 +439,7 @@ def fetchCompanyValuationMetrics(tool: Tool, data: DataProviders, timestamp: pd.
     dataHeader = {
         "ticker": companyRef.ticker,
         "cik": companyRef.cik,
-        "company": latestFiling.company,
+        "company": latestFiling.company if latestFiling else None,
         "timestamp": timestamp.isoformat(),
         "latestPrice": cleanNumber(recentPrice, NumberType.STOCK_PRICE),
     }
@@ -450,9 +453,9 @@ def fetchCompanyValuationMetrics(tool: Tool, data: DataProviders, timestamp: pd.
             "currencyNote": "Financials are reported in USD."
         }
 
-    filingForm = latestFiling.form
-    filingPeriod = latestFiling.period_of_report
-    filingDate = latestFiling.filing_date
+    filingForm = latestFiling.form if latestFiling else None
+    filingPeriod = latestFiling.period_of_report if latestFiling else None
+    filingDate = latestFiling.filing_date if latestFiling else None
     if filingForm in ["10-K", "20-F", "40-F"]:
         periodDesc = f"fiscal year ended {filingPeriod}"
     else:

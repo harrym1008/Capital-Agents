@@ -143,10 +143,26 @@ class NewsDataProvider:
             else:
                 return None
 
+    def truncateDfContent(self, df: pd.DataFrame, summaryMaxChars: int) -> pd.DataFrame:
+        if df is None or df.empty or "content" not in df.columns:
+            return df
+        if summaryMaxChars is not None and summaryMaxChars > 0:
+            df = df.copy()
+            def truncateText(text):
+                if not text:
+                    return text
+                strText = str(text)
+                if len(strText) > summaryMaxChars and not strText.endswith("... [content truncated]"):
+                    return strText[:summaryMaxChars] + "... [content truncated]"
+                return strText
+            df["content"] = df["content"].apply(truncateText)
+        return df
+
     def getRecentNewsForTicker(self, ticker: str, before: pd.Timestamp, 
                                limit: int = 12, 
                                mustHaveContent: bool = False, 
-                               maxReferencedTickers: int = 5) -> pd.DataFrame:
+                               maxReferencedTickers: int = 5,
+                               summaryMaxChars: int = 2500) -> pd.DataFrame:
         if limit < 1:
             return pd.DataFrame()
 
@@ -154,7 +170,7 @@ class NewsDataProvider:
         beforeNorm = self.normaliseTimestamp(before)
 
         with self.lock:
-            key = f"news|single_{ticker}_{beforeNorm.strftime('%Y-%m-%dH%H')}_{limit}"
+            key = f"news|single_{ticker}_{beforeNorm.strftime('%Y-%m-%dH%H')}_{limit}_{mustHaveContent}_{maxReferencedTickers}_{summaryMaxChars}"
             cached = self.cache.get(key)
             if isinstance(cached, pd.DataFrame):
                 return cached
@@ -165,17 +181,32 @@ class NewsDataProvider:
             if relationSql is None:
                 return pd.DataFrame()
 
+            if summaryMaxChars is not None and summaryMaxChars > 0:
+                if mustHaveContent:
+                    contentCond = "COALESCE(LENGTH(content), 0) > 0 AND contains(substr(content, 1, ?), ?)"
+                    contentParams = [int(summaryMaxChars), ticker]
+                else:
+                    contentCond = "(COALESCE(LENGTH(content), 0) = 0 OR contains(substr(content, 1, ?), ?))"
+                    contentParams = [int(summaryMaxChars), ticker]
+            else:
+                if mustHaveContent:
+                    contentCond = "COALESCE(LENGTH(content), 0) > 0 AND contains(content, ?)"
+                    contentParams = [ticker]
+                else:
+                    contentCond = "(COALESCE(LENGTH(content), 0) = 0 OR contains(content, ?))"
+                    contentParams = [ticker]
+
             sql = f"""
                 SELECT *
                 FROM {relationSql}
                 WHERE date < ?
                     AND list_contains(tickers, ?)
-                    {"AND LENGTH(content) > 0" if mustHaveContent else ""}
+                    AND {contentCond}
                     {"AND array_length(tickers) <= ?" if maxReferencedTickers is not None else ""}
                 ORDER BY date DESC, id
                 LIMIT ?
             """
-            queryParams = [beforeNorm.to_pydatetime(), ticker]
+            queryParams = [beforeNorm.to_pydatetime(), ticker] + contentParams
             if maxReferencedTickers is not None:
                 queryParams.append(int(maxReferencedTickers))
             queryParams.append(int(limit))
@@ -184,13 +215,15 @@ class NewsDataProvider:
             except Exception:
                 df = pd.DataFrame()
 
+            df = self.truncateDfContent(df, summaryMaxChars)
             self.cache.put(key, df)
             return df
 
     def getRecentNewsForTickers(self, tickers: list[str], before: pd.Timestamp, 
                                limit: int = 12, 
                                mustHaveContent: bool = False, 
-                               maxReferencedTickers: int = 5) -> pd.DataFrame:
+                               maxReferencedTickers: int = 5,
+                               summaryMaxChars: int = 2500) -> pd.DataFrame:
         if limit < 1:
             return pd.DataFrame()
 
@@ -201,7 +234,7 @@ class NewsDataProvider:
         beforeNorm = self.normaliseTimestamp(before)
 
         with self.lock:
-            key = f"news|multi_{','.join(tickerSet)}_{beforeNorm.strftime('%Y-%m-%dH%H')}_{limit}"
+            key = f"news|multi_{','.join(tickerSet)}_{beforeNorm.strftime('%Y-%m-%dH%H')}_{limit}_{mustHaveContent}_{maxReferencedTickers}_{summaryMaxChars}"
             cached = self.cache.get(key)
             if isinstance(cached, pd.DataFrame):
                 return cached
@@ -212,17 +245,32 @@ class NewsDataProvider:
             if relationSql is None:
                 return pd.DataFrame()
 
+            if summaryMaxChars is not None and summaryMaxChars > 0:
+                if mustHaveContent:
+                    contentCond = "COALESCE(LENGTH(content), 0) > 0 AND len(list_filter(?, t -> contains(substr(content, 1, ?), t))) > 0"
+                    contentParams = [tickerSet, int(summaryMaxChars)]
+                else:
+                    contentCond = "(COALESCE(LENGTH(content), 0) = 0 OR len(list_filter(?, t -> contains(substr(content, 1, ?), t))) > 0)"
+                    contentParams = [tickerSet, int(summaryMaxChars)]
+            else:
+                if mustHaveContent:
+                    contentCond = "COALESCE(LENGTH(content), 0) > 0 AND len(list_filter(?, t -> contains(content, t))) > 0"
+                    contentParams = [tickerSet]
+                else:
+                    contentCond = "(COALESCE(LENGTH(content), 0) = 0 OR len(list_filter(?, t -> contains(content, t))) > 0)"
+                    contentParams = [tickerSet]
+
             sql = f"""
                 SELECT *
                 FROM {relationSql}
                 WHERE date < ?
                     AND list_has_any(tickers, ?)
-                    {"AND LENGTH(content) > 0" if mustHaveContent else ""}
+                    AND {contentCond}
                     {"AND array_length(tickers) <= ?" if maxReferencedTickers is not None else ""}
                 ORDER BY date DESC, id
                 LIMIT ?
             """
-            queryParams = [beforeNorm.to_pydatetime(), tickerSet]
+            queryParams = [beforeNorm.to_pydatetime(), tickerSet] + contentParams
             if maxReferencedTickers is not None:
                 queryParams.append(int(maxReferencedTickers))
             queryParams.append(int(limit))
@@ -231,18 +279,20 @@ class NewsDataProvider:
             except Exception:
                 df = pd.DataFrame()
 
+            df = self.truncateDfContent(df, summaryMaxChars)
             self.cache.put(key, df)
             return df
 
     def getNewsForTickerBetweenTimes(self, ticker: str, start: pd.Timestamp, end: pd.Timestamp, 
                                      mustHaveContent: bool = False, 
-                                     maxReferencedTickers: int = 5) -> pd.DataFrame:
+                                     maxReferencedTickers: int = 5,
+                                     summaryMaxChars: int = 2500) -> pd.DataFrame:
         ticker = ticker.upper()
         startNorm = self.normaliseTimestamp(start)
         endNorm = self.normaliseTimestamp(end)
 
         with self.lock:
-            key = f"news|single_{ticker}_{startNorm.strftime('%Y-%m-%dH%H')}_{endNorm.strftime('%Y-%m-%dH%H')}"
+            key = f"news|range_{ticker}_{startNorm.strftime('%Y-%m-%dH%H')}_{endNorm.strftime('%Y-%m-%dH%H')}_{mustHaveContent}_{maxReferencedTickers}_{summaryMaxChars}"
             cached = self.cache.get(key)
             if isinstance(cached, pd.DataFrame):
                 return cached
@@ -253,16 +303,31 @@ class NewsDataProvider:
             if relationSql is None:
                 return pd.DataFrame()
 
+            if summaryMaxChars is not None and summaryMaxChars > 0:
+                if mustHaveContent:
+                    contentCond = "COALESCE(LENGTH(content), 0) > 0 AND contains(substr(content, 1, ?), ?)"
+                    contentParams = [int(summaryMaxChars), ticker]
+                else:
+                    contentCond = "(COALESCE(LENGTH(content), 0) = 0 OR contains(substr(content, 1, ?), ?))"
+                    contentParams = [int(summaryMaxChars), ticker]
+            else:
+                if mustHaveContent:
+                    contentCond = "COALESCE(LENGTH(content), 0) > 0 AND contains(content, ?)"
+                    contentParams = [ticker]
+                else:
+                    contentCond = "(COALESCE(LENGTH(content), 0) = 0 OR contains(content, ?))"
+                    contentParams = [ticker]
+
             sql = f"""
                 SELECT *
                 FROM {relationSql}
                 WHERE date >= ? AND date <= ?
                     AND list_contains(tickers, ?)
-                    {"AND LENGTH(content) > 0" if mustHaveContent else ""}
+                    AND {contentCond}
                     {"AND array_length(tickers) <= ?" if maxReferencedTickers is not None else ""}
                 ORDER BY date DESC, id
             """
-            queryParams = [startNorm.to_pydatetime(), endNorm.to_pydatetime(), ticker]
+            queryParams = [startNorm.to_pydatetime(), endNorm.to_pydatetime(), ticker] + contentParams
             if maxReferencedTickers is not None:
                 queryParams.append(int(maxReferencedTickers))
             try:
@@ -270,12 +335,14 @@ class NewsDataProvider:
             except Exception:
                 df = pd.DataFrame()
 
+            df = self.truncateDfContent(df, summaryMaxChars)
             self.cache.put(key, df)
             return df
 
     def getNewsForTickersBetweenTimes(self, tickers: list[str], start: pd.Timestamp, end: pd.Timestamp, 
                                       mustHaveContent: bool = False, 
-                                      maxReferencedTickers: int = 5) -> pd.DataFrame:
+                                      maxReferencedTickers: int = 5,
+                                      summaryMaxChars: int = 2500) -> pd.DataFrame:
         tickerSet = sorted({t.upper() for t in tickers if t})
         if not tickerSet:
             return pd.DataFrame()
@@ -284,7 +351,7 @@ class NewsDataProvider:
         endNorm = self.normaliseTimestamp(end)
 
         with self.lock:
-            key = f"news|single_{','.join(tickerSet)}_{startNorm.strftime('%Y-%m-%dH%H')}_{endNorm.strftime('%Y-%m-%dH%H')}"
+            key = f"news|multirange_{','.join(tickerSet)}_{startNorm.strftime('%Y-%m-%dH%H')}_{endNorm.strftime('%Y-%m-%dH%H')}_{mustHaveContent}_{maxReferencedTickers}_{summaryMaxChars}"
             cached = self.cache.get(key)
             if isinstance(cached, pd.DataFrame):
                 return cached
@@ -295,16 +362,31 @@ class NewsDataProvider:
             if relationSql is None:
                 return pd.DataFrame()
 
+            if summaryMaxChars is not None and summaryMaxChars > 0:
+                if mustHaveContent:
+                    contentCond = "COALESCE(LENGTH(content), 0) > 0 AND len(list_filter(?, t -> contains(substr(content, 1, ?), t))) > 0"
+                    contentParams = [tickerSet, int(summaryMaxChars)]
+                else:
+                    contentCond = "(COALESCE(LENGTH(content), 0) = 0 OR len(list_filter(?, t -> contains(substr(content, 1, ?), t))) > 0)"
+                    contentParams = [tickerSet, int(summaryMaxChars)]
+            else:
+                if mustHaveContent:
+                    contentCond = "COALESCE(LENGTH(content), 0) > 0 AND len(list_filter(?, t -> contains(content, t))) > 0"
+                    contentParams = [tickerSet]
+                else:
+                    contentCond = "(COALESCE(LENGTH(content), 0) = 0 OR len(list_filter(?, t -> contains(content, t))) > 0)"
+                    contentParams = [tickerSet]
+
             sql = f"""
                 SELECT *
                 FROM {relationSql}
                 WHERE date >= ? AND date <= ?
                     AND list_has_any(tickers, ?)
-                    {"AND LENGTH(content) > 0" if mustHaveContent else ""}
+                    AND {contentCond}
                     {"AND array_length(tickers) <= ?" if maxReferencedTickers is not None else ""}
                 ORDER BY date DESC, id
             """
-            queryParams = [startNorm.to_pydatetime(), endNorm.to_pydatetime(), tickerSet]
+            queryParams = [startNorm.to_pydatetime(), endNorm.to_pydatetime(), tickerSet] + contentParams
             if maxReferencedTickers is not None:
                 queryParams.append(int(maxReferencedTickers))
             try:
@@ -312,5 +394,7 @@ class NewsDataProvider:
             except Exception:
                 df = pd.DataFrame()
 
+            df = self.truncateDfContent(df, summaryMaxChars)
             self.cache.put(key, df)
             return df
+

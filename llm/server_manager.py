@@ -218,6 +218,7 @@ class ServerManager:
 
                         self.recordLog(f"Clearing VRAM...")
                         rudimentaryVramClear()
+                        time.sleep(0.5)
                         preloadSentimentModelAsync()    # Do this after vram clearing since the model needs to be in vram
 
                         self.recordLog("VRAM cleared, starting Llama.cpp boardroom server...")

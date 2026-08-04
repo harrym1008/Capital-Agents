@@ -20,6 +20,8 @@ class DataProviders:
         self.edgar = EdgarDataProvider(self.tickers, self.cache, self.rateLimiters.edgarLimiter)
         self.forex = ForexDataProvider(START_DATE, END_DATE, self.cache, self.rateLimiters)
 
+        self.sentimentCache = LRUCache(8 * 1024 ** 2)  # 8 MB max size
+
 
 
 class Tool:
