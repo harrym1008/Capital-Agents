@@ -38,6 +38,8 @@ roleKeyMap = {
     "Aggressive Risk Analyst": "aggressiveRiskAnalyst",
     "Conservative Risk Analyst": "conservativeRiskAnalyst",
     "Impartial Portfolio Manager": "portfolioManager",
+
+    "One-Shot Analyst": "oneShotAnalyst",
 }
 
 
@@ -238,7 +240,35 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         f"*** TASK INSTRUCTIONS ***:\n"
         f"1. Execute '{{llmSubmitToolName}}' using exact numbers from your decision.\n"
         f"2. Recite a brief 2-paragraph summary confirming the uploaded verdict.\n"
-    )
+    ),
+
+
+
+    "oneShotAnalyst_analysis": (
+        f"You are a financial AI analyst tasked with producing a equity rating for a single stock.\n\n"
+        f"You operate entirely alone, and you must analyse the macro environment, the company's financials, valuation, and stock performance "
+        f"to produce a final rating and two price targets.\n\n"
+
+        f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+        f"You must call all relevant tools (macro, financials, valuation, statements, stock performance, news) on your initial turn to retrieve hard facts.\n\n"
+
+        f"*** TASK INSTRUCTIONS ***:\n"
+        f"1. Retrieve and analyse macroeconomic indicators, company financials, valuation metrics, and stock performance.\n"
+        f"2. Use 'executePythonCalculation' to run quantitative growth and target price models.\n"
+        f"3. Formulate your final rating (BUY/HOLD/SELL), position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and two explicit price targets: {{llmPriceTargets}}.\n\n"
+    ),
+
+    "oneShotAnalyst_upload": (
+        f"You log the final decision into the system database.\n\n"
+
+        f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+        f"You must call '{{llmSubmitToolName}}' with ticker, rating, weighting and your two price targets.\n\n"
+
+        f"*** TASK INSTRUCTIONS ***:\n"
+        f"1. Execute '{{llmSubmitToolName}}' using exact numbers from your decision.\n"
+        f"2. Recite a brief 2-paragraph summary confirming the uploaded verdict.\n"
+    ),
+
 }
 
 
@@ -300,6 +330,14 @@ def buildSummariseSysPrompt(agentRole: str, agentSubrole: str, promptArgs: Optio
                 f"Verdict: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
                 f"{{llmFinalLinePriceTargets}}. "
             )
+
+        case "oneShotAnalyst":
+            agentSpecificPrompt = (
+                f"Include your final rating, position weight, and price targets using these keys exactly:\n "
+                f"Rating: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
+                f"{{llmFinalLinePriceTargets}}."
+            )
+            
         case _:
             agentSpecificPrompt = "Could not find agent specific prompt!"
 

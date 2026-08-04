@@ -20,7 +20,8 @@
         <div class="config-group">
             <label for="modeSelect">Mode:</label>
             <select id="modeSelect">
-                <option value="fast">Fast Evaluation</option>
+                <option value="one_shot">One-Shot Evaluation</option>
+                <option value="fast" selected>Fast Evaluation</option>
                 <option value="complete">Complete Evaluation</option>
             </select>
         </div>
@@ -204,10 +205,15 @@
             "Bearish Risk Analyst": { class: "red", initials: "RA", name: "Bearish Analyst" },
             "Aggressive Risk Analyst": { class: "yellow", initials: "AR", name: "Aggressive Risk" },
             "Conservative Risk Analyst": { class: "blue", initials: "CR", name: "Conservative Risk" },
-            "Impartial Portfolio Manager": { class: "magenta", initials: "PM", name: "Portfolio Manager" }
+            "Impartial Portfolio Manager": { class: "magenta", initials: "PM", name: "Portfolio Manager" },
+            "One-Shot Analyst": { class: "cyan", initials: "OS", name: "One-Shot Analyst" }
         };
 
         const defaultStages = {
+            "one_shot": [
+                { num: 1, name: "One-Shot Analysis" },
+                { num: 2, name: "Decision Upload" }
+            ],
             "fast": [
                 { num: 1, name: "Macro Environment Analysis" },
                 { num: 2, name: "Specialist Research" },
@@ -915,7 +921,13 @@
                             </div>
                         </div>
                     `;
-                    createAgentPane(stageNum, "Impartial Portfolio Manager", "magenta", "Portfolio Manager");
+                    if (agents && agents.length > 0) {
+                        agents.forEach(agent => {
+                            createAgentPane(stageNum, agent.role, agent.color, agent.name);
+                        });
+                    } else {
+                        createAgentPane(stageNum, "Impartial Portfolio Manager", "magenta", "Portfolio Manager");
+                    }
 
                     setTimeout(() => {
                         renderStageChart();
@@ -1518,6 +1530,7 @@
                 action: "start",
                 ticker,
                 mode,
+                boardroomPace: mode,
                 timeHorizon: horizon,
                 useSimDate: useSimDate,
                 simulatedDate: simulatedDate
@@ -1538,7 +1551,7 @@
             }
         });
 
-        initStagesBar("fast");
+        initStagesBar(document.getElementById("modeSelect").value || "fast");
         connectWebsocket();
         checkServerStatus();
     </script>

@@ -15,6 +15,12 @@ class BoardroomType(Enum):
     SINGLE_EQUITY_RATING = "single_equity_rating"
 
 
+class BoardroomPace(Enum):
+    ONE_SHOT = "one_shot"
+    FAST = "fast"
+    COMPLETE = "complete"
+
+
 TIME_HORIZON_INFO: Dict[TimeHorizon, Dict[str, str]] = {
     TimeHorizon.SHORT: {
         "label": "Short-Term",
@@ -57,7 +63,7 @@ class SingleEquityRatingConfig(BoardroomConfig):
     ticker: str
     simulatedDateStr: Optional[str]
     timeHorizon: TimeHorizon
-    fastMode: bool
+    boardroomPace: BoardroomPace
 
     def getTimeHorizonInfo(self) -> Dict[str, str]:
         return TIME_HORIZON_INFO.get(self.timeHorizon, TIME_HORIZON_INFO[TimeHorizon.LONG])
@@ -76,17 +82,24 @@ class SingleEquityRatingConfig(BoardroomConfig):
             except ValueError:
                 timeHorizon = TimeHorizon.LONG
 
-        fastMode = data.get("fastMode")
-        if fastMode is None:
-            modeStr = data.get("mode", "fast")
-            fastMode = (modeStr == "fast")
+        boardroomPaceRaw = data.get("boardroomPace") or data.get("mode") or "fast"
+        if isinstance(boardroomPaceRaw, BoardroomPace):
+            boardroomPace = boardroomPaceRaw
+        else:
+            paceStr = str(boardroomPaceRaw).lower().replace(" ", "_").replace("-", "_")
+            if paceStr == "oneshot":
+                paceStr = "one_shot"
+            try:
+                boardroomPace = BoardroomPace(paceStr)
+            except ValueError:
+                boardroomPace = BoardroomPace.FAST
 
         return cls(
             ticker=ticker,
             simulatedDateStr=simulatedDateStr,
             timeHorizon=timeHorizon,
-            fastMode=bool(fastMode)
+            boardroomPace=boardroomPace
         )
 
-    def unpack(self) -> tuple[str, Optional[str], TimeHorizon, bool]:
-        return self.ticker, self.simulatedDateStr, self.timeHorizon, self.fastMode
+    def unpack(self) -> tuple[str, Optional[str], TimeHorizon, BoardroomPace]:
+        return self.ticker, self.simulatedDateStr, self.timeHorizon, self.boardroomPace

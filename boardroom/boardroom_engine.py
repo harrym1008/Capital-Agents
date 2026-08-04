@@ -10,7 +10,7 @@ from cli.ansi import ANSI
 from llm.client_duo import ClientDuo
 from tools.registry_builder import ToolRegistry
 from llm.agents.agent import FinancialAgent
-from boardroom.boardroom_config import BoardroomConfig, SingleEquityRatingConfig, TimeHorizon, TIME_HORIZON_INFO
+from boardroom.boardroom_config import BoardroomConfig, SingleEquityRatingConfig, TimeHorizon, BoardroomPace
 
 from ui.ui_hooks import getCurrentStage, setCurrentStage, emitEvent, SimulationStoppedException
 
@@ -28,18 +28,20 @@ class BoardroomEngine:
 
         self.timestamp = timestamp
         self.toolRegistry = toolRegistry
-        
+
+        self.agentsList = list(agents.values())
         self.macroAnalyst = agents.get("macroAnalyst")
         self.bullAnalyst = agents.get("bullAnalyst")
         self.bearAnalyst = agents.get("bearAnalyst")
         self.aggRiskAnalyst = agents.get("aggRiskAnalyst")
         self.consRiskAnalyst = agents.get("consRiskAnalyst")
         self.portManager = agents.get("portManager")
+        self.oneShotAnalyst = agents.get("oneShotAnalyst")
 
 
     def assignClientDuo(self, clientDuo: ClientDuo):
         self.clientDuo = clientDuo
-        for agent in [self.macroAnalyst, self.bullAnalyst, self.bearAnalyst, self.aggRiskAnalyst, self.consRiskAnalyst, self.portManager]:
+        for agent in self.agentsList:
             agent.setClientDuo(clientDuo)
         self.allowParallel = clientDuo.boardroomClient.allowParallel
 
@@ -68,7 +70,7 @@ class BoardroomEngine:
             return results
 
 
-    def _newPhaseHeader(self, phaseNumber, phaseName):
+    def _newPhaseHeader(self, phaseNumber, phaseName, pace: BoardroomPace = BoardroomPace.COMPLETE):
         setCurrentStage(phaseNumber)
         
         if phaseNumber == 0:
@@ -81,8 +83,18 @@ class BoardroomEngine:
 
         # Resolve active agents
         agents = []
-        isFast = getattr(self, "fastMode", True)
-        
+
+        if pace == BoardroomPace.ONE_SHOT:
+            analystColor = self.oneShotAnalyst.color if self.oneShotAnalyst is not None else self.macroAnalyst.color
+            agents = [{"role": "One-Shot Analyst", "color": analystColor, "name": "One-Shot Analyst"}]
+            emitEvent("stageStart", {
+                "stageNum": phaseNumber,
+                "stageName": phaseName,
+                "agents": agents
+            })
+            return
+
+        isFast = pace == BoardroomPace.FAST
         if phaseNumber == 1:
             agents = [{"role": "Macro Analyst", "color": self.macroAnalyst.color, "name": "Macro Analyst"}]
         elif phaseNumber == 2:
@@ -123,8 +135,70 @@ class BoardroomEngine:
         })
 
 
+    def executeOneShotSingleEquityRating(self, config: SingleEquityRatingConfig):
+        targetTicker, _, timeHorizon, pace = config.unpack()
+        timeHorizonInfo = config.getTimeHorizonInfo()
+        finalSubmitToolName = timeHorizonInfo["llmSubmitToolName"]
+
+        startTime = datetime.now()
+        dateStr = self.timestamp.strftime("%Y-%m-%d")
+        print(f"\n{'='*70}\nStarting One-Shot Boardroom Evaluation for: {targetTicker}\n{'='*70}")        
+
+        # Phase 1: One Shot Analysis
+        self._newPhaseHeader(1, "One-Shot Analysis", pace)
+        oneShotPrompt = (
+            f"Task: Conduct your complete analysis of macro conditions, single-stock reserach, risk assessment and final " 
+            f"executive decision in one go for the ticker: {targetTicker}.\n"
+            f"Execute your data tools (macro, financials, valuation, statements, stock performance, news) to retrieve hard facts. "
+            f"Present your final executive decision with explicit rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and {timeHorizonInfo['llmFinalLinePriceTargets']}." 
+            
+        )
+        oneShotRaw, _ = self.oneShotAnalyst.analyseAndReply(
+            oneShotPrompt, self.toolRegistry, self.timestamp, subrole="analysis", requireInitialTools=True, promptArgs=timeHorizonInfo
+        )
+
+        # Phase 2: Decision Upload
+        self._newPhaseHeader(2, "Decision Upload", pace)
+        uploadPrompt = (
+            f"Target Asset: {targetTicker}\n"
+            f"Decision:\n{oneShotRaw}\n\n"
+            f"Task: Upload and log the final boardroom verdict for {targetTicker}.\n"
+            f"Execute the {finalSubmitToolName} tool with ticker='{targetTicker}', rating, weighting and the {timeHorizonInfo['llmFinalLinePriceTargets']} based on your final decision."
+        )
+        self.oneShotAnalyst.clearTools()
+        self.oneShotAnalyst.addTool(finalSubmitToolName, self.toolRegistry)
+        _, _ = self.oneShotAnalyst.analyseAndReply(
+            uploadPrompt, self.toolRegistry, self.timestamp, subrole="upload", requireInitialTools=False, promptArgs=timeHorizonInfo, summarisationOverride=False
+        )
+
+        try:
+            formattedExecutiveDecision = self.toolRegistry.getTool(finalSubmitToolName).toolLog[-1]
+        except Exception:
+            formattedExecutiveDecision = "Decision not found."        
+                
+        endTime = datetime.now()
+        timeTaken = endTime - startTime
+
+        print()
+        self._newPhaseHeader(0, f"Final Boardroom Summary on {targetTicker}", pace)                    
+
+        convSummary = (
+            f"\n{ANSI.BOLD}{self.oneShotAnalyst.color}Final Executive Decision:\n{ANSI.RESET}{oneShotRaw}\n"
+            f"\n{formattedExecutiveDecision}\n"
+            f"Time taken for boardroom discussion: {timeTaken.seconds//60} mins {timeTaken.seconds%60} secs\n"
+        )
+
+        print(convSummary)
+
+        with open(f"output\\{targetTicker}_oneshot_{startTime.strftime('%Y-%m-%d_%H-%M-%S')}.ans", "w", encoding="utf-8") as f:
+            f.write(convSummary)
+
+
+
+
+
     def executeFastSingleEquityRating(self, config: SingleEquityRatingConfig):
-        targetTicker, _, timeHorizon, _ = config.unpack()
+        targetTicker, _, timeHorizon, pace = config.unpack()
         timeHorizonInfo = config.getTimeHorizonInfo()
         finalSubmitToolName = timeHorizonInfo["llmSubmitToolName"]
 
@@ -133,7 +207,7 @@ class BoardroomEngine:
         print(f"\n{'='*70}\nStarting Fast Boardroom Evaluation for: {targetTicker}\n{'='*70}")        
 
         # Phase 1: Macro Environment Analysis
-        self._newPhaseHeader(1, "Macro Environment Analysis")
+        self._newPhaseHeader(1, "Macro Environment Analysis", pace)
         macroPrompt = (
             "Task: Conduct top-down macroeconomic analysis for the US financial markets.\n"
             "Use your macro-specific tools to retrieve economic indicators, headlines, and sentiment history. "
@@ -144,7 +218,7 @@ class BoardroomEngine:
         )
         
         # Phase 2: Specialist Research
-        self._newPhaseHeader(2, f"Specialist Research on {targetTicker}")
+        self._newPhaseHeader(2, f"Specialist Research on {targetTicker}", pace)
         researchPrompt = (
             f"Macroeconomic Context:\n{macroRaw}\n\n"
             f"Task: Conduct single-stock research on ticker {targetTicker}.\n"
@@ -165,7 +239,7 @@ class BoardroomEngine:
 
 
         # Phase 3/6: Final Executive Decision
-        self._newPhaseHeader(3, f"Final Executive Decision on {targetTicker}")
+        self._newPhaseHeader(3, f"Final Executive Decision on {targetTicker}", pace)
         managerPrompt = (
             f"Target Asset: {targetTicker}\n"
             f"Macro Conditions:\n{macroRaw}\n\n"
@@ -182,7 +256,7 @@ class BoardroomEngine:
 
 
         # Phase 4/7: Decision Upload
-        self._newPhaseHeader(4, "Decision Upload")
+        self._newPhaseHeader(4, "Decision Upload", pace)
         uploadPrompt = (
             f"Target Asset: {targetTicker}\n"
             f"Final Decision Summary:\n{finalDecisionRaw}\n\n"
@@ -204,7 +278,7 @@ class BoardroomEngine:
         timeTaken = endTime - startTime
 
         print()
-        self._newPhaseHeader(0, f"Final Boardroom Summary on {targetTicker}")                    
+        self._newPhaseHeader(0, f"Final Boardroom Summary on {targetTicker}", pace)                    
 
         separator = f"\n{ANSI.BOLD}{ANSI.DIM}{'-'*70}{ANSI.RESET}\n"
         shortConvSummary = (
@@ -249,7 +323,7 @@ class BoardroomEngine:
 
 
     def executeCompleteSingleEquityRating(self, config: SingleEquityRatingConfig):
-        targetTicker, _, timeHorizon, _ = config.unpack()
+        targetTicker, _, timeHorizon, pace = config.unpack()
         timeHorizonInfo = config.getTimeHorizonInfo()
         finalSubmitToolName = timeHorizonInfo["llmSubmitToolName"]
 
@@ -258,7 +332,7 @@ class BoardroomEngine:
         print(f"\n{'='*70}\nStarting Live Boardroom Evaluation for: {targetTicker}\n{'='*70}")        
 
         # Phase 1: Macro Environment Analysis
-        self._newPhaseHeader(1, "Macro Environment Analysis")
+        self._newPhaseHeader(1, "Macro Environment Analysis", pace)
         macroPrompt = (
             "Task: Conduct top-down macroeconomic analysis for the US financial markets.\n"
             "Use your macro-specific tools to retrieve economic indicators, headlines, and sentiment history. "
@@ -269,7 +343,7 @@ class BoardroomEngine:
         )
         
         # Phase 2: Specialist Research
-        self._newPhaseHeader(2, f"Specialist Research on {targetTicker}")
+        self._newPhaseHeader(2, f"Specialist Research on {targetTicker}", pace)
         researchPrompt = (
             f"Macroeconomic Context:\n{macroRaw}\n\n"
             f"Task: Conduct single-stock research on ticker {targetTicker}.\n"
@@ -289,7 +363,7 @@ class BoardroomEngine:
         )
 
         # Phase 3: Senior Risk Debate
-        self._newPhaseHeader(3, f"Senior Risk Debate on {targetTicker}")
+        self._newPhaseHeader(3, f"Senior Risk Debate on {targetTicker}", pace)
         aggDebatePrompt = (
             f"Macroeconomic Context:\n{macroRaw}\n\n"
             f"Bearish Analyst's Thesis on {targetTicker}:\n{bearThesisRaw}\n\n"
@@ -313,7 +387,7 @@ class BoardroomEngine:
         )
         
         # Phase 4: Analyst Defense
-        self._newPhaseHeader(4, f"Analyst Defense on {targetTicker}")
+        self._newPhaseHeader(4, f"Analyst Defense on {targetTicker}", pace)
         bullDefensePrompt = (
             f"Questions Posed by Conservative Risk Analyst:\n{consQuestionsRaw}\n\n"
             f"Task: Defend your bullish thesis and price targets for {targetTicker}.\n"
@@ -335,7 +409,7 @@ class BoardroomEngine:
         )
 
         # Phase 5: Q&A Based Proposals
-        self._newPhaseHeader(5, f"Q&A-Based Proposals on {targetTicker}")
+        self._newPhaseHeader(5, f"Q&A-Based Proposals on {targetTicker}", pace)
         aggProposalPrompt = (
             f"Bearish Analyst's Defense:\n{bearDefenseRaw}\n\n"
             f"Task: Formulate your final aggressive allocation proposal for {targetTicker}.\n"
@@ -359,7 +433,7 @@ class BoardroomEngine:
         
 
         # Phase 6: Final Executive Decision
-        self._newPhaseHeader(6, f"Final Executive Decision on {targetTicker}")
+        self._newPhaseHeader(6, f"Final Executive Decision on {targetTicker}", pace)
         managerPrompt = (
             f"Target Asset: {targetTicker}\n"
             f"Macro Conditions:\n{macroRaw}\n\n"
@@ -376,7 +450,7 @@ class BoardroomEngine:
 
         
         # Phase 7: Decision Upload
-        self._newPhaseHeader(7, "Decision Upload")
+        self._newPhaseHeader(7, "Decision Upload", pace)
         uploadPrompt = (
             f"Target Asset: {targetTicker}\n"
             f"Final Decision Summary:\n{finalDecisionRaw}\n\n"
@@ -400,7 +474,7 @@ class BoardroomEngine:
         timeTaken = endTime - startTime
 
         print()
-        self._newPhaseHeader(0, f"Final Boardroom Summary on {targetTicker}")   
+        self._newPhaseHeader(0, f"Final Boardroom Summary on {targetTicker}", pace)   
             
         separator = f"\n{ANSI.BOLD}{ANSI.DIM}{'-'*70}{ANSI.RESET}\n"
         shortConvSummary = (
@@ -477,7 +551,9 @@ class BoardroomEngine:
         if self.clientDuo.summaryClient is not self.clientDuo.boardroomClient:
             self.clientDuo.summaryClient.newTask()
 
-        if config.fastMode:
+        if config.boardroomPace == BoardroomPace.ONE_SHOT:
+            self.executeOneShotSingleEquityRating(config)
+        elif config.boardroomPace == BoardroomPace.FAST:
             self.executeFastSingleEquityRating(config)
         else:
             self.executeCompleteSingleEquityRating(config)
@@ -604,6 +680,30 @@ def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> Bo
         dateStr=timestampStr
     )    
 
+    oneShotAnalyst = FinancialAgent(
+        agentRole="One-Shot Analyst",
+        tools=[
+            toolMap["fetchMacroContext"],
+            toolMap["fetchMacroNews"],
+            # toolMap["fetchMacroSentimentHistory"],
+            toolMap["fetchCompanyProfile"],
+            toolMap["fetchCompanyValuationMetrics"],
+            toolMap["fetchIncomeStatement"],
+            toolMap["fetchBalanceSheet"],
+            toolMap["fetchCashFlowStatement"],
+            # toolMap["fetchStatementOfEquity"],
+            # toolMap["fetchComprehensiveIncomeStatement"],
+            toolMap["fetchStockPricePerformance"],
+            toolMap["fetchCompanyRecentNews"],
+            toolMap["fetchTickerSentimentHistory"],
+            toolMap["fetchSentimentDivergence"],
+            toolMap["calculateDistFromCurrPrice"],
+            toolMap["executePythonCalculation"]
+        ],
+        ansiColor=ANSI.CYAN,
+        dateStr=timestampStr
+    )
+
     boardroom = BoardroomEngine(
         agents={
             "macroAnalyst": macroAgent,
@@ -612,6 +712,7 @@ def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> Bo
             "aggRiskAnalyst": aggRiskAnalystAgent,
             "consRiskAnalyst": consRiskAnalystAgent,
             "portManager": portfolioManager,
+            "oneShotAnalyst": oneShotAnalyst,
         }, 
         timestamp=timestamp,
         toolRegistry=toolRegistry
