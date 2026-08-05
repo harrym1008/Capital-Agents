@@ -180,8 +180,8 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
-
 .roo/
+
 
 # For CapitalAgents specifically
 # Folders
@@ -193,3 +193,7 @@ art/
 
 # Files
 newtooltest.py
+*.engine
+*.onnx
+
+finbert/FinancialPhraseBank-v1.0/
