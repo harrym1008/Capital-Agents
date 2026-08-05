@@ -1,5 +1,6 @@
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 from enum import Enum
 from dotenv import load_dotenv
@@ -65,6 +66,7 @@ class MacroDataProvider:
         self.macroDir = MACRO_DIRECTORY
         self.availableSeries = self.buildMacroIndex()
         self.lock = threading.RLock()
+        self.fredClient = Fred(api_key=os.getenv("FRED_API_KEY")) if os.getenv("FRED_API_KEY") else None
 
     def normaliseTimestamp(self, ts: pd.Timestamp) -> pd.Timestamp:
         ts = pd.Timestamp(ts)
@@ -84,63 +86,92 @@ class MacroDataProvider:
                 available[series] = None
         return available
 
-    def downloadNonLocalMacro(self, name: MacroSeries, startDate: pd.Timestamp, endDate: pd.Timestamp) -> pd.DataFrame:
-        if name.source == "yfinance":
-            self.rateLimiters.yFinanceLimiter.wait()
+    def downloadBatchYfinance(self, seriesList: list, startDate: pd.Timestamp, endDate: pd.Timestamp) -> dict:
+        results = {}
+        if not seriesList:
+            return results
 
-            yfMeta = YFINANCE_MACRO_TICKERS.get(name.parquetName, {})
+        self.rateLimiters.yFinanceLimiter.wait()
+
+        tickerToSeries = {}
+        yfTickers = []
+        for series in seriesList:
+            yfMeta = YFINANCE_MACRO_TICKERS.get(series.parquetName, {})
             yfTicker = yfMeta.get("yfticker")
-            if not yfTicker:
-                return pd.DataFrame()
+            if yfTicker:
+                yfTickers.append(yfTicker)
+                tickerToSeries[yfTicker] = series
 
-            try:
-                rawDf = yf.download(
-                    tickers=yfTicker,
-                    start=startDate.strftime("%Y-%m-%d"),
-                    end=(endDate + pd.DateOffset(days=1)).strftime("%Y-%m-%d"),
-                    interval="1d",
-                    auto_adjust=True,
-                    progress=False
-                )
-                if rawDf.empty:
-                    return pd.DataFrame()
+        if not yfTickers:
+            return results
 
-                if isinstance(rawDf.columns, pd.MultiIndex):
-                    rawDf = rawDf.xs(yfTicker, axis=1, level=1)
+        try:
+            rawDf = yf.download(
+                tickers=yfTickers,
+                start=startDate.strftime("%Y-%m-%d"),
+                end=(endDate + pd.DateOffset(days=1)).strftime("%Y-%m-%d"),
+                interval="1d",
+                auto_adjust=True,
+                progress=False,
+                threads=True
+            )
 
-                rawDf = rawDf.reset_index()
-                rawDf.columns = rawDf.columns.str.lower()
+            if rawDf.empty:
+                return results
 
-                dateCol = rawDf["date"]
-                if dateCol.dt.tz is None:
-                    dateCol = dateCol.dt.tz_localize(UTC)
-                else:
-                    dateCol = dateCol.dt.tz_convert(UTC)
-                rawDf["date"] = dateCol.dt.tz_localize(None)
+            for yfTicker, series in tickerToSeries.items():
+                try:
+                    if len(yfTickers) == 1:
+                        seriesDf = rawDf.copy()
+                    else:
+                        if isinstance(rawDf.columns, pd.MultiIndex):
+                            seriesDf = rawDf.xs(yfTicker, axis=1, level=1).copy()
+                        else:
+                            continue
 
-                cols = ["date", "open", "high", "low", "close"]
-                validCols = [c for c in cols if c in rawDf.columns]
-                return rawDf[validCols]
-            except Exception:
-                return pd.DataFrame()
+                    seriesDf = seriesDf.reset_index()
+                    seriesDf.columns = seriesDf.columns.str.lower()
 
-        elif name.source == "fred":
-            self.rateLimiters.fredLimiter.wait()
+                    if "date" not in seriesDf.columns:
+                        continue
 
-            fredId = FRED_SERIES_MAP.get(name.parquetName)
+                    dateCol = seriesDf["date"]
+                    if dateCol.dt.tz is None:
+                        dateCol = dateCol.dt.tz_localize(UTC)
+                    else:
+                        dateCol = dateCol.dt.tz_convert(UTC)
+                    seriesDf["date"] = dateCol.dt.tz_localize(None)
+
+                    cols = ["date", "open", "high", "low", "close"]
+                    validCols = [c for c in cols if c in seriesDf.columns]
+                    results[series] = seriesDf[validCols].dropna(subset=["date", "close"])
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        return results
+
+    def downloadBatchFred(self, seriesList: list, startDate: pd.Timestamp, endDate: pd.Timestamp) -> dict:
+        results = {}
+        if not seriesList or not self.fredClient:
+            return results
+
+        def fetchSingleFred(series: MacroSeries):
+            fredId = FRED_SERIES_MAP.get(series.parquetName)
             if not fredId:
-                return pd.DataFrame()
+                return series, pd.DataFrame()
 
+            self.rateLimiters.fredLimiter.wait()
             try:
-                fredClient = Fred(api_key=os.getenv("FRED_API_KEY"))
-                rawSeries = fredClient.get_series(
+                rawSeries = self.fredClient.get_series(
                     fredId,
                     observation_start=startDate.strftime("%Y-%m-%d"),
                     observation_end=endDate.strftime("%Y-%m-%d")
                 ).dropna()
 
                 if rawSeries.empty:
-                    return pd.DataFrame()
+                    return series, pd.DataFrame()
 
                 dfFred = rawSeries.reset_index()
                 dfFred.columns = ["date", "value"]
@@ -150,10 +181,29 @@ class MacroDataProvider:
                 else:
                     dateCol = dateCol.dt.tz_convert(UTC)
                 dfFred["date"] = dateCol.dt.tz_localize(None)
-                return dfFred
+                return series, dfFred
             except Exception:
-                return pd.DataFrame()
+                return series, pd.DataFrame()
 
+        with ThreadPoolExecutor(max_workers=min(len(seriesList), 8)) as executor:
+            futureToSeries = {executor.submit(fetchSingleFred, s): s for s in seriesList}
+            for future in as_completed(futureToSeries):
+                try:
+                    s, df = future.result()
+                    if not df.empty:
+                        results[s] = df
+                except Exception:
+                    pass
+
+        return results
+
+    def downloadNonLocalMacro(self, name: MacroSeries, startDate: pd.Timestamp, endDate: pd.Timestamp) -> pd.DataFrame:
+        if name.source == "yfinance":
+            res = self.downloadBatchYfinance([name], startDate, endDate)
+            return res.get(name, pd.DataFrame())
+        elif name.source == "fred":
+            res = self.downloadBatchFred([name], startDate, endDate)
+            return res.get(name, pd.DataFrame())
         return pd.DataFrame()
 
     def loadSeries(self, name: MacroSeries) -> pd.DataFrame:
@@ -182,25 +232,64 @@ class MacroDataProvider:
             self.cache.put(key, df)
             return df
 
-    def ensureCoverage(self, name: MacroSeries, targetDate: pd.Timestamp) -> pd.DataFrame:
+    def ensureBulkCoverage(self, names: list, targetDate: pd.Timestamp):
         targetNorm = self.normaliseTimestamp(targetDate)
         with self.lock:
-            df = self.loadSeries(name)
+            missingYf = []
+            missingFred = []
+            minMaxDates = {}
 
-            if df.empty:
-                maxDate = pd.Timestamp(END_DATE).tz_localize(None) - pd.DateOffset(years=5)
-            else:
-                maxDate = df["date"].max()
+            for name in names:
+                df = self.loadSeries(name)
+                if df.empty:
+                    maxDate = pd.Timestamp(END_DATE).tz_localize(None) - pd.DateOffset(years=5)
+                else:
+                    maxDate = df["date"].max()
 
-            if targetNorm > maxDate:
-                key = f"macro|full_{name.parquetName}"
-                dfInc = self.downloadNonLocalMacro(name, maxDate, targetNorm)
-                if not dfInc.empty:
-                    df = pd.concat([df, dfInc], ignore_index=True)
-                    df = df.drop_duplicates(subset=["date"], keep="last").sort_values("date").reset_index(drop=True)
-                    self.cache.put(key, df)
+                if targetNorm > maxDate:
+                    minMaxDates[name] = maxDate
+                    if name.source == "yfinance":
+                        missingYf.append(name)
+                    elif name.source == "fred":
+                        missingFred.append(name)
 
-            return df
+            if missingYf:
+                earliestStart = min([minMaxDates[s] for s in missingYf])
+                yfResults = self.downloadBatchYfinance(missingYf, earliestStart, targetNorm)
+                for s, dfInc in yfResults.items():
+                    if not dfInc.empty:
+                        fullDf = self.loadSeries(s)
+                        fullDf = pd.concat([fullDf, dfInc], ignore_index=True)
+                        fullDf = fullDf.drop_duplicates(subset=["date"], keep="last").sort_values("date").reset_index(drop=True)
+                        key = f"macro|full_{s.parquetName}"
+                        self.cache.put(key, fullDf)
+                        path = os.path.join(self.macroDir, f"{s.parquetName}.parquet")
+                        try:
+                            fullDf.to_parquet(path, index=False)
+                            self.availableSeries[s] = path
+                        except Exception:
+                            pass
+
+            if missingFred:
+                earliestStart = min([minMaxDates[s] for s in missingFred])
+                fredResults = self.downloadBatchFred(missingFred, earliestStart, targetNorm)
+                for s, dfInc in fredResults.items():
+                    if not dfInc.empty:
+                        fullDf = self.loadSeries(s)
+                        fullDf = pd.concat([fullDf, dfInc], ignore_index=True)
+                        fullDf = fullDf.drop_duplicates(subset=["date"], keep="last").sort_values("date").reset_index(drop=True)
+                        key = f"macro|full_{s.parquetName}"
+                        self.cache.put(key, fullDf)
+                        path = os.path.join(self.macroDir, f"{s.parquetName}.parquet")
+                        try:
+                            fullDf.to_parquet(path, index=False)
+                            self.availableSeries[s] = path
+                        except Exception:
+                            pass
+
+    def ensureCoverage(self, name: MacroSeries, targetDate: pd.Timestamp) -> pd.DataFrame:
+        self.ensureBulkCoverage([name], targetDate)
+        return self.loadSeries(name)
 
     def getAllSeries(self) -> list:
         return list(MacroSeries)
@@ -239,11 +328,12 @@ class MacroDataProvider:
         return prior.iloc[-1][name.valueCol]
 
     def getSnapshot(self, names: list, before: pd.Timestamp) -> pd.DataFrame:
+        self.ensureBulkCoverage(names, before)
         beforeNorm = self.normaliseTimestamp(before)
 
         rows = []
         for name in names:
-            df = self.ensureCoverage(name, beforeNorm)
+            df = self.loadSeries(name)
             if df.empty:
                 continue
 
@@ -262,6 +352,7 @@ class MacroDataProvider:
             return pd.DataFrame(columns=["series", "date", "value"])
 
         return pd.DataFrame(rows)
+
 
     def getLowest(self, name: MacroSeries, startDate: pd.Timestamp, endDate: pd.Timestamp):
         df = self.getSeries(name, startDate=startDate, endDate=endDate)
