@@ -17,7 +17,7 @@ from llm.cloud.openrouter_client import OpenRouterClient
 
 from llm.llm_client import BaseLLMClient
 from llm.token_cost_tracker import TokenCostTracker
-from tools.functions.sentiment import preloadSentimentModelAsync
+from llmtools.functions.sentiment import preloadSentimentModelAsync
 from ui.ui_hooks import emitEvent
 
 
@@ -137,7 +137,7 @@ class ServerManager:
         """Get or initialize the shared persistent ToolRegistry instance."""
         with self.serverLock:
             if self.sharedToolRegistry is None:
-                from tools.registry_builder import buildToolRegistry
+                from llmtools.registry_builder import buildToolRegistry
                 self.sharedToolRegistry = buildToolRegistry()
             return self.sharedToolRegistry
 

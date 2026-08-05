@@ -1,67 +1,62 @@
 import os
 import hashlib
 import threading
+import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 load_dotenv()
 
-from tools.functions.company import fetchStockPricePerformance
+from llmtools.functions.company import fetchStockPricePerformance
 
-from tools.tool_registry import DataProviders, Tool
-from tools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, NumberType
+from llmtools.tool_registry import DataProviders, Tool
+from llmtools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, NumberType
 
 
-# Singleton model pipeline and re-entrant lock
-sentimentPipeline = None
-cudaAvailable = None
+from finbert.finbert_engines import (
+    TrtInferenceEngine,
+    OnnxInferenceEngine,
+    getBestInferenceEngine,
+    logitsToPredictions,
+    resolveModelPath
+)
+
+# Singleton model engine and re-entrant lock
+sentimentEngine = None
+sentimentTokenizer = None
+engineType = None
+engineLoadAttempted = False
 sentimentLock = threading.RLock()
 
-def getModernFinbertPipeline():
-    global sentimentPipeline, cudaAvailable
+
+def getSentimentEngine():
+    global sentimentEngine, engineType, engineLoadAttempted
 
     with sentimentLock:
-        if sentimentPipeline is None:
-            import torch
-            from transformers import pipeline
+        if not engineLoadAttempted:
+            engineLoadAttempted = True
+            engine, eType, modelPath = getBestInferenceEngine()
+            if engine is not None:
+                sentimentEngine = engine
+                engineType = eType
 
-            if cudaAvailable is None:
-                cudaAvailable = torch.cuda.is_available()
+        return sentimentEngine, engineType
 
-            deviceIndex = 0 if cudaAvailable else -1
 
-            modelDir = "data/models"
-            sentimentPipeline = pipeline(
-                "text-classification",
-                model="tabularisai/ModernFinBERT",
-                device=deviceIndex,
-                dtype=torch.float16 if cudaAvailable else torch.float32,
-                cache_dir=modelDir,
-                truncation=True,
-                max_length=1024
-            )
-
-            # Force PyTorch/CUDA kernel compilation and memory buffer allocation during preloading
-            try:
-                _ = sentimentPipeline(["Financial market sentiment analysis initialisation warmup."])
-            except Exception:
-                pass
-
-        return sentimentPipeline
+def getModernFinbertPipeline():
+    engine, _ = getSentimentEngine()
+    return engine
 
 
 def preloadSentimentModelAsync():
     def loadWorker():
         try:
-            getModernFinbertPipeline()
+            getSentimentEngine()
         except Exception as e:
             print(f"[Sentiment Preloader] Preload encountered an issue: {e}")
 
     thread = threading.Thread(target=loadWorker, daemon=True, name="SentimentModelPreloader")
     thread.start()
     return thread
-
-# Preloading can be explicitly invoked after VRAM clearing (e.g. in rudimentaryVramClear or ServerManager)
-# preloadSentimentModelAsync()
 
 
 def getTextHash(text: str) -> str:
@@ -70,27 +65,34 @@ def getTextHash(text: str) -> str:
 
 def clearTorchCache():
     import gc
-    import torch
     gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
 
 
-def scoreHeadlinesBatch(headlines: list[str]) -> list[dict]:
+def scoreHeadlinesBatch(headlines: list[str]) -> list[dict] | None:
     if not headlines:
         return []
-    import torch
-    classifier = getModernFinbertPipeline()
-    batchSize = 64 if cudaAvailable else 8
+
+    engine, _ = getSentimentEngine()
+    if engine is None:
+        return None
+
     try:
-        with torch.inference_mode():
-            predictions = classifier(headlines, batch_size=batchSize)
-        return predictions
+        logits = engine.infer(headlines, batchSize=32)
+        return logitsToPredictions(logits)
+    except Exception as e:
+        print(f"[Sentiment Engine] Inference error: {e}")
+        return None
     finally:
         clearTorchCache()
 
 
-def scoreTextsWithCache(texts: list[str], data: DataProviders = None) -> list[dict]:
+def scoreTextsWithCache(texts: list[str], data: DataProviders = None) -> list[dict] | None:
     if not texts:
         return []
 
@@ -112,6 +114,8 @@ def scoreTextsWithCache(texts: list[str], data: DataProviders = None) -> list[di
 
     if uncachedTexts:
         newPredictions = scoreHeadlinesBatch(uncachedTexts)
+        if newPredictions is None:
+            return None
         for idx, text, pred in zip(uncachedIndices, uncachedTexts, newPredictions):
             results[idx] = pred
             if sentimentCache is not None:
@@ -251,6 +255,8 @@ def fetchTickerSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.T
 
         classificationDf = getClassificationDf(newsDf, bestMinTickers=2, contentTruncate=1024)
         rawPredictions = scoreTextsWithCache(classificationDf["text"].tolist(), data=data)
+        if rawPredictions is None:
+            return {"error": "Not available because sentiment classification models could not be loaded."}
 
         classificationDf["sentimentLabel"] = [pred["label"].lower() for pred in rawPredictions]
         classificationDf["sentimentScore"] = [pred["score"] for pred in rawPredictions]
@@ -396,6 +402,8 @@ def fetchMacroSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.Ti
         classificationDf = getClassificationDf(newsDf, bestMinTickers=8, contentTruncate=1024)
         classificationDf["weight"] = 1.0
         rawPredictions = scoreTextsWithCache(classificationDf["text"].tolist(), data=data)
+        if rawPredictions is None:
+            return {"error": "Not available because sentiment classification models could not be loaded."}
 
         classificationDf["sentimentLabel"] = [pred["label"].lower() for pred in rawPredictions]
         classificationDf["sentimentScore"] = [pred["score"] for pred in rawPredictions]

@@ -11,8 +11,8 @@ import numpy as np
 from dotenv import load_dotenv
 load_dotenv()
 
-from tools.tool_registry import DataProviders, Tool
-from tools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, isLocalDataAvailable, NumberType 
+from llmtools.tool_registry import DataProviders, Tool
+from llmtools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, isLocalDataAvailable, NumberType 
 
 
 def executePythonCalculation(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, code: str) -> Any:

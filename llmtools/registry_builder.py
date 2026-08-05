@@ -1,10 +1,10 @@
-from tools.tool_registry import ToolRegistry, Tool
-from tools.functions.macro import fetchMacroContext, fetchMacroNews
-from tools.functions.company import fetchCompanyProfile, fetchCompanyRecentNews, fetchStockPricePerformance, calculateDistFromCurrPrice
-from tools.functions.edgar import fetchCompanyValuationMetrics, fetchIncomeStatement, fetchBalanceSheet, \
+from llmtools.tool_registry import ToolRegistry, Tool
+from llmtools.functions.macro import fetchMacroContext, fetchMacroNews
+from llmtools.functions.company import fetchCompanyProfile, fetchCompanyRecentNews, fetchStockPricePerformance, calculateDistFromCurrPrice
+from llmtools.functions.edgar import fetchCompanyValuationMetrics, fetchIncomeStatement, fetchBalanceSheet, \
                                       fetchCashFlowStatement, fetchStatementOfEquity, fetchComprehensiveIncomeStatement 
-from tools.functions.sentiment import fetchTickerSentimentHistory, fetchSentimentDivergence, fetchMacroSentimentHistory
-from tools.functions.other import (
+from llmtools.functions.sentiment import fetchTickerSentimentHistory, fetchSentimentDivergence, fetchMacroSentimentHistory
+from llmtools.functions.other import (
     executePythonCalculation, 
     confirmBoardroomDecisionShortTerm, 
     confirmBoardroomDecisionMediumTerm, 

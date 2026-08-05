@@ -7,7 +7,7 @@ from cli.ansi import ANSI
 from llm.agents.agent_prompts import buildAgentSpecificSysPrompt, buildSummariseSysPrompt
 from llm.llm_client import BaseLLMClient, ResponsePrintMode
 from llm.client_duo import ClientDuo
-from tools.tool_registry import ToolRegistry, Tool
+from llmtools.tool_registry import ToolRegistry, Tool
 
 from ui.ui_hooks import setCurrentAgent, setAgentPhase, emitEvent
 

@@ -10,8 +10,8 @@ from llm.client_duo import ClientDuo
 from boardroom.boardroom_config import BoardroomConfig, BoardroomPace, SingleEquityRatingConfig, TimeHorizon
 from boardroom.boardroom_engine import generateBoardroom
 
-from tools.lru_cacher import startPrecacheThread
-from tools.tool_registry import ToolRegistry
+from llmtools.lru_cacher import startPrecacheThread
+from llmtools.tool_registry import ToolRegistry
 
 from ui.ui_hooks import emitEvent
 

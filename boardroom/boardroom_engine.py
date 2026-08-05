@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from cli.ansi import ANSI
 
 from llm.client_duo import ClientDuo
-from tools.registry_builder import ToolRegistry
+from llmtools.registry_builder import ToolRegistry
 from llm.agents.agent import FinancialAgent
 from boardroom.boardroom_config import BoardroomConfig, SingleEquityRatingConfig, TimeHorizon, BoardroomPace
 

@@ -10,7 +10,7 @@ from openai import OpenAI
 import pandas as pd
 
 from cli.ansi import ANSI
-from tools.tool_registry import ToolRegistry, Tool
+from llmtools.tool_registry import ToolRegistry, Tool
 from llm.token_cost_tracker import TokenCostTracker
 
 from ui.ui_hooks import (
