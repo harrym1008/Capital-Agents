@@ -218,10 +218,12 @@ class ServerManager:
 
                         self.recordLog(f"Clearing VRAM...")
                         rudimentaryVramClear()
-                        time.sleep(0.5)
-                        preloadSentimentModelAsync()    # Do this after vram clearing since the model needs to be in vram
+                        time.sleep(1)
+                        self.recordLog("VRAM cleared.")
+                        self.recordLog("Loading sentiment model asynchronously...")
+                        preloadSentimentModelAsync()       # Do this after vram clearing since the model needs to be in vram
 
-                        self.recordLog("VRAM cleared, starting Llama.cpp boardroom server...")
+                        self.recordLog("Starting Llama.cpp boardroom server...")
                         serverProcess = LlamaCppProcessInitiator(
                             serverName="boardroom",
                             model=modelEnum,

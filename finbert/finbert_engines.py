@@ -73,7 +73,7 @@ class TrtInferenceEngine:
 
         return dOutput.cpu().numpy()
 
-    def infer(self, inputs, attentionMask: np.ndarray = None, batchSize: int = 32) -> np.ndarray:
+    def infer(self, inputs, attentionMask: np.ndarray = None, batchSize: int = 8) -> np.ndarray:
         if isinstance(inputs, np.ndarray):
             return self._inferRaw(inputs, attentionMask)
 
@@ -130,7 +130,7 @@ class OnnxInferenceEngine:
         return outputs[0]
 
 
-    def infer(self, inputs, attentionMask: np.ndarray = None, batchSize: int = 32) -> np.ndarray:
+    def infer(self, inputs, attentionMask: np.ndarray = None, batchSize: int = 8) -> np.ndarray:
         if isinstance(inputs, np.ndarray):
             return self._inferRaw(inputs, attentionMask)
 

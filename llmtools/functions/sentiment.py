@@ -31,15 +31,24 @@ sentimentLock = threading.RLock()
 def getSentimentEngine():
     global sentimentEngine, engineType, engineLoadAttempted
 
-    with sentimentLock:
-        if not engineLoadAttempted:
-            engineLoadAttempted = True
-            engine, eType, modelPath = getBestInferenceEngine()
-            if engine is not None:
-                sentimentEngine = engine
-                engineType = eType
+    try:
+        with sentimentLock:
+            if not engineLoadAttempted:
+                engineLoadAttempted = True
+                engine, eType, modelPath = getBestInferenceEngine()
+                if engine is not None:
+                    sentimentEngine = engine
+                    engineType = eType
+                    try:
+                        warmupText = ["Financial market sentiment analysis initialisation warmup."]
+                        _ = engine.infer(warmupText)
+                    except Exception as warmupError:
+                        print(f"[Sentiment Engine] Prewarm encountered an issue: {warmupError}")
 
-        return sentimentEngine, engineType
+            return sentimentEngine, engineType
+    except Exception as e:
+        print(f"[Sentiment Engine] Error loading engine: {e}")
+        return None, None
 
 
 def getModernFinbertPipeline():
@@ -48,13 +57,7 @@ def getModernFinbertPipeline():
 
 
 def preloadSentimentModelAsync():
-    def loadWorker():
-        try:
-            getSentimentEngine()
-        except Exception as e:
-            print(f"[Sentiment Preloader] Preload encountered an issue: {e}")
-
-    thread = threading.Thread(target=loadWorker, daemon=True, name="SentimentModelPreloader")
+    thread = threading.Thread(target=getSentimentEngine, daemon=True, name="SentimentModelPreloader")
     thread.start()
     return thread
 
@@ -83,7 +86,7 @@ def scoreHeadlinesBatch(headlines: list[str]) -> list[dict] | None:
         return None
 
     try:
-        logits = engine.infer(headlines, batchSize=32)
+        logits = engine.infer(headlines, batchSize=8)
         return logitsToPredictions(logits)
     except Exception as e:
         print(f"[Sentiment Engine] Inference error: {e}")

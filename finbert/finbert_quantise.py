@@ -128,11 +128,11 @@ def compileTensorRtEngine(onnxPath, enginePath):
             raise RuntimeError("Failed to parse ONNX model.")
 
     config = builder.create_builder_config()
-    config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 8 * (1024 ** 3))
+    config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 2 * (1024 ** 3))
 
     profile = builder.create_optimization_profile()
-    profile.set_shape("input_ids", min=(1, 1), opt=(1, 128), max=(32, 1024))
-    profile.set_shape("attention_mask", min=(1, 1), opt=(1, 128), max=(32, 1024))
+    profile.set_shape("input_ids", min=(1, 1), opt=(4, 128), max=(8, 1024))
+    profile.set_shape("attention_mask", min=(1, 1), opt=(4, 128), max=(8, 1024))
     config.add_optimization_profile(profile)
 
     print(f"[Step 5] Building TensorRT engine...")
@@ -149,7 +149,7 @@ def compileTensorRtEngine(onnxPath, enginePath):
 
 
 def main():
-    # All models are enforced a maximum of 1024 tokens (unfortunately)
+    # All models are enforced a maximum of 1024 tokens
     modelsDir = "finbert/models"
 
     # Download the ModernFinBERT model and export it to FP32 ONNX
