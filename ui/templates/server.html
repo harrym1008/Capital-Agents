@@ -277,30 +277,6 @@
         let currentFetchedRouterModel = "";
         let selectedOpenRouterRouter = "auto";
 
-        function calculatePricingPer1M(pricing) {
-            if (!pricing) return { input: 0, output: 0, cacheHit: null };
-            const promptPrice = parseFloat(pricing.prompt || 0);
-            const completionPrice = parseFloat(pricing.completion || 0);
-
-            let cacheHitPrice = null;
-            if (pricing.input_cache_read !== undefined && pricing.input_cache_read !== null) {
-                cacheHitPrice = parseFloat(pricing.input_cache_read) * 1000000;
-            }
-
-            return {
-                input: promptPrice * 1000000,
-                output: completionPrice * 1000000,
-                cacheHit: cacheHitPrice
-            };
-        }
-
-        function formatThroughputStr(throughputVal) {
-            if (throughputVal === undefined || throughputVal === null || isNaN(throughputVal)) {
-                return "N/A";
-            }
-            return `${parseFloat(throughputVal).toFixed(1)} tok/s`;
-        }
-
         function getContextWarningHtml(contextLength) {
             if (contextLength && contextLength < 50000) {
                 return `

@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CapitalAgents - LLM-less Portfolio Simulation</title>
+
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/marketsim.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+    {% include 'header.html' %}
+
+    <div class="marketsim-container">
+        <!-- Left Main Area (75% Width) -->
+        <main class="marketsim-main">
+            
+            <!-- Top Grid Row: min-height 360px -->
+            <div class="grid-row top-row">
+                
+                <!-- Card 1: Simulation Info & Responsive Embedded Graph -->
+                <div class="sim-card sim-info-card">
+                    <div class="sim-info-card-body">
+                        <!-- Left Column: Metrics & Advance Control -->
+                        <div class="sim-info-left">
+                            <div class="sim-info-header">
+                                <span class="info-label">Simulated Date:</span>
+                                <span class="date-highlight" id="simulatedDate">Wed 10 Jul 2024</span>
+                            </div>
+
+                            <div class="sim-metrics-summary">
+                                <div class="metric-group">
+                                    <div class="metric-line">
+                                        <span class="metric-label">Cash:</span>
+                                        <span class="metric-value" id="cashVal">$999,999.99</span>
+                                    </div>
+                                </div>
+                                <div class="metric-group">
+                                    <div class="metric-line">
+                                        <span class="metric-label">Stock:</span>
+                                        <span class="metric-value" id="stockVal">$999,999.99</span>
+                                    </div>
+                                    <div class="metric-change positive" id="stockGain">+$599,999.99</div>
+                                </div>
+                                <div class="metric-group">
+                                    <div class="metric-line">
+                                        <span class="metric-label">Assets:</span>
+                                        <span class="metric-value" id="assetsVal">$1,999,999.98</span>
+                                    </div>
+                                    <div class="metric-change positive" id="assetsReturn">+50.2%</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Column: Portfolio Performance Graph embedded in white space -->
+                        <div class="sim-info-chart-wrapper">
+                            <div class="chart-canvas-wrapper">
+                                <canvas id="portfolioChart"></canvas>
+                            </div>
+
+                            <!-- Timeframe Selector Buttons -->
+                            <div class="chart-timeframe-controls">
+                                <button class="tf-btn" onclick="updatePortfolioChartRange('1d', this)">1D</button>
+                                <button class="tf-btn active" onclick="updatePortfolioChartRange('3m', this)">3m</button>
+                                <button class="tf-btn" onclick="updatePortfolioChartRange('1y', this)">1Y</button>
+                                <button class="tf-btn" onclick="updatePortfolioChartRange('all', this)">ALL</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Hardcoded Advance Buttons + Date Input Button at bottom of card -->
+                    <div class="sim-advance-section">
+                        <span class="advance-section-label">Advance Simulation:</span>
+                        <div class="advance-btn-group">
+                            <button class="advance-chip-btn" onclick="advanceTime('1 day')">1 day</button>
+                            <button class="advance-chip-btn" onclick="advanceTime('5 days')">5 days</button>
+                            <button class="advance-chip-btn" onclick="advanceTime('10 days')">10 days</button>
+                            <button class="advance-chip-btn" onclick="advanceTime('30 days')">30 days</button>
+                            <button class="advance-chip-btn" onclick="advanceTime('6 months')">6 months</button>
+                            <button class="advance-chip-btn" onclick="advanceTime('1 year')">1 year</button>
+                            
+                            <!-- Custom Date Picker Advance Button -->
+                            <div class="advance-date-picker-btn">
+                                <input type="date" id="advanceToDateInput" class="advance-date-input" value="2024-08-10">
+                                <button class="advance-chip-btn primary" onclick="advanceToTargetDate()">Advance ▶</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 2: Queue New Order Form -->
+                <div class="sim-card order-card">
+                    <h2 class="card-title">Queue new Order</h2>
+                    
+                    <form class="order-form-vertical" onsubmit="handleQueueOrder(event)">
+                        
+                        <!-- Row 1: Side & Type in 1 Row (50% / 50%) -->
+                        <div class="form-row-2col">
+                            <div class="form-group flex-half">
+                                <label class="small-input-label" for="orderAction">Side</label>
+                                <select id="orderAction" class="sim-select" onchange="updateOrderSummary()">
+                                    <option value="buy" selected>BUY</option>
+                                    <option value="sell">SELL</option>
+                                </select>
+                            </div>
+                            <div class="form-group flex-half">
+                                <label class="small-input-label" for="orderType">Type</label>
+                                <select id="orderType" class="sim-select" onchange="handleOrderTypeChange()">
+                                    <option value="market" selected>Market</option>
+                                    <option value="limit">Limit</option>
+                                    <option value="stop">Stop</option>
+                                    <option value="stop_limit">Stop Limit</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Row 2: Dynamic Stop & Limit Price Inputs (50% width each, side-by-side on stop_limit) -->
+                        <div class="form-row-2col" id="priceInputsRow" style="display: none;">
+                            <div class="form-group flex-half" id="stopPriceGroup" style="display: none;">
+                                <label class="small-input-label" for="stopPriceInput">Stop Price</label>
+                                <input type="number" id="stopPriceInput" class="sim-input" placeholder="$0.00" step="0.01" oninput="updateOrderSummary()">
+                            </div>
+                            <div class="form-group flex-half" id="limitPriceGroup" style="display: none;">
+                                <label class="small-input-label" for="limitPriceInput">Limit Price</label>
+                                <input type="number" id="limitPriceInput" class="sim-input" placeholder="$0.00" step="0.01" oninput="updateOrderSummary()">
+                            </div>
+                        </div>
+
+                        <!-- Row 3: Ticker on its own full-width line -->
+                        <div class="form-group full-width">
+                            <label class="small-input-label" for="orderTicker">Ticker</label>
+                            <input type="text" id="orderTicker" class="sim-input" placeholder="NVDA" value="NVDA" required style="text-transform: uppercase; font-weight: 700;" oninput="updateOrderSummary()">
+                        </div>
+
+                        <!-- Row 4: Amount and Unit on the same line (50% / 50%) -->
+                        <div class="form-row-2col">
+                            <div class="form-group flex-half">
+                                <label class="small-input-label" for="orderQuantity">Amount</label>
+                                <input type="text" id="orderQuantity" class="sim-input" placeholder="100" value="100" required oninput="formatQuantityInput(this)">
+                            </div>
+                            <div class="form-group flex-half">
+                                <label class="small-input-label" for="orderUnit">Unit</label>
+                                <select id="orderUnit" class="sim-select" onchange="updateOrderSummary()">
+                                    <option value="shares">Shares</option>
+                                    <option value="usd">$ USD</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Order Summary & Cash Impact Box -->
+                        <div class="order-summary-box" id="orderSummaryBox">
+                            <div class="summary-line">
+                                <span class="summary-label">Est. Price:</span>
+                                <span class="summary-val" id="summaryEstPrice">$142.50</span>
+                            </div>
+                            <div class="summary-line">
+                                <span class="summary-label">Order Total:</span>
+                                <span class="summary-val highlight" id="summaryOrderTotal">$14,250.00</span>
+                            </div>
+                            <div class="summary-line">
+                                <span class="summary-label">Est. Cash After:</span>
+                                <span class="summary-val" id="summaryCashAfter">$985,749.99</span>
+                            </div>
+                        </div>
+
+                        <!-- Row 5: Submit Button Attached to Bottom of Card -->
+                        <button type="submit" id="queueOrderBtn" class="submit-order-btn-full" title="Queue Order">
+                            <span>Queue Order</span>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
+
+            </div>
+
+            <!-- Bottom Grid Row: Positions Table + System Logs / Queued Orders Panel -->
+            <div class="grid-row bottom-row">
+
+                <!-- Card 3: Positions Table (4 Columns) -->
+                <div class="sim-card positions-card">
+                    <h2 class="card-title">Positions</h2>
+
+                    <div class="table-container">
+                        <table class="positions-table">
+                            <thead>
+                                <tr>
+                                    <th>Ticker</th>
+                                    <th>Shares</th>
+                                    <th>Costs</th>
+                                    <th>Returns</th>
+                                </tr>
+                            </thead>
+                            <tbody id="positionsTableBody">
+                                <tr>
+                                    <td class="ticker-col">NVDA</td>
+                                    <td class="shares-col">1,250</td>
+                                    <td>
+                                        <div class="cost-unit">$115.40 each</div>
+                                        <div class="cost-total">$114,680.00 total</div>
+                                    </td>
+                                    <td>
+                                        <div class="return-amt positive">+$24,500</div>
+                                        <div class="return-pct positive">+16.98%</div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="ticker-col">AAPL</td>
+                                    <td class="shares-col">800</td>
+                                    <td>
+                                        <div class="cost-unit">$182.10 each</div>
+                                        <div class="cost-total">$145,680.00 total</div>
+                                    </td>
+                                    <td>
+                                        <div class="return-amt positive">+$33,520</div>
+                                        <div class="return-pct positive">+23.01%</div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="ticker-col">MSFT</td>
+                                    <td class="shares-col">500</td>
+                                    <td>
+                                        <div class="cost-unit">$420.00 each</div>
+                                        <div class="cost-total">$210,000.00 total</div>
+                                    </td>
+                                    <td>
+                                        <div class="return-amt negative">-$5,000</div>
+                                        <div class="return-pct negative">-2.38%</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Card 4: System Logs Card (Takes up rest of room, squishes when orders exist, hides if < 280px) -->
+                <div class="sim-card logs-card" id="systemLogsCard">
+                    <h2 class="card-title">System Logs</h2>
+                    
+                    <div class="logs-container" id="systemLogsContainer">
+                        <div class="log-pill">
+                            <span class="log-text">NVDA Dividend paid: $67.00</span>
+                        </div>
+                        <div class="log-pill">
+                            <span class="log-text">Order Executed: BUY 100 AAPL @ $224.00</span>
+                        </div>
+                        <div class="log-pill">
+                            <span class="log-text">Simulated month transition complete: 2024-07-10</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 5: Queued Orders Card (Rightmost card, dynamically shown when orders exist) -->
+                <div class="sim-card queued-orders-card" id="queuedOrdersCard" style="display: none;">
+                    <h2 class="card-title">Queued Orders</h2>
+
+                    <div class="table-container">
+                        <table class="positions-table">
+                            <thead>
+                                <tr>
+                                    <th>Ticker</th>
+                                    <th>Action</th>
+                                    <th>Type</th>
+                                    <th>Amount</th>
+                                    <th style="text-align: right;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="queuedOrdersTableBody">
+                                <!-- Populated dynamically by JS -->
+                            </tbody>
+                        </table>
+                        <div id="emptyQueueMsg" class="empty-queue-msg" style="display: none;">No orders currently queued.</div>
+                    </div>
+                </div>
+
+            </div>
+
+        </main>
+
+        <!-- Right Side Panel (25% Width) -->
+        <aside class="marketsim-sidebar">
+            <div class="sidebar-title">Simulated Tool call</div>
+
+            <!-- Ticker Search Box -->
+            <div class="search-box">
+                <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="text" id="tickerSearchInput" class="search-input" value="NVDA" placeholder="Search ticker...">
+            </div>
+
+            <!-- Stock Info Header -->
+            <div class="stock-header">
+                <h3 id="stockCompanyName" class="stock-name">Nvidia Corp</h3>
+                <span id="stockSymbolBadge" class="stock-symbol">NVDA</span>
+            </div>
+
+            <!-- Stock Chart Area -->
+            <div class="chart-section">
+                <div class="chart-canvas-wrapper">
+                    <canvas id="marketSimChart"></canvas>
+                </div>
+                
+                <!-- Timeframe Selector Buttons -->
+                <div class="chart-timeframe-controls">
+                    <button class="tf-btn" title="1 Day">1D</button>
+                    <button class="tf-btn active" title="3 Months">3m</button>
+                    <button class="tf-btn" title="1 Year">1Y</button>
+                </div>
+            </div>
+
+            <!-- Tool Feed / Details Text Stream -->
+            <div class="tool-feed-container">
+                <div class="feed-line">
+                    <span class="feed-label">Market Cap:</span>
+                    <span class="feed-val">$3.15 T</span>
+                </div>
+                <div class="feed-line">
+                    <span class="feed-label">P/E Ratio:</span>
+                    <span class="feed-val">72.4</span>
+                </div>
+                <div class="feed-line">
+                    <span class="feed-label">52-Wk High:</span>
+                    <span class="feed-val">$140.76</span>
+                </div>
+                <div class="feed-line">
+                    <span class="feed-label">52-Wk Low:</span>
+                    <span class="feed-val">$40.85</span>
+                </div>
+                <hr class="feed-divider">
+                <div class="tool-log-entry">
+                    <span class="log-timestamp">[10 Jul 2024]</span>
+                    <span class="log-content">Fetched fundamental metrics & sentiment report for NVDA.</span>
+                </div>
+                <div class="tool-log-entry">
+                    <span class="log-timestamp">[08 Jul 2024]</span>
+                    <span class="log-content">Quarterly earnings report exceeds consensus estimates by 12%.</span>
+                </div>
+                <div class="tool-log-entry">
+                    <span class="log-timestamp">[01 Jul 2024]</span>
+                    <span class="log-content">Ex-dividend date recorded at $0.01/share split-adjusted.</span>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- JavaScript Order Queuing & Dynamic Form Handlers -->
+    <script>
+        let queuedOrders = [];
+        let portfolioChartInstance = null;
+        let stockChartInstance = null;
+
+        // Auto Rescale Charts on Window Resize & Adjust Bottom Row
+        window.addEventListener('resize', function() {
+            if (portfolioChartInstance) portfolioChartInstance.resize();
+            if (stockChartInstance) stockChartInstance.resize();
+            adjustBottomRowLayout();
+        });
+
+        // Portfolio Chart Range Toggle Handler
+        function updatePortfolioChartRange(range, btnElement) {
+            if (btnElement) {
+                const parent = btnElement.parentElement;
+                if (parent) {
+                    parent.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+                    btnElement.classList.add('active');
+                }
+            }
+
+            if (!portfolioChartInstance) return;
+
+            let labels = [];
+            let data = [];
+
+            if (range === '1d') {
+                labels = ['9:30', '11:00', '12:30', '14:00', '15:30', '16:00'];
+                data = [1985000, 1990000, 1988000, 1995000, 1997000, 1999999];
+            } else if (range === '3m') {
+                labels = ['May', 'Jun', 'Jul'];
+                data = [1650000, 1820000, 1999999];
+            } else if (range === '1y') {
+                labels = ['Aug 23', 'Oct 23', 'Dec 23', 'Feb 24', 'Apr 24', 'Jun 24', 'Jul 24'];
+                data = [1200000, 1280000, 1350000, 1450000, 1480000, 1820000, 1999999];
+            } else { // 'all'
+                labels = ['Jan 23', 'May 23', 'Sep 23', 'Jan 24', 'May 24', 'Jul 24'];
+                data = [1000000, 1150000, 1300000, 1450000, 1650000, 1999999];
+            }
+
+            portfolioChartInstance.data.labels = labels;
+            portfolioChartInstance.data.datasets[0].data = data;
+            portfolioChartInstance.update();
+        }
+
+        // Dynamic Order Type Price Inputs Toggle Handler
+        function handleOrderTypeChange() {
+            const orderType = document.getElementById('orderType').value;
+            const priceInputsRow = document.getElementById('priceInputsRow');
+            const stopGroup = document.getElementById('stopPriceGroup');
+            const limitGroup = document.getElementById('limitPriceGroup');
+
+            if (orderType === 'market') {
+                priceInputsRow.style.display = 'none';
+                stopGroup.style.display = 'none';
+                limitGroup.style.display = 'none';
+            } else if (orderType === 'limit') {
+                priceInputsRow.style.display = 'flex';
+                stopGroup.style.display = 'none';
+                limitGroup.style.display = 'block';
+            } else if (orderType === 'stop') {
+                priceInputsRow.style.display = 'flex';
+                stopGroup.style.display = 'block';
+                limitGroup.style.display = 'none';
+            } else if (orderType === 'stop_limit') {
+                priceInputsRow.style.display = 'flex';
+                stopGroup.style.display = 'block';
+                limitGroup.style.display = 'block';
+            }
+            updateOrderSummary();
+        }
+
+        // Live Comma Formatter for Quantity Input
+        function formatQuantityInput(input) {
+            let rawVal = input.value.replace(/,/g, '').replace(/[^\d]/g, '');
+            if (rawVal) {
+                input.value = Number(rawVal).toLocaleString('en-US');
+            } else {
+                input.value = '';
+            }
+            updateOrderSummary();
+        }
+
+        // Calculate and Update Order Summary Box & Cash Impact
+        function updateOrderSummary() {
+            const tickerEl = document.getElementById('orderTicker');
+            const actionEl = document.getElementById('orderAction');
+            const qtyEl = document.getElementById('orderQuantity');
+            const unitEl = document.getElementById('orderUnit');
+
+            if (!tickerEl || !actionEl || !qtyEl || !unitEl) return;
+
+            const ticker = (tickerEl.value || 'NVDA').trim().toUpperCase();
+            const action = actionEl.value;
+            const unit = unitEl.value;
+            const rawQty = parseFloat((qtyEl.value || '0').replace(/,/g, '')) || 0;
+
+            const mockPrices = { 'NVDA': 142.50, 'AAPL': 224.00, 'MSFT': 420.00, 'ASTS': 32.50 };
+            const estPrice = mockPrices[ticker] || 100.00;
+
+            let totalVal = 0;
+            if (unit === 'usd') {
+                totalVal = rawQty;
+            } else {
+                totalVal = rawQty * estPrice;
+            }
+
+            const currentCash = 999999.99;
+            let cashAfter = currentCash;
+            if (action === 'buy') {
+                cashAfter = Math.max(0, currentCash - totalVal);
+            } else {
+                cashAfter = currentCash + totalVal;
+            }
+
+            const estPriceEl = document.getElementById('summaryEstPrice');
+            const totalEl = document.getElementById('summaryOrderTotal');
+            const cashAfterEl = document.getElementById('summaryCashAfter');
+
+            if (estPriceEl) estPriceEl.textContent = '$' + estPrice.toFixed(2);
+            if (totalEl) totalEl.textContent = '$' + totalVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            if (cashAfterEl) cashAfterEl.textContent = '$' + cashAfter.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        // Handle Queue Order Form Submit
+        function handleQueueOrder(event) {
+            if (event) event.preventDefault();
+
+            const tickerInput = document.getElementById('orderTicker');
+            const actionSelect = document.getElementById('orderAction');
+            const typeSelect = document.getElementById('orderType');
+            const quantityInput = document.getElementById('orderQuantity');
+            const unitSelect = document.getElementById('orderUnit');
+            const stopPriceInput = document.getElementById('stopPriceInput');
+            const limitPriceInput = document.getElementById('limitPriceInput');
+
+            const ticker = (tickerInput.value || 'NVDA').trim().toUpperCase();
+            const action = actionSelect.value.toUpperCase();
+            const orderTypeKey = typeSelect.value;
+            const orderTypeLabel = typeSelect.options[typeSelect.selectedIndex].text;
+            const rawQtyStr = quantityInput.value.replace(/,/g, '');
+            const quantity = Number(rawQtyStr || 0).toLocaleString('en-US');
+            const unit = unitSelect.value === 'usd' ? '$ USD' : 'Shares';
+
+            let typeParams = [];
+            if (orderTypeKey === 'limit' && limitPriceInput.value) {
+                typeParams.push(`Limit: $${parseFloat(limitPriceInput.value).toFixed(2)}`);
+            } else if (orderTypeKey === 'stop' && stopPriceInput.value) {
+                typeParams.push(`Stop: $${parseFloat(stopPriceInput.value).toFixed(2)}`);
+            } else if (orderTypeKey === 'stop_limit') {
+                if (stopPriceInput.value) typeParams.push(`Stop: $${parseFloat(stopPriceInput.value).toFixed(2)}`);
+                if (limitPriceInput.value) typeParams.push(`Limit: $${parseFloat(limitPriceInput.value).toFixed(2)}`);
+            }
+
+            if (!ticker || !quantity) return;
+
+            const newOrder = {
+                id: Date.now(),
+                ticker: ticker,
+                action: action,
+                typeLabel: orderTypeLabel,
+                typeParams: typeParams,
+                quantity: quantity,
+                unit: unit,
+                status: 'Queued'
+            };
+
+            queuedOrders.push(newOrder);
+
+            // Update UI
+            renderQueuedOrders();
+        }
+
+        // Cancel order from queue
+        function cancelOrder(id) {
+            queuedOrders = queuedOrders.filter(o => o.id !== id);
+            renderQueuedOrders();
+        }
+
+        // Auto-Adjust Bottom Row Layout (hides System Logs if < 280px when queued orders exist)
+        function adjustBottomRowLayout() {
+            const queuedCard = document.getElementById('queuedOrdersCard');
+            const logsCard = document.getElementById('systemLogsCard');
+            const bottomRow = document.querySelector('.bottom-row');
+
+            if (!queuedCard || !logsCard || !bottomRow) return;
+
+            if (queuedOrders.length === 0) {
+                queuedCard.style.display = 'none';
+                logsCard.style.display = 'flex';
+                logsCard.classList.remove('squished');
+            } else {
+                queuedCard.style.display = 'flex';
+
+                const rowWidth = bottomRow.getBoundingClientRect().width;
+                // Positions card width (approx 520px) + gaps (40px) = 560px
+                const spaceForRemainingCards = rowWidth - 560;
+
+                // If remaining space would make Sys Logs < 280px wide (e.g. total remaining space < 480px)
+                if (spaceForRemainingCards < 480) {
+                    logsCard.style.display = 'none';
+                    logsCard.classList.remove('squished');
+                } else {
+                    logsCard.style.display = 'flex';
+                    logsCard.classList.add('squished');
+                }
+            }
+        }
+
+        // Render Queued Orders Table & Update Card Visibilities
+        function renderQueuedOrders() {
+            const tbody = document.getElementById('queuedOrdersTableBody');
+            const emptyMsg = document.getElementById('emptyQueueMsg');
+
+            adjustBottomRowLayout();
+
+            if (queuedOrders.length === 0) {
+                if (tbody) tbody.innerHTML = '';
+                if (emptyMsg) emptyMsg.style.display = 'block';
+                return;
+            }
+
+            if (emptyMsg) emptyMsg.style.display = 'none';
+
+            if (tbody) {
+                tbody.innerHTML = queuedOrders.map(order => {
+                    const typeTitle = order.typeLabel || 'Market';
+                    const params = order.typeParams || [];
+                    const paramsHtml = params.map(p => `<div class="order-type-param">${p}</div>`).join('');
+                    
+                    let quantity = '';
+                    if (order.unit === '$ USD') {
+                        quantity = `$${parseFloat(order.quantity.replace(/,/g, '')).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    } else {
+                        quantity = `${order.quantity} shares`;
+                    }
+
+                    return `
+                    <tr>
+                        <td class="ticker-col">${order.ticker}</td>
+                        <td>
+                            <span class="${order.action === 'BUY' ? 'badge-action-buy' : 'badge-action-sell'}">${order.action}</span>
+                        </td>
+                        <td>
+                            <div class="order-type-title">${typeTitle}</div>
+                            ${paramsHtml}
+                        </td>
+                        <td style="font-weight: 700;">${quantity}</td>
+                        <td style="text-align: right;">
+                            <button class="cancel-order-btn" onclick="cancelOrder(${order.id})">Cancel</button>
+                        </td>
+                    </tr>
+                    `;
+                }).join('');
+            }
+        }
+
+        // Helper to add system log pill
+        function addSystemLog(text) {
+            const container = document.getElementById('systemLogsContainer');
+            const pill = document.createElement('div');
+            pill.className = 'log-pill';
+            pill.innerHTML = `<span class="log-text">${text}</span>`;
+            container.insertBefore(pill, container.firstChild);
+        }
+
+        // Advance simulation handlers
+        function advanceTime(periodStr) {
+            if (queuedOrders.length > 0) {
+                const executedCount = queuedOrders.length;
+                queuedOrders.forEach(order => {
+                    addSystemLog(`Executed ${order.action} ${order.quantity} ${order.unit} ${order.ticker} (${order.typeLabel})`);
+                });
+                queuedOrders = [];
+                renderQueuedOrders();
+                addSystemLog(`Advanced ${periodStr} — Executed ${executedCount} order(s)`);
+            } else {
+                addSystemLog(`Advanced simulation by ${periodStr}`);
+            }
+        }
+
+        function advanceToTargetDate() {
+            const dateVal = document.getElementById("advanceToDateInput").value;
+            advanceTime(`to date ${dateVal}`);
+        }
+
+        document.addEventListener("DOMContentLoaded", function() {
+            // 1. Stock Chart (Right Sidebar)
+            const stockCtx = document.getElementById('marketSimChart');
+            if (stockCtx && typeof Chart !== 'undefined') {
+                stockChartInstance = new Chart(stockCtx, {
+                    type: 'line',
+                    data: {
+                        labels: ['May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct'],
+                        datasets: [{
+                            label: 'NVDA',
+                            data: [110, 118, 122, 135, 130, 142],
+                            borderColor: '#2563eb',
+                            backgroundColor: 'rgba(37, 99, 235, 0.08)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.35,
+                            pointRadius: 3,
+                            pointBackgroundColor: '#2563eb'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#64748b' } },
+                            y: { grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 }, color: '#64748b' } }
+                        }
+                    }
+                });
+            }
+
+            // 2. Embedded Portfolio Performance Graph (Top Left White Space)
+            const portCtx = document.getElementById('portfolioChart');
+            if (portCtx && typeof Chart !== 'undefined') {
+                portfolioChartInstance = new Chart(portCtx, {
+                    type: 'line',
+                    data: {
+                        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'],
+                        datasets: [{
+                            label: 'Portfolio Asset Value',
+                            data: [1330000, 1450000, 1520000, 1480000, 1650000, 1820000, 1999999],
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.35,
+                            pointRadius: 3,
+                            pointBackgroundColor: '#10b981'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return ' Portfolio: $' + context.raw.toLocaleString();
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#64748b' } },
+                            y: {
+                                grid: { color: '#f1f5f9' },
+                                ticks: {
+                                    font: { size: 9 },
+                                    color: '#64748b',
+                                    callback: function(value) { return '$' + (value / 1000).toFixed(0) + 'k'; }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>

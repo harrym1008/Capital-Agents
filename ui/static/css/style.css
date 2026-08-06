@@ -167,13 +167,6 @@ header h1 {
     overflow: hidden;
 }
 
-.stage-title {
-    font-size: 18px;
-    font-weight: 700;
-    color: #334155;
-    margin-bottom: 5px;
-}
-
 .panes-container {
     display: flex;
     gap: 20px;
@@ -316,19 +309,6 @@ header h1 {
     font-size: 14px;
 }
 
-/* Tool Execution details layout */
-.tool-call-detail {
-    border-bottom: 1px dashed #cbd5e1;
-    padding-bottom: 8px;
-    margin-bottom: 8px;
-}
-
-.tool-call-detail:last-child {
-    border-bottom: none;
-    padding-bottom: 0;
-    margin-bottom: 0;
-}
-
 .tool-status-badge {
     display: inline-block;
     padding: 2px 6px;
@@ -352,15 +332,6 @@ header h1 {
 .status-error {
     background-color: #fee2e2;
     color: #dc2626;
-}
-
-.tool-output-stdout {
-    background-color: #1e293b;
-    color: #38bdf8;
-    padding: 8px;
-    border-radius: 4px;
-    margin-top: 6px;
-    overflow-x: auto;
 }
 
 /* LlamaCpp Loader style */
@@ -484,15 +455,4 @@ header h1 {
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 40%;
-}
-
-.toggle-arrow {
-    font-size: 10px;
-    color: #475569;
-    margin-left: auto;
-    transition: transform 0.2s ease;
-}
-
-.tool-call-block.collapsed .toggle-arrow {
-    transform: rotate(-90deg);
-}
+}

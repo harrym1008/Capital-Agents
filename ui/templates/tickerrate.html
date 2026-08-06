@@ -352,7 +352,7 @@
                         clearInterval(timerInterval);
                         timerInterval = null;
                     }
-                    stopMetricsPolling();
+                    if (typeof stopMetricsPolling === 'function') stopMetricsPolling();
                     if (payload.totalTime) {
                         const timerEl = document.getElementById("simulationTimer");
                         if (timerEl) {
@@ -383,7 +383,7 @@
                         clearInterval(timerInterval);
                         timerInterval = null;
                     }
-                    stopMetricsPolling();
+                    if (typeof stopMetricsPolling === 'function') stopMetricsPolling();
                     break;
 
                 case "error":
@@ -393,7 +393,7 @@
                         clearInterval(timerInterval);
                         timerInterval = null;
                     }
-                    stopMetricsPolling();
+                    if (typeof stopMetricsPolling === 'function') stopMetricsPolling();
                     break;
             }
         }

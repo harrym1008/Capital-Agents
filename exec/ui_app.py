@@ -1,5 +1,7 @@
-import os
-import sys
+import os, sys
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(ROOT)
+
 try:
     sys.stdout.reconfigure(errors='replace')
     sys.stderr.reconfigure(errors='replace')
@@ -9,8 +11,7 @@ except AttributeError:
 import json
 import asyncio
 import threading
-import time
-from flask import Flask, jsonify, render_template, redirect, url_for
+from flask import Flask, render_template, redirect
 import websockets
 
 from dotenv import load_dotenv
@@ -19,14 +20,8 @@ load_dotenv()
 UI_PORT = 9091
 WS_PORT = 9092
 
-# Add local path to sys.path so we can import local modules
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(ROOT)
-
-import urllib.request
-import urllib.error
-
 from llm.server_manager import serverManager, LoadedModelType
+
 from ui.ui_hooks import setEventCallback, emitEvent, requestStop, resetStop, isStopRequested, SimulationStoppedException
 import logging
 
@@ -60,6 +55,11 @@ def indexPage():
 
     serverManager.getToolRegistry()           # Ensure the tool registry is initialized
     return render_template("tickerrate.html")
+
+@app.route("/marketsim")
+def marketSimPage():
+    return render_template("marketsim.html")
+
 
 # Track active websocket connection and the event loop it runs on
 activeWebsocket = None
