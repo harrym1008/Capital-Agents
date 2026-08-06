@@ -210,18 +210,24 @@ def generateOhlcvChartData(ticker, simDateTs, targets=None, horizon="long"):
         elif maxMonths > 36:
             horizonStr = "distant"
 
-    if horizonStr == "short":
+    if horizonStr in ["1m", "month"]:
+        startDateTs = simDateTs - pd.DateOffset(months=1)
+        endDateTs = simDateTs + pd.DateOffset(months=1)
+    elif horizonStr in ["3m", "short"]:
         startDateTs = simDateTs - pd.DateOffset(months=3)
         endDateTs = simDateTs + pd.DateOffset(months=3)
-    elif horizonStr in ["medium", "med"]:
-        startDateTs = simDateTs - pd.DateOffset(months=12)
-        endDateTs = simDateTs + pd.DateOffset(months=12)
-    elif horizonStr == "distant":
-        startDateTs = simDateTs - pd.DateOffset(years=5)
-        endDateTs = simDateTs + pd.DateOffset(years=10)
-    else:  # "long" default
+    elif horizonStr in ["medium", "med", "1y"]:
+        startDateTs = simDateTs - pd.DateOffset(years=1)
+        endDateTs = simDateTs + pd.DateOffset(years=1)
+    elif horizonStr in ["distant", "3y", "3year"]:
         startDateTs = simDateTs - pd.DateOffset(years=3)
         endDateTs = simDateTs + pd.DateOffset(years=3)
+    elif horizonStr in ["all", "max"]:
+        startDateTs = pd.Timestamp("2000-01-01").tz_localize(NEW_YORK)
+        endDateTs = simDateTs + pd.DateOffset(years=1)
+    else:  # default 3m
+        startDateTs = simDateTs - pd.DateOffset(months=3)
+        endDateTs = simDateTs + pd.DateOffset(months=3)
     
     tickerProvider, priceProvider = getOhlcvProviders()
     profile = tickerProvider.getTickerProfile(ticker)

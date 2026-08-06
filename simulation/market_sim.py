@@ -33,15 +33,15 @@ class SegmentExecutionResult:
 
 
 class MarketSimulation:
-    def __init__(self, startDate, endDate):
+    def __init__(self, startDate, endDate, tickerDataProvider=None, dailyPriceProvider=None):
         self.startDate = pd.Timestamp(startDate, tz=NEW_YORK)
         self.endDate = pd.Timestamp(endDate, tz=NEW_YORK) - timedelta(days=1)    
         self.currentDate = self.startDate
         self.started = False
 
         self.marketCalendar = MarketCalendar(startDate, endDate)
-        self.tickerDataProvider = TickerDataProvider() 
-        self.dailyPriceProvider = DailyPriceProvider(self.tickerDataProvider)
+        self.tickerDataProvider = TickerDataProvider() if tickerDataProvider is None else tickerDataProvider
+        self.dailyPriceProvider = DailyPriceProvider(self.tickerDataProvider) if dailyPriceProvider is None else dailyPriceProvider
 
         self.users: list[str] = []                          # Set of all users in the simulation
         self.userPortfolios: dict[str, Portfolio] = {}      # Maps user to their portfolios. The portfolio itself is a dict mapping ticker to Position
@@ -330,6 +330,11 @@ class MarketSimulation:
             if pd.isna(value):
                 return "N/A"
             absValue = abs(value)
+
+            # Check if e notation
+            if "e" in str(absValue).lower():
+                return f"{value:.3e}"
+            
             if absValue < 1000:
                 dp = 3
             else:
@@ -603,6 +608,7 @@ class MarketSimulation:
             pfDict["positions"][ticker] = {
                 "quantity": position.quantity, 
                 "currentPrice": currentPrice, 
+                "mktPrice": currentPrice,
                 "averagePrice": position.averagePrice,
                 "value": position.quantity * currentPrice,
                 "absReturn": positionAbsReturn,

@@ -620,7 +620,8 @@
                     backgroundColor: '#06b6d4',
                     pointRadius: 6,
                     pointHoverRadius: 8,
-                    showLine: false
+                    showLine: false,
+                    clip: false
                 });
             }
 
@@ -633,7 +634,8 @@
                     backgroundColor: '#64748b',
                     pointRadius: 4,
                     pointHoverRadius: 6,
-                    showLine: false
+                    showLine: false,
+                    clip: false
                 });
             }
 
@@ -649,6 +651,14 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    layout: {
+                        padding: {
+                            right: 18,
+                            left: 8,
+                            top: 10,
+                            bottom: 0
+                        }
+                    },
                     simDate: chartData.simDate,
                     interaction: {
                         mode: 'nearest',
@@ -671,8 +681,11 @@
                             time: {
                                 tooltipFormat: 'yyyy-MM-dd',
                                 displayFormats: {
-                                    month: "MMM 'yy",
-                                    day: "MMM 'yy"
+                                    day: "MMM d ''yy",
+                                    week: "MMM d ''yy",
+                                    month: "MMM ''yy",
+                                    quarter: "MMM ''yy",
+                                    year: "yyyy"
                                 }
                             },
                             min: chartData.startDate ? new Date(chartData.startDate + 'T00:00:00').getTime() : undefined,

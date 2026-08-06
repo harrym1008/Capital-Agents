@@ -30,10 +30,18 @@ class Position:
     def decreasePosition(self, quantity):
         if quantity <= 0:
             raise ValueError("Quantity must be positive when decreasing position")
-        if quantity > self.quantity:
+        
+        diff = self.quantity - quantity
+        if diff < 0:
+            if abs(diff) <= 0.0001:
+                self.quantity = 0
+                return
             raise ValueError("Cannot decrease position by more than current quantity")
         
-        self.quantity -= quantity
+        if diff <= 0.0001:
+            self.quantity = 0
+        else:
+            self.quantity = diff
 
 
 # Dividends must be instantiated on the ex-dividend date
@@ -103,10 +111,22 @@ class Portfolio:
             if order.ticker not in self.positions:
                 raise ValueError("Cannot sell a ticker that is not in the portfolio")
             
-            self.positions[order.ticker].decreasePosition(quantity)
+            position = self.positions[order.ticker]
+            heldQty = position.quantity
+
+            leftover = heldQty - quantity
+            if leftover <= 0.0001 and (heldQty - quantity >= -0.0001):
+                quantity = heldQty
+                cost = quantity * order.fillPrice
+                if order.isQuantityBased:
+                    order.quantity = quantity
+                else:
+                    order.cashValue = cost
+
+            position.decreasePosition(quantity)
             self.cash += cost
 
-            if self.positions[order.ticker].quantity == 0:
+            if position.quantity == 0:
                 del self.positions[order.ticker]     # Clean up empty positions
         
         self.addToLog(order.fillTimestamp, f"OrderExecuted: {order.getOrderString()}")

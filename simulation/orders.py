@@ -64,20 +64,20 @@ class MarketOrder(Order):
    
 
 class LimitOrder(Order):
-    def __init__(self, ticker, quantity, side, limitPrice):
-        super().__init__(ticker, quantity, side)
+    def __init__(self, ticker, side, limitPrice, quantity=None, cashValue=None):
+        super().__init__(ticker, side, quantity=quantity, cashValue=cashValue)
         self.limitPrice = limitPrice
 
 
 class StopOrder(Order):
-    def __init__(self, ticker, quantity, side, stopPrice):
-        super().__init__(ticker, quantity, side)
+    def __init__(self, ticker, side, stopPrice, quantity=None, cashValue=None):
+        super().__init__(ticker, side, quantity=quantity, cashValue=cashValue)
         self.stopPrice = stopPrice
         
 
 class StopLimitOrder(Order):
-    def __init__(self, ticker, quantity, side, stopPrice, limitPrice):
-        super().__init__(ticker, quantity, side)
+    def __init__(self, ticker, side, stopPrice, limitPrice, quantity=None, cashValue=None):
+        super().__init__(ticker, side, quantity=quantity, cashValue=cashValue)
         self.stopPrice = stopPrice
         self.limitPrice = limitPrice
         self.stopTriggered = False

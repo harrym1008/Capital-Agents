@@ -26,6 +26,7 @@ from ui.ui_hooks import setEventCallback, emitEvent, requestStop, resetStop, isS
 import logging
 
 from ui.ws_api import registerApiRoutes
+from simulation.simulation_api import registerSimulationApiRoutes
 
 class MetricsFilter(logging.Filter):
     def filter(self, record):
@@ -38,7 +39,9 @@ app = Flask(
     template_folder=os.path.join(ROOT, "ui/templates"),
     static_folder=os.path.join(ROOT, "ui/static")
 )
+app.secret_key = "capital_agents_sim_secret_key"
 registerApiRoutes(app)
+registerSimulationApiRoutes(app)
 
 @app.route("/")
 def landingPage():

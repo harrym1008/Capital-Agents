@@ -1,4 +1,5 @@
 import os
+import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
@@ -67,6 +68,8 @@ class MacroDataProvider:
         self.availableSeries = self.buildMacroIndex()
         self.lock = threading.RLock()
         self.fredClient = Fred(api_key=os.getenv("FRED_API_KEY")) if os.getenv("FRED_API_KEY") else None
+        self.lastAttemptTime = {}
+
 
     def normaliseTimestamp(self, ts: pd.Timestamp) -> pd.Timestamp:
         ts = pd.Timestamp(ts)
@@ -234,6 +237,9 @@ class MacroDataProvider:
 
     def ensureBulkCoverage(self, names: list, targetDate: pd.Timestamp):
         targetNorm = self.normaliseTimestamp(targetDate)
+        now = time.time()
+        cooldownSeconds = 3600  # 1 hour cooldown per series/target date
+
         with self.lock:
             missingYf = []
             missingFred = []
@@ -246,12 +252,28 @@ class MacroDataProvider:
                 else:
                     maxDate = df["date"].max()
 
-                if targetNorm > maxDate:
-                    minMaxDates[name] = maxDate
-                    if name.source == "yfinance":
-                        missingYf.append(name)
-                    elif name.source == "fred":
-                        missingFred.append(name)
+                # Calculate frequency-aware staleness threshold in days
+                daysDiff = (targetNorm - maxDate).days
+
+                if name.parquetName == "GDP":
+                    staleThreshold = 90  # Quarterly series
+                elif name.parquetName in ["CPI", "CORECPI", "UNEMPLOYMENT", "FEDFUNDS"]:
+                    staleThreshold = 32  # Monthly series
+                elif targetNorm.weekday() in [5, 6]:
+                    staleThreshold = 3  # Weekend gap for daily series
+                else:
+                    staleThreshold = 1  # Daily series
+
+                if daysDiff > staleThreshold:
+                    checkKey = (name.parquetName, targetNorm.strftime("%Y-%m-%d"))
+                    lastAttempt = self.lastAttemptTime.get(checkKey, 0)
+                    if (now - lastAttempt) > cooldownSeconds:
+                        minMaxDates[name] = maxDate
+                        self.lastAttemptTime[checkKey] = now
+                        if name.source == "yfinance":
+                            missingYf.append(name)
+                        elif name.source == "fred":
+                            missingFred.append(name)
 
             if missingYf:
                 earliestStart = min([minMaxDates[s] for s in missingYf])
@@ -259,16 +281,18 @@ class MacroDataProvider:
                 for s, dfInc in yfResults.items():
                     if not dfInc.empty:
                         fullDf = self.loadSeries(s)
+                        origLen = len(fullDf)
                         fullDf = pd.concat([fullDf, dfInc], ignore_index=True)
                         fullDf = fullDf.drop_duplicates(subset=["date"], keep="last").sort_values("date").reset_index(drop=True)
                         key = f"macro|full_{s.parquetName}"
                         self.cache.put(key, fullDf)
-                        path = os.path.join(self.macroDir, f"{s.parquetName}.parquet")
-                        try:
-                            fullDf.to_parquet(path, index=False)
-                            self.availableSeries[s] = path
-                        except Exception:
-                            pass
+                        if len(fullDf) > origLen:
+                            path = os.path.join(self.macroDir, f"{s.parquetName}.parquet")
+                            try:
+                                fullDf.to_parquet(path, index=False)
+                                self.availableSeries[s] = path
+                            except Exception:
+                                pass
 
             if missingFred:
                 earliestStart = min([minMaxDates[s] for s in missingFred])
@@ -276,16 +300,19 @@ class MacroDataProvider:
                 for s, dfInc in fredResults.items():
                     if not dfInc.empty:
                         fullDf = self.loadSeries(s)
+                        origLen = len(fullDf)
                         fullDf = pd.concat([fullDf, dfInc], ignore_index=True)
                         fullDf = fullDf.drop_duplicates(subset=["date"], keep="last").sort_values("date").reset_index(drop=True)
                         key = f"macro|full_{s.parquetName}"
                         self.cache.put(key, fullDf)
-                        path = os.path.join(self.macroDir, f"{s.parquetName}.parquet")
-                        try:
-                            fullDf.to_parquet(path, index=False)
-                            self.availableSeries[s] = path
-                        except Exception:
-                            pass
+                        if len(fullDf) > origLen:
+                            path = os.path.join(self.macroDir, f"{s.parquetName}.parquet")
+                            try:
+                                fullDf.to_parquet(path, index=False)
+                                self.availableSeries[s] = path
+                            except Exception:
+                                pass
+
 
     def ensureCoverage(self, name: MacroSeries, targetDate: pd.Timestamp) -> pd.DataFrame:
         self.ensureBulkCoverage([name], targetDate)
