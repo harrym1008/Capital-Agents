@@ -104,9 +104,8 @@ class LoadedModelType(Enum):
     LLAMACPP = "llamacpp"
 
 
+# Server manager class which handles starting/stopping LLM servers and managing clients
 class ServerManager:
-    """Manages LLM server lifecycles using unified startServer and stopServer methods."""
-
     def __init__(self):
         self.loadedModelType = LoadedModelType.NONE
         self.loadedModelName = ""
@@ -129,12 +128,10 @@ class ServerManager:
         return self.loadedModelType == LoadedModelType.OPENROUTER
 
     def recordLog(self, logLine: str):
-        """Append a log line to persistent startup logs list and emit WS event."""
         self.startupLogs.append(logLine)
         emitEvent("llamaCppStartupLog", {"log": logLine})
 
     def getToolRegistry(self):
-        """Get or initialize the shared persistent ToolRegistry instance."""
         with self.serverLock:
             if self.sharedToolRegistry is None:
                 from llmtools.registry_builder import buildToolRegistry
@@ -150,7 +147,6 @@ class ServerManager:
             return self.boardroomClient, self.boardroomClient
 
     def _startMetricsPolling(self):
-        """Poll llama-server Prometheus metrics every 2s while llamacpp is active, extract speeds, and broadcast over WS."""
         def metricsLoop():
             while self.loadedModelType == LoadedModelType.LLAMACPP:
                 try:
@@ -334,7 +330,6 @@ class ServerManager:
             pass
 
     def getStatus(self):
-        """Return dict of current server running status and startup logs."""
         return {
             "running": self.loadedModelType != LoadedModelType.NONE,
             "provider": self.loadedModelType.value,

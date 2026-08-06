@@ -13,16 +13,58 @@ class CachedToolCall:
         self.args = args
 
 
-def startPrecacheThread(toolRegistry: ToolRegistry, timestamp: pd.Timestamp, ticker: str, includeMacro: bool = True):
-    precacheThread = threading.Thread(
-        target=precacheToolCalls,
-        args=(toolRegistry, timestamp, ticker, includeMacro)
-    )
+def startPrecacheThread(toolRegistry: ToolRegistry, timestamp: pd.Timestamp, macroTools: bool, ticker: str = None):
+    if macroTools:
+        precacheThread = threading.Thread(
+            target=precacheMacroToolCalls,
+            args=(toolRegistry, timestamp)
+        )
+    else:
+        precacheThread = threading.Thread(
+            target=precacheTickerSpecificToolCalls,
+            args=(toolRegistry, timestamp, ticker)
+        )
     precacheThread.start()
     return precacheThread
 
 
-def precacheToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Timestamp, ticker: str, includeMacro: bool):
+
+def precacheMacroToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Timestamp):
+    print(f"Starting precache of macro tool calls at timestamp '{timestamp}'...")
+    toolCalls = [
+        CachedToolCall("fetchMacroContext", timestamp,),
+        CachedToolCall("fetchMacroNews", timestamp, {"limit": 12}),
+        CachedToolCall("fetchMacroSentimentHistory", timestamp),
+    ]
+
+    with ThreadPoolExecutor(max_workers=len(toolCalls)) as executor:
+        futureToTool = {
+            executor.submit(
+                toolRegistry.executeTool,
+                toolCall.toolName,
+                toolCall.timestamp,
+                toolCall.args
+            ): toolCall
+            for toolCall in toolCalls
+        }
+
+        for future in as_completed(futureToTool):
+            toolCall = futureToTool[future]
+            try:
+                result = future.result()
+                strResult = str(result)
+                truncatedResult = strResult[:98] + "..." if len(strResult) > 100 else strResult
+                print(f"[{toolCall.toolName}] Completed: {truncatedResult}")
+            except Exception as exc:
+                print(f"[{toolCall.toolName}] Generated an exception: {exc}")
+
+
+    print(f"Finished precache of tool calls. LRU cache size: {toolRegistry.dataProviders.cache.getCacheUsagePrettyString()}")
+
+
+
+
+def precacheTickerSpecificToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Timestamp, ticker: str):
     print(f"Starting precache of tool calls for ticker '{ticker}' at timestamp '{timestamp}'...")
 
     toolCalls = [
@@ -35,12 +77,6 @@ def precacheToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Timestamp, ticke
         CachedToolCall("fetchIncomeStatement", timestamp, {"ticker": ticker, "periodType": "annual"}),
         CachedToolCall("fetchBalanceSheet", timestamp, {"ticker": ticker, "periodType": "quarterly"}),
     ]
-
-    if includeMacro:
-        toolCalls += [
-            CachedToolCall("fetchMacroContext", timestamp),
-            CachedToolCall("fetchMacroNews", timestamp, {"limit": 12}),
-        ]
 
     with ThreadPoolExecutor(max_workers=len(toolCalls)) as executor:
         futureToTool = {

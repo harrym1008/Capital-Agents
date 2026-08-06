@@ -79,7 +79,7 @@ def executeBoardroomRating(
         from llm.server_manager import serverManager
         toolRegistry = serverManager.getToolRegistry()
 
-    precacheThread = startPrecacheThread(toolRegistry, timestamp, tickerToEval, includeMacro=False)
+    precacheThread = startPrecacheThread(toolRegistry, timestamp, macroTools=False, ticker=tickerToEval)
 
     clientDuo = ClientDuo(boardroomClient, summaryClient)
     boardroom = generateBoardroom(toolRegistry, timestamp)

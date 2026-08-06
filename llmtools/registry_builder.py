@@ -1,3 +1,6 @@
+import pandas as pd
+from collectors.constants import NEW_YORK, UTC
+
 from llmtools.tool_registry import ToolRegistry, Tool
 from llmtools.functions.macro import fetchMacroContext, fetchMacroNews
 from llmtools.functions.company import fetchCompanyProfile, fetchCompanyRecentNews, fetchStockPricePerformance, calculateDistFromCurrPrice
@@ -12,6 +15,8 @@ from llmtools.functions.other import (
     confirmBoardroomDecisionDistantTerm
 )
 
+from llmtools.lru_cacher import startPrecacheThread
+
 
 SCHEMAS = {
     "empty": {"type": "object", "properties": {}, "required": []},
@@ -21,7 +26,7 @@ SCHEMAS = {
         "properties": {
             "limit": {
                 "type": "integer",
-                "description": "The maximum number of news stories to fetch (1-18). Defaults to 12.",
+                "description": "The maximum number of news stories to fetch (1-18). Defaults to 12 (use 12 where possible).",
                 "default": 12
             }
         },
@@ -48,7 +53,7 @@ SCHEMAS = {
             },
             "limit": {
                 "type": "integer",
-                "description": "The maximum number of news stories to fetch (1-18). Defaults to 12.",
+                "description": "The maximum number of news stories to fetch (1-18). Defaults to 12 (use 12 where possible).",
                 "default": 12
             }
         },
@@ -343,6 +348,9 @@ def buildToolRegistry():
         parameterSchema=SCHEMAS["confirmDecisionDistantTerm"]
     ))
 
+    timestamp = (pd.Timestamp.today().normalize() + pd.Timedelta(hours=9)).tz_localize(NEW_YORK).tz_convert(UTC)
+    startPrecacheThread(toolReg, timestamp, macroTools=True)
+    
     return toolReg
 
 
