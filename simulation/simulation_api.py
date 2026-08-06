@@ -69,9 +69,6 @@ class SimulationManager:
             session["sim_session_id"] = f"session_{time.perf_counter_ns()}"
         return session["sim_session_id"]
 
-    def getSessionSimulation(self, sessionId):
-        return self.userSimulations.get(sessionId)
-
     def createSimulation(self, sessionId, portfolioName, startDate, initialCash):
         activeSim = MarketSimulation(startDate, END_DATE_STR, 
                                      tickerDataProvider=self.tickerProvider, dailyPriceProvider=self.priceProvider)
@@ -90,22 +87,8 @@ class SimulationManager:
         dayMinus1 = (startTs - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
         self.userHistory[sessionId] = [
-            {
-                "date": dayMinus2,
-                "totalValue": float(initialCash),
-                "cash": float(initialCash),
-                "stockValue": 0.0,
-                "absReturn": 0.0,
-                "pctReturn": 0.0
-            },
-            {
-                "date": dayMinus1,
-                "totalValue": float(initialCash),
-                "cash": float(initialCash),
-                "stockValue": 0.0,
-                "absReturn": 0.0,
-                "pctReturn": 0.0
-            }
+            {"date": dayMinus2, "totalValue": float(initialCash)},
+            {"date": dayMinus1, "totalValue": float(initialCash)}
         ]
         self.updateSimulationHistory(sessionId)
         return self.getSimulationState(sessionId)
@@ -124,23 +107,16 @@ class SimulationManager:
         pfDict = activeSim.getPortfolioValueAtCurrentDate(portfolioName)
         if pfDict:
             totalValue = pfDict["cash"]
-            stockValue = 0.0
             for ticker, pos in pfDict["positions"].items():
                 curPrice = pos.get("currentPrice")
                 if curPrice is None or math.isnan(curPrice) or math.isinf(curPrice) or curPrice <= 0:
                     curPrice = pos.get("averagePrice", 0.0)
                 if curPrice is not None and not math.isnan(curPrice) and not math.isinf(curPrice):
-                    posVal = pos["quantity"] * curPrice
-                    totalValue += posVal
-                    stockValue += posVal
+                    totalValue += pos["quantity"] * curPrice
 
             snapshot = {
                 "date": currentDateStr,
-                "totalValue": totalValue,
-                "cash": pfDict["cash"],
-                "stockValue": stockValue,
-                "absReturn": totalValue - pfDict["startingCash"],
-                "pctReturn": ((totalValue / pfDict["startingCash"]) - 1) * 100 if pfDict["startingCash"] != 0 else 0.0
+                "totalValue": float(totalValue)
             }
 
             if self.userHistory[sessionId] and self.userHistory[sessionId][-1]["date"] == currentDateStr:
@@ -223,10 +199,11 @@ class SimulationManager:
             "isEnded": isEnded,
             "portfolio": pfDict,
             "pendingOrders": pendingOrdersList,
-            "history": historyList,
             "inspectedInfo": inspectedInfo
         }
-        return self.cleanNans(rawState)
+        cleanedState = self.cleanNans(rawState)
+        cleanedState["history"] = historyList
+        return cleanedState
 
     def submitOrder(self, sessionId, ticker, side, orderType, amountType, amountValue, limitPrice=None, stopPrice=None):
         simData = self.userSimulations.get(sessionId)
@@ -314,32 +291,6 @@ class SimulationManager:
         listed = self.getCurrentlyListedTickers(sessionId)
         return random.choice(listed)
 
-    def queueRandomBasket(self, sessionId, count):
-        simData = self.userSimulations.get(sessionId)
-        if not simData:
-            raise ValueError("No active simulation session.")
-
-        activeSim = simData["sim"]
-        portfolioName = simData["portfolioName"]
-
-        listedTickers = self.getCurrentlyListedTickers(sessionId)
-        if len(listedTickers) == 0:
-            raise ValueError("No available listed tickers in database.")
-
-        count = min(int(count), len(listedTickers))
-        portfolioObj = activeSim.userPortfolios.get(portfolioName)
-        if not portfolioObj or portfolioObj.cash <= 0:
-            raise ValueError("Insufficient cash balance to queue random tickers.")
-
-        cashPerTicker = portfolioObj.cash / count
-        selectedTickers = random.sample(listedTickers, count)
-
-        for ticker in selectedTickers:
-            order = MarketOrder(ticker, OrderSide.BUY, cashValue=cashPerTicker)
-            activeSim.addOrder(order, portfolioName)
-
-        return self.getSimulationState(sessionId)
-
     def advanceSimulation(self, sessionId, days=None, targetDate=None, targetDateCutoff=None):
         simData = self.userSimulations.get(sessionId)
         if not simData:
@@ -418,14 +369,17 @@ class SimulationManager:
             del self.userHistory[sessionId]
         return True
 
-    def getTickerInfo(self, sessionId, ticker, timeframe="3M"):
+    def getTickerInfo(self, sessionId, ticker, timeframe=None):
         ticker = ticker.strip().upper()
-        timeframeStr = str(timeframe).strip().lower()
         simData = self.userSimulations.get(sessionId)
 
         if simData:
             simData["inspectedTicker"] = ticker
-            simData["inspectedTimeframe"] = timeframeStr.upper()
+            if timeframe:
+                simData["inspectedTimeframe"] = str(timeframe).strip().upper()
+
+        inspectedTimeframe = simData.get("inspectedTimeframe", "3M") if simData else (timeframe or "3M").upper()
+        timeframeStr = inspectedTimeframe.lower()
 
         if simData and simData["sim"]:
             simDateTs = simData["sim"].currentDate
@@ -482,21 +436,18 @@ class SimulationManager:
 simulationManager = SimulationManager()
 
 
-def registerSimulationApiRoutes(app):
+def getWsSessionId(data):
+    if not isinstance(data, dict):
+        return "default_session"
+    reqSessionId = data.get("sessionId") or data.get("headers", {}).get("X-Session-ID")
+    return reqSessionId if reqSessionId else "default_session"
 
-    @app.route("/api/sim/available-tickers", methods=["GET"])
-    def getAvailableTickersRoute():
-        return jsonify(simulationManager.getAvailableTickers())
 
-    @app.route("/api/sim/random-ticker", methods=["GET"])
-    def getRandomTickerRoute():
-        sessionId = simulationManager.getSessionId()
-        ticker = simulationManager.getRandomListedTicker(sessionId)
-        return jsonify({"ok": True, "ticker": ticker})
+def registerSimulationWsRoutes():
+    from ui.ws_api import registerWsAction
 
-    @app.route("/api/sim/start", methods=["POST"])
-    def startSimulationRoute():
-        data = request.get_json(silent=True) or {}
+    def handleSimStart(data, websocket, eventLoop):
+        sessionId = getWsSessionId(data)
         portfolioName = data.get("portfolioName", "My Growth Portfolio").strip() or "My Growth Portfolio"
         startDate = data.get("startDate", "2016-06-01").strip()
         dollarAmountStr = str(data.get("dollarAmount", "1000000"))
@@ -504,27 +455,23 @@ def registerSimulationApiRoutes(app):
         try:
             dollarAmount = float(dollarAmountStr)
             if dollarAmount <= 0:
-                return jsonify({"ok": False, "error": "Starting dollar amount must be positive."}), 400
+                return {"ok": False, "error": "Starting dollar amount must be positive."}
         except ValueError:
-            return jsonify({"ok": False, "error": "Invalid starting dollar balance."}), 400
+            return {"ok": False, "error": "Invalid starting dollar balance."}
 
         try:
-            sessionId = simulationManager.getSessionId()
             state = simulationManager.createSimulation(sessionId, portfolioName, startDate, dollarAmount)
-            return jsonify({"ok": True, "state": state, "sessionId": sessionId})
+            return {"ok": True, "state": state, "sessionId": sessionId}
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            return {"ok": False, "error": str(e)}
 
-    @app.route("/api/sim/state", methods=["GET"])
-    def getSimulationStateRoute():
-        sessionId = simulationManager.getSessionId()
+    def handleSimState(data, websocket, eventLoop):
+        sessionId = getWsSessionId(data)
         state = simulationManager.getSimulationState(sessionId)
-        return jsonify({"ok": True, "state": state})
+        return {"ok": True, "state": state}
 
-    @app.route("/api/sim/order", methods=["POST"])
-    def submitOrderRoute():
-        sessionId = simulationManager.getSessionId()
-        data = request.get_json(silent=True) or {}
+    def handleSimOrder(data, websocket, eventLoop):
+        sessionId = getWsSessionId(data)
         ticker = data.get("ticker", "").upper().strip()
         side = data.get("side", "BUY").upper().strip()
         orderType = data.get("type", "market").lower().strip()
@@ -534,14 +481,14 @@ def registerSimulationApiRoutes(app):
         stopPriceStr = data.get("stopPrice")
 
         if not ticker:
-            return jsonify({"ok": False, "error": "Ticker symbol cannot be empty."}), 400
+            return {"ok": False, "error": "Ticker symbol cannot be empty."}
 
         try:
             amountValue = float(amountValueStr)
             if amountValue <= 0:
-                return jsonify({"ok": False, "error": "Amount must be greater than zero."}), 400
+                return {"ok": False, "error": "Amount must be greater than zero."}
         except ValueError:
-            return jsonify({"ok": False, "error": "Amount must be a valid number."}), 400
+            return {"ok": False, "error": "Amount must be a valid number."}
 
         try:
             state = simulationManager.submitOrder(
@@ -554,40 +501,24 @@ def registerSimulationApiRoutes(app):
                 limitPrice=limitPriceStr,
                 stopPrice=stopPriceStr
             )
-            return jsonify({"ok": True, "state": state})
+            return {"ok": True, "state": state}
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 400
+            return {"ok": False, "error": str(e)}
 
-    @app.route("/api/sim/cancel-order", methods=["POST"])
-    def cancelOrderRoute():
-        sessionId = simulationManager.getSessionId()
-        data = request.get_json(silent=True) or {}
+    def handleSimCancelOrder(data, websocket, eventLoop):
+        sessionId = getWsSessionId(data)
         orderIndex = data.get("index")
         if orderIndex is None:
-            return jsonify({"ok": False, "error": "Missing order index."}), 400
+            return {"ok": False, "error": "Missing order index."}
 
         try:
             state = simulationManager.cancelOrder(sessionId, orderIndex)
-            return jsonify({"ok": True, "state": state})
+            return {"ok": True, "state": state}
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 400
+            return {"ok": False, "error": str(e)}
 
-    @app.route("/api/sim/random-basket", methods=["POST"])
-    def queueRandomBasketRoute():
-        sessionId = simulationManager.getSessionId()
-        data = request.get_json(silent=True) or {}
-        countStr = str(data.get("count", "5"))
-
-        try:
-            state = simulationManager.queueRandomBasket(sessionId, countStr)
-            return jsonify({"ok": True, "state": state})
-        except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 400
-
-    @app.route("/api/sim/advance", methods=["POST"])
-    def advanceSimulationRoute():
-        sessionId = simulationManager.getSessionId()
-        data = request.get_json(silent=True) or {}
+    def handleSimAdvance(data, websocket, eventLoop):
+        sessionId = getWsSessionId(data)
         daysToAdvanceStr = data.get("days")
         targetDateStr = data.get("targetDate")
         targetDateCutoffStr = data.get("targetDateCutoff")
@@ -599,29 +530,46 @@ def registerSimulationApiRoutes(app):
                 targetDate=targetDateStr,
                 targetDateCutoff=targetDateCutoffStr
             )
-            return jsonify({"ok": True, "executedDays": executedDays, "state": state})
+            return {"ok": True, "executedDays": executedDays, "state": state}
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 400
+            return {"ok": False, "error": str(e)}
 
-    @app.route("/api/sim/reset", methods=["POST"])
-    def resetSimulationRoute():
-        sessionId = simulationManager.getSessionId()
+    def handleSimReset(data, websocket, eventLoop):
+        sessionId = getWsSessionId(data)
         simulationManager.resetSimulation(sessionId)
-        return jsonify({"ok": True})
+        return {"ok": True}
 
-    @app.route("/api/sim/ticker-info", methods=["GET"])
-    def getTickerInfoRoute():
-        ticker = request.args.get("ticker", "NVDA").strip().upper()
-        timeframeStr = request.args.get("timeframe", "3M").strip()
-        sessionId = simulationManager.getSessionId()
+    def handleSimTickerInfo(data, websocket, eventLoop):
+        sessionId = getWsSessionId(data)
+        ticker = data.get("ticker", "NVDA").strip().upper()
+        timeframeVal = data.get("timeframe")
+        timeframeStr = timeframeVal.strip() if timeframeVal else None
         try:
             info = simulationManager.getTickerInfo(sessionId, ticker, timeframe=timeframeStr)
-            return jsonify({
+            return {
                 "ok": True,
                 "exists": info["exists"],
                 "lastPrice": info["lastPrice"],
                 "chart": info["chart"],
                 "profile": info["profile"]
-            })
+            }
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            return {"ok": False, "error": str(e)}
+
+    def handleSimAvailableTickers(data, websocket, eventLoop):
+        return {"ok": True, **simulationManager.getAvailableTickers()}
+
+    def handleSimRandomTicker(data, websocket, eventLoop):
+        sessionId = getWsSessionId(data)
+        ticker = simulationManager.getRandomListedTicker(sessionId)
+        return {"ok": True, "ticker": ticker}
+
+    registerWsAction("sim_start", handleSimStart)
+    registerWsAction("sim_state", handleSimState)
+    registerWsAction("sim_order", handleSimOrder)
+    registerWsAction("sim_cancel_order", handleSimCancelOrder)
+    registerWsAction("sim_advance", handleSimAdvance)
+    registerWsAction("sim_reset", handleSimReset)
+    registerWsAction("sim_ticker_info", handleSimTickerInfo)
+    registerWsAction("sim_available_tickers", handleSimAvailableTickers)
+    registerWsAction("sim_random_ticker", handleSimRandomTicker)

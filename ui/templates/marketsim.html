@@ -90,6 +90,7 @@
                             <div class="chart-timeframe-controls" id="portfolioChartTimeframeControls">
                                 <button class="tf-btn active" onclick="updatePortfolioChartRange('3m', this)">3M</button>
                                 <button class="tf-btn" onclick="updatePortfolioChartRange('1y', this)">1Y</button>
+                                <button class="tf-btn" onclick="updatePortfolioChartRange('3y', this)">3Y</button>
                                 <button class="tf-btn" onclick="updatePortfolioChartRange('all', this)">ALL</button>
                             </div>
                         </div>
@@ -325,17 +326,52 @@
         let availableTickersList = [];
         let isAdvancing = false;
 
-        function getHeaders() {
-            return {
-                "Content-Type": "application/json",
-                "X-Session-ID": sessionId
-            };
+        const pendingWsRequests = new Map();
+
+        if (typeof window.wsSubscribe === 'function') {
+            window.wsSubscribe((data) => {
+                if (data && data.requestId && pendingWsRequests.has(data.requestId)) {
+                    const resolver = pendingWsRequests.get(data.requestId);
+                    pendingWsRequests.delete(data.requestId);
+                    resolver(data);
+                }
+            });
+        }
+
+        function requestWs(action, payload = {}, timeoutMs = 15000) {
+            return new Promise((resolve, reject) => {
+                const requestId = "req_" + Math.random().toString(36).substring(2, 11) + "_" + Date.now();
+                const timer = setTimeout(() => {
+                    if (pendingWsRequests.has(requestId)) {
+                        pendingWsRequests.delete(requestId);
+                        reject(new Error(`WebSocket request timeout for action '${action}'`));
+                    }
+                }, timeoutMs);
+
+                pendingWsRequests.set(requestId, (response) => {
+                    clearTimeout(timer);
+                    resolve(response);
+                });
+
+                const msgData = {
+                    action: action,
+                    requestId: requestId,
+                    sessionId: sessionId,
+                    ...payload
+                };
+
+                const sent = window.sendWsMessage(msgData);
+                if (!sent) {
+                    clearTimeout(timer);
+                    pendingWsRequests.delete(requestId);
+                    reject(new Error("Failed to send WebSocket message. Connection not open."));
+                }
+            });
         }
 
         async function fetchAvailableTickersList() {
             try {
-                const resp = await fetch("/api/sim/available-tickers", { headers: getHeaders() });
-                const data = await resp.json();
+                const data = await requestWs("sim_available_tickers");
                 if (data && data.tickers && Array.isArray(data.tickers)) {
                     availableTickersList = data.tickers;
                 }
@@ -344,8 +380,7 @@
 
         async function fillRandomTicker() {
             try {
-                const resp = await fetch("/api/sim/random-ticker", { headers: getHeaders() });
-                const data = await resp.json();
+                const data = await requestWs("sim_random_ticker");
                 if (data.ok && data.ticker) {
                     const input = document.getElementById('orderTicker');
                     if (input) {
@@ -614,12 +649,7 @@
             btn.textContent = "Starting...";
 
             try {
-                const resp = await fetch("/api/sim/start", {
-                    method: "POST",
-                    headers: getHeaders(),
-                    body: JSON.stringify({ portfolioName: "My Portfolio", startDate, dollarAmount })
-                });
-                const data = await resp.json();
+                const data = await requestWs("sim_start", { portfolioName: "My Portfolio", startDate, dollarAmount });
                 if (data.ok) {
                     document.getElementById('setupOverlay').style.display = 'none';
                     currentState = data.state;
@@ -640,7 +670,7 @@
         // Reset simulation
         async function resetSimulationSession(silent = false) {
             try {
-                await fetch("/api/sim/reset", { method: "POST", headers: getHeaders() });
+                await requestWs("sim_reset");
             } catch(e) {}
             sessionId = "sess_" + Math.random().toString(36).substring(2, 10);
             localStorage.setItem("sim_session_id", sessionId);
@@ -709,12 +739,7 @@
             setAdvanceButtonsDisabled(true);
 
             try {
-                const resp = await fetch("/api/sim/advance", {
-                    method: "POST",
-                    headers: getHeaders(),
-                    body: JSON.stringify({ days: 1 })
-                });
-                const data = await resp.json();
+                const data = await requestWs("sim_advance", { days: 1 });
                 if (data.ok && data.state) {
                     currentState = data.state;
                     updateUI(data.state);
@@ -737,12 +762,7 @@
                 while (true) {
                     if (currentState.currentDate >= targetDate || currentState.isEnded) break;
 
-                    const resp = await fetch("/api/sim/advance", {
-                        method: "POST",
-                        headers: getHeaders(),
-                        body: JSON.stringify({ days: 1, targetDateCutoff: targetDate })
-                    });
-                    const data = await resp.json();
+                    const data = await requestWs("sim_advance", { days: 1, targetDateCutoff: targetDate });
                     if (!data.ok || !data.state || data.executedDays === 0) break;
 
                     currentState = data.state;
@@ -795,20 +815,15 @@
             const limitPrice = document.getElementById('limitPriceInput').value;
 
             try {
-                const resp = await fetch("/api/sim/order", {
-                    method: "POST",
-                    headers: getHeaders(),
-                    body: JSON.stringify({
-                        ticker: ticker,
-                        side: side,
-                        type: type,
-                        amountType: unit,
-                        amountValue: amountVal,
-                        stopPrice: stopPrice,
-                        limitPrice: limitPrice
-                    })
+                const data = await requestWs("sim_order", {
+                    ticker: ticker,
+                    side: side,
+                    type: type,
+                    amountType: unit,
+                    amountValue: amountVal,
+                    stopPrice: stopPrice,
+                    limitPrice: limitPrice
                 });
-                const data = await resp.json();
                 if (data.ok) {
                     currentState = data.state;
                     updateUI(data.state);
@@ -823,12 +838,7 @@
         // Cancel order from queue
         async function cancelOrder(idx) {
             try {
-                const resp = await fetch("/api/sim/cancel-order", {
-                    method: "POST",
-                    headers: getHeaders(),
-                    body: JSON.stringify({ index: idx })
-                });
-                const data = await resp.json();
+                const data = await requestWs("sim_cancel_order", { index: idx });
                 if (data.ok) {
                     currentState = data.state;
                     updateUI(data.state);
@@ -837,27 +847,6 @@
                 }
             } catch (err) {
                 alert("Error cancelling order: " + err.message);
-            }
-        }
-
-        // Queue random basket
-        async function queueRandomBasket() {
-            if (!currentState || !currentState.active) return;
-            try {
-                const resp = await fetch("/api/sim/random-basket", {
-                    method: "POST",
-                    headers: getHeaders(),
-                    body: JSON.stringify({ count: 5 })
-                });
-                const data = await resp.json();
-                if (data.ok) {
-                    currentState = data.state;
-                    updateUI(data.state);
-                } else {
-                    alert("Random basket error: " + data.error);
-                }
-            } catch (err) {
-                alert("Error queueing random basket: " + err.message);
             }
         }
 
@@ -931,8 +920,7 @@
             if (!ticker) return;
             ticker = ticker.trim().toUpperCase();
             try {
-                const resp = await fetch(`/api/sim/ticker-info?ticker=${ticker}&timeframe=${currentStockTimeframe}`, { headers: getHeaders() });
-                const data = await resp.json();
+                const data = await requestWs("sim_ticker_info", { ticker: ticker, timeframe: currentStockTimeframe });
                 if (data.ok) {
                     document.getElementById('stockCompanyName').textContent = (data.profile && data.profile.name) ? data.profile.name : ticker;
                     document.getElementById('feedExchange').textContent = (data.profile && data.profile.exchange) ? data.profile.exchange : 'N/A';
@@ -977,8 +965,7 @@
             ticker = ticker.trim().toUpperCase();
             if (!ticker) return;
             try {
-                const resp = await fetch(`/api/sim/ticker-info?ticker=${ticker}`, { headers: getHeaders() });
-                const data = await resp.json();
+                const data = await requestWs("sim_ticker_info", { ticker: ticker });
                 if (data.ok) {
                     orderTickerPriceState = {
                         ticker: ticker,
@@ -1259,10 +1246,37 @@
             }
             if (!currentState || !currentState.history || !portfolioChartInstance) return;
             let hist = currentState.history;
-            if (range === '3m' && hist.length > 90) {
-                hist = hist.slice(-90);
-            } else if (range === '1y' && hist.length > 365) {
-                hist = hist.slice(-365);
+            if (hist.length === 0) return;
+
+            const selectedRange = (range || '3m').toLowerCase();
+            const latestDateStr = hist[hist.length - 1].date;
+
+            if (latestDateStr && selectedRange !== 'all') {
+                const parts = latestDateStr.split('-');
+                if (parts.length === 3) {
+                    let year = parseInt(parts[0], 10);
+                    let month = parseInt(parts[1], 10) - 1;
+                    let day = parseInt(parts[2], 10);
+
+                    if (selectedRange === '3m') {
+                        month -= 3;
+                        if (month < 0) {
+                            month += 12;
+                            year -= 1;
+                        }
+                    } else if (selectedRange === '1y') {
+                        year -= 1;
+                    } else if (selectedRange === '3y') {
+                        year -= 3;
+                    }
+
+                    const cutoffYearStr = year.toString().padStart(4, '0');
+                    const cutoffMonthStr = (month + 1).toString().padStart(2, '0');
+                    const cutoffDayStr = day.toString().padStart(2, '0');
+                    const cutoffStr = `${cutoffYearStr}-${cutoffMonthStr}-${cutoffDayStr}`;
+
+                    hist = hist.filter(h => h.date >= cutoffStr);
+                }
             }
 
             let sanitizedHist = hist.map((h, i) => {

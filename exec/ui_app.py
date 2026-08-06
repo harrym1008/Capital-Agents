@@ -25,8 +25,8 @@ from llm.server_manager import serverManager, LoadedModelType
 from ui.ui_hooks import setEventCallback, emitEvent, requestStop, resetStop, isStopRequested, SimulationStoppedException
 import logging
 
-from ui.ws_api import registerApiRoutes
-from simulation.simulation_api import registerSimulationApiRoutes
+from ui.ws_api import registerApiRoutes, registerWsAction, handleWsMessage
+from simulation.simulation_api import registerSimulationWsRoutes
 
 class MetricsFilter(logging.Filter):
     def filter(self, record):
@@ -41,7 +41,7 @@ app = Flask(
 )
 app.secret_key = "capital_agents_sim_secret_key"
 registerApiRoutes(app)
-registerSimulationApiRoutes(app)
+registerSimulationWsRoutes()
 
 @app.route("/")
 def landingPage():
@@ -104,6 +104,27 @@ def runBoardroom(config):
         resetStop()
 
 
+def handleBoardroomStart(data, websocket, eventLoop):
+    resetStop()
+    from boardroom.boardroom_config import SingleEquityRatingConfig
+    config = SingleEquityRatingConfig.fromDict(data)
+
+    simThread = threading.Thread(
+        target=runBoardroom,
+        args=(config,),
+        daemon=True
+    )
+    simThread.start()
+    return {"ok": True, "message": "Boardroom simulation started."}
+
+def handleBoardroomStop(data, websocket, eventLoop):
+    requestStop()
+    return {"ok": True, "message": "Stop requested."}
+
+registerWsAction("start", handleBoardroomStart)
+registerWsAction("stop", handleBoardroomStop)
+
+
 async def websocketHandler(websocket):
     global activeWebsocket, eventLoop
     activeWebsocket = websocket
@@ -112,21 +133,7 @@ async def websocketHandler(websocket):
     print("Client connected to Boardroom WebSocket")
     try:
         async for message in websocket:
-            data = json.loads(message)
-            action = data.get("action")
-            if action == "start":
-                resetStop()
-                from boardroom.boardroom_config import SingleEquityRatingConfig
-                config = SingleEquityRatingConfig.fromDict(data)
-
-                simThread = threading.Thread(
-                    target=runBoardroom,
-                    args=(config,),
-                    daemon=True
-                )
-                simThread.start()
-            elif action == "stop":
-                requestStop()
+            await handleWsMessage(websocket, message, eventLoop)
     except websockets.exceptions.ConnectionClosed:
         print("Client disconnected from Boardroom WebSocket")
     finally:

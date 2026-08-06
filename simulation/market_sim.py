@@ -58,14 +58,6 @@ class MarketSimulation:
         self.userPortfolios[username] = Portfolio(initialCash)
 
 
-    # testingRun should only be true if usernames are a list of tickers!
-    def initialiseUsers(self, usernames, initialCash=1_000_000.0, testingRun=False):
-        for username in usernames:
-            self.initialiseUser(username, initialCash)
-
-            if testingRun:
-                self.addOrder(MarketOrder(username, OrderSide.BUY, cashValue=initialCash), username)
-
 
     def addOrder(self, order, username):
         userOrder = UserOrder(order, username)
@@ -571,13 +563,6 @@ class MarketSimulation:
         return True
     
 
-    def concludeSimulation(self):
-        currentDate = self.endDate
-        while not self.isTradingDay(currentDate):
-            currentDate -= timedelta(days=1)
-        self.processDaysTrades(currentDate)
-
-
 
     def getCurrentPrice(self, ticker):
         ohlc = self.dailyPriceProvider.getSingleDayTickerData(ticker, self.currentDate)
@@ -623,8 +608,3 @@ class MarketSimulation:
 
         return pfDict
     
-
-    def prettyPrintAllPortfolios(self):
-        from simulation.pretty_print_sim import prettyPrintPortfolio
-        for user in self.users:
-            prettyPrintPortfolio(self, user)

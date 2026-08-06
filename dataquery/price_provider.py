@@ -12,7 +12,7 @@ from dataquery.ticker_provider import TickerDataProvider
 
 
 class DailyPriceProvider:
-    def __init__(self, tickerDataProvider: TickerDataProvider, cache: LRUCache, rateLimiters: GlobalRateLimiters):
+    def __init__(self, tickerDataProvider: TickerDataProvider, cache: LRUCache, rateLimiters: GlobalRateLimiters, allowOnlineDownloads: bool = False):
         self.cache = cache
         self.rateLimiters = rateLimiters
         self.startDate = START_DATE
@@ -20,6 +20,7 @@ class DailyPriceProvider:
         self.tickerDataProvider = tickerDataProvider
         self.tickersPaths = self.buildTickerPathIndex()
         self.lock = threading.RLock()
+        self.allowOnlineDownloads = allowOnlineDownloads
 
     def timestampToNyDay(self, ts):
         ts = pd.Timestamp(ts)
@@ -30,6 +31,9 @@ class DailyPriceProvider:
         return ts.normalize()
 
     def downloadNonLocalOhlcv(self, ticker: str, startDate: pd.Timestamp, endDate: pd.Timestamp) -> pd.DataFrame:
+        if not self.allowOnlineDownloads:
+            return pd.DataFrame()
+
         self.rateLimiters.yFinanceLimiter.wait()
 
         try:
@@ -164,7 +168,7 @@ class DailyPriceProvider:
             result = None
             if cached is not None:
                 result = cached
-            elif dateNy > self.endDate:
+            elif self.allowOnlineDownloads and dateNy > self.endDate:
                 dfOnline = self.downloadNonLocalOhlcv(ticker, dateNy - pd.Timedelta(days=7), dateNy)
                 if not dfOnline.empty and dateNy in dfOnline.index:
                     row = dfOnline.loc[dateNy]
@@ -236,7 +240,7 @@ class DailyPriceProvider:
                         if not dfYear.empty:
                             parts.append(dfYear)
 
-                if endNy > self.endDate:
+                if self.allowOnlineDownloads and endNy > self.endDate:
                     gapStart = max(startNy, self.endDate)
                     dfOnline = self.downloadNonLocalOhlcv(ticker, gapStart, endNy)
                     if not dfOnline.empty:

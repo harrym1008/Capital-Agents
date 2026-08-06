@@ -193,12 +193,19 @@ def getFuturePerformanceChunks(futureDates, futureCloses, splineVals):
     return chunks
 
 
+ohlcvChartCache = {}
+
 def generateOhlcvChartData(ticker, simDateTs, targets=None, horizon="long"):
     todayTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
     if targets is None:
         targets = []
 
     horizonStr = (horizon or "long").lower()
+    simDateStr = simDateTs.strftime("%Y-%m-%d")
+    cacheKey = f"{ticker}_{simDateStr}_{horizonStr}"
+
+    if not targets and cacheKey in ohlcvChartCache:
+        return ohlcvChartCache[cacheKey]
     
     # Auto-infer horizon from targets if default 'long' was passed but targets indicate another horizon
     if targets and horizonStr == "long":
@@ -323,7 +330,7 @@ def generateOhlcvChartData(ticker, simDateTs, targets=None, horizon="long"):
             splineVals = np.interp(futureDays, curveX, curveY)
         futureChunks = getFuturePerformanceChunks(futureDates, futureClosesSmooth, splineVals)
 
-    return {
+    res = {
         "ticker": ticker,
         "simDate": simDateStr,
         "startDate": startDateTs.strftime("%Y-%m-%d"),
@@ -336,6 +343,11 @@ def generateOhlcvChartData(ticker, simDateTs, targets=None, horizon="long"):
         "targetCurve": curvePoints,
         "futureChunks": futureChunks
     }
+    if not targets:
+        if len(ohlcvChartCache) > 1000:
+            ohlcvChartCache.clear()
+        ohlcvChartCache[cacheKey] = res
+    return res
 
 
 
@@ -464,4 +476,58 @@ def registerApiRoutes(app):
             return jsonify(chartData)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+
+
+wsActionHandlers = {}
+
+def registerWsAction(actionName, handlerFunc):
+    wsActionHandlers[actionName] = handlerFunc
+
+def sendWsResponse(websocket, payload, eventLoop=None):
+    if websocket:
+        try:
+            msg = json.dumps(payload)
+            if eventLoop:
+                import asyncio
+                asyncio.run_coroutine_threadsafe(websocket.send(msg), eventLoop)
+        except Exception as e:
+            print(f"Error sending WS response: {e}")
+
+async def handleWsMessage(websocket, messageStr, eventLoop=None):
+    try:
+        data = json.loads(messageStr)
+    except Exception as e:
+        await websocket.send(json.dumps({"ok": False, "error": f"Invalid JSON payload: {str(e)}"}))
+        return
+
+    action = data.get("action")
+    requestId = data.get("requestId")
+
+    if not action:
+        await websocket.send(json.dumps({"requestId": requestId, "ok": False, "error": "Missing 'action' in request."}))
+        return
+
+    handler = wsActionHandlers.get(action)
+    if not handler:
+        await websocket.send(json.dumps({"requestId": requestId, "action": action, "ok": False, "error": f"Unknown WebSocket action: '{action}'."}))
+        return
+
+    try:
+        import inspect
+        if inspect.iscoroutinefunction(handler):
+            result = await handler(data, websocket, eventLoop)
+        else:
+            result = handler(data, websocket, eventLoop)
+
+        if result is not None:
+            if isinstance(result, dict):
+                if "requestId" not in result and requestId is not None:
+                    result["requestId"] = requestId
+                if "action" not in result:
+                    result["action"] = action
+                await websocket.send(json.dumps(result))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        await websocket.send(json.dumps({"requestId": requestId, "action": action, "ok": False, "error": str(e)}))
 

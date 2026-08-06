@@ -127,6 +127,35 @@
     }
 
     let socket = null;
+    const wsSubscribers = new Set();
+
+    window.wsSubscribe = function(callback) {
+        if (typeof callback === 'function') {
+            wsSubscribers.add(callback);
+            return () => wsSubscribers.delete(callback);
+        }
+    };
+
+    window.sendWsMessage = function(data) {
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            connectWebsocket();
+            // Give socket brief moment to connect if it was opening
+            if (socket && socket.readyState === WebSocket.CONNECTING) {
+                const payloadStr = typeof data === 'string' ? data : JSON.stringify(data);
+                const prevOnOpen = socket.onopen;
+                socket.onopen = (evt) => {
+                    if (prevOnOpen) prevOnOpen(evt);
+                    socket.send(payloadStr);
+                };
+                return true;
+            }
+        }
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(typeof data === 'string' ? data : JSON.stringify(data));
+            return true;
+        }
+        return false;
+    };
 
     function formatTokSpeed(val) {
         if (val === undefined || val === null || isNaN(val) || val <= 0) return "0.0 tok/s";
@@ -178,6 +207,11 @@
                     updateServerStatus(true);
                     updateCostUI(payload);
                 }
+
+                // Notify all registered subscribers
+                wsSubscribers.forEach(callback => {
+                    try { callback(payload); } catch(err) { console.error("Error in WS subscriber:", err); }
+                });
 
                 // Delegate to page-specific handler if defined
                 if (typeof handleSimulationEvent === 'function') {
