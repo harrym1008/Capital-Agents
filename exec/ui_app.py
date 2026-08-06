@@ -49,7 +49,7 @@ registerApiRoutes(app)
 def landingPage():
     return render_template("landing.html")
 
-@app.route("/server")
+@app.route("/server-config")
 def serverSetupPage():
     return render_template("server.html")
 
@@ -57,6 +57,8 @@ def serverSetupPage():
 def indexPage():
     if serverManager.loadedModelType == LoadedModelType.NONE:
         return redirect("/")
+
+    serverManager.getToolRegistry()           # Ensure the tool registry is initialized
     return render_template("tickerrate.html")
 
 # Track active websocket connection and the event loop it runs on

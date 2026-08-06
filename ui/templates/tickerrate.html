@@ -8,6 +8,8 @@
     <link rel="icon" type="image/png" href="/static/favicon.png">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1/dist/chartjs-adapter-luxon.umd.min.js"></script>
 </head>
 <body>
 
@@ -168,7 +170,10 @@
             
             // 5. Parse horizontal rules: ---
             formattedText = formattedText.replace(/^---+\s*$/gm, '<hr style="border: none; border-top: 1.5px solid #cbd5e1; margin: 10px 0 3px 0;">');
-            
+
+            // 6. Parse backslash dollar signs: \$ -> $
+            formattedText = formattedText.replace(/\\\$/g, '$');
+
             return formattedText;
         }
 
@@ -532,7 +537,8 @@
                 const xAxis = chart.scales.x;
                 const yAxis = chart.scales.y;
                 if (!xAxis || !yAxis) return;
-                const xPixel = xAxis.getPixelForValue(simDate);
+                const simTime = (typeof simDate === 'string' && simDate.length === 10) ? new Date(simDate + 'T00:00:00').getTime() : simDate;
+                const xPixel = xAxis.getPixelForValue(simTime);
                 if (xPixel !== undefined && xPixel >= xAxis.left && xPixel <= xAxis.right) {
                     const ctx = chart.ctx;
                     ctx.save();
@@ -557,18 +563,6 @@
                 stageChartInstance = null;
             }
 
-            const dateSet = new Set();
-            if (chartData.historical) chartData.historical.forEach(pt => dateSet.add(pt.x));
-            if (chartData.targetCurve) chartData.targetCurve.forEach(pt => dateSet.add(pt.x));
-            if (chartData.targetPoints) chartData.targetPoints.forEach(pt => dateSet.add(pt.x));
-            if (chartData.simAnchor) dateSet.add(chartData.simAnchor.x);
-            if (chartData.futureChunks) {
-                chartData.futureChunks.forEach(chunk => {
-                    if (chunk.points) chunk.points.forEach(pt => dateSet.add(pt.x));
-                });
-            }
-
-            const allDates = Array.from(dateSet).sort();
             const datasets = [];
 
             if (chartData.historical && chartData.historical.length > 0) {
@@ -649,7 +643,6 @@
             stageChartInstance = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: allDates,
                     datasets: datasets
                 },
                 plugins: [simDateLinePlugin],
@@ -674,7 +667,16 @@
                     },
                     scales: {
                         x: {
-                            type: 'category',
+                            type: 'time',
+                            time: {
+                                tooltipFormat: 'yyyy-MM-dd',
+                                displayFormats: {
+                                    month: "MMM 'yy",
+                                    day: "MMM 'yy"
+                                }
+                            },
+                            min: chartData.startDate ? new Date(chartData.startDate + 'T00:00:00').getTime() : undefined,
+                            max: chartData.endDate ? new Date(chartData.endDate + 'T00:00:00').getTime() : undefined,
                             grid: {
                                 color: '#cbd5e1',
                                 borderDash: [2, 2],
@@ -687,17 +689,7 @@
                                     weight: '700',
                                     size: 10
                                 },
-                                maxTicksLimit: 7,
-                                callback: function(val, index) {
-                                    const dateStr = this.getLabelForValue(val);
-                                    if (!dateStr) return '';
-                                    const parts = dateStr.split('-');
-                                    if (parts.length < 3) return dateStr;
-                                    const year = parts[0];
-                                    const monthIdx = parseInt(parts[1], 10) - 1;
-                                    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-                                    return `${monthNames[monthIdx] || ''} '${year.slice(2)}`;
-                                }
+                                maxTicksLimit: 7
                             },
                             border: {
                                 color: '#334155',
