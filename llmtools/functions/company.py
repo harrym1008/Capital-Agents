@@ -72,7 +72,7 @@ def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timest
                 month = rawTs.month
                 url = f"https://www.benzinga.com/news/{year:02d}/{month:02d}/{articleId}"
             else:
-                url = f"https://www.benzinga.com/news/{articleId}"
+                url = f"https://www.benzinga.com/news/01/16/{articleId}"
 
             jsonResult.append({
                 "index": idx,
@@ -177,6 +177,17 @@ def findSmaCrossovers(priceData: pd.DataFrame, maxLookbackDays: int = 503, maxCr
     return crossovers[-maxCrossovers:]
 
 
+def calculate30DayAverageVolume(priceData: pd.DataFrame, timestamp: pd.Timestamp = None) -> float:
+    if priceData.empty or "volume" not in priceData.columns:
+        return 0.0
+    if timestamp is not None and "date" in priceData.columns:
+        thirtyDaysAgo = timestamp - pd.DateOffset(days=30)
+        recentData = priceData[priceData["date"] >= thirtyDaysAgo]
+        if not recentData.empty:
+            return float(recentData["volume"].mean())
+    return float(priceData["volume"].tail(30).mean())
+
+
 def fetchStockPricePerformance(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str):
     startDate = timestamp - pd.DateOffset(years=5, weeks=1)
     cacheKey = f"stockPerf|{ticker}_{timestamp.strftime('%Y-%m-%dH%H')}"
@@ -193,6 +204,8 @@ def fetchStockPricePerformance(tool: Tool, data: DataProviders, timestamp: pd.Ti
         for col in ["open", "high", "low", "close", "vwap"]:
             if col in priceData.columns:
                 priceData[col] = priceData[col] * (priceData["splitFactor"] / finalSplitFactor)
+
+    avgVolume30Day = calculate30DayAverageVolume(priceData, timestamp)
 
     dropCols = [c for c in ["volume", "vwap", "splitFactor", "corpActionToday", "outstandingShares", "marketCap"] if c in priceData.columns]
     priceData = priceData.drop(columns=dropCols).dropna().reset_index(drop=True)
@@ -299,6 +312,7 @@ def fetchStockPricePerformance(tool: Tool, data: DataProviders, timestamp: pd.Ti
         "volatility30Day": cleanNumber(volatility30d, NumberType.DECIMAL),
         "maxDrawdown": cleanNumber(maxDrawdown, NumberType.DECIMAL),
         "sharpeRatio": cleanNumber(sharpeRatio, NumberType.DECIMAL),
+        "averageVolume30Day": cleanNumber(avgVolume30Day, NumberType.LARGE_NUMBER),
 
         "returns": pctReturnsDict,
         "smaCrossovers": crossovers

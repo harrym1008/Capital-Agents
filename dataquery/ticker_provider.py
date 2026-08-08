@@ -1,6 +1,10 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 import pandas as pd
 from dataclasses import dataclass
+import requests
 
 from collectors.constants import ALL_TICKERS_FILE, NEW_YORK
 
@@ -29,6 +33,7 @@ class CompanyProfile:
 class TickerDataProvider:
     def __init__(self):
         self.tickerIndex = self.buildTickerIndex()
+        self.logoIndex = {}
 
 
     def buildTickerIndex(self):
@@ -85,3 +90,20 @@ class TickerDataProvider:
                 return False
 
         return True
+
+
+    def getCompanyLogoFromFinnhub(self, ticker):
+        if ticker in self.logoIndex:
+            return self.logoIndex[ticker]
+
+        finnhubApiKey = os.getenv("FINNHUB_API_KEY")
+        url = f"https://finnhub.io/api/v1/stock/profile2?symbol={ticker.upper()}&token={finnhubApiKey}"
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            logoUrl = data.get("logo")
+            if logoUrl:
+                self.logoIndex[ticker] = logoUrl
+                return logoUrl
+
+        return f"https://placehold.co/256x256?text={ticker.upper()}"

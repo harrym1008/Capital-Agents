@@ -58,6 +58,8 @@ class NumberType(Enum):
 
 
 def cleanNumber(value, numType: NumberType):
+    if value is None:
+        return "N/A"
     if pd.isna(value):
         return "null"
     

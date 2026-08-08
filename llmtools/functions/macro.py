@@ -217,7 +217,7 @@ def fetchMacroNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, lim
                 month = rawTs.month
                 url = f"https://www.benzinga.com/news/{year:02d}/{month:02d}/{articleId}"
             else:
-                url = f"https://www.benzinga.com/news/{articleId}"
+                url = f"https://www.benzinga.com/news/01/16/{articleId}"
 
             jsonResult.append({
                 "index": idx,

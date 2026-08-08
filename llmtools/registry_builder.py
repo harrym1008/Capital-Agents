@@ -187,7 +187,7 @@ SCHEMAS = {
 
 
 
-def buildToolRegistry():
+def buildToolRegistry(initMacroThread=False):
     toolReg = ToolRegistry()
 
     # macro.py
@@ -348,8 +348,9 @@ def buildToolRegistry():
         parameterSchema=SCHEMAS["confirmDecisionDistantTerm"]
     ))
 
-    timestamp = (pd.Timestamp.today().normalize() + pd.Timedelta(hours=9)).tz_localize(NEW_YORK).tz_convert(UTC)
-    startPrecacheThread(toolReg, timestamp, macroTools=True)
+    if initMacroThread:
+        timestamp = (pd.Timestamp.today().normalize() + pd.Timedelta(hours=9)).tz_localize(NEW_YORK).tz_convert(UTC)
+        startPrecacheThread(toolReg, timestamp, macroTools=True)
     
     return toolReg
 
