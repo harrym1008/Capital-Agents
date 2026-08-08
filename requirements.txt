@@ -25,7 +25,7 @@ et_xmlfile==2.0.0
 exchange_calendars==4.13.2
 fastparquet==2026.3.0
 filelock==3.29.4
-financedatabase==2.3.1
+financedatabase==2.4.0
 financetoolkit==2.0.7
 finnhub-python==2.4.28
 Flask==3.1.3
@@ -64,7 +64,7 @@ numexpr==2.14.1
 numpy==2.4.4
 nvidia-ml-py==13.610.43
 odfpy==1.4.1
-onnxruntime==1.22.0
+onnxruntime==1.28.0
 openai==2.37.0
 openpyxl==3.1.5
 orjson==3.11.9
@@ -105,7 +105,7 @@ rich==15.0.0
 safetensors==0.8.0
 scikit-learn==1.8.0
 scipy==1.17.1
-setuptools==70.2.0
+setuptools==81.0.0
 shellingham==1.5.4
 six==1.17.0
 sniffio==1.3.1
@@ -123,7 +123,7 @@ torch==2.12.1+cu130
 torchaudio==2.11.0+cu130
 torchvision==0.27.1+cu130
 tqdm==4.67.3
-transformers==5.14.1
+transformers==5.9.0
 truststore==0.10.4
 typer==0.27.0
 typing-inspection==0.4.2
