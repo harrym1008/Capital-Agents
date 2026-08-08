@@ -91,6 +91,7 @@
 
                             <!-- Timeframe Selector Buttons -->
                             <div class="chart-timeframe-controls" id="portfolioChartTimeframeControls">
+                                <button class="tf-btn" onclick="updatePortfolioChartRange('1m', this)">1M</button>
                                 <button class="tf-btn active" onclick="updatePortfolioChartRange('3m', this)">3M</button>
                                 <button class="tf-btn" onclick="updatePortfolioChartRange('1y', this)">1Y</button>
                                 <button class="tf-btn" onclick="updatePortfolioChartRange('3y', this)">3Y</button>
@@ -527,6 +528,48 @@
             }
         }
 
+        // --- Stock chart timeframe lock (forced to 3m while advancing) ---
+        let savedStockTimeframe = null;
+
+        function setStockTimeframe(tf) {
+            currentStockTimeframe = tf.toLowerCase();
+            const controls = document.getElementById('stockChartTimeframeControls');
+            if (controls) {
+                controls.querySelectorAll('.tf-btn').forEach(b => {
+                    const onclick = b.getAttribute('onclick') || '';
+                    b.classList.toggle('active', onclick.includes(`'${currentStockTimeframe}'`));
+                });
+            }
+        }
+
+        function setStockTimeframeButtonsDisabled(disabled) {
+            const controls = document.getElementById('stockChartTimeframeControls');
+            if (controls) {
+                controls.querySelectorAll('.tf-btn').forEach(b => {
+                    b.disabled = disabled;
+                    b.style.cursor = disabled ? 'not-allowed' : 'pointer';
+                    b.style.opacity = disabled ? '0.5' : '1';
+                });
+            }
+        }
+
+        function beginAdvanceTimeframeLock() {
+            savedStockTimeframe = currentStockTimeframe;
+            setStockTimeframe('3m');
+            setStockTimeframeButtonsDisabled(true);
+        }
+
+        function endAdvanceTimeframeLock() {
+            const restoreTf = savedStockTimeframe;
+            savedStockTimeframe = null;
+            setStockTimeframeButtonsDisabled(false);
+            if (restoreTf) {
+                // Update the active button AND re-fetch the chart for the restored timeframe.
+                setStockTimeframe(restoreTf);
+                updateStockChartTimeframe(restoreTf);
+            }
+        }
+
         function formatChartDateLabel(dateStr) {
             if (!dateStr) return dateStr;
             const parts = dateStr.split('-');
@@ -594,8 +637,13 @@
             }
             dp = Math.max(0, Math.min(6, dp));
 
+            let minDp = 0;
+            if (div === 1 && stepSize && stepSize < 1) {
+                minDp = 2;
+            }
+
             const formattedStr = num.toLocaleString('en-US', {
-                minimumFractionDigits: 0,
+                minimumFractionDigits: minDp,
                 maximumFractionDigits: dp
             });
 
@@ -603,9 +651,14 @@
         }
 
         function getNiceAxisBounds(minVal, maxVal, targetTicks = 5) {
+            const minStep = 0.01;
+
             if (minVal === maxVal) {
-                const pad = minVal !== 0 ? Math.abs(minVal) * 0.05 : 100;
-                return { min: Math.max(0, minVal - pad), max: maxVal + pad, stepSize: pad };
+                const pad = minVal !== 0 ? Math.max(minStep, Math.abs(minVal) * 0.05) : 10;
+                const step = Math.max(minStep, Math.round((pad / 2) * 100) / 100);
+                const minBound = Math.max(0, Math.round((minVal - pad) * 100) / 100);
+                const maxBound = Math.round((maxVal + pad) * 100) / 100;
+                return { min: minBound, max: maxBound, stepSize: step };
             }
 
             const minBound = (minVal > 0 && minVal / maxVal > 0.05) ? minVal : 0;
@@ -623,7 +676,8 @@
             else if (fraction <= 5.0) niceFraction = 5.0;
             else niceFraction = 10.0;
 
-            const stepSize = niceFraction * Math.pow(10, exponent);
+            let stepSize = niceFraction * Math.pow(10, exponent);
+            stepSize = Math.max(minStep, Math.round(stepSize * 100) / 100);
 
             let niceMin = Math.floor(minBound / stepSize) * stepSize;
             let niceMax = Math.ceil(maxBound / stepSize) * stepSize;
@@ -631,7 +685,222 @@
             if (minVal >= 0 && niceMin < 0) niceMin = 0;
             if (niceMax <= maxVal) niceMax += stepSize;
 
+            niceMin = Math.round(niceMin * 100) / 100;
+            niceMax = Math.round(niceMax * 100) / 100;
+
             return { min: niceMin, max: niceMax, stepSize: stepSize };
+        }
+
+        function buildDateLabelMap(labels, timeframe, fullLabels = null) {
+            const map = {};
+            if (!labels || labels.length === 0) return map;
+
+            const allDates = (fullLabels && fullLabels.length >= labels.length) ? fullLabels : labels;
+            let tf = (timeframe || '3m').toLowerCase();
+
+            const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+            const formatDayMonth = (dateStr) => {
+                const parts = dateStr.split('-');
+                if (parts.length === 3) {
+                    const monthIdx = parseInt(parts[1], 10) - 1;
+                    const day = parseInt(parts[2], 10);
+                    if (monthIdx >= 0 && monthIdx < 12) {
+                        return `${day} ${MONTH_NAMES[monthIdx]}`;
+                    }
+                }
+                return dateStr;
+            };
+
+            const formatMonthOnly = (dateStr) => {
+                const parts = dateStr.split('-');
+                if (parts.length >= 2) {
+                    const monthIdx = parseInt(parts[1], 10) - 1;
+                    if (monthIdx >= 0 && monthIdx < 12) {
+                        return MONTH_NAMES[monthIdx];
+                    }
+                }
+                return dateStr;
+            };
+
+            const formatMonthYear = (dateStr) => {
+                const parts = dateStr.split('-');
+                if (parts.length >= 2) {
+                    const monthIdx = parseInt(parts[1], 10) - 1;
+                    const yy = parts[0].slice(-2);
+                    if (monthIdx >= 0 && monthIdx < 12) {
+                        return `${MONTH_NAMES[monthIdx]} ${yy}`;
+                    }
+                }
+                return dateStr;
+            };
+
+            const formatYearOnly = (dateStr) => {
+                const parts = dateStr.split('-');
+                if (parts.length >= 1) {
+                    return parts[0];
+                }
+                return dateStr;
+            };
+
+            const getWeekKey = (dateStr) => {
+                const parts = dateStr.split('-');
+                if (parts.length !== 3) return dateStr;
+                const year = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10) - 1;
+                const day = parseInt(parts[2], 10);
+                const d = new Date(Date.UTC(year, month, day));
+                const dayOfWeek = d.getUTCDay();
+                const diffToMonday = (dayOfWeek + 6) % 7;
+                d.setUTCDate(d.getUTCDate() - diffToMonday);
+                return d.toISOString().split('T')[0];
+            };
+
+            const getAbsoluteWeekNumber = (dateStr) => {
+                const parts = dateStr.split('-');
+                if (parts.length !== 3) return 0;
+                const year = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10) - 1;
+                const day = parseInt(parts[2], 10);
+                const d = new Date(Date.UTC(year, month, day));
+                const dayOfWeek = d.getUTCDay();
+                const diffToMonday = (dayOfWeek + 6) % 7;
+                d.setUTCDate(d.getUTCDate() - diffToMonday);
+                const epoch = new Date(Date.UTC(2000, 0, 3));
+                const diffDays = Math.round((d - epoch) / 86400000);
+                return Math.floor(diffDays / 7);
+            };
+
+            const getMonthKey = (dateStr) => {
+                const parts = dateStr.split('-');
+                if (parts.length >= 2) {
+                    return `${parts[0]}-${parts[1]}`;
+                }
+                return dateStr;
+            };
+
+            const lastAllowedIndex = labels.length - 3;
+
+            if (tf === 'all') {
+                const firstDaysOfYear = [];
+                const seenYears = new Set();
+
+                allDates.forEach((d, idx) => {
+                    const parts = d.split('-');
+                    if (parts.length === 3) {
+                        const yr = parts[0];
+                        const mo = parseInt(parts[1], 10);
+                        if (!seenYears.has(yr)) {
+                            seenYears.add(yr);
+                            if (idx === 0) {
+                                if (mo <= 2) {
+                                    firstDaysOfYear.push(d);
+                                }
+                            } else if (mo === 1) {
+                                firstDaysOfYear.push(d);
+                            }
+                        }
+                    }
+                });
+
+                const targetSet = new Set(firstDaysOfYear);
+                labels.forEach((d, idx) => {
+                    if (targetSet.has(d) && idx <= lastAllowedIndex) {
+                        map[d] = formatYearOnly(d);
+                    }
+                });
+            } else if (tf === '1m' || tf === '3m') {
+                const firstDaysOfWeek = [];
+                const seenWeeks = new Set();
+
+                allDates.forEach((d, idx) => {
+                    const wk = getWeekKey(d);
+                    if (!seenWeeks.has(wk)) {
+                        seenWeeks.add(wk);
+                        if (idx === 0) {
+                            const parts = d.split('-');
+                            if (parts.length === 3) {
+                                const dt = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)));
+                                const dow = dt.getUTCDay();
+                                if (dow === 1 || dow === 2) {
+                                    firstDaysOfWeek.push(d);
+                                }
+                            }
+                        } else {
+                            firstDaysOfWeek.push(d);
+                        }
+                    }
+                });
+
+                if (tf === '1m') {
+                    const targetSet = new Set(firstDaysOfWeek);
+                    labels.forEach((d, idx) => {
+                        if (targetSet.has(d) && idx <= lastAllowedIndex) {
+                            map[d] = formatDayMonth(d);
+                        }
+                    });
+                } else {
+                    const targetSet = new Set();
+                    firstDaysOfWeek.forEach(d => {
+                        if (getAbsoluteWeekNumber(d) % 2 === 0) {
+                            targetSet.add(d);
+                        }
+                    });
+                    labels.forEach((d, idx) => {
+                        if (targetSet.has(d) && idx <= lastAllowedIndex) {
+                            map[d] = formatDayMonth(d);
+                        }
+                    });
+                }
+            } else if (tf === '1y' || tf === '3y') {
+                const firstDaysOfMonth = [];
+                const seenMonths = new Set();
+
+                allDates.forEach((d, idx) => {
+                    const mk = getMonthKey(d);
+                    if (!seenMonths.has(mk)) {
+                        seenMonths.add(mk);
+                        if (idx === 0) {
+                            const parts = d.split('-');
+                            if (parts.length === 3) {
+                                const dom = parseInt(parts[2], 10);
+                                if (dom <= 7) {
+                                    firstDaysOfMonth.push(d);
+                                }
+                            }
+                        } else {
+                            firstDaysOfMonth.push(d);
+                        }
+                    }
+                });
+
+                if (tf === '1y') {
+                    const targetSet = new Set(firstDaysOfMonth);
+                    labels.forEach((d, idx) => {
+                        if (targetSet.has(d) && idx <= lastAllowedIndex) {
+                            map[d] = formatMonthOnly(d);
+                        }
+                    });
+                } else {
+                    const targetSet = new Set();
+                    firstDaysOfMonth.forEach(d => {
+                        const parts = d.split('-');
+                        if (parts.length >= 2) {
+                            const monthNum = parseInt(parts[1], 10);
+                            if (monthNum === 1 || monthNum === 4 || monthNum === 7 || monthNum === 10) {
+                                targetSet.add(d);
+                            }
+                        }
+                    });
+                    labels.forEach((d, idx) => {
+                        if (targetSet.has(d) && idx <= lastAllowedIndex) {
+                            map[d] = formatMonthYear(d);
+                        }
+                    });
+                }
+            }
+
+            return map;
         }
 
         // Initialize Charts
@@ -661,6 +930,9 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         animation: false,
+                        layout: {
+                            padding: { left: 5, right: 25, top: 5, bottom: 0 }
+                        },
                         interaction: {
                             mode: 'index',
                             intersect: false,
@@ -682,8 +954,7 @@
                                 ticks: {
                                     font: { size: 11, weight: '600' },
                                     color: '#64748b',
-                                    maxTicksLimit: 7,
-                                    autoSkip: true,
+                                    autoSkip: false,
                                     maxRotation: 0,
                                     callback: function(val) {
                                         const label = this.getLabelForValue(val);
@@ -697,7 +968,7 @@
                                     font: { size: 11, weight: '600' },
                                     color: '#64748b',
                                     callback: function(val) {
-                                        const step = this.options && this.options.stepSize ? this.options.stepSize : 1;
+                                        const step = this.options && this.options.stepSize ? this.options.stepSize : 0.01;
                                         const rem = Math.abs(val % step);
                                         if (rem > 1e-4 && Math.abs(rem - step) > 1e-4) return '';
                                         return formatYAxisLabel(val, step);
@@ -731,6 +1002,9 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         animation: false,
+                        layout: {
+                            padding: { left: 5, right: 25, top: 5, bottom: 0 }
+                        },
                         interaction: {
                             mode: 'index',
                             intersect: false,
@@ -752,8 +1026,7 @@
                                 ticks: {
                                     font: { size: 10, weight: '600' },
                                     color: '#64748b',
-                                    maxTicksLimit: 5,
-                                    autoSkip: true,
+                                    autoSkip: false,
                                     maxRotation: 0,
                                     callback: function(val) {
                                         const label = this.getLabelForValue(val);
@@ -767,7 +1040,7 @@
                                     font: { size: 10, weight: '600' },
                                     color: '#64748b',
                                     callback: function(val) {
-                                        const step = this.options && this.options.stepSize ? this.options.stepSize : 1;
+                                        const step = this.options && this.options.stepSize ? this.options.stepSize : 0.01;
                                         const rem = Math.abs(val % step);
                                         if (rem > 1e-4 && Math.abs(rem - step) > 1e-4) return '';
                                         return formatYAxisLabel(val, step);
@@ -912,8 +1185,28 @@
             }
             if (snap.chart && snap.chart.historical && typeof stockChartInstance !== 'undefined' && stockChartInstance) {
                 const pts = snap.chart.historical;
-                stockChartInstance.data.labels = pts.map(p => p.x);
-                stockChartInstance.data.datasets[0].data = pts.map(p => p.y);
+                const labels = pts.map(p => p.x);
+                const values = pts.map(p => p.y);
+
+                if (values.length > 0) {
+                    const minVal = Math.min(...values);
+                    const maxVal = Math.max(...values);
+                    const bounds = getNiceAxisBounds(minVal, maxVal, 5);
+
+                    stockChartInstance.options.scales.y.min = bounds.min;
+                    stockChartInstance.options.scales.y.max = bounds.max;
+                    stockChartInstance.options.scales.y.ticks.stepSize = bounds.stepSize;
+                }
+
+                const dateMap = buildDateLabelMap(labels, currentStockTimeframe);
+                stockChartInstance.options.scales.x.ticks.autoSkip = false;
+                stockChartInstance.options.scales.x.ticks.callback = function(val) {
+                    const label = this.getLabelForValue(val);
+                    return dateMap[label] || '';
+                };
+
+                stockChartInstance.data.labels = labels;
+                stockChartInstance.data.datasets[0].data = values;
                 stockChartInstance.update('none');
             }
         }
@@ -1018,6 +1311,8 @@
         async function advanceIncrement(incrementStr) {
             if (!currentState || !currentState.active || isAdvancing) return;
 
+            beginAdvanceTimeframeLock();
+
             let targetDateStr = "";
             if (incrementStr === '1d') {
                 targetDateStr = computeTargetDate(currentState.currentDate, '1d');
@@ -1053,6 +1348,7 @@
                     applyInspectorData(pendingInspectorData);
                     pendingInspectorData = null;
                 }
+                endAdvanceTimeframeLock();
             }
         }
 
@@ -1089,6 +1385,7 @@
                     applyInspectorData(pendingInspectorData);
                     pendingInspectorData = null;
                 }
+                endAdvanceTimeframeLock();
             }
         }
 
@@ -1096,7 +1393,9 @@
             const targetDateInput = document.getElementById('advanceToDateInput');
             const targetDate = targetDateInput ? targetDateInput.value : '';
             if (!targetDate || !currentState || !currentState.active || isAdvancing) return;
-            
+
+            beginAdvanceTimeframeLock();
+
             initiateBackgroundInspector(targetDate);
 
             const curMs = new Date(currentState.currentDate).getTime();
@@ -1362,9 +1661,27 @@
 
                 if (hasLogs) {
                     pf.log.slice().reverse().forEach(entry => {
+                        const dateStr = entry.dateStr || entry.timestamp || '';
+                        const ticker = entry.ticker || '';
+                        const title = entry.title || 'System Log';
+                        const message = entry.message || (typeof entry === 'string' ? entry : '');
+
+                        let titleBadgeClass = 'badge-action-log';
+                        const titleLower = title.toLowerCase();
+                        if (titleLower.includes('buy')) titleBadgeClass = 'badge-action-buy';
+                        else if (titleLower.includes('sell')) titleBadgeClass = 'badge-action-sell';
+                        else if (titleLower.includes('fail') || titleLower.includes('error') || titleLower.includes('cancel')) titleBadgeClass = 'badge-action-cancel';
+
                         const pill = document.createElement('div');
                         pill.className = 'log-pill';
-                        pill.innerHTML = `<span class="log-text">${entry}</span>`;
+                        pill.innerHTML = `
+                            <div>
+                                <span class="log-date-tag">${dateStr}</span>
+                                <span class="${titleBadgeClass}">${title}</span>
+                                <span class="log-ticker-tag">${ticker}</span>
+                                <span class="log-message-body">${message}</span>
+                            </div>
+                        `;
                         logsContainer.appendChild(pill);
                     });
                 }
@@ -1517,7 +1834,13 @@
                     let month = parseInt(parts[1], 10) - 1;
                     let day = parseInt(parts[2], 10);
 
-                    if (selectedRange === '3m') {
+                    if (selectedRange === '1m') {
+                        month -= 1;
+                        if (month < 0) {
+                            month += 12;
+                            year -= 1;
+                        }
+                    } else if (selectedRange === '3m') {
                         month -= 3;
                         if (month < 0) {
                             month += 12;
@@ -1547,6 +1870,8 @@
             });
 
             const values = sanitizedHist.map(h => h.totalValue);
+            const labels = sanitizedHist.map(h => h.date);
+
             if (values.length > 0) {
                 const minVal = Math.min(...values);
                 const maxVal = Math.max(...values);
@@ -1557,7 +1882,15 @@
                 portfolioChartInstance.options.scales.y.ticks.stepSize = bounds.stepSize;
             }
 
-            portfolioChartInstance.data.labels = sanitizedHist.map(h => h.date);
+            const fullLabels = (currentState && currentState.history) ? currentState.history.map(h => h.date) : labels;
+            const dateMap = buildDateLabelMap(labels, selectedRange, fullLabels);
+            portfolioChartInstance.options.scales.x.ticks.autoSkip = false;
+            portfolioChartInstance.options.scales.x.ticks.callback = function(val) {
+                const label = this.getLabelForValue(val);
+                return dateMap[label] || '';
+            };
+
+            portfolioChartInstance.data.labels = labels;
             portfolioChartInstance.data.datasets[0].data = values;
             portfolioChartInstance.update('none');
         }

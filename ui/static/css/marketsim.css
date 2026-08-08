@@ -534,13 +534,50 @@ html, body {
 }
 
 .log-pill {
-    padding: 6px 9px;
-    background: #343434;
-    border: 1px solid #919191;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
     border-radius: 8px;
+    color: #0f172a;
     font-size: 0.85rem;
-    color: #e6e6e6;
-    font-weight: 400;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.log-date-tag {
+    color: #64748b;
+    font-weight: 500;
+    margin-right: 4px;
+}
+
+.log-ticker-tag {
+    font-weight: 800;
+    font-size: 0.92rem;
+    color: #000000;
+    margin: 0px 4px;
+}
+
+.log-message-body {
+    color: #2e2e2e;
+    font-size: 0.83rem;
+    word-break: break-word;
+}
+
+.badge-action-log {
+    color: #2563eb;
+    font-weight: 800;
+    font-size: 1rem;
+}
+
+.badge-action-cancel {
+    background-color: #fee2e2;
+    color: #b91c1c;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.78rem;
 }
 
 /* Queued Order Pill inside System Logs */
@@ -549,8 +586,8 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: #efefef;
-    border: 1px solid #334155;
+    background: #f4f4f4;
+    border: 1px solid #dddddd;
     border-radius: 8px;
     color: #0c0c0c;
     font-size: 0.85rem;

@@ -62,6 +62,24 @@ class Dividend:
         return (self.amount * self.payableShares, self.dividendType)
 
 
+class LogEntry:
+    def __init__(self, dateStr, ticker, title, message):
+        self.dateStr = dateStr
+        self.ticker = ticker
+        self.title = title
+        self.message = message
+
+    def toDict(self):
+        return {
+            "dateStr": self.dateStr,
+            "ticker": self.ticker,
+            "title": self.title,
+            "message": self.message
+        }
+
+    def __str__(self):
+        return f"[{self.dateStr}] {self.title} - {self.ticker}: {self.message}"
+
 
 class Portfolio:
     def __init__(self, initialCash=1_000_000.0):
@@ -70,16 +88,19 @@ class Portfolio:
         self.positions: dict[str, Position] = {}
         self.potentialDividends: list[Dividend] = []
 
-        self.log = []
+        self.stringLog: list[str] = []
+        self.mainLog: list[LogEntry] = []
 
 
-    def addToLog(self, date, message):
-        self.log.append(f"[{date.strftime('%Y-%m-%d')}] {message}")
+    def addToLog(self, date, ticker, title, message):
+        logEntry = LogEntry(pd.Timestamp(date).strftime('%d %b %Y'), ticker, title, message)
+        self.stringLog.append(str(logEntry))
+        self.mainLog.append(logEntry)
 
 
     def executeTrade(self, order: Order):
         if order.status != OrderStatus.FILLED or pd.isna(order.fillPrice):
-            self.addToLog(order.fillTimestamp, f"OrderFailed: {order.getOrderString()}")
+            self.addToLog(order.fillTimestamp, order.ticker, "Order Failed", f"{order.getOrderString()}")
             return
 
         if order.isQuantityBased:
@@ -129,5 +150,5 @@ class Portfolio:
             if position.quantity == 0:
                 del self.positions[order.ticker]     # Clean up empty positions
         
-        self.addToLog(order.fillTimestamp, f"OrderExecuted: {order.getOrderString()}")
+        self.addToLog(order.fillTimestamp, order.ticker, "Order Filled", f"{order.getOrderString()}")
 

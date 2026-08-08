@@ -172,7 +172,10 @@ class SimulationManager:
             pfDict["pctReturn"] = 0.0
 
         portfolioObj = activeSim.userPortfolios.get(portfolioName)
-        pfDict["log"] = list(portfolioObj.log) if portfolioObj else []
+        if portfolioObj and portfolioObj.mainLog:
+            pfDict["log"] = [entry.toDict() if hasattr(entry, 'toDict') else entry for entry in portfolioObj.mainLog]
+        else:
+            pfDict["log"] = []
 
         pendingOrdersList = []
         for idx, userOrder in enumerate(activeSim.pendingOrders):
@@ -373,10 +376,10 @@ class SimulationManager:
             except ValueError as e:
                 currentDate = activeSim.currentDate
                 portfolioObj = activeSim.userPortfolios.get(portfolioName)
-                if portfolioObj:
-                    portfolioObj.addToLog(currentDate, f"OrderExecutionFailed: {str(e)}")
                 if activeSim.pendingOrders:
                     failedUserOrder = activeSim.pendingOrders.pop(0)
+                    if portfolioObj:
+                        portfolioObj.addToLog(currentDate, failedUserOrder.ticker, "Order Failed", f"{str(e)}")
                     failedUserOrder.order.setOrderStatus(OrderStatus.FAILED)
                     activeSim.ordersArchive.append(failedUserOrder)
                 break
@@ -604,8 +607,7 @@ class SimulationManager:
         if not rawStr or pd.isna(rawStr):
             return "N/A"
         cleanStr = str(rawStr).replace("_", " ").strip()
-        words = cleanStr.split()
-        return " ".join(w.capitalize() for w in words) if words else "N/A"
+        return cleanStr.title() if cleanStr else "N/A"
 
     def fetchFastInspectorMetrics(self, dataProviders: DataProviders, ticker, targetTs, timeframeStr="3M"):
         profile = dataProviders.tickers.getTickerProfile(ticker)
@@ -729,7 +731,7 @@ class SimulationManager:
                     articleUrl = str(row.get("url", "#")) if "url" in row and pd.notna(row.get("url")) else "#"
                     if articleUrl == "#" or not articleUrl or articleUrl == "nan":
                         if "id" in row and pd.notna(row.get("id")):
-                            articleUrl = f"https://www.benzinga.com/news/01/01/{row.get('id')}"
+                            articleUrl = f"https://www.benzinga.com/news/01/16/{row.get('id')}"
                         else:
                             articleUrl = "#"
 

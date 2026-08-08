@@ -352,24 +352,26 @@ class MarketSimulation:
                     position.quantity *= sharesMult
                     position.averagePrice *= priceMult
 
-                    portfolio.addToLog(date, f"CorpAction: {ticker} {formatFloat(action['newRate'])}:{formatFloat(action['oldRate'])} stock split. Holding now: {formatFloat(position.quantity)} @ ${formatFloat(position.averagePrice)} avg.")
+                    portfolio.addToLog(date, ticker, "Stock Split", f"Conducted a {formatFloat(action['newRate'])}:{formatFloat(action['oldRate'])} stock split. Holding now: {formatFloat(position.quantity)} shares @ ${formatFloat(position.averagePrice)} average.")
 
                 elif actionType in ["cash_dividend", "stock_dividend"]:
                     amount = action["rate"]
                     payDate = action["payDate"]
+                    nicePayDate = pd.Timestamp(payDate).strftime("%d %b %Y")
+
                     dividendType = Dividend.Type.CASH if actionType == "cash_dividend" else Dividend.Type.STOCK
 
                     if amount < 0.005:
-                        portfolio.addToLog(date, f"CorpAction: {ticker} dividend ex-date reached - ${formatFloat(amount)} per share. However, too few shares are owned.")
+                        portfolio.addToLog(date, ticker, "Dividend", f"Ex-dividend date reached - ${formatFloat(amount)} per share. Too few shares are owned (payout would be less than half a penny).")
                         continue
 
                     dividend = Dividend(ticker, amount, position.quantity, payDate, dividendType)
                     portfolio.potentialDividends.append(dividend)
 
                     if dividend.dividendType == Dividend.Type.CASH:
-                        portfolio.addToLog(date, f"CorpAction: {ticker} cash dividend ex-date reached - ${formatFloat(amount)} per share. Will be paid on {payDate}.")
+                        portfolio.addToLog(date, ticker, "Dividend", f"Ex-dividend date reached - ${formatFloat(amount)} per share. Will be paid on {nicePayDate}.")
                     else:
-                        portfolio.addToLog(date, f"CorpAction: {ticker} stock dividend ex-date reached - {formatFloat(amount)} per share. Will be paid on {payDate}.")
+                        portfolio.addToLog(date, ticker, "Dividend", f"Ex-dividend date reached - {formatFloat(amount)} per share. Will be paid on {nicePayDate}.")
 
                 elif actionType == "spin_off":
                     sourceTicker = action["sourceTicker"]
@@ -390,7 +392,7 @@ class MarketSimulation:
                         else:
                             portfolio.positions[newTicker].increasePosition(newShares, newTickerPrice)
 
-                    portfolio.addToLog(date, f"CorpAction: {sourceTicker} spin-off of {newTicker} executed (ratio {formatFloat(action['newRate'])}:{formatFloat(action['sourceRate'])}). Received {formatFloat(newShares)} shares of {newTicker}.")
+                    portfolio.addToLog(date, ticker, "Spin-off", f"Spin-off of {newTicker} executed (ratio {formatFloat(action['newRate'])}:{formatFloat(action['sourceRate'])}). Received {formatFloat(newShares)} shares of {newTicker}.")
 
                 elif actionType in ["cash_merger", "stock_merger", "stock_and_cash_merger"]:
                     acquireeTicker = action["acquireeTicker"]
@@ -433,14 +435,14 @@ class MarketSimulation:
 
                     del portfolio.positions[ticker]
 
-                    logMessage = f"CorpAction: {acquireeTicker} {actionType.replace('_', ' ')} executed into {acquirerTicker}."
+                    logMessage = f"{actionType.replace('_', ' ')} executed into {acquirerTicker}. "
                     if cashPayout > 0 and stockPayout > 0:
-                        logMessage += f" Received ${formatFloat(cashPayout)} and {formatFloat(stockPayout)} shares."
+                        logMessage += f"Received ${formatFloat(cashPayout)} and {formatFloat(stockPayout)} shares."
                     elif cashPayout > 0:
-                        logMessage += f" Received ${formatFloat(cashPayout)}."
+                        logMessage += f"Received ${formatFloat(cashPayout)}."
                     elif stockPayout > 0:
-                        logMessage += f" Received {formatFloat(stockPayout)} shares."
-                    portfolio.addToLog(date, logMessage)
+                        logMessage += f"Received {formatFloat(stockPayout)} shares."
+                    portfolio.addToLog(date, ticker, actionType.replace("_", " ").title(), logMessage)
 
                 elif actionType == "name_change":
                     oldTicker = action["oldTicker"]
@@ -456,10 +458,10 @@ class MarketSimulation:
 
                     del portfolio.positions[oldTicker]
 
-                    portfolio.addToLog(date, f"CorpAction: {oldTicker} name changed to {newTicker}. Position moved to {newTicker}.")
+                    portfolio.addToLog(date, ticker, "Name Change", f"Changed stock ticker into {newTicker}. Position moved to {newTicker}.")
 
                 elif actionType == "worthless_removal":
-                    portfolio.addToLog(date, f"CorpAction: {ticker} removed from exchange due to bankruptcy. Position liquidated in following order.")
+                    portfolio.addToLog(date, ticker, "Worthless Removal", f"Delisted from exchange due to bankruptcy. Position liquidated in following order.")
 
                     order = MarketOrder(ticker, OrderSide.SELL, quantity=-1)
                     order.setFillParams(0.0, date)
@@ -480,7 +482,7 @@ class MarketSimulation:
 
                     if dividendType == Dividend.Type.CASH:
                         portfolio.cash += paymentAmount
-                        portfolio.addToLog(date, f"DividendPayment: Received cash dividend for {dividend.ticker} - ${paymentAmount:.2f}.")
+                        portfolio.addToLog(date, dividend.ticker, "Payout", f"Received cash dividend for {dividend.ticker} - ${paymentAmount:.2f}.")
 
                     else:   # Stock dividend
                         position = portfolio.positions.get(dividend.ticker)
@@ -526,10 +528,10 @@ class MarketSimulation:
                 lastOhlc = self.dailyPriceProvider.getSingleDayTickerData(ticker, today)
                 if lastOhlc is None or lastOhlc["close"] < 1:
                     closePrice = 0.0
-                    portfolio.addToLog(today, f"Delisting: {ticker} ceased trading today on {profile.exchange} due to bankruptcy. Position liquidated in following order.")
+                    portfolio.addToLog(today, ticker, "Delisting", f"Ceased trading today on {profile.exchange} due to bankruptcy. Position liquidated in following order.")
                 else:
                     closePrice = lastOhlc["close"]
-                    portfolio.addToLog(today, f"Delisting: {ticker} ceased trading today on {profile.exchange}. Position liquidated at close price ${closePrice:.2f} in following order.")
+                    portfolio.addToLog(today, ticker, "Delisting", f"Ceased trading today on {profile.exchange}. Position liquidated at close price ${closePrice:.2f} in following order.")
 
                 order = MarketOrder(ticker, OrderSide.SELL, quantity=-1)
                 order.setFillParams(closePrice, today)
