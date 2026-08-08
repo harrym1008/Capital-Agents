@@ -141,7 +141,7 @@ html, body {
 }
 
 .metric-label {
-    width: 70px;
+    width: 66px;
     font-size: 1.05rem;
     font-weight: 700;
     color: #475569;
@@ -361,15 +361,12 @@ html, body {
 
 /* Order Summary Box in Queue New Order Card (Attached to bottom) */
 .order-summary-box {
-    background-color: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    padding: 10px 12px;
+    padding: 4px 8px;
     display: flex;
     flex-direction: column;
     gap: 6px;
     font-size: 0.82rem;
-    margin-top: auto; /* Attaches summary box to bottom above button */
+    margin-top: auto;
 }
 
 .summary-line {
@@ -386,12 +383,6 @@ html, body {
 .summary-val {
     color: #0f172a;
     font-weight: 700;
-}
-
-.summary-val.highlight {
-    color: #2563eb;
-    font-size: 0.88rem;
-    font-weight: 800;
 }
 
 /* BOTTOM SECTION: Positions Table & System Logs */
@@ -633,10 +624,23 @@ html, body {
     justify-content: space-between;
 }
 
+.stock-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .stock-name {
     font-size: 1rem;
     font-weight: 700;
     color: #0f172a;
+}
+
+.stock-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    object-fit: contain;
 }
 
 .stock-symbol {
@@ -687,52 +691,190 @@ html, body {
     border-color: #2563eb;
 }
 
-.tool-feed-container {
+.sidebar-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+}
+
+.sidebar-header-row .sidebar-title {
+    flex: 0 0 calc(50% - 4px);
+    max-width: calc(50% - 4px);
+    margin-bottom: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.sidebar-header-row .search-box {
+    flex: 0 0 calc(50% - 4px);
+    max-width: calc(50% - 4px);
+    margin-bottom: 0;
+}
+
+.inspector-container {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: 1;
+    min-height: 0;
+}
+
+.inspector-metrics-container {
+    display: flex;
+    gap: 16px;
+    font-size: 0.8rem;
+}
+
+.metrics-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.datapair {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.datapair .datapair-label {
+    color: #64748b;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 0 0 auto;
+    max-width: 48%;
+}
+
+.datapair .datapair-val {
+    color: #0f172a;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: right;
+    flex: 1;
+    min-width: 0;
+}
+
+.val-up {
+    color: #16a34a !important;
+}
+
+.val-down {
+    color: #dc2626 !important;
+}
+
+.val-down {
+    color: #dc2626 !important;
+}
+
+.news-feed-wrapper {
+    flex: 1;
+    min-height: 140px;
     display: flex;
     flex-direction: column;
     gap: 6px;
-    font-size: 0.82rem;
+    overflow: hidden;
 }
 
-.feed-line {
+.news-feed-header {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #475569;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.news-feed-scroll {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-right: 4px;
+}
+
+.news-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.news-card:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+
+.news-card-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #1e293b;
+    line-height: 1.3;
+    text-decoration: none;
+}
+
+.news-card-title:hover {
+    color: #2563eb;
+    text-decoration: underline;
+}
+
+.news-card-meta {
+    font-size: 0.7rem;
+    color: #64748b;
     display: flex;
     justify-content: space-between;
 }
 
-.feed-label {
-    color: #64748b;
-    font-weight: 600;
+.inspector-blur-overlay {
+    filter: blur(4px);
+    opacity: 0.65;
+    pointer-events: none;
+    transition: filter 0.3s ease, opacity 0.3s ease;
 }
 
-.feed-val {
-    color: #0f172a;
-    font-weight: 700;
-}
-
-.feed-divider {
-    border: none;
-    border-top: 1px solid #e2e8f0;
-    margin: 4px 0;
-}
-
-.tool-log-entry {
+.inspector-overlay-badge {
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 6px;
-    background: #f8fafc;
-    border-radius: 6px;
+    z-index: 10000;
 }
 
-.log-timestamp {
-    font-size: 0.7rem;
-    color: #64748b;
-    font-weight: 600;
+.inspector-spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid rgba(0, 0, 0, 0);
+    border-top-color: rgba(0, 0, 0, 255);
+    border-radius: 50%;
+    animation: inspectorSpin 0.8s linear infinite;}
+
+@keyframes inspectorSpin {
+    to { transform: rotate(360deg); }
 }
 
-.log-content {
-    color: #334155;
-}
 
 /* Setup Modal Overlay - Emulating server.html / server.css */
 .setup-overlay {

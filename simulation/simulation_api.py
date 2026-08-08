@@ -4,16 +4,28 @@ import math
 import random
 import pandas as pd
 from datetime import datetime, timedelta
-from flask import request, jsonify, session
+from flask import request, session
+
+from concurrent.futures import ThreadPoolExecutor
+from ui.ws_api import registerWsAction
 
 from collectors.constants import END_DATE_STR, ALL_TICKERS_FILE, NYSE_DIRECTORY, NASDAQ_DIRECTORY, NEW_YORK
 from collectors.rate_limiter import GlobalRateLimiters
+
 from dataquery.lru_cache import LRUCache
 from dataquery.price_provider import DailyPriceProvider
 from dataquery.ticker_provider import TickerDataProvider
+
+from llmtools.registry_builder import buildToolRegistry
+from llmtools.tool_registry import DataProviders
+
+from llmtools.functions.helpers import cleanNumber, NumberType
+from llmtools.functions.edgar import FormType, CompanyRef, calculateHistoricalBeta, calculateDividendYield
+from llmtools.functions.company import calculate30DayAverageVolume, calculateSharpeRatio
+
 from simulation.market_sim import MarketSimulation
 from simulation.orders import MarketOrder, LimitOrder, StopOrder, StopLimitOrder, OrderSide, OrderStatus
-from ui.ws_api import generateOhlcvChartData
+from ui.ws_api import generateOhlcvChartData, sendWsResponse
 
 
 class SimulationManager:
@@ -25,6 +37,8 @@ class SimulationManager:
 
         self.userSimulations = {}
         self.userHistory = {}
+        self.inspectorExecutor = ThreadPoolExecutor(max_workers=4)
+        self.activeInspectorJobs = {}
 
         # Build available tickers index
         self.availableTickers = []
@@ -124,7 +138,7 @@ class SimulationManager:
             else:
                 self.userHistory[sessionId].append(snapshot)
 
-    def getSimulationState(self, sessionId):
+    def getSimulationState(self, sessionId, skipInspector=False):
         simData = self.userSimulations.get(sessionId)
         if not simData:
             return {"active": False}
@@ -187,9 +201,12 @@ class SimulationManager:
         isEnded = activeSim.currentDate >= activeSim.endDate
         historyList = self.userHistory.get(sessionId, [])
 
+        # Always include the lightweight top-half snapshot (name, price, price change,
+        # chart) for the inspected ticker - even during rapid stepping - so the frontend
+        # can update the chart/price live on every advance step.
         inspectedTicker = simData.get("inspectedTicker", "NVDA")
         inspectedTimeframe = simData.get("inspectedTimeframe", "3M")
-        inspectedInfo = self.getTickerInfo(sessionId, inspectedTicker, timeframe=inspectedTimeframe)
+        inspectedSnapshot = self.getTickerSnapshot(sessionId, inspectedTicker, inspectedTimeframe)
 
         rawState = {
             "active": True,
@@ -199,8 +216,9 @@ class SimulationManager:
             "isEnded": isEnded,
             "portfolio": pfDict,
             "pendingOrders": pendingOrdersList,
-            "inspectedInfo": inspectedInfo
         }
+        if inspectedSnapshot is not None:
+            rawState["inspectedSnapshot"] = inspectedSnapshot
         cleanedState = self.cleanNans(rawState)
         cleanedState["history"] = historyList
         return cleanedState
@@ -299,10 +317,14 @@ class SimulationManager:
         activeSim = simData["sim"]
         portfolioName = simData["portfolioName"]
 
+        # When targetDateCutoff is used, we're in the rapid-stepping loop from the frontend.
+        # Skip expensive inspector data on intermediate steps.
+        isRapidStep = targetDateCutoff is not None
+
         if targetDateCutoff:
             cutoffTs = pd.Timestamp(targetDateCutoff).tz_localize(NEW_YORK)
             if activeSim.currentDate >= cutoffTs:
-                state = self.getSimulationState(sessionId)
+                state = self.getSimulationState(sessionId, skipInspector=isRapidStep)
                 return 0, state
 
             nextTradingTs = activeSim.currentDate + timedelta(days=1)
@@ -310,7 +332,7 @@ class SimulationManager:
                 nextTradingTs += timedelta(days=1)
 
             if nextTradingTs > cutoffTs:
-                state = self.getSimulationState(sessionId)
+                state = self.getSimulationState(sessionId, skipInspector=isRapidStep)
                 return 0, state
 
         untilEnd = False
@@ -359,7 +381,7 @@ class SimulationManager:
                     activeSim.ordersArchive.append(failedUserOrder)
                 break
 
-        state = self.getSimulationState(sessionId)
+        state = self.getSimulationState(sessionId, skipInspector=isRapidStep)
         return executedDays, state
 
     def resetSimulation(self, sessionId):
@@ -369,7 +391,7 @@ class SimulationManager:
             del self.userHistory[sessionId]
         return True
 
-    def getTickerInfo(self, sessionId, ticker, timeframe=None):
+    def getTickerInfo(self, sessionId, ticker, timeframe=None, targetDate=None):
         ticker = ticker.strip().upper()
         simData = self.userSimulations.get(sessionId)
 
@@ -381,7 +403,13 @@ class SimulationManager:
         inspectedTimeframe = simData.get("inspectedTimeframe", "3M") if simData else (timeframe or "3M").upper()
         timeframeStr = inspectedTimeframe.lower()
 
-        if simData and simData["sim"]:
+        # When a targetDate is supplied (e.g. the async inspector job for an advance),
+        # generate the chart/price for that date rather than the sim's current date, so
+        # the pushed chart matches the date the simulation advanced to.
+        if targetDate is not None:
+            simDateTs = pd.Timestamp(targetDate).tz_localize(NEW_YORK)
+            activeSim = simData["sim"] if (simData and simData["sim"]) else None
+        elif simData and simData["sim"]:
             simDateTs = simData["sim"].currentDate
             activeSim = simData["sim"]
         else:
@@ -424,6 +452,146 @@ class SimulationManager:
             "profile": profileData
         }
 
+    def getTickerSnapshot(self, sessionId, ticker, timeframe="3M"):
+        # Lightweight top-half data for the ticker inspector: name, current price,
+        # price change over the timeframe, and the chart. No EDGAR, no news - fast.
+        # This is included in every simulation state so the top half updates live.
+        ticker = ticker.strip().upper()
+        simData = self.userSimulations.get(sessionId)
+
+        if simData and simData["sim"]:
+            simDateTs = simData["sim"].currentDate
+        else:
+            simDateTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
+
+        profile = self.tickerProvider.getTickerProfile(ticker)
+        companyName = profile.name if profile and profile.name else ticker
+
+        logoUrl = None
+        try:
+            logoUrl = self.tickerProvider.getCompanyLogoFromFinnhub(ticker)
+        except Exception:
+            pass
+
+        timeframeStr = (timeframe or "3M").lower()
+        chartData = generateOhlcvChartData(ticker, simDateTs, targets=[], horizon=timeframeStr)
+
+        currentPrice = None
+        historical = []
+        simAnchor = None
+        if chartData:
+            historical = chartData.get("historical", [])
+            simAnchor = chartData.get("simAnchor")
+            if simAnchor:
+                currentPrice = simAnchor.get("y")
+
+        # Use the raw close at the sim date (matching the positions table & order form
+        # last price) rather than the split-adjusted chart anchor, so they all agree.
+        if simData and simData["sim"]:
+            activeSim = simData["sim"]
+            if hasattr(activeSim, "dailyPriceProvider"):
+                row = activeSim.dailyPriceProvider.getSingleDayTickerData(ticker, simDateTs)
+                if row is not None and "close" in row and pd.notna(row["close"]):
+                    currentPrice = float(row["close"])
+
+        priceChange = None
+        if len(historical) >= 2 and currentPrice is not None:
+            startPrice = historical[0].get("y")
+            if startPrice:
+                priceChange = ((currentPrice / startPrice) - 1) * 100
+
+        return {
+            "companyName": companyName,
+            "logoUrl": logoUrl,
+            "currentPrice": currentPrice,
+            "priceChange": priceChange,
+            "chart": {
+                "historical": historical,
+                "simAnchor": simAnchor
+            }
+        }
+
+    def getTickerLastPrice(self, sessionId, ticker):
+        # Lightweight synchronous lookup used by the order form. Avoids the heavy
+        # chart/profile computation that getTickerInfo performs.
+        ticker = ticker.strip().upper()
+        simData = self.userSimulations.get(sessionId)
+
+        if simData and simData["sim"]:
+            activeSim = simData["sim"]
+            simDateTs = activeSim.currentDate
+        else:
+            activeSim = None
+            simDateTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
+
+        tickerExists = False
+        lastPrice = None
+        if activeSim and hasattr(activeSim, "dailyPriceProvider"):
+            tickerExists = (ticker in activeSim.dailyPriceProvider.tickersPaths and activeSim.dailyPriceProvider.tickersPaths[ticker] is not None)
+            if tickerExists:
+                row = activeSim.dailyPriceProvider.getSingleDayTickerData(ticker, simDateTs)
+                if row is not None and "close" in row and pd.notna(row["close"]):
+                    lastPrice = float(row["close"])
+
+        return {"ok": True, "exists": tickerExists, "ticker": ticker, "lastPrice": lastPrice}
+
+    def startAsyncInspectorJob(self, sessionId, ticker, targetDateStr, timeframeStr="3M", jobId=None, websocket=None, eventLoop=None):
+        # Use the jobId supplied by the frontend so both sides stay in sync.
+        # This avoids the previous desync where the server kept its own independent counter.
+        if jobId is None:
+            jobId = self.activeInspectorJobs.get(sessionId, 0) + 1
+        self.activeInspectorJobs[sessionId] = jobId
+
+        def worker():
+            if self.activeInspectorJobs.get(sessionId) != jobId:
+                return
+
+            tickerClean = (ticker or "NVDA").strip().upper()
+            try:
+                info = self.getTickerInfo(sessionId, tickerClean, timeframe=timeframeStr, targetDate=targetDateStr)
+
+                if self.activeInspectorJobs.get(sessionId) != jobId:
+                    return
+
+                fastData = self.getFastInspectorData(tickerClean, targetDateStr, timeframeStr)
+
+                if self.activeInspectorJobs.get(sessionId) != jobId:
+                    return
+
+                result = {
+                    "action": "sim_ticker_info_push",
+                    "sessionId": sessionId,
+                    "jobId": jobId,
+                    "targetDate": targetDateStr,
+                    "ticker": tickerClean,
+                    "ok": True,
+                    "exists": info["exists"],
+                    "lastPrice": info["lastPrice"],
+                    "chart": info["chart"],
+                    "profile": info["profile"],
+                    "inspector": fastData
+                }
+            except Exception as e:
+                print(f"[INSPECTOR THREAD ERROR] job {jobId}: {e}")
+                # Always send a push (even on failure) so the frontend can unblur
+                # instead of waiting forever for data that will never arrive.
+                result = {
+                    "action": "sim_ticker_info_push",
+                    "sessionId": sessionId,
+                    "jobId": jobId,
+                    "targetDate": targetDateStr,
+                    "ticker": tickerClean,
+                    "ok": False,
+                    "error": str(e)
+                }
+
+            if websocket:
+                sendWsResponse(websocket, result, eventLoop)
+            return result
+
+        self.inspectorExecutor.submit(worker)
+        return jobId
+
     def getAvailableTickers(self):
         return {
             "tickers": self.availableTickers,
@@ -432,6 +600,304 @@ class SimulationManager:
         }
 
 
+    def formatSectorOrIndustry(self, rawStr):
+        if not rawStr or pd.isna(rawStr):
+            return "N/A"
+        cleanStr = str(rawStr).replace("_", " ").strip()
+        words = cleanStr.split()
+        return " ".join(w.capitalize() for w in words) if words else "N/A"
+
+    def fetchFastInspectorMetrics(self, dataProviders: DataProviders, ticker, targetTs, timeframeStr="3M"):
+        profile = dataProviders.tickers.getTickerProfile(ticker)
+        rawExchange = profile.exchange if profile and profile.exchange else "NASDAQ"
+        rawSector = profile.sector if profile and profile.sector else "N/A"
+        rawIndustry = profile.industry if profile and profile.industry else "N/A"
+        companyName = profile.name if profile and profile.name else ticker
+
+        startDate = targetTs - pd.Timedelta(days=365)
+        df = dataProviders.ohlcv.getPeriodDailyTickerData(ticker, startDate, targetTs)
+
+        lastPrice = None
+        openPrice = None
+        highPrice = None
+        lowPrice = None
+        volume = None
+        prevClose = None
+        fiftyTwoHigh = None
+        fiftyTwoLow = None
+
+        if df is not None and not df.empty:
+            try:
+                lastRow = df.iloc[-1]
+                lastPrice = float(lastRow["close"])
+                openPrice = float(lastRow["open"])
+                highPrice = float(lastRow["high"])
+                lowPrice = float(lastRow["low"])
+                volume = float(lastRow["volume"])
+
+                if len(df) >= 2:
+                    prevRow = df.iloc[-2]
+                    prevClose = float(prevRow["close"])
+
+                highSeries = df["high"].dropna()
+                if not highSeries.empty:
+                    fiftyTwoHigh = float(highSeries.max())
+                    
+                lowSeries = df["low"].dropna()
+                if not lowSeries.empty:
+                    fiftyTwoLow = float(lowSeries.min())
+
+                # Calculate sharpe ratio
+                closeSeries = df["close"].dropna()
+                if len(closeSeries) >= 5:
+                    pctChange = closeSeries.pct_change().dropna()
+                    if len(pctChange) >= 5:
+                        tail30 = pctChange.tail(30)
+                        if len(tail30) > 1 and tail30.std() > 0:
+                            volatility30d = float(tail30.std() * (252 ** 0.5))
+                            sharpeRatio = float((pctChange.mean() / pctChange.std()) * (252 ** 0.5))
+
+                    if len(closeSeries) >= 15:
+                        delta = closeSeries.diff()
+                        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                        if not loss.empty and loss.iloc[-1] != 0:
+                            rs = gain.iloc[-1] / loss.iloc[-1]
+                            rsi14 = float(100 - (100 / (1 + rs)))
+                        elif not gain.empty and gain.iloc[-1] > 0:
+                            rsi14 = 100.0
+            except Exception:
+                pass
+
+        valRes = {}
+
+        # Get market cap, shares outstanding
+        if df is not None and not df.empty:
+            lastShares = df["outstandingShares"].dropna()
+            lastMarketCap = df["marketCap"].dropna()
+            if not lastShares.empty:
+                valRes["sharesOutstanding"] = float(lastShares.iloc[-1])
+                valRes["marketCap"] = "$" + str(lastMarketCap.iloc[-1])
+
+        companyRef = CompanyRef(ticker)
+        valRes["beta"] = calculateHistoricalBeta(companyRef, targetTs, dataProviders.ohlcv, dataProviders.macro)
+        valRes["dividendYield"] = calculateDividendYield(companyRef, targetTs, dataProviders.ohlcv)
+
+        # Find the latest 10-K and 10-Q filings before the target date
+        tenKUrl = None
+        tenKDate = None
+        tenQUrl = None
+        tenQDate = None
+        try:
+            tenKFiling = dataProviders.edgar.getLatestFilingRef(companyRef, FormType.FORM_10K, before=targetTs)
+            if tenKFiling:
+                tenKUrl = getattr(tenKFiling, "filing_url", None) or getattr(tenKFiling, "url", None)
+                rawFDate = getattr(tenKFiling, "filing_date", None)
+                if rawFDate:
+                    try:
+                        tenKDate = pd.to_datetime(rawFDate).strftime("%Y-%m-%d")
+                    except Exception:
+                        pass
+
+            tenQFiling = dataProviders.edgar.getLatestFilingRef(companyRef, FormType.FORM_10Q, before=targetTs)
+            if tenQFiling:
+                tenQUrl = getattr(tenQFiling, "filing_url", None) or getattr(tenQFiling, "url", None)
+                rawQDate = getattr(tenQFiling, "filing_date", None)
+                if rawQDate:
+                    try:
+                        tenQDate = pd.to_datetime(rawQDate).strftime("%Y-%m-%d")
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # Get news headlines
+        newsList = []
+        try:
+            rawNews = dataProviders.news.getRecentNewsForTicker(ticker, before=targetTs, limit=50)
+            if rawNews is not None and isinstance(rawNews, pd.DataFrame) and not rawNews.empty:
+                for _, row in rawNews.iterrows():
+                    headline = str(row.get("headline", ""))
+                    author = str(row.get("author", "Benzinga"))
+                    rawDate = row.get("date")
+                    articleDate = ""
+                    try:
+                        articleDate = pd.to_datetime(rawDate).strftime("%d %b %Y")  # 23 Jul 2026 for example
+                    except Exception:
+                        pass
+
+                    articleUrl = str(row.get("url", "#")) if "url" in row and pd.notna(row.get("url")) else "#"
+                    if articleUrl == "#" or not articleUrl or articleUrl == "nan":
+                        if "id" in row and pd.notna(row.get("id")):
+                            articleUrl = f"https://www.benzinga.com/news/01/01/{row.get('id')}"
+                        else:
+                            articleUrl = "#"
+
+                    newsList.append({
+                        "headline": headline,
+                        "author": author if author and author != "nan" else "Benzinga",
+                        "articleDate": articleDate,
+                        "url": articleUrl
+                    })
+        except Exception:
+            pass
+
+        # 30-day average volume (from the fetchStockPricePerformance helper)
+        avgVolume = None
+        try:
+            avgVolume = calculate30DayAverageVolume(df, targetTs)
+            if not avgVolume:
+                avgVolume = None
+        except Exception:
+            pass
+
+        rawWebsite = profile.website if profile and profile.website else None
+
+        return {
+            "companyName": companyName,
+            "rawExchange": rawExchange,
+            "rawSector": rawSector,
+            "rawIndustry": rawIndustry,
+            "rawWebsite": rawWebsite,
+            "lastPrice": lastPrice,
+            "openPrice": openPrice,
+            "highPrice": highPrice,
+            "lowPrice": lowPrice,
+            "prevClose": prevClose,
+            "volume": volume,
+            "avgVolume": avgVolume,
+            "fiftyTwoHigh": fiftyTwoHigh,
+            "fiftyTwoLow": fiftyTwoLow,
+            "valRes": valRes,
+            "newsList": newsList,
+            "tenKUrl": tenKUrl,
+            "tenKDate": tenKDate,
+            "tenQUrl": tenQUrl,
+            "tenQDate": tenQDate
+        }
+
+
+    def getFastInspectorData(self, ticker, targetDateStr, timeframeStr="3M"):
+        ticker = (ticker or "NVDA").strip().upper()
+        try:
+            targetTs = pd.Timestamp(targetDateStr).tz_localize(NEW_YORK)
+        except Exception:
+            targetTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
+
+        reg = buildToolRegistry()
+        dataProviders = reg.dataProviders
+
+        fastData = self.fetchFastInspectorMetrics(dataProviders, ticker, targetTs, timeframeStr)
+
+        chartData = generateOhlcvChartData(ticker, targetTs, targets=[], horizon=(timeframeStr or "3m").lower())
+        # if fastData["lastPrice"] is None and chartData and chartData.get("simAnchor"):
+        #     fastData["lastPrice"] = chartData["simAnchor"].get("y")
+
+
+        def getCompareClass(curr, compareVal):
+            if curr is None or compareVal is None:
+                return ""
+            if curr >= compareVal:
+                return "val-up"
+            else:
+                return "val-down"
+
+        valRes = fastData.get("valRes", {})
+        lastPrice = fastData["lastPrice"]
+        exchange = "NASDAQ" if fastData["rawExchange"].upper() == "XNAS" else "NYSE"
+
+        metricsDict = {
+            "exchange": {"label": "Exchange", "value": exchange},
+            "sector": {"label": "Sector", "value": self.formatSectorOrIndustry(fastData["rawSector"])},
+            "industry": {"label": "Industry", "value": self.formatSectorOrIndustry(fastData["rawIndustry"])},
+            "website": {
+                "label": "Website",
+                "value": fastData.get("rawWebsite") or "N/A",
+                "url": fastData.get("rawWebsite")
+            },
+            "openToday": {
+                "label": "Today Open",
+                "value": cleanNumber(fastData.get("openPrice"), NumberType.STOCK_PRICE),
+                "colorClass": getCompareClass(lastPrice, fastData.get("openPrice"))
+            },
+            "highToday": {
+                "label": "Today High",
+                "value": cleanNumber(fastData.get("highPrice"), NumberType.STOCK_PRICE),
+                "colorClass": getCompareClass(lastPrice, fastData.get("highPrice"))
+            },
+            "lowToday": {
+                "label": "Today Low",
+                "value": cleanNumber(fastData.get("lowPrice"), NumberType.STOCK_PRICE),
+                "colorClass": getCompareClass(lastPrice, fastData.get("lowPrice"))
+            },
+            "prevClose": {
+                "label": "Prev Close",
+                "value": cleanNumber(fastData.get("prevClose"), NumberType.STOCK_PRICE),
+                "colorClass": getCompareClass(lastPrice, fastData.get("prevClose"))
+            },
+            "volume": {
+                "label": "Volume",
+                "value": cleanNumber(fastData.get("volume"), NumberType.LARGE_NUMBER)
+            },
+            "fiftyTwoWeekHigh": {
+                "label": "52W High",
+                "value": cleanNumber(fastData.get("fiftyTwoHigh"), NumberType.STOCK_PRICE)
+            },
+            "fiftyTwoWeekLow": {
+                "label": "52W Low",
+                "value": cleanNumber(fastData.get("fiftyTwoLow"), NumberType.STOCK_PRICE)
+            },
+            "marketCap": {
+                "label": "Market Cap",
+                "value": valRes.get("marketCap")
+            },
+            "sharesOutstanding": {
+                "label": "Shares Outstanding",
+                "value": cleanNumber(valRes.get("sharesOutstanding"), NumberType.LARGE_NUMBER)
+            },
+            "beta": {
+                "label": "Beta",
+                "value": cleanNumber(valRes.get("beta"), NumberType.DECIMAL)
+            },
+            "avgVolume": {
+                "label": "Avg Volume",
+                "value": cleanNumber(fastData.get("avgVolume"), NumberType.LARGE_NUMBER)
+            },
+            "dividendYield": {
+                "label": "Dividend Yield",
+                "value": cleanNumber(valRes.get("dividendYield"), NumberType.DECIMAL)
+            },
+            "latestTenK": {
+                "label": "Latest 10-K",
+                "value": f"10-K ({fastData['tenKDate']})" if fastData.get("tenKDate") else ("View 10-K" if fastData.get("tenKUrl") else f"None found"),
+                "url": fastData.get("tenKUrl")
+            },
+            "latestTenQ": {
+                "label": "Latest 10-Q",
+                "value": f"10-Q ({fastData['tenQDate']})" if fastData.get("tenQDate") else ("View 10-Q" if fastData.get("tenQUrl") else f"None found"),
+                "url": fastData.get("tenQUrl"),
+            }
+        }
+
+        logoUrl = None
+        try:
+            logoUrl = self.tickerProvider.getCompanyLogoFromFinnhub(ticker)
+        except Exception:
+            pass
+
+        return {
+            "ok": True,
+            "ticker": ticker,
+            "targetDate": targetTs.strftime("%Y-%m-%d"),
+            "companyName": fastData["companyName"],
+            "logoUrl": logoUrl,
+            "lastPrice": lastPrice,
+            "chart": chartData,
+            "metrics": metricsDict,
+            "news": fastData["newsList"]
+        }
+
+    
 # Global SimulationManager instance
 simulationManager = SimulationManager()
 
@@ -444,8 +910,6 @@ def getWsSessionId(data):
 
 
 def registerSimulationWsRoutes():
-    from ui.ws_api import registerWsAction
-
     def handleSimStart(data, websocket, eventLoop):
         sessionId = getWsSessionId(data)
         portfolioName = data.get("portfolioName", "My Growth Portfolio").strip() or "My Growth Portfolio"
@@ -461,7 +925,8 @@ def registerSimulationWsRoutes():
 
         try:
             state = simulationManager.createSimulation(sessionId, portfolioName, startDate, dollarAmount)
-            return {"ok": True, "state": state, "sessionId": sessionId}
+            fastData = simulationManager.getFastInspectorData("NVDA", startDate, "3M")
+            return {"ok": True, "state": state, "inspector": fastData, "sessionId": sessionId}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -543,16 +1008,50 @@ def registerSimulationWsRoutes():
         sessionId = getWsSessionId(data)
         ticker = data.get("ticker", "NVDA").strip().upper()
         timeframeVal = data.get("timeframe")
-        timeframeStr = timeframeVal.strip() if timeframeVal else None
+        timeframeStr = timeframeVal.strip() if timeframeVal else "3M"
+        # Pass through the frontend-generated jobId so the push can be matched reliably.
+        jobId = data.get("jobId")
+        
+        simData = simulationManager.userSimulations.get(sessionId)
+        defaultDateStr = simData["sim"].currentDate.strftime("%Y-%m-%d") if simData and "sim" in simData and simData["sim"] else "2016-06-01"
+        targetDateStr = data.get("targetDate", defaultDateStr)
+
         try:
-            info = simulationManager.getTickerInfo(sessionId, ticker, timeframe=timeframeStr)
-            return {
-                "ok": True,
-                "exists": info["exists"],
-                "lastPrice": info["lastPrice"],
-                "chart": info["chart"],
-                "profile": info["profile"]
-            }
+            jobId = simulationManager.startAsyncInspectorJob(sessionId, ticker, targetDateStr, timeframeStr, jobId, websocket, eventLoop)
+            return {"ok": True, "status": "processing", "jobId": jobId, "targetDate": targetDateStr}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def handleSimTickerPrice(data, websocket, eventLoop):
+        sessionId = getWsSessionId(data)
+        ticker = data.get("ticker", "NVDA").strip().upper()
+        try:
+            return simulationManager.getTickerLastPrice(sessionId, ticker)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def handleSimTickerChart(data, websocket, eventLoop):
+        sessionId = getWsSessionId(data)
+        ticker = data.get("ticker", "NVDA").strip().upper()
+        timeframeVal = data.get("timeframe")
+        timeframeStr = timeframeVal.strip() if timeframeVal else "3M"
+
+        simData = simulationManager.userSimulations.get(sessionId)
+        if simData and simData["sim"]:
+            simDateTs = simData["sim"].currentDate
+        else:
+            simDateTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
+
+        try:
+            chartData = generateOhlcvChartData(ticker, simDateTs, targets=[], horizon=timeframeStr.lower())
+            priceChange = None
+            historical = (chartData or {}).get("historical") or []
+            currentPrice = (chartData or {}).get("simAnchor", {}).get("y")
+            if len(historical) >= 2 and currentPrice is not None:
+                startPrice = historical[0].get("y")
+                if startPrice:
+                    priceChange = ((currentPrice / startPrice) - 1) * 100
+            return {"ok": True, "ticker": ticker, "chart": chartData, "priceChange": priceChange}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -564,6 +1063,8 @@ def registerSimulationWsRoutes():
         ticker = simulationManager.getRandomListedTicker(sessionId)
         return {"ok": True, "ticker": ticker}
 
+
+
     registerWsAction("sim_start", handleSimStart)
     registerWsAction("sim_state", handleSimState)
     registerWsAction("sim_order", handleSimOrder)
@@ -571,5 +1072,7 @@ def registerSimulationWsRoutes():
     registerWsAction("sim_advance", handleSimAdvance)
     registerWsAction("sim_reset", handleSimReset)
     registerWsAction("sim_ticker_info", handleSimTickerInfo)
+    registerWsAction("sim_ticker_price", handleSimTickerPrice)
+    registerWsAction("sim_ticker_chart", handleSimTickerChart)
     registerWsAction("sim_available_tickers", handleSimAvailableTickers)
     registerWsAction("sim_random_ticker", handleSimRandomTicker)

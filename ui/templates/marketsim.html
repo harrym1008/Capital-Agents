@@ -23,12 +23,15 @@
             <form id="setupForm" style="display: flex; flex-direction: column; gap: 20px;" onsubmit="handleStartSimulation(event)">
                 <div class="model-select-form-group">
                     <label for="setupStartDate">Starting Date:</label>
-                    <input type="date" id="setupStartDate" min="2016-01-02" max="2026-07-24" value="2016-02-01" required>
+                    <input type="date" id="setupStartDate" min="2016-02-01" max="2026-07-24" value="2016-02-01" required>
                 </div>
 
                 <div class="model-select-form-group">
-                    <label for="setupDollarAmount">Starting Balance ($):</label>
-                    <input type="text" id="setupDollarAmount" value="1,000,000" placeholder="1,000,000" autocomplete="off" oninput="formatBalanceInput(this)" required>
+                    <label for="setupDollarAmount">Starting Balance:</label>
+                    <div style="display: flex;  align-items: center;">
+                        <span style="padding-right: 8px;">$</span>
+                        <input type="text" id="setupDollarAmount" value="1,000,000" placeholder="1,000,000" autocomplete="off" oninput="formatBalanceInput(this)" required>
+                    </div>
                 </div>
 
                 <button type="submit" id="startSimBtn" style="width: 50%; margin: 10px 0 0 25%; font-size: 120%;">Start Simulation</button>
@@ -188,7 +191,7 @@
                             </div>
                             <div class="summary-line">
                                 <span class="summary-label" id="summaryTotalLabel">Est. Order Total:</span>
-                                <span class="summary-val highlight" id="summaryOrderTotal">$10,000.00</span>
+                                <span class="summary-val" id="summaryOrderTotal">$10,000.00</span>
                             </div>
                             <div class="summary-line">
                                 <span class="summary-label">Est. Cash After:</span>
@@ -230,7 +233,7 @@
                             </thead>
                             <tbody id="positionsTableBody">
                                 <tr>
-                                    <td colspan="7" class="empty-queue-msg">No positions held. Portfolio is 100% cash.</td>
+                                    <td colspan="7" class="empty-queue-msg">No positions</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -242,7 +245,7 @@
                     <h2 class="card-title">System Logs</h2>
                     
                     <div class="logs-container" id="systemLogsContainer">
-                        <div class="log-pill" style="text-align: center; color: #94a3b8; font-style: italic;">Log console empty. Queue orders and advance days to see activity.</div>
+                        <div class="log-pill" style="text-align: center; color: #94a3b8;">Logs are empty</div>
                     </div>
                 </div>
 
@@ -252,20 +255,21 @@
 
         <!-- Right Side Panel (25% Width) -->
         <aside class="marketsim-sidebar">
-            <div class="sidebar-title">Ticker Inspector</div>
-
-            <!-- Ticker Search Box -->
-            <div class="search-box">
-                <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                </svg>
-                <input type="text" id="tickerSearchInput" class="search-input" value="NVDA" placeholder="Search ticker..." onkeydown="handleTickerSearchKey(event)">
+            <div class="sidebar-header-row">
+                <div class="sidebar-title">Ticker Inspector</div>
+                <div class="search-box">
+                    <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="tickerSearchInput" class="search-input" value="NVDA" placeholder="Search ticker..." onkeydown="handleTickerSearchKey(event)">
+                </div>
             </div>
 
             <!-- Stock Info Header -->
             <div class="stock-header">
-                <div>
+                <div class="stock-title">
+                    <img id="stockLogo" class="stock-logo" src="https://placehold.co/256x256?text=NVDA" alt="Stock Logo">
                     <h3 id="stockCompanyName" class="stock-name">NVIDIA Corp</h3>
                 </div>
                 <div class="stock-price-summary" style="text-align: right;">
@@ -290,24 +294,47 @@
                 </div>
             </div>
 
-            <!-- Tool Feed / Details Text Stream -->
-            <div class="tool-feed-container" id="tickerFeedContainer">
-                <div class="feed-line">
-                    <span class="feed-label">Exchange:</span>
-                    <span class="feed-val" id="feedExchange">NASDAQ</span>
+            <!-- Inspector Content Container (with blur overlay support) -->
+            <div class="inspector-container" id="inspectorContainer">
+                <div id="inspectorLoadingOverlay" class="inspector-overlay-badge" style="display: none;">
+                    <div class="inspector-spinner"></div>
                 </div>
-                <div class="feed-line">
-                    <span class="feed-label">Sector:</span>
-                    <span class="feed-val" id="feedSector">Technology</span>
+
+                <!-- 2-Column Metrics Container (Half and Half Sideways Divs) -->
+                <div class="inspector-metrics-container" id="inspectorMetricsGrid">
+                    <div class="metrics-column">
+                        <div class="datapair"><span class="datapair-label">Exchange:</span><span class="datapair-val" id="metricExchange">NASDAQ</span></div>
+                        <div class="datapair"><span class="datapair-label">Sector:</span><span class="datapair-val" id="metricSector">N/A</span></div>
+                        <div class="datapair"><span class="datapair-label">Industry:</span><span class="datapair-val" id="metricIndustry">N/A</span></div>
+                        <div class="datapair"><span class="datapair-label">Website:</span><span class="datapair-val" id="metricWebsite">N/A</span></div>
+                        <div class="datapair"><span class="datapair-label">Today Open:</span><span class="datapair-val" id="metricOpenToday">N/A</span></div>
+                        <div class="datapair"><span class="datapair-label">Today High:</span><span class="datapair-val" id="metricHighToday">N/A</span></div>
+                        <div class="datapair"><span class="datapair-label">Today Low:</span><span class="datapair-val" id="metricLowToday">N/A</span></div>
+                        <div class="datapair"><span class="datapair-label">Prev Close:</span><span class="datapair-val" id="metricPrevClose">N/A</span></div>
+                        <div class="datapair"><span class="datapair-label">Volume:</span><span class="datapair-val" id="metricVolume">N/A</span></div>
+                    </div>
+                    <div class="metrics-column">
+                        <div class="datapair"><span class="datapair-label">52W High:</span><span class="datapair-val" id="metricFiftyTwoHigh">N/A</span></div>
+                        <div class="datapair"><span class="datapair-label">52W Low:</span><span class="datapair-val" id="metricFiftyTwoLow">N/A</span></div>
+                        <div class="datapair"><span class="datapair-label">Mkt Cap:</span><span class="datapair-val" id="metricMarketCap">N/A</span></div>
+                        <div class="datapair"><span class="datapair-label">Shares:</span><span class="datapair-val" id="metricSharesOut">N/A</span></div>
+                        <div class="datapair"><span class="datapair-label">Beta:</span><span class="datapair-val" id="metricBeta">N/A</span></div>
+                        <div class="datapair"><span class="datapair-label">Avg Volume:</span><span class="datapair-val" id="metricAvgVolume">N/A</span></div>
+                        <div class="datapair"><span class="datapair-label">Div Yield:</span><span class="datapair-val" id="metricDividendYield">N/A</span></div>
+                        <div class="datapair"><span class="datapair-label">Latest 10-K:</span><span class="datapair-val" id="metricLatestTenK">N/A</span></div>
+                        <div class="datapair"><span class="datapair-label">Latest 10-Q:</span><span class="datapair-val" id="metricLatestTenQ">N/A</span></div>
+                    </div>
                 </div>
-                <div class="feed-line">
-                    <span class="feed-label">Industry:</span>
-                    <span class="feed-val" id="feedIndustry">Semiconductors</span>
-                </div>
-                <hr class="feed-divider">
-                <div class="tool-log-entry">
-                    <span class="log-timestamp" id="feedSimDate">[Simulated Date]</span>
-                    <span class="log-content" id="feedDesc">Loaded historical price data and metadata.</span>
+
+                <!-- Benzinga News Feed -->
+                <div class="news-feed-wrapper" id="inspectorNewsWrapper">
+                    <div class="news-feed-header">
+                        <span>Recent News</span>
+                        <span id="newsArticleCount" style="font-size: 0.72rem; font-weight: 600; color: #94a3b8;">0 stories</span>
+                    </div>
+                    <div class="news-feed-scroll" id="tickerNewsContainer">
+                        <div style="font-size: 0.78rem; color: #94a3b8; text-align: center; padding: 12px 0;">No news stories fetched.</div>
+                    </div>
                 </div>
             </div>
         </aside>
@@ -327,9 +354,17 @@
         let isAdvancing = false;
 
         const pendingWsRequests = new Map();
+        let currentInspectorTargetDate = null;
+        let currentInspectorJobId = 0;
+        let inspectorTimeoutTimer = null;
+        let pendingInspectorData = null;
 
         if (typeof window.wsSubscribe === 'function') {
             window.wsSubscribe((data) => {
+                if (data && data.action === "sim_ticker_info_push") {
+                    handleInspectorPushReceived(data);
+                    return;
+                }
                 if (data && data.requestId && pendingWsRequests.has(data.requestId)) {
                     const resolver = pendingWsRequests.get(data.requestId);
                     pendingWsRequests.delete(data.requestId);
@@ -337,6 +372,77 @@
                 }
             });
         }
+
+        function clearInspectorTimeout() {
+            if (inspectorTimeoutTimer) {
+                clearTimeout(inspectorTimeoutTimer);
+                inspectorTimeoutTimer = null;
+            }
+        }
+
+        function armInspectorTimeout() {
+            clearInspectorTimeout();
+            // Safety net: if the bottom-half data never arrives (e.g. thread error or
+            // dropped websocket), unblur with whatever we have instead of blurring forever.
+            inspectorTimeoutTimer = setTimeout(() => {
+                setInspectorBlurState(false);
+            }, 30000);
+        }
+
+        function initiateBackgroundInspector(targetDate, tickerOverride = null) {
+            const currentTicker = (tickerOverride || document.getElementById('tickerSearchInput').value || "NVDA").trim().toUpperCase();
+            if (!targetDate) {
+                targetDate = currentState ? currentState.currentDate : "2016-06-01";
+            }
+
+            setInspectorBlurState(true);
+            currentInspectorJobId++;
+            currentInspectorTargetDate = targetDate;
+            armInspectorTimeout();
+
+            // Send the request as a raw WS message. The actual data arrives later via the
+            // separate "sim_ticker_info_push" message, so there is no request/response to await.
+            const msgData = {
+                action: "sim_ticker_info",
+                sessionId: sessionId,
+                ticker: currentTicker,
+                targetDate: targetDate,
+                timeframe: currentStockTimeframe,
+                jobId: currentInspectorJobId
+            };
+            const sent = window.sendWsMessage(msgData);
+            if (!sent) {
+                console.error("Failed to send sim_ticker_info WS message. Connection not open.");
+            }
+        }
+
+        function handleInspectorPushReceived(data) {
+            if (!data) return;
+            // Ignore out-of-date responses (e.g. after multiple button presses or target date change)
+            if (data.targetDate !== currentInspectorTargetDate || (data.jobId && data.jobId !== currentInspectorJobId)) {
+                return;
+            }
+            clearInspectorTimeout();
+
+            if (!data.ok) {
+                // Background data retrieval failed; unblur with whatever we have (N/A)
+                setInspectorBlurState(false);
+                return;
+            }
+
+            const inspector = data.inspector || data;
+            if (data.profile) inspector.companyName = data.profile.name || inspector.companyName;
+            if (data.chart) inspector.chart = data.chart;
+
+            // If the simulation is still advancing, hold the bottom-half data until it
+            // completes so the ticker data doesn't appear before the advance finishes.
+            if (isAdvancing) {
+                pendingInspectorData = inspector;
+                return;
+            }
+            applyInspectorData(inspector);
+        }
+
 
         function requestWs(action, payload = {}, timeoutMs = 15000) {
             return new Promise((resolve, reject) => {
@@ -440,6 +546,7 @@
         window.addEventListener('DOMContentLoaded', async () => {
             initCharts();
             fetchAvailableTickersList();
+            fetchTickerInfo("NVDA");
             await resetSimulationSession(true);
         });
 
@@ -544,16 +651,25 @@
                             fill: true,
                             tension: 0.25,
                             pointRadius: 0,
-                            pointHoverRadius: 4
+                            pointHoverRadius: 5,
+                            pointHoverBackgroundColor: '#2563eb',
+                            pointHoverBorderColor: '#ffffff',
+                            pointHoverBorderWidth: 2
                         }]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
                         animation: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                            axis: 'x'
+                        },
                         plugins: {
                             legend: { display: false },
                             tooltip: {
+                                enabled: true,
                                 callbacks: {
                                     title: (items) => items.length ? formatChartDateLabel(items[0].label) : '',
                                     label: (ctx) => ' Assets: $' + ctx.raw.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -597,12 +713,39 @@
             if (stockCtx && typeof Chart !== 'undefined') {
                 stockChartInstance = new Chart(stockCtx, {
                     type: 'line',
-                    data: { labels: [], datasets: [{ data: [], borderColor: '#10b981', borderWidth: 2, fill: false, pointRadius: 0 }] },
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            data: [],
+                            borderColor: '#10b981',
+                            borderWidth: 2,
+                            fill: false,
+                            pointRadius: 0,
+                            pointHoverRadius: 5,
+                            pointHoverBackgroundColor: '#10b981',
+                            pointHoverBorderColor: '#ffffff',
+                            pointHoverBorderWidth: 2
+                        }]
+                    },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
                         animation: false,
-                        plugins: { legend: { display: false } },
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                            axis: 'x'
+                        },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                enabled: true,
+                                callbacks: {
+                                    title: (items) => items.length ? formatChartDateLabel(items[0].label) : '',
+                                    label: (ctx) => ' Price: $' + (typeof ctx.raw === 'number' ? ctx.raw.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ctx.raw)
+                                }
+                            }
+                        },
                         scales: {
                             x: {
                                 grid: { display: false },
@@ -654,7 +797,12 @@
                     document.getElementById('setupOverlay').style.display = 'none';
                     currentState = data.state;
                     updateUI(data.state);
-                    fetchTickerInfo("NVDA");
+                    if (data.inspector) {
+                        applyInspectorData(data.inspector);
+                        setInspectorBlurState(false);
+                    } else {
+                        fetchTickerInfo("NVDA", startDate);
+                    }
                     onOrderTickerInput();
                 } else {
                     alert("Failed to start simulation: " + data.error);
@@ -719,15 +867,167 @@
             '2y': 3
         };
 
+        function setInspectorBlurState(isBlurred) {
+            const grid = document.getElementById('inspectorMetricsGrid');
+            const news = document.getElementById('inspectorNewsWrapper');
+            const overlay = document.getElementById('inspectorLoadingOverlay');
+
+            if (isBlurred) {
+                if (grid) grid.classList.add('inspector-blur-overlay');
+                if (news) news.classList.add('inspector-blur-overlay');
+                if (overlay) {
+                    overlay.style.display = 'flex';
+                }
+            } else {
+                if (grid) grid.classList.remove('inspector-blur-overlay');
+                if (news) news.classList.remove('inspector-blur-overlay');
+                if (overlay) overlay.style.display = 'none';
+            }
+        }
+
+        // Updates the top half of the inspector (name, current price, price change, chart).
+        // The current price is authoritative and never changes with the timeframe.
+        function applyTopHalf(snap) {
+            if (!snap) return;
+            if (snap.logoUrl) {
+                const logoEl = document.getElementById('stockLogo');
+                if (logoEl) logoEl.src = snap.logoUrl;
+            }
+            if (snap.companyName) {
+                const nameEl = document.getElementById('stockCompanyName');
+                if (nameEl) nameEl.textContent = snap.companyName;
+            }
+            if (snap.currentPrice !== null && snap.currentPrice !== undefined) {
+                const curPriceEl = document.getElementById('stockCurrentPrice');
+                if (curPriceEl) curPriceEl.textContent = formatCurrency(snap.currentPrice);
+            }
+            if (snap.priceChange !== null && snap.priceChange !== undefined) {
+                const retEl = document.getElementById('stockPeriodReturn');
+                if (retEl) {
+                    const sign = snap.priceChange >= 0 ? '+' : '';
+                    const suffix = TIMEFRAME_SUFFIXES[currentStockTimeframe] || `in last ${currentStockTimeframe.toUpperCase()}`;
+                    retEl.textContent = `${sign}${snap.priceChange.toFixed(2)}% ${suffix}`;
+                    retEl.style.color = snap.priceChange >= 0 ? '#16a34a' : '#dc2626';
+                }
+            }
+            if (snap.chart && snap.chart.historical && typeof stockChartInstance !== 'undefined' && stockChartInstance) {
+                const pts = snap.chart.historical;
+                stockChartInstance.data.labels = pts.map(p => p.x);
+                stockChartInstance.data.datasets[0].data = pts.map(p => p.y);
+                stockChartInstance.update('none');
+            }
+        }
+
+        // Applies the bottom-half (metrics + news) from the inspector push, plus the top
+        // half for the initial load / ticker-change case (when there is no sim state yet).
+        function applyInspectorData(data) {
+            if (!data) return;
+
+            const pts = (data.chart && data.chart.historical) || [];
+            let priceChange = null;
+            if (pts.length >= 2 && data.lastPrice !== null && data.lastPrice !== undefined) {
+                const startPrice = pts[0].y;
+                if (startPrice) {
+                    priceChange = ((data.lastPrice / startPrice) - 1) * 100;
+                }
+            }
+            applyTopHalf({
+                companyName: data.companyName,
+                logoUrl: data.logoUrl,
+                currentPrice: data.lastPrice,
+                priceChange: priceChange,
+                chart: data.chart
+            });
+
+            if (data.metrics) {
+                renderMetricField('metricExchange', data.metrics.exchange);
+                renderMetricField('metricSector', data.metrics.sector);
+                renderMetricField('metricIndustry', data.metrics.industry);
+                renderMetricField('metricWebsite', data.metrics.website);
+                renderMetricField('metricOpenToday', data.metrics.openToday);
+                renderMetricField('metricHighToday', data.metrics.highToday);
+                renderMetricField('metricLowToday', data.metrics.lowToday);
+                renderMetricField('metricPrevClose', data.metrics.prevClose);
+                renderMetricField('metricVolume', data.metrics.volume);
+                renderMetricField('metricFiftyTwoHigh', data.metrics.fiftyTwoWeekHigh);
+                renderMetricField('metricFiftyTwoLow', data.metrics.fiftyTwoWeekLow);
+                renderMetricField('metricMarketCap', data.metrics.marketCap);
+                renderMetricField('metricSharesOut', data.metrics.sharesOutstanding);
+                renderMetricField('metricBeta', data.metrics.beta);
+                renderMetricField('metricAvgVolume', data.metrics.avgVolume);
+                renderMetricField('metricDividendYield', data.metrics.dividendYield);
+                renderMetricField('metricLatestTenK', data.metrics.latestTenK);
+                renderMetricField('metricLatestTenQ', data.metrics.latestTenQ);
+            }
+
+            if (Array.isArray(data.news)) {
+                renderInspectorNews(data.news);
+            }
+
+            setInspectorBlurState(false);
+        }
+
+        function renderMetricField(elementId, metricItem) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            if (!metricItem) {
+                el.textContent = "N/A";
+                el.className = "datapair-val";
+                return;
+            }
+            if (metricItem.url && metricItem.url !== "#") {
+                el.innerHTML = `<a href="${metricItem.url}" target="_blank" rel="noopener noreferrer" style="color: #2563eb; text-decoration: underline;">${metricItem.value || 'Link'}</a>`;
+            } else {
+                el.textContent = metricItem.value !== undefined ? metricItem.value : "N/A";
+            }
+            el.className = "datapair-val" + (metricItem.colorClass ? " " + metricItem.colorClass : "");
+        }
+
+        function renderInspectorNews(newsList) {
+            const container = document.getElementById('tickerNewsContainer');
+            const countEl = document.getElementById('newsArticleCount');
+            if (!container) return;
+
+            if (countEl) countEl.textContent = `${newsList.length} stories`;
+
+            if (!newsList || newsList.length === 0) {
+                container.innerHTML = '<div style="font-size: 0.78rem; color: #94a3b8; text-align: center; padding: 12px 0;">No news stories available.</div>';
+                return;
+            }
+
+            let html = '';
+            newsList.forEach(item => {
+                const title = item.headline || 'Untitled Article';
+                const author = item.author || 'Benzinga';
+                const date = item.articleDate || '';
+                const url = item.url || '#';
+
+                html += `
+                    <div class="news-card">
+                        <a href="${url}" target="_blank" rel="noopener noreferrer" class="news-card-title">${title}</a>
+                        <div class="news-card-meta">
+                            <span>${author}</span>
+                            <span>${date}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
         async function advanceIncrement(incrementStr) {
             if (!currentState || !currentState.active || isAdvancing) return;
 
+            let targetDateStr = "";
             if (incrementStr === '1d') {
+                targetDateStr = computeTargetDate(currentState.currentDate, '1d');
+                initiateBackgroundInspector(targetDateStr);
                 await advanceSingleTradingDay();
                 return;
             }
 
-            const targetDateStr = computeTargetDate(currentState.currentDate, incrementStr);
+            targetDateStr = computeTargetDate(currentState.currentDate, incrementStr);
+            initiateBackgroundInspector(targetDateStr);
             const delayMs = INCREMENT_DELAYS[incrementStr] !== undefined ? INCREMENT_DELAYS[incrementStr] : 3;
 
             await advanceToTargetDateCutoff(targetDateStr, delayMs);
@@ -749,6 +1049,10 @@
             } finally {
                 isAdvancing = false;
                 setAdvanceButtonsDisabled(false);
+                if (pendingInspectorData) {
+                    applyInspectorData(pendingInspectorData);
+                    pendingInspectorData = null;
+                }
             }
         }
 
@@ -766,7 +1070,7 @@
                     if (!data.ok || !data.state || data.executedDays === 0) break;
 
                     currentState = data.state;
-                    updateUI(data.state);
+                    updateUI(data.state, true);
 
                     if (data.state.currentDate >= targetDate || data.state.isEnded) break;
                     if (delayMs > 0) {
@@ -778,6 +1082,13 @@
             } finally {
                 isAdvancing = false;
                 setAdvanceButtonsDisabled(false);
+                if (currentState) {
+                    updateUI(currentState, false);
+                }
+                if (pendingInspectorData) {
+                    applyInspectorData(pendingInspectorData);
+                    pendingInspectorData = null;
+                }
             }
         }
 
@@ -786,6 +1097,8 @@
             const targetDate = targetDateInput ? targetDateInput.value : '';
             if (!targetDate || !currentState || !currentState.active || isAdvancing) return;
             
+            initiateBackgroundInspector(targetDate);
+
             const curMs = new Date(currentState.currentDate).getTime();
             const targetMs = new Date(targetDate).getTime();
             const diffDays = Math.max(1, Math.round((targetMs - curMs) / 86400000));
@@ -869,7 +1182,9 @@
 
         let currentStockTimeframe = '3m';
 
-        function updateStockChartTimeframe(tf, btnElement) {
+        async function updateStockChartTimeframe(tf, btnElement) {
+            // Block changing the timeframe while the simulation is animating/advancing.
+            if (isAdvancing) return;
             currentStockTimeframe = tf.toLowerCase();
             if (btnElement) {
                 const parent = btnElement.parentElement;
@@ -879,67 +1194,24 @@
                 }
             }
             const currentTicker = (document.getElementById('tickerSearchInput').value || "NVDA").trim().toUpperCase();
-            fetchTickerInfo(currentTicker);
-        }
-
-        function updateStockPriceSummary(pts, tfKey) {
-            const curPriceEl = document.getElementById('stockCurrentPrice');
-            const retEl = document.getElementById('stockPeriodReturn');
-            if (!curPriceEl || !retEl) return;
-
-            if (!pts || pts.length === 0) {
-                curPriceEl.textContent = '--';
-                retEl.textContent = '';
-                return;
-            }
-
-            const latestPrice = pts[pts.length - 1].y;
-            const startPrice = pts[0].y;
-
-            curPriceEl.textContent = formatCurrency(latestPrice);
-
-            if (startPrice && startPrice > 0) {
-                const pctChange = ((latestPrice / startPrice) - 1) * 100;
-                const sign = pctChange >= 0 ? '+' : '';
-                const suffix = TIMEFRAME_SUFFIXES[tfKey.toLowerCase()] || `in last ${tfKey.toUpperCase()}`;
-                
-                retEl.textContent = `${sign}${pctChange.toFixed(2)}% ${suffix}`;
-                if (pctChange >= 0) {
-                    retEl.style.color = '#16a34a';
-                } else {
-                    retEl.style.color = '#dc2626';
+            // Only refresh the chart + price change for the new timeframe - do NOT blur/re-fetch
+            // the whole inspector, and do NOT change the authoritative current price.
+            try {
+                const data = await requestWs("sim_ticker_chart", { ticker: currentTicker, timeframe: currentStockTimeframe });
+                if (data.ok && data.chart) {
+                    applyTopHalf({ priceChange: data.priceChange, chart: data.chart });
                 }
-            } else {
-                retEl.textContent = '0.00%';
-                retEl.style.color = '#64748b';
-            }
+            } catch(e) {}
         }
 
         // Fetch Ticker Info for Sidebar Inspector
-        async function fetchTickerInfo(ticker) {
+        async function fetchTickerInfo(ticker, targetDateOverride = null) {
             if (!ticker) return;
             ticker = ticker.trim().toUpperCase();
-            try {
-                const data = await requestWs("sim_ticker_info", { ticker: ticker, timeframe: currentStockTimeframe });
-                if (data.ok) {
-                    document.getElementById('stockCompanyName').textContent = (data.profile && data.profile.name) ? data.profile.name : ticker;
-                    document.getElementById('feedExchange').textContent = (data.profile && data.profile.exchange) ? data.profile.exchange : 'N/A';
-                    document.getElementById('feedSector').textContent = (data.profile && data.profile.sector) ? data.profile.sector : 'N/A';
-                    document.getElementById('feedIndustry').textContent = (data.profile && data.profile.industry) ? data.profile.industry : 'N/A';
-                    if (currentState) {
-                        document.getElementById('feedSimDate').textContent = `[${currentState.currentDate}]`;
-                    }
-
-                    if (data.chart && data.chart.historical && stockChartInstance) {
-                        const pts = data.chart.historical;
-                        updateStockPriceSummary(pts, currentStockTimeframe);
-
-                        stockChartInstance.data.labels = pts.map(p => p.x);
-                        stockChartInstance.data.datasets[0].data = pts.map(p => p.y);
-                        stockChartInstance.update('none');
-                    }
-                }
-            } catch(e) {}
+            const input = document.getElementById('tickerSearchInput');
+            if (input) input.value = ticker;
+            const targetDate = targetDateOverride || (currentState ? currentState.currentDate : (document.getElementById('setupStartDate').value || "2016-02-01"));
+            initiateBackgroundInspector(targetDate, ticker);
         }
 
         function handleTickerSearchKey(e) {
@@ -965,7 +1237,7 @@
             ticker = ticker.trim().toUpperCase();
             if (!ticker) return;
             try {
-                const data = await requestWs("sim_ticker_info", { ticker: ticker });
+                const data = await requestWs("sim_ticker_price", { ticker: ticker });
                 if (data.ok) {
                     orderTickerPriceState = {
                         ticker: ticker,
@@ -982,8 +1254,11 @@
         }
 
         // Dynamic UI Update
-        function updateUI(state) {
-            if (!state || !state.active) return;
+        function updateUI(state, isRapidStep = false) {
+            if (!state || !state.portfolio) return;
+            currentState = state;
+
+            const pf = state.portfolio;
 
             document.getElementById('simulatedDate').textContent = state.currentDateFriendly || state.currentDate;
             const advanceDateInput = document.getElementById('advanceToDateInput');
@@ -992,7 +1267,8 @@
                 advanceDateInput.min = nextDateStr;
             }
 
-            const pf = state.portfolio;
+
+            // const pf = state.portfolio;
             document.getElementById('cashVal').textContent = formatCurrency(pf.cash);
             document.getElementById('stockVal').textContent = formatCurrency(pf.stockValue);
             document.getElementById('assetsVal').textContent = formatCurrency(pf.totalValue);
@@ -1012,7 +1288,7 @@
             tbody.innerHTML = '';
             const posKeys = Object.keys(pf.positions);
             if (posKeys.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="empty-queue-msg">No positions held. Portfolio is 100% cash.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="empty-queue-msg">No positions</td></tr>';
             } else {
                 posKeys.forEach(t => {
                     const pos = pf.positions[t];
@@ -1048,7 +1324,7 @@
             const hasLogs = pf.log && pf.log.length > 0;
 
             if (!hasPendingOrders && !hasLogs) {
-                logsContainer.innerHTML = '<div class="log-pill" style="text-align: center; color: #94a3b8; font-style: italic;">Log console empty. Queue orders and advance days to see activity.</div>';
+                logsContainer.innerHTML = '<div class="log-pill" style="text-align: center; color: #94a3b8;">Logs are empty</div>';
             } else {
                 if (hasPendingOrders) {
                     state.pendingOrders.forEach(o => {
@@ -1094,40 +1370,23 @@
                 }
             }
 
-            // Portfolio Chart Update
+            // Portfolio Chart Update — always update, even during rapid steps (pure JS, no network cost)
             if (state.history && portfolioChartInstance) {
                 const activeBtn = document.querySelector('#portfolioChartTimeframeControls .tf-btn.active');
                 const range = activeBtn ? activeBtn.textContent.toLowerCase() : '3m';
                 updatePortfolioChartRange(range);
             }
 
-            // Ticker Inspector Real-time State & Chart Update from Python state payload
-            if (state.inspectedInfo) {
-                const info = state.inspectedInfo;
-                const ticker = info.ticker;
-
-                const searchInput = document.getElementById('tickerSearchInput');
-                if (searchInput && searchInput.value.trim().toUpperCase() !== ticker) {
-                    searchInput.value = ticker;
-                }
-
-                document.getElementById('stockCompanyName').textContent = (info.profile && info.profile.name) ? info.profile.name : ticker;
-                document.getElementById('feedExchange').textContent = (info.profile && info.profile.exchange) ? info.profile.exchange : 'N/A';
-                document.getElementById('feedSector').textContent = (info.profile && info.profile.sector) ? info.profile.sector : 'N/A';
-                document.getElementById('feedIndustry').textContent = (info.profile && info.profile.industry) ? info.profile.industry : 'N/A';
-                document.getElementById('feedSimDate').textContent = `[${state.currentDate}]`;
-
-                if (info.chart && info.chart.historical && stockChartInstance) {
-                    const pts = info.chart.historical;
-                    updateStockPriceSummary(pts, currentStockTimeframe);
-
-                    stockChartInstance.data.labels = pts.map(p => p.x);
-                    stockChartInstance.data.datasets[0].data = pts.map(p => p.y);
-                    stockChartInstance.update('none');
-                }
+            // Ticker Inspector Top Half - real-time update from the state snapshot
+            // (name, current price, price change, chart). The bottom half (metrics + news)
+            // is updated separately when the inspector push arrives.
+            if (state.inspectedSnapshot) {
+                applyTopHalf(state.inspectedSnapshot);
             }
 
-            onOrderTickerInput();
+            if (!isRapidStep) {
+                onOrderTickerInput();
+            }
         }
 
         // Order Form Type Toggle
