@@ -536,6 +536,18 @@ class SimulationManager:
                 if row is not None and "close" in row and pd.notna(row["close"]):
                     lastPrice = float(row["close"])
 
+        # Fall back to the chart anchor if the single-day close is missing or zero, so the
+        # order form never shows $0.00. generateOhlcvChartData is cached, so this is cheap.
+        if lastPrice is None or lastPrice == 0:
+            try:
+                chartData = generateOhlcvChartData(ticker, simDateTs, targets=[], horizon="3m")
+                if chartData and chartData.get("simAnchor"):
+                    anchorPrice = chartData["simAnchor"].get("y")
+                    if anchorPrice:
+                        lastPrice = float(anchorPrice)
+            except Exception:
+                pass
+
         return {"ok": True, "exists": tickerExists, "ticker": ticker, "lastPrice": lastPrice}
 
     def startAsyncInspectorJob(self, sessionId, ticker, targetDateStr, timeframeStr="3M", jobId=None, websocket=None, eventLoop=None):
@@ -607,7 +619,7 @@ class SimulationManager:
         if not rawStr or pd.isna(rawStr):
             return "N/A"
         cleanStr = str(rawStr).replace("_", " ").strip()
-        return cleanStr.title() if cleanStr else "N/A"
+        return cleanStr.title().replace("And", "and") if cleanStr else "N/A"
 
     def fetchFastInspectorMetrics(self, dataProviders: DataProviders, ticker, targetTs, timeframeStr="3M"):
         profile = dataProviders.tickers.getTickerProfile(ticker)
@@ -867,7 +879,7 @@ class SimulationManager:
             },
             "dividendYield": {
                 "label": "Dividend Yield",
-                "value": cleanNumber(valRes.get("dividendYield"), NumberType.DECIMAL)
+                "value": cleanNumber(valRes.get("dividendYield"), NumberType.UNSCALED_PERCENTAGE)
             },
             "latestTenK": {
                 "label": "Latest 10-K",

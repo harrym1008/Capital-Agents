@@ -30,7 +30,7 @@
                     <label for="setupDollarAmount">Starting Balance:</label>
                     <div style="display: flex;  align-items: center;">
                         <span style="padding-right: 8px;">$</span>
-                        <input type="text" id="setupDollarAmount" value="1,000,000" placeholder="1,000,000" autocomplete="off" oninput="formatBalanceInput(this)" required>
+                        <input type="text" id="setupDollarAmount" value="1,000,000" placeholder="1,000,000" autocomplete="off" oninput="formatDollarInput(this, 2)" required>
                     </div>
                 </div>
 
@@ -173,7 +173,7 @@
                         <div class="form-row-2col">
                             <div class="form-group flex-half">
                                 <label class="small-input-label" for="orderQuantity">Amount</label>
-                                <input type="text" id="orderQuantity" class="sim-input" placeholder="10000" value="10000" required oninput="formatQuantityInput(this)">
+                                <input type="text" id="orderQuantity" class="sim-input" placeholder="10,000" value="10,000" required oninput="formatQuantityInput(this)">
                             </div>
                             <div class="form-group flex-half">
                                 <label class="small-input-label" for="orderUnit">Unit</label>
@@ -593,11 +593,32 @@
             await resetSimulationSession(true);
         });
 
-        function formatBalanceInput(input) {
-            let digits = input.value.replace(/[^\d]/g, '');
-            if (digits) {
-                let val = parseInt(digits, 10);
-                input.value = val.toLocaleString('en-US');
+        function formatDollarInput(input, decimalPlaces) {
+            let value = input.value.replace(/[^\d.]/g, '');
+
+            // Only allow one decimal point
+            let dotIndex = value.indexOf('.');
+            if (dotIndex !== -1) {
+                value = value.slice(0, dotIndex + 1) +
+                        value.slice(dotIndex + 1).replace(/\./g, '');
+            }
+
+            let parts = value.split('.');
+            let integerPart = parts[0];
+            let decimalPart = parts[1] || '';
+
+            // Limit decimal places
+            decimalPart = decimalPart.slice(0, decimalPlaces);
+
+            if (integerPart) {
+                integerPart = parseInt(integerPart, 10).toLocaleString('en-US');
+
+                // Preserve the "." even when there are no decimals yet
+                input.value = dotIndex !== -1
+                    ? `${integerPart}.${decimalPart}`
+                    : integerPart;
+            } else if (dotIndex !== -1) {
+                input.value = '0.' + decimalPart;
             } else {
                 input.value = '';
             }
@@ -1734,8 +1755,8 @@
         }
 
         function formatQuantityInput(input) {
-            let rawVal = input.value.replace(/,/g, '').replace(/[^\d.]/g, '');
-            input.value = rawVal;
+            const unit = document.getElementById('orderUnit').value;
+            formatDollarInput(input, unit === 'usd' ? 2 : 4);
             updateOrderSummary();
         }
 
@@ -1749,6 +1770,9 @@
             const summaryTotalLabel = document.getElementById('summaryTotalLabel');
             const summaryTotal = document.getElementById('summaryOrderTotal');
             const summaryCashAfter = document.getElementById('summaryCashAfter');
+            const orderQuantityInput = document.getElementById('orderQuantity');
+
+            formatQuantityInput(orderQuantityInput)
 
             if (unit === 'usd') {
                 summaryTotalLabel.textContent = "Est. Shares Total:";
