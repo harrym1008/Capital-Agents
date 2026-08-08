@@ -138,14 +138,15 @@ def runMassDownloadTool(presetDownloads=None):
 
     # Step 2: OHLCV, News, Macro run in parallel (all share the same limiters instance)
     tasks = []
+    threadsPerTask = 8
 
     if downloading["ohlcv"]["confirm"]:
         tasks.append(("ohlcv", OHLCVDataClient, (START_DATE_STR, END_DATE_STR, limiters),
-                              lambda c: c.massDownload(True, threads=8, pbar=pbars["ohlcv"])))
+                              lambda c: c.massDownload(True, threads=threadsPerTask, pbar=pbars["ohlcv"])))
 
     if downloading["news"]["confirm"]:
         tasks.append(("news", NewsClient, (START_DATE_STR, END_DATE_STR, limiters),
-                              lambda c: c.threadedMassDownload(threads=8, pbar=pbars["news"])))
+                              lambda c: c.threadedMassDownload(threads=threadsPerTask, pbar=pbars["news"])))
         
     if downloading["macro"]["confirm"]:
         tasks.append(("macro", MacroDataClient, (START_DATE_STR, END_DATE_STR, limiters),
