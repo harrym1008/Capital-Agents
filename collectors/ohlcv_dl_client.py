@@ -332,10 +332,13 @@ class SingleTickerDataCollector:
 
             df.loc[df["date"] < exDate, "splitFactor"] *= factor
 
-            # NaN the prices on the ex-date (Alpaca data is inaccurate)
+            # NaN the prices on the ex-date (Alpaca data is inaccurate) so they can be fwd filled
             # Example: NVDA high at $195 on 2024-06-10 on day of 10:1 split, 
             # but should be around $123
             df.loc[df["date"] == exDate, ["open", "high", "low", "close", "volume", "vwap"]] = pd.NA
+
+        df["open", "high", "low", "close", "volume", "vwap"].bfill(inplace=True).ffill(inplace=True)
+
 
         for actionList in actions.values():
             for action in actionList:
