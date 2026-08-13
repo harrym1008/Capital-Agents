@@ -136,9 +136,8 @@ class BoardroomEngine:
 
 
     def executeOneShotSingleEquityRating(self, config: SingleEquityRatingConfig):
-        targetTicker, _, timeHorizon, pace, maxIterations, temperature = config.unpack()
-        for agent in self.agentsList:
-            if agent: agent.maxIterations = maxIterations
+        targetTicker = config.ticker
+        pace = config.boardroomPace
         timeHorizonInfo = config.getTimeHorizonInfo()
         finalSubmitToolName = timeHorizonInfo["llmSubmitToolName"]
 
@@ -156,7 +155,7 @@ class BoardroomEngine:
             
         )
         oneShotRaw, _ = self.oneShotAnalyst.analyseAndReply(
-            oneShotPrompt, self.toolRegistry, self.timestamp, subrole="analysis", requireInitialTools=True, promptArgs=timeHorizonInfo, temperature=temperature
+            oneShotPrompt, self.toolRegistry, self.timestamp, config, subrole="analysis", requireInitialTools=True
         )
 
         # Phase 2: Decision Upload
@@ -170,7 +169,7 @@ class BoardroomEngine:
         self.oneShotAnalyst.clearTools()
         self.oneShotAnalyst.addTool(finalSubmitToolName, self.toolRegistry)
         _, _ = self.oneShotAnalyst.analyseAndReply(
-            uploadPrompt, self.toolRegistry, self.timestamp, subrole="upload", requireInitialTools=False, promptArgs=timeHorizonInfo, temperature=temperature, summarisationOverride=False
+            uploadPrompt, self.toolRegistry, self.timestamp, config, subrole="upload", requireInitialTools=False, summarisationOverride=False
         )
 
         try:
@@ -200,9 +199,8 @@ class BoardroomEngine:
 
 
     def executeFastSingleEquityRating(self, config: SingleEquityRatingConfig):
-        targetTicker, _, timeHorizon, pace, maxIterations, temperature = config.unpack()
-        for agent in self.agentsList:
-            if agent: agent.maxIterations = maxIterations
+        targetTicker = config.ticker
+        pace = config.boardroomPace
         timeHorizonInfo = config.getTimeHorizonInfo()
         finalSubmitToolName = timeHorizonInfo["llmSubmitToolName"]
 
@@ -218,7 +216,7 @@ class BoardroomEngine:
             "Present a narrative macro summary and explicitly output your overall market regime classification as BULLISH, BEARISH, or NEUTRAL."
         )
         macroRaw, macroUISummary = self.macroAnalyst.analyseAndReply(
-            macroPrompt, self.toolRegistry, self.timestamp, subrole=None, requireInitialTools=True, promptArgs=timeHorizonInfo, temperature=temperature
+            macroPrompt, self.toolRegistry, self.timestamp, config, subrole=None, requireInitialTools=True
         )
         
         # Phase 2: Specialist Research
@@ -233,11 +231,11 @@ class BoardroomEngine:
         (bullThesisRaw, bullThesisUISummary), (bearThesisRaw, bearThesisUISummary) = self._runAgentsConcurrently(
             lambda: self.bullAnalyst.analyseAndReply(
                 researchPrompt.format(permittedRatings="BUY/HOLD"), self.toolRegistry, self.timestamp, 
-                subrole="research", requireInitialTools=True, promptArgs=timeHorizonInfo, temperature=temperature
+                config, subrole="research", requireInitialTools=True
             ),
             lambda: self.bearAnalyst.analyseAndReply(
                 researchPrompt.format(permittedRatings="HOLD/SELL"), self.toolRegistry, self.timestamp, 
-                subrole="research", requireInitialTools=True, promptArgs=timeHorizonInfo, temperature=temperature
+                config, subrole="research", requireInitialTools=True
             )
         )
 
@@ -255,7 +253,7 @@ class BoardroomEngine:
         )
         self.portManager.removeTool(finalSubmitToolName)
         finalDecisionRaw, finalDecisionUISummary = self.portManager.analyseAndReply(
-            managerPrompt, self.toolRegistry, self.timestamp, subrole="decision", requireInitialTools=False, promptArgs=timeHorizonInfo, temperature=temperature
+            managerPrompt, self.toolRegistry, self.timestamp, config, subrole="decision", requireInitialTools=False
         )
 
 
@@ -270,7 +268,7 @@ class BoardroomEngine:
         self.portManager.clearTools()
         self.portManager.addTool(finalSubmitToolName, self.toolRegistry)
         _, _ = self.portManager.analyseAndReply(
-            uploadPrompt, self.toolRegistry, self.timestamp, subrole="upload", requireInitialTools=False, promptArgs=timeHorizonInfo, temperature=temperature, summarisationOverride=False
+            uploadPrompt, self.toolRegistry, self.timestamp, config, subrole="upload", requireInitialTools=False, summarisationOverride=False
         )
 
         try:
@@ -327,9 +325,8 @@ class BoardroomEngine:
 
 
     def executeCompleteSingleEquityRating(self, config: SingleEquityRatingConfig):
-        targetTicker, _, timeHorizon, pace, maxIterations, temperature = config.unpack()
-        for agent in self.agentsList:
-            if agent: agent.maxIterations = maxIterations
+        targetTicker = config.ticker
+        pace = config.boardroomPace
         timeHorizonInfo = config.getTimeHorizonInfo()
         finalSubmitToolName = timeHorizonInfo["llmSubmitToolName"]
 
@@ -345,7 +342,7 @@ class BoardroomEngine:
             "Present a narrative macro summary and explicitly output your overall market regime classification as BULLISH, BEARISH, or NEUTRAL."
         )
         macroRaw, macroUISummary = self.macroAnalyst.analyseAndReply(
-            macroPrompt, self.toolRegistry, self.timestamp, subrole=None, requireInitialTools=True, promptArgs=timeHorizonInfo, temperature=temperature
+            macroPrompt, self.toolRegistry, self.timestamp, config, subrole=None, requireInitialTools=True
         )
         
         # Phase 2: Specialist Research
@@ -360,11 +357,11 @@ class BoardroomEngine:
         (bullThesisRaw, bullThesisUISummary), (bearThesisRaw, bearThesisUISummary) = self._runAgentsConcurrently(
             lambda: self.bullAnalyst.analyseAndReply(
                 researchPrompt.format(permittedRatings="BUY/HOLD"), self.toolRegistry, self.timestamp, 
-                subrole="research", requireInitialTools=True, promptArgs=timeHorizonInfo, temperature=temperature
+                config, subrole="research", requireInitialTools=True
             ),
             lambda: self.bearAnalyst.analyseAndReply(
                 researchPrompt.format(permittedRatings="HOLD/SELL"), self.toolRegistry, self.timestamp, 
-                subrole="research", requireInitialTools=True, promptArgs=timeHorizonInfo, temperature=temperature
+                config, subrole="research", requireInitialTools=True
             )
         )
 
@@ -385,10 +382,10 @@ class BoardroomEngine:
         
         (aggQuestionsRaw, aggQuestionsUISummary), (consQuestionsRaw, consQuestionsUISummary) = self._runAgentsConcurrently(
             lambda: self.aggRiskAnalyst.analyseAndReply(
-                aggDebatePrompt, self.toolRegistry, self.timestamp, "critique", requireInitialTools=False, promptArgs=timeHorizonInfo, temperature=temperature
+                aggDebatePrompt, self.toolRegistry, self.timestamp, config, "critique", requireInitialTools=False
             ),
             lambda: self.consRiskAnalyst.analyseAndReply(
-                consDebatePrompt, self.toolRegistry, self.timestamp, "critique", requireInitialTools=False, promptArgs=timeHorizonInfo, temperature=temperature
+                consDebatePrompt, self.toolRegistry, self.timestamp, config, "critique", requireInitialTools=False
             )
         )
         
@@ -407,10 +404,10 @@ class BoardroomEngine:
         
         (bullDefenseRaw, bullDefenseUISummary), (bearDefenseRaw, bearDefenseUISummary) = self._runAgentsConcurrently(
             lambda: self.bullAnalyst.analyseAndReply(
-                bullDefensePrompt, self.toolRegistry, self.timestamp, "defense", requireInitialTools=False, promptArgs=timeHorizonInfo, temperature=temperature
+                bullDefensePrompt, self.toolRegistry, self.timestamp, config, "defense", requireInitialTools=False
             ),
             lambda: self.bearAnalyst.analyseAndReply(
-                bearDefensePrompt, self.toolRegistry, self.timestamp, "defense", requireInitialTools=False, promptArgs=timeHorizonInfo, temperature=temperature
+                bearDefensePrompt, self.toolRegistry, self.timestamp, config, "defense", requireInitialTools=False
             )
         )
 
@@ -429,10 +426,10 @@ class BoardroomEngine:
         
         (aggProposalRaw, aggProposalUISummary), (consProposalRaw, consProposalUISummary) = self._runAgentsConcurrently(
             lambda: self.aggRiskAnalyst.analyseAndReply(
-                aggProposalPrompt, self.toolRegistry, self.timestamp, subrole="proposal", requireInitialTools=False, promptArgs=timeHorizonInfo, temperature=temperature
+                aggProposalPrompt, self.toolRegistry, self.timestamp, config, subrole="proposal", requireInitialTools=False
             ),
             lambda: self.consRiskAnalyst.analyseAndReply(
-                consProposalPrompt, self.toolRegistry, self.timestamp, subrole="proposal", requireInitialTools=False, promptArgs=timeHorizonInfo, temperature=temperature
+                consProposalPrompt, self.toolRegistry, self.timestamp, config, subrole="proposal", requireInitialTools=False
             )
         )
 
@@ -451,7 +448,7 @@ class BoardroomEngine:
         )
         self.portManager.removeTool(finalSubmitToolName)
         finalDecisionRaw, finalDecisionUISummary = self.portManager.analyseAndReply(
-            managerPrompt, self.toolRegistry, self.timestamp, subrole="decision", requireInitialTools=True, promptArgs=timeHorizonInfo, temperature=temperature
+            managerPrompt, self.toolRegistry, self.timestamp, config, subrole="decision", requireInitialTools=True
         )
 
         
@@ -466,7 +463,7 @@ class BoardroomEngine:
         self.portManager.clearTools()
         self.portManager.addTool(finalSubmitToolName, self.toolRegistry)
         _, _ = self.portManager.analyseAndReply(
-            uploadPrompt, self.toolRegistry, self.timestamp, subrole="upload", requireInitialTools=True, promptArgs=timeHorizonInfo, temperature=temperature, summarisationOverride=False
+            uploadPrompt, self.toolRegistry, self.timestamp, config, subrole="upload", requireInitialTools=True, summarisationOverride=False
         )
 
         try:

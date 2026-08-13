@@ -193,6 +193,7 @@ def confirmBoardroomDecisionBase(
             targetKey1: cleanedVal1,
             targetKey2: cleanedVal2
         }
+        tool.toolLog.append(result | {"summary": summaryLogStr, "targets": [targetVal1, targetVal2]})
         tool.toolLog.append(summaryLogStr)
 
         return cleanData(result)
@@ -202,6 +203,7 @@ def confirmBoardroomDecisionBase(
 def confirmBoardroomDecisionImmediateTerm(tool: Tool, data: DataProviders, timestamp: pd.Timestamp,
                                       ticker: str, rating: str, weighting: str, threeDayTarget: float, twoWeekTarget: float) -> Dict[str, Any]:
     return confirmBoardroomDecisionBase(tool, ticker, rating, weighting, "threeDayTarget", threeDayTarget, "twoWeekTarget", twoWeekTarget)
+
 
 def confirmBoardroomDecisionShortTerm(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, 
                                       ticker: str, rating: str, weighting: str, oneMonthTarget: float, threeMonthTarget: float) -> Dict[str, Any]:

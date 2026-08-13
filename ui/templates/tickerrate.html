@@ -74,6 +74,10 @@
             </script>
 
         </div>
+        <div class="config-group">
+            <label for="generateSummariesCheckbox">Generate Summaries:</label>
+            <input type="checkbox" id="generateSummariesCheckbox" checked>
+        </div>
         <button id="runBtn" class="run-btn" onclick="startSimulation()">Start Analysis</button>
         <button id="stopBtn" class="stop-btn" onclick="stopSimulation()" style="display: none;">Stop Analysis</button>
         <div id="simulationTimer" style="margin-left: auto; font-size: 14px; font-weight: 700; color: #0f172a; padding: 6px 12px; border: 2px solid #0f172a; border-radius: 4px; background-color: #f8fafc; display: none;">
@@ -994,7 +998,20 @@
             summariesBtn.className = "summaries-btn";
             summariesBtn.id = "summariesBtn";
             summariesBtn.innerText = "Summaries";
-            summariesBtn.onclick = toggleSidebar;
+            
+            // Grey out the summaries button if generate summaries is disabled
+            const generateSummariesCheckbox = document.getElementById("generateSummariesCheckbox");
+            summariesBtn.disabled = generateSummariesCheckbox ? !generateSummariesCheckbox.checked : false;
+            if (summariesBtn.disabled) {
+                summariesBtn.style.opacity = "0.5";
+                summariesBtn.style.cursor = "not-allowed";
+            }
+            
+            summariesBtn.onclick = function() {
+                if (!this.disabled) {
+                    toggleSidebar();
+                }
+            };
             bar.appendChild(summariesBtn);
         }
 
@@ -1708,7 +1725,8 @@
                 useSimDate: useSimDate,
                 simulatedDate: simulatedDate,
                 maxIterations: parseInt(document.getElementById("maxItersInput").value) || 6,
-                temperature: parseFloat(document.getElementById("temperatureInput").value) || 0.5
+                temperature: parseFloat(document.getElementById("temperatureInput").value) || 0.5,
+                generateSummaries: document.getElementById("generateSummariesCheckbox").checked
             }));
         }
 
@@ -1723,6 +1741,25 @@
                 container.style.display = "flex";
             } else {
                 container.style.display = "none";
+            }
+        });
+
+        // Toggle summaries button state when checkbox changes
+        document.getElementById("generateSummariesCheckbox").addEventListener("change", function() {
+            const btn = document.getElementById("summariesBtn");
+            if (btn) {
+                btn.disabled = !this.checked;
+                if (btn.disabled) {
+                    btn.style.opacity = "0.5";
+                    btn.style.cursor = "not-allowed";
+                    const sidebar = document.getElementById("summarySidebar");
+                    if (sidebar && !sidebar.classList.contains("collapsed")) {
+                        sidebar.classList.add("collapsed");
+                    }
+                } else {
+                    btn.style.opacity = "1";
+                    btn.style.cursor = "pointer";
+                }
             }
         });
 

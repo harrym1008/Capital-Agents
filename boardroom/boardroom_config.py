@@ -61,22 +61,29 @@ TIME_HORIZON_INFO: Dict[TimeHorizon, Dict[str, str]] = {
 }
 
 
-@dataclass
+@dataclass(kw_only=True)
 class BoardroomConfig(ABC):
-    pass
+    generateSummaries: bool = True
+    maxIterations: int = 10
+    temperature: float = 0.5
+
+    @abstractmethod
+    def getPromptArgs(self) -> Dict[str, str]:
+        pass
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SingleEquityRatingConfig(BoardroomConfig):
     ticker: str
     simulatedDateStr: Optional[str]
     timeHorizon: TimeHorizon
     boardroomPace: BoardroomPace
-    maxIterations: int = 10
-    temperature: float = 0.5 
 
     def getTimeHorizonInfo(self) -> Dict[str, str]:
         return TIME_HORIZON_INFO.get(self.timeHorizon, TIME_HORIZON_INFO[TimeHorizon.LONG])
+
+    def getPromptArgs(self) -> Dict[str, str]:
+        return self.getTimeHorizonInfo()
 
     @classmethod
     def fromDict(cls, data: Dict[str, Any]) -> "SingleEquityRatingConfig":
@@ -91,6 +98,7 @@ class SingleEquityRatingConfig(BoardroomConfig):
 
         maxIterations = int(data.get("maxIterations", 10))
         temperature = float(data.get("temperature", 0.5))
+        generateSummaries = bool(data.get("generateSummaries", True))
 
         return cls(
             ticker=ticker,
@@ -98,8 +106,9 @@ class SingleEquityRatingConfig(BoardroomConfig):
             timeHorizon=timeHorizon,
             boardroomPace=boardroomPace,
             maxIterations=maxIterations,
-            temperature=temperature
+            temperature=temperature,
+            generateSummaries=generateSummaries
         )
 
-    def unpack(self) -> tuple[str, Optional[str], TimeHorizon, BoardroomPace, int]:
-        return self.ticker, self.simulatedDateStr, self.timeHorizon, self.boardroomPace, self.maxIterations, self.temperature
+    def unpack(self) -> tuple[str, Optional[str], TimeHorizon, BoardroomPace, int, float, bool]:
+        return self.ticker, self.simulatedDateStr, self.timeHorizon, self.boardroomPace, self.maxIterations, self.temperature, self.generateSummaries

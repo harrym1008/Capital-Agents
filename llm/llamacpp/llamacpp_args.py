@@ -35,6 +35,7 @@ class LlamaCppModel(Enum):
 
     TERNARY_BONSAI_27B = "Ternary-Bonsai-27B"
     LING_3_TINY = "Ling-3-Tiny"
+    LFM_25_350M = "LFM-2.5-350M"
 
     FORCE_FAILURE_TEST = "FORCE_FAILURE_TEST"
 
@@ -64,7 +65,7 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--cache-ram":      "4096",
         "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
         "--fit":            "on",
-        "--fit-target":     "1000",
+        "--fit-target":     "2400",
         "--reasoning":      "on",
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
@@ -225,7 +226,7 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--cache-ram":      "4096",
         "--ctx-size":       "131072",
         "--fit":            "on",
-        "--fit-target":     "1000",
+        "--fit-target":     "2400",
         "--reasoning":      "on",
         "--reasoning-preserve":   _,
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
@@ -430,6 +431,31 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--metrics":        _,
         "-b":               "4096",
         "-ub":              "1024",
+        "--jinja":          _,
+        "-np":              "2",
+        "--cache-ram":      "4096",
+        "--ctx-size":       "131072",
+        "-ngl":             "99",
+        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
+    },
+
+    LlamaCppModel.LFM_25_350M: {
+        "-m":               f"{MODELS_FOLDER}Others\\LFM2.5-350M-Q5_K_M.gguf",
+        "--port":           str(LLAMACPP_PORT),
+        "--host":           "127.0.0.1",
+        "--temp":           "0.1",
+        # "--top-p":          "0.95",
+        "--top-k":          "50",
+        "--min-p":          "0.0",
+        # "--presence-penalty": "0.0",
+        "--repeat-penalty":   "1.05",
+        "--flash-attn":     "on",
+        "--cache-type-k":   "q8_0",
+        "--cache-type-v":   "q8_0",
+        "--mlock":          _,
+        "--metrics":        _,
+        "-b":               "8192",
+        "-ub":              "2048",
         "--jinja":          _,
         "-np":              "2",
         "--cache-ram":      "4096",

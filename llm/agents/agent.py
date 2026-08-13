@@ -8,6 +8,7 @@ from llm.agents.agent_prompts import buildAgentSpecificSysPrompt, buildSummarise
 from llm.llm_client import BaseLLMClient, ResponsePrintMode
 from llm.client_duo import ClientDuo
 from llmtools.tool_registry import ToolRegistry, Tool
+from boardroom.boardroom_config import BoardroomConfig
 
 from ui.ui_hooks import setCurrentAgent, setAgentPhase, emitEvent
 
@@ -57,9 +58,9 @@ class FinancialAgent:
             incomingMessage: str,
             toolRegistry: ToolRegistry,
             timestamp: pd.Timestamp,
+            config: BoardroomConfig,
             systemPrompt: Optional[str] = None,
-            requireInitialTools: bool = False,
-            temperature: Optional[float] = 0.5
+            requireInitialTools: bool = False
         ):
         if systemPrompt:
             if len(self.messageHistory) == 0:
@@ -89,8 +90,8 @@ class FinancialAgent:
             responsePrint=ResponsePrintMode.FULL,
             requireInitialTools=requireInitialTools,
             permittedTools=self.tools,
-            maxIterations=self.maxIterations,
-            temperature=temperature
+            maxIterations=config.maxIterations,
+            temperature=config.temperature
         )
 
         self.messageHistory.append({"role": "assistant", "content": rawAnalysis})
@@ -124,13 +125,12 @@ class FinancialAgent:
             incomingMessage: str, 
             toolRegistry: ToolRegistry,
             timestamp: pd.Timestamp,
+            config: BoardroomConfig,
             subrole: Optional[str] = None,
             requireInitialTools: bool = False,
-            promptArgs: Optional[Dict[str, str]] = None,
-            temperature: Optional[float] = 0.5,
             summarisationOverride: Optional[bool] = None,
         ):
-        generateSummary = SUMMARISE_ENABLED if summarisationOverride is None else summarisationOverride
+        generateSummary = (SUMMARISE_ENABLED and config.generateSummaries) if summarisationOverride is None else summarisationOverride
         
         # Set agent context for UI streaming
         setCurrentAgent(self.agentRole, self.color)
@@ -143,11 +143,11 @@ class FinancialAgent:
             agentRole=self.agentRole,
             agentToolsStr=self.getSpecificToolsStr(),
             subrole=subrole,
-            promptArgs=promptArgs
+            promptArgs=config.getPromptArgs()
         )
         try:
             rawAnalysis = self.executeInternalAnalysis(
-                incomingMessage, toolRegistry, timestamp, sysPrompt, requireInitialTools, temperature
+                incomingMessage, toolRegistry, timestamp, config, sysPrompt, requireInitialTools
             )        
         finally:
             emitEvent("agentRunEnd", {"agentRole": self.agentRole, "phase": "raw"})
@@ -159,7 +159,7 @@ class FinancialAgent:
         emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.color, "phase": "summary"})
 
         try:
-            uiSummary = self.generateUISummary(rawAnalysis, buildSummariseSysPrompt(self.agentRole, subrole, promptArgs))
+            uiSummary = self.generateUISummary(rawAnalysis, buildSummariseSysPrompt(self.agentRole, subrole, config.getPromptArgs()))
         finally:
             emitEvent("agentRunEnd", {"agentRole": self.agentRole, "phase": "summary"})
 

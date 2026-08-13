@@ -77,7 +77,10 @@ def executeBoardroomRating(
         ticker=tickerToEval,
         simulatedDateStr=simulatedDateStr,
         timeHorizon=timeHorizon,
-        boardroomPace=boardroomPace
+        boardroomPace=boardroomPace,
+        maxIterations=config.maxIterations,
+        temperature=config.temperature,
+        generateSummaries=config.generateSummaries
     ))
 
     endTime = time.time()

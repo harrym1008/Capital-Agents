@@ -192,6 +192,7 @@ output/
 art/
 finbert/FinancialPhraseBank-v1.0/
 exec/projexp/
+exec/tests/output/
 
 # Files
 newtooltest.py

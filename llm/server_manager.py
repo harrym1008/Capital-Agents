@@ -18,6 +18,7 @@ from llm.cloud.openrouter_client import OpenRouterClient
 from llm.llm_client import BaseLLMClient
 from llm.token_cost_tracker import TokenCostTracker
 from llmtools.functions.sentiment import preloadSentimentModelAsync
+from llmtools.tool_registry import ToolRegistry
 from ui.ui_hooks import emitEvent
 
 
@@ -131,7 +132,7 @@ class ServerManager:
         self.startupLogs.append(logLine)
         emitEvent("llamaCppStartupLog", {"log": logLine})
 
-    def getToolRegistry(self):
+    def getToolRegistry(self) -> ToolRegistry:
         with self.serverLock:
             if self.sharedToolRegistry is None:
                 from llmtools.registry_builder import buildToolRegistry
