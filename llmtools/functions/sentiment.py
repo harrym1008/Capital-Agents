@@ -11,14 +11,8 @@ from llmtools.functions.company import fetchStockPricePerformance
 from llmtools.tool_registry import DataProviders, Tool
 from llmtools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, NumberType
 
+from finbert.finbert_engines import getBestInferenceEngine, logitsToPredictions
 
-from finbert.finbert_engines import (
-    TrtInferenceEngine,
-    OnnxInferenceEngine,
-    getBestInferenceEngine,
-    logitsToPredictions,
-    resolveModelPath
-)
 
 # Singleton model engine and re-entrant lock
 sentimentEngine = None

@@ -80,7 +80,7 @@ def testLlmClient(client: BaseLLMClient, modelName: str) -> Tuple[bool, str]:
         response = client.openaiClient.chat.completions.create(
             model=modelName,
             messages=[{"role": "user", "content": "This is a test. Exit <think> immediately. Reply solely with the word 'OK'."}],
-            max_tokens=5,
+            max_completion_tokens=8,
             temperature=0.0,
             stream=False
         )
@@ -166,7 +166,7 @@ class ServerManager:
         self.metricsThread = threading.Thread(target=metricsLoop, daemon=True)
         self.metricsThread.start()
 
-    def startServer(self, provider: str, modelName: str, providerRouter: Optional[str] = None, allowParallel: bool = True, wantSummaryServer: bool = False):
+    def startServer(self, provider: str, modelName: str, providerRouter: Optional[str] = None, allowParallel: bool = True, wantSummaryServer: bool = False, preclearVram: bool = False):
         with self.serverLock:
             if self.loadedModelType != LoadedModelType.NONE:
                 self.stopServerInternal()
@@ -192,6 +192,11 @@ class ServerManager:
                         self.summaryClient = None
                         self.loadedModelType = LoadedModelType.OPENROUTER
                         self.loadedModelName = modelName
+
+                        # Initialise the sentiment engine when using OpenRouter
+                        self.recordLog("Loading sentiment model asynchronously...")
+                        preloadSentimentModelAsync()
+
                         return True, f"OpenRouter server active and verified (Response: '{result}')."
 
 
@@ -212,10 +217,14 @@ class ServerManager:
                             argOverrides["-np"] = "1"
                             argOverrides["--ctx-size"] = "65536"
 
-                        self.recordLog(f"Clearing VRAM...")
-                        rudimentaryVramClear()
-                        time.sleep(1)
-                        self.recordLog("VRAM cleared.")
+                        if preclearVram:
+                            self.recordLog("Clearing VRAM...")
+                            freedVram = rudimentaryVramClear()
+                            time.sleep(1)
+                            self.recordLog(f"VRAM cleared. Freed {freedVram:.2f} GB of VRAM.")
+                        else:
+                            pass
+                            # self.recordLog("Skipping VRAM pre-clear (not requested).")
                         self.recordLog("Loading sentiment model asynchronously...")
                         preloadSentimentModelAsync()       # Do this after vram clearing since the model needs to be in vram
 
@@ -223,7 +232,7 @@ class ServerManager:
                         serverProcess = LlamaCppProcessInitiator(
                             serverName="boardroom",
                             model=modelEnum,
-                            printLogsToTerminal=False,
+                            printLogsToTerminal=True,
                             killExistingProcesses=True,
                             argOverrides=argOverrides,
                         )

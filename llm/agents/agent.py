@@ -17,7 +17,7 @@ SUMMARISE_ENABLED = True
 
 
 class FinancialAgent:
-    def __init__(self, agentRole: str, tools: List[Tool], ansiColor: str = ANSI.RESET, dateStr: str = None):
+    def __init__(self, agentRole: str, tools: List[Tool], ansiColor: str = ANSI.RESET, dateStr: str = None, maxIterations: int = 10):
         self.mainApiClient: BaseLLMClient = None
         self.summaryApiClient: BaseLLMClient = None
 
@@ -27,6 +27,7 @@ class FinancialAgent:
 
         self.simulatedDateStr = dateStr
         self.messageHistory = []
+        self.maxIterations = maxIterations
 
 
     def setClientDuo(self, clientDuo: ClientDuo):
@@ -58,6 +59,7 @@ class FinancialAgent:
             timestamp: pd.Timestamp,
             systemPrompt: Optional[str] = None,
             requireInitialTools: bool = False,
+            temperature: Optional[float] = 0.5
         ):
         if systemPrompt:
             if len(self.messageHistory) == 0:
@@ -83,10 +85,12 @@ class FinancialAgent:
             historyToUse, 
             toolRegistry, 
             timestamp, 
-            THINKING_BUDGET, 
+            thinkingBudget=THINKING_BUDGET, 
             responsePrint=ResponsePrintMode.FULL,
             requireInitialTools=requireInitialTools,
-            permittedTools=self.tools
+            permittedTools=self.tools,
+            maxIterations=self.maxIterations,
+            temperature=temperature
         )
 
         self.messageHistory.append({"role": "assistant", "content": rawAnalysis})
@@ -123,6 +127,7 @@ class FinancialAgent:
             subrole: Optional[str] = None,
             requireInitialTools: bool = False,
             promptArgs: Optional[Dict[str, str]] = None,
+            temperature: Optional[float] = 0.5,
             summarisationOverride: Optional[bool] = None,
         ):
         generateSummary = SUMMARISE_ENABLED if summarisationOverride is None else summarisationOverride
@@ -140,11 +145,12 @@ class FinancialAgent:
             subrole=subrole,
             promptArgs=promptArgs
         )
-        rawAnalysis = self.executeInternalAnalysis(
-            incomingMessage, toolRegistry, timestamp, sysPrompt, requireInitialTools
-        )        
-        
-        emitEvent("agentRunEnd", {"agentRole": self.agentRole, "phase": "raw"})
+        try:
+            rawAnalysis = self.executeInternalAnalysis(
+                incomingMessage, toolRegistry, timestamp, sysPrompt, requireInitialTools, temperature
+            )        
+        finally:
+            emitEvent("agentRunEnd", {"agentRole": self.agentRole, "phase": "raw"})
         
         if not generateSummary:
             return rawAnalysis, rawAnalysis
@@ -152,9 +158,10 @@ class FinancialAgent:
         setAgentPhase("summary")
         emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.color, "phase": "summary"})
 
-        uiSummary = self.generateUISummary(rawAnalysis, buildSummariseSysPrompt(self.agentRole, subrole, promptArgs))
-
-        emitEvent("agentRunEnd", {"agentRole": self.agentRole, "phase": "summary"})
+        try:
+            uiSummary = self.generateUISummary(rawAnalysis, buildSummariseSysPrompt(self.agentRole, subrole, promptArgs))
+        finally:
+            emitEvent("agentRunEnd", {"agentRole": self.agentRole, "phase": "summary"})
 
         return rawAnalysis, uiSummary
 

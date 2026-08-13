@@ -5,6 +5,7 @@ from enum import Enum
 
 
 class TimeHorizon(Enum):
+    IMMEDIATE = "immediate"
     SHORT = "short"
     MEDIUM = "medium"
     LONG = "long"
@@ -22,6 +23,13 @@ class BoardroomPace(Enum):
 
 
 TIME_HORIZON_INFO: Dict[TimeHorizon, Dict[str, str]] = {
+    TimeHorizon.IMMEDIATE: {
+        "label": "Immediate-Term",
+        "llmPriceTargets": "3-day and 2-week price targets",
+        "llmFinalLinePriceTargets": "3-Day Target: $[PRICE], 2-Week Target: $[PRICE]",
+        "llmSubmitToolName": "confirmBoardroomDecisionImmediateTerm",
+        "targets": ["3d", "2w"],
+    },
     TimeHorizon.SHORT: {
         "label": "Short-Term",
         "llmPriceTargets": "1-month and 3-month price targets",
@@ -64,6 +72,8 @@ class SingleEquityRatingConfig(BoardroomConfig):
     simulatedDateStr: Optional[str]
     timeHorizon: TimeHorizon
     boardroomPace: BoardroomPace
+    maxIterations: int = 10
+    temperature: float = 0.5 
 
     def getTimeHorizonInfo(self) -> Dict[str, str]:
         return TIME_HORIZON_INFO.get(self.timeHorizon, TIME_HORIZON_INFO[TimeHorizon.LONG])
@@ -74,32 +84,22 @@ class SingleEquityRatingConfig(BoardroomConfig):
         simulatedDateStr = data.get("simulatedDate") or data.get("simulatedDateStr") or None
 
         horizonRaw = data.get("timeHorizon", "long")
-        if isinstance(horizonRaw, TimeHorizon):
-            timeHorizon = horizonRaw
-        else:
-            try:
-                timeHorizon = TimeHorizon(str(horizonRaw).lower())
-            except ValueError:
-                timeHorizon = TimeHorizon.LONG
+        timeHorizon = TimeHorizon(horizonRaw)
 
-        boardroomPaceRaw = data.get("boardroomPace") or data.get("mode") or "fast"
-        if isinstance(boardroomPaceRaw, BoardroomPace):
-            boardroomPace = boardroomPaceRaw
-        else:
-            paceStr = str(boardroomPaceRaw).lower().replace(" ", "_").replace("-", "_")
-            if paceStr == "oneshot":
-                paceStr = "one_shot"
-            try:
-                boardroomPace = BoardroomPace(paceStr)
-            except ValueError:
-                boardroomPace = BoardroomPace.FAST
+        boardroomPaceStr = data.get("boardroomPace", "fast")
+        boardroomPace = BoardroomPace(boardroomPaceStr)
+
+        maxIterations = int(data.get("maxIterations", 10))
+        temperature = float(data.get("temperature", 0.5))
 
         return cls(
             ticker=ticker,
             simulatedDateStr=simulatedDateStr,
             timeHorizon=timeHorizon,
-            boardroomPace=boardroomPace
+            boardroomPace=boardroomPace,
+            maxIterations=maxIterations,
+            temperature=temperature
         )
 
-    def unpack(self) -> tuple[str, Optional[str], TimeHorizon, BoardroomPace]:
-        return self.ticker, self.simulatedDateStr, self.timeHorizon, self.boardroomPace
+    def unpack(self) -> tuple[str, Optional[str], TimeHorizon, BoardroomPace, int]:
+        return self.ticker, self.simulatedDateStr, self.timeHorizon, self.boardroomPace, self.maxIterations, self.temperature

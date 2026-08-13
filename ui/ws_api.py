@@ -207,34 +207,27 @@ def generateOhlcvChartData(ticker, simDateTs, targets=None, horizon="long"):
     if not targets and cacheKey in ohlcvChartCache:
         return ohlcvChartCache[cacheKey]
     
-    # Auto-infer horizon from targets if default 'long' was passed but targets indicate another horizon
-    if targets and horizonStr == "long":
-        maxMonths = max([t[0] for t in targets])
-        if maxMonths <= 3:
-            horizonStr = "short"
-        elif maxMonths <= 12:
-            horizonStr = "medium"
-        elif maxMonths > 36:
-            horizonStr = "distant"
-
-    if horizonStr in ["1m", "month"]:
+    if horizonStr in "immediate":
         startDateTs = simDateTs - pd.DateOffset(months=1)
         endDateTs = simDateTs + pd.DateOffset(months=1)
-    elif horizonStr in ["3m", "short"]:
+    elif horizonStr == "short":
         startDateTs = simDateTs - pd.DateOffset(months=3)
         endDateTs = simDateTs + pd.DateOffset(months=3)
-    elif horizonStr in ["medium", "med", "1y"]:
+    elif horizonStr == "medium":
         startDateTs = simDateTs - pd.DateOffset(years=1)
         endDateTs = simDateTs + pd.DateOffset(years=1)
-    elif horizonStr in ["distant", "3y", "3year"]:
-        startDateTs = simDateTs - pd.DateOffset(years=3)
+    elif horizonStr == "long":
+        startDateTs = simDateTs - pd.DateOffset(years=1)
         endDateTs = simDateTs + pd.DateOffset(years=3)
-    elif horizonStr in ["all", "max"]:
-        startDateTs = pd.Timestamp("2000-01-01").tz_localize(NEW_YORK)
-        endDateTs = simDateTs + pd.DateOffset(years=1)
-    else:  # default 3m
-        startDateTs = simDateTs - pd.DateOffset(months=3)
-        endDateTs = simDateTs + pd.DateOffset(months=3)
+    else:   # elif horizonStr == "distant":
+        startDateTs = simDateTs - pd.DateOffset(years=2)
+        endDateTs = simDateTs + pd.DateOffset(years=10)
+    
+    if targets:
+        maxTargetMonths = max([t[0] for t in targets])
+        targetEndTs = simDateTs + pd.DateOffset(months=int(maxTargetMonths))
+        if targetEndTs > endDateTs:
+            endDateTs = targetEndTs
     
     tickerProvider, priceProvider = getOhlcvProviders()
     profile = tickerProvider.getTickerProfile(ticker)
@@ -423,13 +416,15 @@ def registerApiRoutes(app):
         providerRouter = data.get("providerRouter") or data.get("router")
         allowParallel = data.get("allowParallel", True)
         wantSummaryServer = data.get("wantSummaryServer", False)
+        preclearVram = data.get("preclearVram", False)
 
         success, message = serverManager.startServer(
             provider=provider,
             modelName=modelName,
             providerRouter=providerRouter,
             allowParallel=allowParallel,
-            wantSummaryServer=wantSummaryServer
+            wantSummaryServer=wantSummaryServer,
+            preclearVram=preclearVram
         )
         return jsonify({"ok": success, "message": message})
 

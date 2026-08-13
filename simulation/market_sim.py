@@ -65,7 +65,7 @@ class MarketSimulation:
         order.setSubmittedTimestamp(self.currentDate)
 
 
-    def buildIntradayPath(self, ohlcData):        
+    def _buildIntradayPath(self, ohlcData):        
         openPrice = ohlcData["open"]
         highPrice = ohlcData["high"]
         lowPrice = ohlcData["low"]
@@ -273,7 +273,7 @@ class MarketSimulation:
                     failedThisDay.append(userOrder) 
                 continue
 
-            segments = self.buildIntradayPath(ohlc)
+            segments = self._buildIntradayPath(ohlc)
 
             for segmentStart, segmentEnd in segments:
                 executed, remaining = self.processSegment(segmentStart, segmentEnd, remainingOrders, ticker)

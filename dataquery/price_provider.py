@@ -12,7 +12,7 @@ from dataquery.ticker_provider import TickerDataProvider
 
 
 class DailyPriceProvider:
-    def __init__(self, tickerDataProvider: TickerDataProvider, cache: LRUCache, rateLimiters: GlobalRateLimiters, allowOnlineDownloads: bool = False):
+    def __init__(self, tickerDataProvider: TickerDataProvider, cache: LRUCache, rateLimiters: GlobalRateLimiters, allowOnlineDownloads: bool = True):
         self.cache = cache
         self.rateLimiters = rateLimiters
         self.startDate = START_DATE

@@ -32,7 +32,7 @@ class MetricsFilter(logging.Filter):
     def filter(self, record):
         return "/api/metrics" not in record.getMessage()
 
-logging.getLogger('werkzeug').addFilter(MetricsFilter())
+logging.getLogger("werkzeug").addFilter(MetricsFilter())
 
 app = Flask(
     __name__, 

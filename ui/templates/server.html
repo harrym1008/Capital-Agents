@@ -89,6 +89,10 @@
                             <input type="checkbox" id="summaryServerCheckbox">
                             Separate Simultaneous Summary Server
                         </label>
+                        <label for="preclearVramCheckbox" class="parallel-checkbox">
+                            <input type="checkbox" id="preclearVramCheckbox">
+                            Pre-clear VRAM before loading
+                        </label>
                     </div>
 
                     <button id="loadModelBtn" style="width: 50%; margin: 10px 0 0 25%; font-size: 120%;">Start Server</button>
@@ -710,7 +714,8 @@
                         model: modelName,
                         providerRouter: providerRouter,
                         allowParallel: allowParallel,
-                        wantSummaryServer: wantSummaryServer
+                        wantSummaryServer: wantSummaryServer,
+                        preclearVram: document.getElementById("preclearVramCheckbox").checked
                     })
                 });
 

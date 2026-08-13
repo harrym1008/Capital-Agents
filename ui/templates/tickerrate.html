@@ -33,7 +33,8 @@
         <div class="config-group">
             <label for="horizonSelect">Horizon:</label>
             <select id="horizonSelect">
-                <option value="short">Short (1wk & 1mo)</option>
+                <option value="immediate">Immediate (1d & 1wk)</option>
+                <option value="short">Short (1mo & 3mo)</option>
                 <option value="medium">Medium (3mo & 12mo)</option>
                 <option value="long" selected>Long (12mo & 3y)</option>
                 <option value="distant">Distant (3y & 10y)</option>
@@ -45,6 +46,33 @@
         </div>
         <div class="config-group" id="simulatedDateContainer" style="display: none;">
             <input type="date" id="simulatedDateInput" min="2016-01-01" max="" style="width: 150px;">
+
+            <script>
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                const formattedDate = yesterday.toISOString().split('T')[0];
+                document.getElementById("simulatedDateInput").setAttribute("max", formattedDate);
+            </script>
+
+        </div>
+        <div class="config-group">
+            <label for="maxItersInput">Max Thinking Iters:</label>
+            <input type="number" id="maxItersInput" value="6" min="1" max="12" step="1" style="width: 64px;">
+        </div>
+        <div class="config-group">
+            <label for="temperatureInput">Temperature:</label>
+            <input type="range" id="temperatureInput" value="0.5" min="0" max="2" step="0.1" style="width: 78px; padding: 0; margin: 0;">
+            <span id="temperatureInputText" style="padding-bottom: 4px;">0.50</span>
+
+            <script>
+                const tempSlider = document.getElementById("temperatureInput");
+                const tempText = document.getElementById("temperatureInputText");
+
+                tempSlider.addEventListener("input", () => {
+                    tempText.textContent = parseFloat(tempSlider.value).toFixed(2);
+                });
+            </script>
+
         </div>
         <button id="runBtn" class="run-btn" onclick="startSimulation()">Start Analysis</button>
         <button id="stopBtn" class="stop-btn" onclick="stopSimulation()" style="display: none;">Stop Analysis</button>
@@ -348,6 +376,12 @@
                 case "simComplete":
                     setControlsRunningState(false);
                     
+                    const qaTab = document.getElementById("stageStep-qa");
+                    if (qaTab) {
+                        qaTab.style.display = "block";
+                        qaTab.classList.remove("disabled");
+                    }
+
                     if (timerInterval) {
                         clearInterval(timerInterval);
                         timerInterval = null;
@@ -554,6 +588,53 @@
             }
         };
 
+        function countDecimalPlaces(num) {
+            if (!num || Math.floor(num) === num) return 0;
+            const str = num.toString();
+            if (str.indexOf('e-') !== -1) {
+                return parseInt(str.split('e-')[1], 10);
+            }
+            if (str.indexOf('.') !== -1) {
+                return str.split('.')[1].length;
+            }
+            return 0;
+        }
+
+        function formatYAxisLabel(val, stepSize) {
+            if (val === 0) return '$0';
+            const absVal = Math.abs(val);
+            let unit = '';
+            let div = 1;
+
+            if (absVal >= 1e12) { unit = 'T'; div = 1e12; }
+            else if (absVal >= 1e9) { unit = 'B'; div = 1e9; }
+            else if (absVal >= 1e6) { unit = 'M'; div = 1e6; }
+            else if (absVal >= 1e3) { unit = 'k'; div = 1e3; }
+
+            const num = val / div;
+
+            let dp = 0;
+            if (stepSize && stepSize > 0) {
+                const stepInUnit = stepSize / div;
+                dp = countDecimalPlaces(stepInUnit);
+            } else {
+                dp = countDecimalPlaces(num);
+            }
+            dp = Math.max(0, Math.min(6, dp));
+
+            let minDp = 0;
+            if (div === 1 && stepSize && stepSize < 1) {
+                minDp = 2;
+            }
+
+            const formattedStr = num.toLocaleString('en-US', {
+                minimumFractionDigits: minDp,
+                maximumFractionDigits: dp
+            });
+
+            return '$' + formattedStr + unit;
+        }
+
         function createOrUpdateChart(chartData) {
             const canvas = document.getElementById("receiptChartCanvas");
             if (!canvas) return;
@@ -575,7 +656,8 @@
                     fill: 'start',
                     tension: 0.1,
                     pointRadius: 0,
-                    pointHoverRadius: 3
+                    pointHoverRadius: 3,
+                    clip: false
                 });
             }
 
@@ -593,7 +675,8 @@
                         fill: 'start',
                         tension: 0.1,
                         pointRadius: 0,
-                        pointHoverRadius: 3
+                        pointHoverRadius: 3,
+                        clip: false
                     });
                 });
             }
@@ -607,7 +690,8 @@
                     fill: false,
                     tension: 0,
                     pointRadius: 0,
-                    pointHoverRadius: 0
+                    pointHoverRadius: 0,
+                    clip: false
                 });
             }
 
@@ -651,10 +735,11 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    animation: false,
                     layout: {
                         padding: {
-                            right: 18,
-                            left: 8,
+                            left: 5,
+                            right: 25,
                             top: 10,
                             bottom: 0
                         }
@@ -691,43 +776,42 @@
                             min: chartData.startDate ? new Date(chartData.startDate + 'T00:00:00').getTime() : undefined,
                             max: chartData.endDate ? new Date(chartData.endDate + 'T00:00:00').getTime() : undefined,
                             grid: {
-                                color: '#cbd5e1',
-                                borderDash: [2, 2],
-                                tickColor: 'transparent'
+                                display: false
                             },
                             ticks: {
-                                color: '#334155',
+                                color: '#64748b',
                                 font: {
                                     family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-                                    weight: '700',
+                                    weight: '600',
                                     size: 10
                                 },
                                 maxTicksLimit: 7
                             },
                             border: {
-                                color: '#334155',
-                                width: 1.2
+                                display: false
                             }
                         },
                         y: {
                             suggestedMin: chartData.yMin,
                             suggestedMax: chartData.yMax,
                             grid: {
-                                color: '#cbd5e1',
-                                borderDash: [2, 2]
+                                color: 'rgba(226, 232, 240, 0.8)',
+                                drawBorder: false,
+                                lineWidth: 1
                             },
                             ticks: {
-                                color: '#334155',
+                                color: '#64748b',
                                 font: {
                                     family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-                                    weight: '700',
+                                    weight: '600',
                                     size: 10
                                 },
-                                callback: (val) => '$' + val
+                                callback: function(val) {
+                                    return formatYAxisLabel(val);
+                                }
                             },
                             border: {
-                                color: '#334155',
-                                width: 1.2
+                                display: false
                             }
                         }
                     }
@@ -804,6 +888,108 @@
                 bar.appendChild(div);
             });
 
+            const qaTab = document.createElement("div");
+            qaTab.className = "stage-item disabled";
+            qaTab.id = "stageStep-qa";
+            qaTab.innerText = "Q&A";
+            qaTab.style.display = "none";
+            qaTab.onclick = () => {
+                if (!qaTab.classList.contains("disabled")) {
+                    showStageWorkspace("qa");
+                }
+            };
+            bar.appendChild(qaTab);
+
+            // Pre-build the Q&A workspace
+            const panesContainer = document.getElementById("panesContainer");
+            const qaWorkspace = document.createElement("div");
+            qaWorkspace.className = "stage-workspace";
+            qaWorkspace.id = "stageWorkspace-qa";
+            qaWorkspace.style.display = "none";
+            qaWorkspace.style.flex = "1";
+            qaWorkspace.style.minHeight = "0";
+            qaWorkspace.style.flexDirection = "column";
+            qaWorkspace.style.alignItems = "stretch";
+            qaWorkspace.style.overflow = "hidden";
+            qaWorkspace.style.padding = "20px 30px";
+            qaWorkspace.style.gap = "20px";
+            
+            qaWorkspace.innerHTML = `
+                <div id="qaChatHistory" style="flex: 1; display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 1000px; margin: 0 auto; overflow-y: auto; padding-right: 10px;">
+                    <!-- Chat history will populate here -->
+                </div>
+
+                <!-- Standard Input Area at the bottom -->
+                <div style="flex: none; width: 100%; max-width: 1000px; margin: 0 auto; display: flex; gap: 10px; align-items: center; padding-right: 10px;">
+                    <input type="text" id="qaInput" placeholder="Ask a question..." style="flex: 1; padding: 12px 16px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 16px; outline: none; background: #ffffff; color: #0f172a;">
+                    <button id="qaSendBtn" class="run-btn" style="padding: 12px 24px; border-radius: 8px; font-weight: bold; font-size: 16px;">Send</button>
+                </div>
+            `;
+            panesContainer.appendChild(qaWorkspace);
+
+            // Bind mock Q&A send logic
+            setTimeout(() => {
+                const qaInput = document.getElementById("qaInput");
+                const sendBtn = document.getElementById("qaSendBtn");
+                if (qaInput && sendBtn) {
+                    const sendMsg = () => {
+                        const val = qaInput.value.trim();
+                        if (val) {
+                            const chatLog = document.getElementById("qaChatHistory");
+                            const userMsg = document.createElement('div');
+                            userMsg.className = "agent-pane qa-agent-pane";
+                            userMsg.style.cssText = "flex: none; max-width: 100%; height: auto;";
+                            userMsg.innerHTML = `
+                                <div class="agent-header">
+                                    <div class="agent-avatar" style="border: 3px solid #f97316; color: #f97316; background-color: #f1f5f9;">U</div>
+                                    <div class="agent-role-name">You</div>
+                                </div>
+                                <div class="agent-feed" style="font-weight: bold; font-size: 16px; overflow-y: visible;">
+                                    ${val}
+                                </div>
+                            `;
+                            chatLog.appendChild(userMsg);
+                            
+                            qaInput.value = '';
+                            
+                            setTimeout(() => {
+                                chatLog.scrollTop = chatLog.scrollHeight;
+                            }, 50);
+                            
+                            // Simulate agent response for now
+                            setTimeout(() => {
+                                const agentMsg = document.createElement('div');
+                                agentMsg.className = "agent-pane qa-agent-pane";
+                                agentMsg.style.cssText = "flex: none; max-width: 100%; height: auto;";
+                                agentMsg.innerHTML = `
+                                    <div class="agent-header">
+                                        <div class="agent-avatar agent-magenta">PM</div>
+                                        <div class="agent-role-name">Portfolio Manager (Q&A)</div>
+                                    </div>
+                                    <div class="agent-feed" style="overflow-y: visible;">
+                                        <div style="font-size: 14px; color: #0f172a;">
+                                            This is a placeholder response. The backend logic will be connected soon to answer your question about: '${val}'.
+                                        </div>
+                                    </div>
+                                `;
+                                chatLog.appendChild(agentMsg);
+                                setTimeout(() => {
+                                    chatLog.scrollTop = chatLog.scrollHeight;
+                                }, 50);
+                            }, 600);
+                        }
+                    };
+                    
+                    sendBtn.onclick = sendMsg;
+                    
+                    qaInput.addEventListener('keypress', function (e) {
+                        if (e.key === 'Enter') {
+                            sendMsg();
+                        }
+                    });
+                }
+            }, 100);
+
             const summariesBtn = document.createElement("button");
             summariesBtn.className = "summaries-btn";
             summariesBtn.id = "summariesBtn";
@@ -825,9 +1011,9 @@
 
             const items = document.querySelectorAll(".stage-item");
             items.forEach(item => {
-                const itemNum = parseInt(item.id.replace("stageStep-", ""));
+                const itemNumStr = item.id.replace("stageStep-", "");
                 item.classList.remove("viewing");
-                if (itemNum === stageNum) {
+                if (itemNumStr == stageNum) {
                     item.classList.add("viewing");
                 }
             });
@@ -1520,7 +1706,9 @@
                 boardroomPace: mode,
                 timeHorizon: horizon,
                 useSimDate: useSimDate,
-                simulatedDate: simulatedDate
+                simulatedDate: simulatedDate,
+                maxIterations: parseInt(document.getElementById("maxItersInput").value) || 6,
+                temperature: parseFloat(document.getElementById("temperatureInput").value) || 0.5
             }));
         }
 

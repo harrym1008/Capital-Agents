@@ -709,7 +709,7 @@ class SimulationManager:
                 rawFDate = getattr(tenKFiling, "filing_date", None)
                 if rawFDate:
                     try:
-                        tenKDate = pd.to_datetime(rawFDate).strftime("%Y-%m-%d")
+                        tenKDate = pd.to_datetime(rawFDate).strftime("%d %b %Y")
                     except Exception:
                         pass
 
@@ -719,7 +719,7 @@ class SimulationManager:
                 rawQDate = getattr(tenQFiling, "filing_date", None)
                 if rawQDate:
                     try:
-                        tenQDate = pd.to_datetime(rawQDate).strftime("%Y-%m-%d")
+                        tenQDate = pd.to_datetime(rawQDate).strftime("%d %b %Y")
                     except Exception:
                         pass
         except Exception:
@@ -799,6 +799,8 @@ class SimulationManager:
             targetTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
 
         reg = buildToolRegistry()
+        del reg.dataProviders
+        reg.dataProviders = DataProviders(allowOnlineDownloads=False)    # Bad hack but it works
         dataProviders = reg.dataProviders
 
         fastData = self.fetchFastInspectorMetrics(dataProviders, ticker, targetTs, timeframeStr)

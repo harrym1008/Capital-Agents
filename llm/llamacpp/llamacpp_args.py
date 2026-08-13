@@ -34,6 +34,7 @@ class LlamaCppModel(Enum):
     GPT_OSS_20B = "GPT-OSS-20B"
 
     TERNARY_BONSAI_27B = "Ternary-Bonsai-27B"
+    LING_3_TINY = "Ling-3-Tiny"
 
     FORCE_FAILURE_TEST = "FORCE_FAILURE_TEST"
 
@@ -403,6 +404,32 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--metrics":        _,
         "-b":               "2048",
         "-ub":              "512",
+        "--jinja":          _,
+        "-np":              "2",
+        "--cache-ram":      "4096",
+        "--ctx-size":       "131072",
+        "-ngl":             "99",
+        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
+    },
+
+    LlamaCppModel.LING_3_TINY: {
+        EXECUTABLE_ARG_OVERRIDE: f"I:\\llamacpp-other\\ling-3.0-tiny\\llama-server.exe",
+        "-m":               f"{MODELS_FOLDER}Others\\Ling-3.0-tiny-Q6_K.gguf",
+        "--port":           str(LLAMACPP_PORT),
+        "--host":           "127.0.0.1",
+        "--temp":           "0.5",
+        "--top-p":          "0.95",
+        "--top-k":          "20",
+        "--min-p":          "0.0",
+        "--presence-penalty": "0.0",
+        "--repeat-penalty":   "1.1",
+        "--flash-attn":     "on",
+        "--cache-type-k":   "q8_0",
+        "--cache-type-v":   "q8_0",
+        "--mlock":          _,
+        "--metrics":        _,
+        "-b":               "4096",
+        "-ub":              "1024",
         "--jinja":          _,
         "-np":              "2",
         "--cache-ram":      "4096",

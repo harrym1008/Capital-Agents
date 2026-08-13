@@ -52,7 +52,6 @@ class LRUCache:
         self.entries: OrderedDict[str, CacheEntry] = OrderedDict()
         self.lock = threading.Lock()
 
-
     def get(self, key):
         with self.lock:
             entry = self.entries.get(key)

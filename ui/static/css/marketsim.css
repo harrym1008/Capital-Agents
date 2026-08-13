@@ -101,7 +101,7 @@ html, body {
     flex: 0 0 290px;
     display: flex;
     flex-direction: column;
-    gap: 30px;
+    gap: 22px;
 }
 
 .sim-info-header {

@@ -16,8 +16,7 @@ import concurrent.futures
 import time
 
 
-
-def runMassDownloadTool(presetDownloads=None):
+def runMassDownloadTool():
     print("=" * 60)
     print("  Mass Download Tool")
     print("=" * 60, "\n")
@@ -25,66 +24,37 @@ def runMassDownloadTool(presetDownloads=None):
     dateStartStr = pd.Timestamp(START_DATE_STR, tz=NEW_YORK).strftime("%d %b %Y")
     dateEndStr = pd.Timestamp(END_DATE_STR, tz=NEW_YORK).strftime("%d %b %Y")
 
-    if presetDownloads is not None:
-        downloading = {
-            "tickers": {
-                "confirm": presetDownloads.get("tickers", False),
-                "desc": f"All tickers (listed and delisted) from the NYSE and NASDAQ from {dateStartStr} to {dateEndStr}"
-            },
-            "ohlcv": {
-                "confirm": presetDownloads.get("ohlcv", False),
-                "desc": f"All daily OHLCV values, and corporate actions, from {dateStartStr} to {dateEndStr} for all tickers"
-            },
-            "news": {
-                "confirm": presetDownloads.get("news", False),
-                "desc": f"All news articles from {dateStartStr} to {dateEndStr}"
-            },
-            "macro": {
-                "confirm": presetDownloads.get("macro", False),
-                "desc": f"Commodities, indices, forex and macroeconomic data from FRED from {dateStartStr} to {dateEndStr}"
-            },
-            "forex": {
-                "confirm": presetDownloads.get("forex", False),
-                "desc": f"Forex data for 20 currencies to USD from {dateStartStr} to {dateEndStr}"
-            },
-            "short": {
-                "confirm": presetDownloads.get("short", False),
-                "desc": f"FINRA short interest data from {'Jun 2021' if \
-                            START_DATE < pd.Timestamp('2021-06-01', tz=NEW_YORK) else dateStartStr} to {dateEndStr}"
-            }
-        }
-    else:
-        downloading = {
-            "tickers": {
-                "confirm": input("Download tickers? (yes/no)        > ").lower() == "yes",
-                "desc": f"All tickers (listed and delisted) from the NYSE and NASDAQ from {dateStartStr} to {dateEndStr}"
-            },
-            "ohlcv": {
-                "confirm": input("Download OHLCV data? (yes/no)     > ").lower() == "yes",
-                "desc": f"All daily OHLCV values, and corporate actions, from {dateStartStr} to {dateEndStr} for all tickers"
-            },
-            "news": {
-                "confirm": input("Download news articles? (yes/no)  > ").lower() == "yes",
-                "desc": f"All news articles from {dateStartStr} to {dateEndStr}"
-            },
-            "macro": {
-                "confirm": input("Download macro data? (yes/no)     > ").lower() == "yes",
-                "desc": f"Commodities, indices, forex and macroeconomic data from FRED from {dateStartStr} to {dateEndStr}"
-            },
-            "forex": {
-                "confirm": input("Download forex data? (yes/no)     > ").lower() == "yes",
-                "desc": f"Forex data for 20 currencies to USD from {dateStartStr} to {dateEndStr}"
-            },
-            "short": {
-                "confirm": input("Download short data? (yes/no)     > ").lower() == "yes",
-                "desc": f"FINRA short interest data from {'Jun 2021' if \
-                            START_DATE < pd.Timestamp('2021-06-01', tz=NEW_YORK) else dateStartStr} to {dateEndStr}"
-            },
-            # "newssentiment": {
-            #     "confirm": input("Cache news sentiment? (yes/no)    > ").lower() == "yes",
-            #     "desc": f"Precalculate news sentiment scores for all downloaded news articles from {dateStartStr} to {dateEndStr}"
-            # }
-        }
+    downloading = {
+        "tickers": {
+            "confirm": input("Download tickers? (yes/no)        > ").lower() == "yes",
+            "desc": f"All tickers (listed and delisted) from the NYSE and NASDAQ from {dateStartStr} to {dateEndStr}"
+        },
+        "ohlcv": {
+            "confirm": input("Download OHLCV data? (yes/no)     > ").lower() == "yes",
+            "desc": f"All daily OHLCV values, and corporate actions, from {dateStartStr} to {dateEndStr} for all tickers"
+        },
+        "news": {
+            "confirm": input("Download news articles? (yes/no)  > ").lower() == "yes",
+            "desc": f"All news articles from {dateStartStr} to {dateEndStr}"
+        },
+        "macro": {
+            "confirm": input("Download macro data? (yes/no)     > ").lower() == "yes",
+            "desc": f"Commodities, indices, forex and macroeconomic data from FRED from {dateStartStr} to {dateEndStr}"
+        },
+        "forex": {
+            "confirm": input("Download forex data? (yes/no)     > ").lower() == "yes",
+            "desc": f"Forex data for 20 currencies to USD from {dateStartStr} to {dateEndStr}"
+        },
+        "short": {
+            "confirm": input("Download short data? (yes/no)     > ").lower() == "yes",
+            "desc": f"FINRA short interest data from {'Jun 2021' if \
+                        START_DATE < pd.Timestamp('2021-06-01', tz=NEW_YORK) else dateStartStr} to {dateEndStr}"
+        },
+        # "newssentiment": {
+        #     "confirm": input("Cache news sentiment? (yes/no)    > ").lower() == "yes",
+        #     "desc": f"Precalculate news sentiment scores for all downloaded news articles from {dateStartStr} to {dateEndStr}"
+        # }
+    }
 
     if not any(d["confirm"] for d in downloading.values()):
         print("Nothing to download. Aborting.")

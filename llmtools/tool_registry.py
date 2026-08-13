@@ -8,14 +8,14 @@ import pandas as pd
 
 
 class DataProviders:
-    def __init__(self):
+    def __init__(self, allowOnlineDownloads: bool = True):
         self.cache = LRUCache(512 * 1024 ** 2)  # 512 MB max size of cache in RAM
         self.rateLimiters = GlobalRateLimiters()
 
         self.tickers = TickerDataProvider()
         self.macro = MacroDataProvider(self.cache, self.rateLimiters)
         self.news = NewsDataProvider(self.cache, self.rateLimiters)
-        self.ohlcv = DailyPriceProvider(self.tickers, self.cache, self.rateLimiters)
+        self.ohlcv = DailyPriceProvider(self.tickers, self.cache, self.rateLimiters, allowOnlineDownloads=allowOnlineDownloads)
         self.short = ShortDataProvider(self.cache, self.rateLimiters)
         self.edgar = EdgarDataProvider(self.tickers, self.cache, self.rateLimiters.edgarLimiter)
         self.forex = ForexDataProvider(START_DATE, END_DATE, self.cache, self.rateLimiters)

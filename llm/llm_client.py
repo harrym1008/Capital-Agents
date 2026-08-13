@@ -279,6 +279,15 @@ class BaseLLMClient(ABC):
 
             
             except SimulationStoppedException:
+                emitEvent("toolCallEnd", {
+                    "toolName": funcName,
+                    "callId": callId,
+                    "status": "error",
+                    "result": json.dumps({"error": "Simulation stopped by user."}),
+                    "stdout": stdoutOutput,
+                    "variables": variablesOutput,
+                    "toolIndex": toolIndex
+                })
                 raise
             except Exception as e:
                 stringResult = json.dumps({"error": f"{e.__class__.__name__}: {e}"})
@@ -317,13 +326,14 @@ class BaseLLMClient(ABC):
             thinkingBudget: Optional[int] = None,
             responsePrint: ResponsePrintMode = ResponsePrintMode.FULL,
             requireInitialTools: bool = False,
-            permittedTools: Optional[List[Tool]] = None
+            permittedTools: Optional[List[Tool]] = None,
+            maxIterations: int = 10,
+            temperature: float = 0.5
         ):
         if permittedTools is not None:
             toolSchemas = [tool.getToolSchema() for tool in permittedTools]
         else:
             toolSchemas = [tool.getToolSchema() for tool in toolRegistry.tools.values()] if toolRegistry else []
-        maxIterations = 10
         currentIteration = 0
         accumulatedContent = ""
 
@@ -342,9 +352,9 @@ class BaseLLMClient(ABC):
             responseKwargs = dict(
                 model=self.defaultModel,
                 messages=messageHistory,
-                temperature=0.5,
                 tools=toolSchemas if toolSchemas else None,
                 tool_choice=toolChoiceSetting,
+                temperature=temperature,
                 max_tokens=8192,
                 stream=True,
             )
@@ -437,17 +447,20 @@ class BaseLLMClient(ABC):
                                 break
 
         # If this code is reached, it means the maximum number of iterations was reached without a final response
+        print(f"Max iterations reached, going to force no tools in final request")
         messageHistory.append({
             "role": "user",
-            "content": "You have reached the maximum number of iterations without providing a final response. Please provide your final response based on the accumulated information."
+            "content": "You have reached the maximum number of iterations without providing a final response. Do not run any more tools, "
+                       "provide your final response based on the accumulated information after thinking steps."
         })
 
         self._applyRateLimit()
         finalResponseKwargs = dict(
             model=self.defaultModel,
             messages=messageHistory,
-            tools=[],
-            temperature=0.5,
+            tools=toolSchemas if toolSchemas else None,
+            tool_choice="none",
+            temperature=temperature,
             max_tokens=8192,
             stream=True,
         )

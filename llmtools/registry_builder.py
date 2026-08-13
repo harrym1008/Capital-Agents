@@ -9,6 +9,7 @@ from llmtools.functions.edgar import fetchCompanyValuationMetrics, fetchIncomeSt
 from llmtools.functions.sentiment import fetchTickerSentimentHistory, fetchSentimentDivergence, fetchMacroSentimentHistory
 from llmtools.functions.other import (
     executePythonCalculation, 
+    confirmBoardroomDecisionImmediateTerm,
     confirmBoardroomDecisionShortTerm, 
     confirmBoardroomDecisionMediumTerm, 
     confirmBoardroomDecisionLongTerm, 
@@ -74,6 +75,26 @@ SCHEMAS = {
             }
         },
         "required": ["ticker"]
+    },
+
+    "confirmDecisionImmediate": {
+        "type": "object",
+        "properties": {
+            "ticker": {"type": "string", "description": "The stock ticker symbol."},
+            "rating": {
+                "type": "string",
+                "enum": ["STRONG BUY", "BUY", "HOLD", "SELL", "STRONG SELL"],
+                "description": "The final stock rating made by the boardroom (STRONG BUY/BUY/HOLD/SELL/STRONG SELL)."
+            },
+            "weighting": {
+                "type": "string",
+                "enum": ["UNDERWEIGHT", "EQUAL-WEIGHT", "OVERWEIGHT"],
+                "description": "The final weighting assigned to the stock (UNDERWEIGHT/EQUAL-WEIGHT/OVERWEIGHT)."
+            },
+            "threeDayTarget": {"type": "number", "description": "The final 3-day target price for the stock."},
+            "twoWeekTarget": {"type": "number", "description": "The final 2-week target price for the stock."}
+        },
+        "required": ["ticker", "rating", "weighting", "threeDayTarget", "twoWeekTarget"]
     },
 
     "confirmDecisionShortTerm": {
@@ -314,6 +335,14 @@ def buildToolRegistry(initMacroThread=False):
                         "If an error occurs, returns the error message and hint.",
                         
         parameterSchema=SCHEMAS["pythonCode"]
+    ))
+
+    toolReg.registerTool(Tool(
+        toolFunction=confirmBoardroomDecisionImmediateTerm,
+        toolName="confirmBoardroomDecisionImmediateTerm",
+        toolDescription="Confirms the final stock rating, weighting, and 3-day & 2-week target prices for a stock "
+                        "after the boardroom has produced its final consensus for an immediate-term horizon.",
+        parameterSchema=SCHEMAS["confirmDecisionImmediate"]
     ))
 
     toolReg.registerTool(Tool(

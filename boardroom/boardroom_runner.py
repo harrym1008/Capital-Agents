@@ -49,26 +49,13 @@ def executeBoardroomRating(
 ):
     startTime = time.time()
 
-    if config is not None:
-        tickerToEval = config.ticker
-        simulatedDateStr = config.simulatedDateStr
-        boardroomPace = config.boardroomPace
-        timeHorizon = config.timeHorizon
-    else:
-        if not isinstance(timeHorizon, TimeHorizon):
-            try:
-                timeHorizon = TimeHorizon(str(timeHorizon).lower())
-            except ValueError:
-                timeHorizon = TimeHorizon.LONG
+    if config is None:
+        raise ValueError("config must be provided for executeBoardroomRating.")
 
-        if not isinstance(boardroomPace, BoardroomPace):
-            paceStr = str(boardroomPace).lower().replace(" ", "_").replace("-", "_")
-            if paceStr == "oneshot":
-                paceStr = "one_shot"
-            try:
-                boardroomPace = BoardroomPace(paceStr)
-            except ValueError:
-                boardroomPace = BoardroomPace.FAST
+    tickerToEval = config.ticker
+    simulatedDateStr = config.simulatedDateStr
+    boardroomPace = config.boardroomPace
+    timeHorizon = config.timeHorizon
 
     if simulatedDateStr is None:
         simulatedDateStr = time.strftime("%Y-%m-%d", time.localtime())
@@ -79,6 +66,7 @@ def executeBoardroomRating(
         from llm.server_manager import serverManager
         toolRegistry = serverManager.getToolRegistry()
 
+    # Precache tool results for non macro tools into the lru cache
     precacheThread = startPrecacheThread(toolRegistry, timestamp, macroTools=False, ticker=tickerToEval)
 
     clientDuo = ClientDuo(boardroomClient, summaryClient)
@@ -96,12 +84,6 @@ def executeBoardroomRating(
     elapsedSeconds = endTime - startTime
     mins = math.floor(elapsedSeconds / 60)
     secs = elapsedSeconds % 60
-    totalTimeStr = f"{mins} mins {secs:.3f} secs"
-
-    print(f"\nTotal time taken for boardroom evaluation: {totalTimeStr}")
-    try:
-        emitEvent("simComplete", {"totalTime": totalTimeStr})
-    except Exception:
-        pass
+    emitEvent("simComplete", {"totalTime": f"{mins} mins {secs:.3f} secs"})
     
     return elapsedSeconds

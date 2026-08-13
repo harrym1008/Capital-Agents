@@ -20,6 +20,7 @@ header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    z-index: 100000;
 }
 
 header h1 {
@@ -198,6 +199,11 @@ header h1 {
     max-width: 70%;
 }
 
+.qa-agent-pane {
+    height: auto;
+    max-height: 60vh;
+}
+
 .agent-header {
     display: flex;
     align-items: center;
@@ -373,7 +379,7 @@ header h1 {
 /* Collapsible Summary Sidebar styling */
 .summary-sidebar {
     width: 20%;
-    height: calc(100vh - 170px);
+    height: auto;
     background-color: #ffffff;
     border-left: 2px solid #e2e8f0;
     display: flex;
@@ -455,4 +461,4 @@ header h1 {
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 40%;
-}
+}

@@ -45,6 +45,7 @@ def rudimentaryVramClear():
         from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
         
         skip = False
+        freedVram = 0.0
 
         # Reset any existing sentiment engine singleton before clearing VRAM
         try:
@@ -70,6 +71,7 @@ def rudimentaryVramClear():
             if usedVramBefore < 1.5:
                 print(f"VRAM usage is already low: {usedVramBefore:.2f}/{totalVram:.2f} GB. Skipping VRAM clearing.")
                 skip = True
+                freedVram = 0.0
             
             else:
                 print(f"Clearing VRAM: Before: {usedVramBefore:.2f}/{totalVram:.2f} GB...", end="\r", flush=True)
@@ -109,7 +111,8 @@ def rudimentaryVramClear():
             if not skip:
                 memInfo = nvmlDeviceGetMemoryInfo(handle)
                 usedVramAfter = round(memInfo.used / (1024 ** 3), 2)
-                print(f"\n  -> After: {usedVramAfter:.2f} GB | Freed: {usedVramBefore - usedVramAfter:.2f} GB")
+                freedVram = round(usedVramBefore - usedVramAfter, 2)
+                print(f"\n  -> After: {usedVramAfter:.2f} GB | Freed: {freedVram:.2f} GB")
 
             # sys.modules.pop("pynvml", None)
             gc.collect()
@@ -117,6 +120,9 @@ def rudimentaryVramClear():
 
     except Exception as e:
         print(f"Error during rudimentary VRAM clearing: {e}. Continuing without clearing VRAM.")
+        freedVram = 0.0
+
+    return freedVram
 
 
 def checkExecutableExists(executablePath=LLAMACPP_EXECUTABLE):

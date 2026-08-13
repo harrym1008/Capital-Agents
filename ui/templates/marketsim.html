@@ -1359,6 +1359,8 @@
                 if (data.ok && data.state) {
                     currentState = data.state;
                     updateUI(data.state);
+                } else {
+                    alert("Error advancing simulation: " + (data.error || "Unknown error"));
                 }
             } catch (err) {
                 alert("Error advancing simulation: " + err.message);
@@ -1384,7 +1386,11 @@
                     if (currentState.currentDate >= targetDate || currentState.isEnded) break;
 
                     const data = await requestWs("sim_advance", { days: 1, targetDateCutoff: targetDate });
-                    if (!data.ok || !data.state || data.executedDays === 0) break;
+                    if (!data.ok) {
+                        alert("Error advancing simulation: " + (data.error || "Unknown error"));
+                        break;
+                    }
+                    if (!data.state || data.executedDays === 0) break;
 
                     currentState = data.state;
                     updateUI(data.state, true);
@@ -1764,16 +1770,12 @@
             const ticker = document.getElementById('orderTicker').value.trim().toUpperCase();
             const unit = document.getElementById('orderUnit').value;
             const action = document.getElementById('orderAction').value;
-            const rawQty = parseFloat(document.getElementById('orderQuantity').value) || 0;
+            const rawQty = parseFloat(document.getElementById('orderQuantity').value.replace(/,/g, '')) || 0;
 
             const summaryLastPrice = document.getElementById('summaryLastPrice');
             const summaryTotalLabel = document.getElementById('summaryTotalLabel');
             const summaryTotal = document.getElementById('summaryOrderTotal');
             const summaryCashAfter = document.getElementById('summaryCashAfter');
-            const orderQuantityInput = document.getElementById('orderQuantity');
-
-            formatQuantityInput(orderQuantityInput)
-
             if (unit === 'usd') {
                 summaryTotalLabel.textContent = "Est. Shares Total:";
             } else {

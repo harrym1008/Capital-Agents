@@ -190,10 +190,11 @@ _old/
 data/
 output/
 art/
+finbert/FinancialPhraseBank-v1.0/
+exec/projexp/
 
 # Files
 newtooltest.py
 *.engine
 *.onnx
 
-finbert/FinancialPhraseBank-v1.0/

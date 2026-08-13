@@ -181,10 +181,10 @@ def confirmBoardroomDecisionBase(
         if weighting not in ["UNDERWEIGHT", "EQUAL-WEIGHT", "OVERWEIGHT"]:
             return {"error": f"Invalid weighting value: {weighting}. Must be one of UNDERWEIGHT, EQUAL-WEIGHT, OVERWEIGHT."}
 
-        cleanedVal1 = cleanNumber(targetVal1, NumberType.STOCK_PRICE)
-        cleanedVal2 = cleanNumber(targetVal2, NumberType.STOCK_PRICE)
+        cleanedVal1 = cleanNumber(targetVal1, NumberType.STOCK_PRICE)[1:]
+        cleanedVal2 = cleanNumber(targetVal2, NumberType.STOCK_PRICE)[1:]
 
-        summaryLogStr = f"Boardroom decision confirmed for {ticker}: Rating: {rating}, Weighting: {weighting}, {targetKey1}: {cleanedVal1}, {targetKey2}: {cleanedVal2}."
+        summaryLogStr = f"Boardroom decision confirmed for {ticker}: Rating: {rating}, Weighting: {weighting}, {targetKey1}: ${cleanedVal1}, {targetKey2}: ${cleanedVal2}."
 
         result = {
             "ticker": ticker,
@@ -199,6 +199,9 @@ def confirmBoardroomDecisionBase(
     except Exception as e:
         return {"error": f"An error occurred while confirming boardroom decision: {str(e)}"}
 
+def confirmBoardroomDecisionImmediateTerm(tool: Tool, data: DataProviders, timestamp: pd.Timestamp,
+                                      ticker: str, rating: str, weighting: str, threeDayTarget: float, twoWeekTarget: float) -> Dict[str, Any]:
+    return confirmBoardroomDecisionBase(tool, ticker, rating, weighting, "threeDayTarget", threeDayTarget, "twoWeekTarget", twoWeekTarget)
 
 def confirmBoardroomDecisionShortTerm(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, 
                                       ticker: str, rating: str, weighting: str, oneMonthTarget: float, threeMonthTarget: float) -> Dict[str, Any]:

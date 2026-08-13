@@ -2,13 +2,6 @@ import os
 import numpy as np
 
 
-def resolveModelPath(candidatePaths: list[str]) -> str | None:
-    for path in candidatePaths:
-        if os.path.exists(path):
-            return path
-    return None
-
-
 def logitsToPredictions(logits: np.ndarray) -> list[dict]:
     labelNames = ["bearish", "neutral", "bullish"]
     maxLogits = np.max(logits, axis=-1, keepdims=True)
@@ -164,28 +157,27 @@ def isTensorRtSupported() -> bool:
     try:
         import tensorrt as trt
         import torch
-        return torch.cuda.is_available()
+        if not torch.cuda.is_available():
+            return False
+
+        logger = trt.Logger(trt.Logger.ERROR)
+        builder = trt.Builder(logger)
+
+        if builder is None:
+            return False
+        return True
+        
     except Exception:
         return False
 
 
-def getBestInferenceEngine(trtCandidatePaths: list[str] = None, onnxCandidatePaths: list[str] = None):
-    if trtCandidatePaths is None:
-        trtCandidatePaths = [
-            "finbert/models/ModernFinBERT_fp8.engine",
-            "data/models/ModernFinBERT_fp8.engine"
-        ]
-
-    if onnxCandidatePaths is None:
-        onnxCandidatePaths = [
-            "finbert/models/ModernFinBERT_fp32.onnx",
-            "data/models/ModernFinBERT_fp32.onnx"
-        ]
+def getBestInferenceEngine():
+    trtPath = "finbert/models/ModernFinBERT_fp8.engine"
+    onnxPath = "finbert/models/ModernFinBERT_fp32.onnx"
 
     # 1. Check if TensorRT is supported and engine file exists
     if isTensorRtSupported():
-        trtPath = resolveModelPath(trtCandidatePaths)
-        if trtPath is not None:
+        if os.path.exists(trtPath):
             try:
                 engine = TrtInferenceEngine(trtPath)
                 _ = engine.infer(["Financial market sentiment analysis initialisation warmup."])
@@ -195,8 +187,7 @@ def getBestInferenceEngine(trtCandidatePaths: list[str] = None, onnxCandidatePat
                 print(f"[FinBERT Engine] TensorRT load failed: {e}. Defaulting to ONNX...")
 
     # 2. Default to ONNX Runtime if TensorRT is not available or failed
-    onnxPath = resolveModelPath(onnxCandidatePaths)
-    if onnxPath is not None:
+    if os.path.exists(onnxPath):
         try:
             engine = OnnxInferenceEngine(onnxPath)
             _ = engine.infer(["Financial market sentiment analysis initialisation warmup."])
