@@ -33,7 +33,7 @@
         <div class="config-group">
             <label for="horizonSelect">Horizon:</label>
             <select id="horizonSelect">
-                <option value="immediate">Immediate (1d & 1wk)</option>
+                <option value="immediate">Immediate (3d & 2wk)</option>
                 <option value="short">Short (1mo & 3mo)</option>
                 <option value="medium">Medium (3mo & 12mo)</option>
                 <option value="long" selected>Long (12mo & 3y)</option>
@@ -155,6 +155,26 @@
             return `${day}${suffix} ${monthName} ${year}`;
         }
 
+        function extractTableColumns(rowStr) {
+            if (!rowStr) return [];
+            let content = rowStr.trim();
+            if (content.startsWith('|')) {
+                content = content.slice(1);
+            }
+            if (content.endsWith('|')) {
+                content = content.slice(0, -1);
+            }
+            return content.split('|').map(c => c.trim());
+        }
+
+        function isTableSeparatorRow(rowStr) {
+            if (!rowStr) return false;
+            let content = rowStr.trim();
+            if (content.startsWith('|')) content = content.slice(1);
+            if (content.endsWith('|')) content = content.slice(0, -1);
+            return content.length > 0 && /^[\s\-:|]+$/.test(content) && content.includes('-');
+        }
+
         function parseMarkdown(text) {
             if (!text) return "";
             
@@ -166,7 +186,7 @@
             
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
-                if (line.startsWith('|') && line.endsWith('|')) {
+                if (line.startsWith('|')) {
                     inTable = true;
                     tableRows.push(line);
                 } else {
@@ -193,11 +213,11 @@
             formattedText = formattedText.replace(/_(.*?)_/g, '<em>$1</em>');
 
             // 4. Parse hashtag headings: # (H2) to ###### (H6)
-            formattedText = formattedText.replace(/^######\s+(.*?)$/gm, '<h6 style="font-size: 15px; font-weight: bold; >$1</h6>');
-            formattedText = formattedText.replace(/^#####\s+(.*?)$/gm, '<h6 style="font-size: 16px; font-weight: bold; ">$1</h6>');
-            formattedText = formattedText.replace(/^####\s+(.*?)$/gm, '<h5 style="font-size: 17px; font-weight: bold; ">$1</h5>');
-            formattedText = formattedText.replace(/^###\s+(.*?)$/gm, '<h4 style="font-size: 19px; font-weight: bold; ">$1</h4>');
-            formattedText = formattedText.replace(/^##\s+(.*?)$/gm, '<h3 style="font-size: 21px; font-weight: bold; ">$1</h3>');
+            formattedText = formattedText.replace(/^######\s+(.*?)$/gm, '<h6 style="font-size: 15px; font-weight: bold;">$1</h6>');
+            formattedText = formattedText.replace(/^#####\s+(.*?)$/gm, '<h6 style="font-size: 16px; font-weight: bold;">$1</h6>');
+            formattedText = formattedText.replace(/^####\s+(.*?)$/gm, '<h5 style="font-size: 17px; font-weight: bold;">$1</h5>');
+            formattedText = formattedText.replace(/^###\s+(.*?)$/gm, '<h4 style="font-size: 19px; font-weight: bold;">$1</h4>');
+            formattedText = formattedText.replace(/^##\s+(.*?)$/gm, '<h3 style="font-size: 21px; font-weight: bold;">$1</h3>');
             formattedText = formattedText.replace(/^#\s+(.*?)$/gm, '<h2 style="font-size: 23px; font-weight: bold; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px;">$1</h2>');
             
             // 5. Parse horizontal rules: ---
@@ -210,12 +230,16 @@
         }
 
         function renderHtmlTable(rows) {
-            if (rows.length === 0) return "";
+            if (!rows || rows.length === 0) return "";
             
             let html = '<table style="border-collapse: collapse; width: 100%; margin: 10px 0; border: 2px solid #cbd5e1;">';
             
             // Header row
-            const firstRowCols = rows[0].split('|').map(c => c.trim()).filter((c, idx, arr) => idx > 0 && idx < arr.length - 1);
+            const firstRowCols = extractTableColumns(rows[0]);
+            if (firstRowCols.length === 0) return "";
+            
+            const numCols = firstRowCols.length;
+            
             html += '<thead><tr style="background-color: #f1f5f9; border-bottom: 2px solid #cbd5e1; font-weight: bold;">';
             firstRowCols.forEach(col => {
                 html += `<th style="padding: 8px; border: 1px solid #cbd5e1; text-align: left; font-weight: bold; font-size: 13px;">${col}</th>`;
@@ -223,14 +247,17 @@
             html += '</tr></thead><tbody>';
             
             // Data rows (skip the separator row if contains ---)
-            const startIdx = (rows.length > 1 && rows[1].includes('---')) ? 2 : 1;
+            const startIdx = (rows.length > 1 && isTableSeparatorRow(rows[1])) ? 2 : 1;
             
             for (let i = startIdx; i < rows.length; i++) {
-                const cols = rows[i].split('|').map(c => c.trim()).filter((c, idx, arr) => idx > 0 && idx < arr.length - 1);
+                if (isTableSeparatorRow(rows[i])) continue;
+                const cols = extractTableColumns(rows[i]);
                 html += '<tr style="border-bottom: 1px solid #cbd5e1;">';
-                cols.forEach(col => {
-                    html += `<td style="padding: 8px; border: 1px solid #cbd5e1; font-size: 13px;">${col}</td>`;
-                });
+                const totalCols = Math.max(numCols, cols.length);
+                for (let c = 0; c < totalCols; c++) {
+                    const colVal = c < cols.length ? cols[c] : "";
+                    html += `<td style="padding: 8px; border: 1px solid #cbd5e1; font-size: 13px;">${colVal}</td>`;
+                }
                 html += '</tr>';
             }
             
