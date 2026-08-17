@@ -252,7 +252,9 @@ class BaseLLMClient(ABC):
                 
                 with self.toolCallLock:                    
                     self._safePrint(f"{ANSI.BOLD} Executing {funcName} --> {funcArgsDict}", end="")
-                    if "error" in toolResult:
+                    if toolResult is None:
+                        self._safePrint(f" {ANSI.BOLD}{ANSI.RED}... failed: Tool returned None  {ANSI.RESET}", flush=True)
+                    elif "error" in toolResult:
                         self._safePrint(f" {ANSI.BOLD}{ANSI.RED}... failed: {toolResult['error']}  {ANSI.RESET}", flush=True)
                     else:
                         self._safePrint(f" {ANSI.BOLD}{ANSI.GREEN}... done.  {ANSI.RESET}", flush=True)

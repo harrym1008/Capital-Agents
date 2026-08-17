@@ -13,7 +13,7 @@ from llmtools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHt
 def fetchCompanyProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str):
     tickerProfile: CompanyProfile = data.tickers.getTickerProfile(ticker)
     if tickerProfile is None:
-        return {"error": f"No profile found for ticker {ticker}"}
+        return f"No profile found for ticker {ticker}"
 
     profileDict = {
         "ticker": tickerProfile.ticker,
@@ -197,7 +197,7 @@ def fetchStockPricePerformance(tool: Tool, data: DataProviders, timestamp: pd.Ti
 
     priceData = data.ohlcv.getPeriodDailyTickerData(ticker, startDate=startDate, endDate=timestamp)
     if priceData.empty:
-        return {"error": "No price data available."}
+        return f"No price data available for ticker {ticker} before {timestamp.strftime('%Y-%m-%d')}"
 
     if "splitFactor" in priceData.columns and not priceData["splitFactor"].empty:
         finalSplitFactor = priceData["splitFactor"].iloc[-1]
@@ -211,7 +211,7 @@ def fetchStockPricePerformance(tool: Tool, data: DataProviders, timestamp: pd.Ti
     priceData = priceData.drop(columns=dropCols).dropna().reset_index(drop=True)
 
     if priceData.empty:
-        return {"error": "No price data available."}
+        return f"No price data available for ticker {ticker} before {timestamp.strftime('%Y-%m-%d')}"
 
     mostRecentPrice = priceData["close"].iloc[-1]
     earliestDate = priceData["date"].iloc[0]
@@ -325,7 +325,7 @@ def fetchStockPricePerformance(tool: Tool, data: DataProviders, timestamp: pd.Ti
 def calculateDistFromCurrPrice(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str, targetPrice: float):
     priceData = data.ohlcv.getSingleDayTickerData(ticker, timestamp)
     if priceData is None or "close" not in priceData:
-        return {"error": f"Could not retrieve price for ticker {ticker}"}
+        return f"Could not retrieve price for ticker {ticker}"
 
     mostRecentPrice = float(priceData["close"])
     percentChange = 100 * (targetPrice - mostRecentPrice) / mostRecentPrice

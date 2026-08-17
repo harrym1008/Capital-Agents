@@ -177,9 +177,9 @@ def confirmBoardroomDecisionBase(
         weighting = weighting.upper()
 
         if rating not in ["STRONG BUY", "BUY", "HOLD", "SELL", "STRONG SELL"]:
-            return {"error": f"Invalid rating value: {rating}. Must be one of STRONG BUY, BUY, HOLD, SELL, STRONG SELL."}
+            return f"Invalid rating value: {rating}. Must be one of STRONG BUY, BUY, HOLD, SELL, STRONG SELL."
         if weighting not in ["UNDERWEIGHT", "EQUAL-WEIGHT", "OVERWEIGHT"]:
-            return {"error": f"Invalid weighting value: {weighting}. Must be one of UNDERWEIGHT, EQUAL-WEIGHT, OVERWEIGHT."}
+            return f"Invalid weighting value: {weighting}. Must be one of UNDERWEIGHT, EQUAL-WEIGHT, OVERWEIGHT."
 
         cleanedVal1 = cleanNumber(targetVal1, NumberType.STOCK_PRICE)[1:]
         cleanedVal2 = cleanNumber(targetVal2, NumberType.STOCK_PRICE)[1:]
@@ -198,7 +198,7 @@ def confirmBoardroomDecisionBase(
 
         return cleanData(result)
     except Exception as e:
-        return {"error": f"An error occurred while confirming boardroom decision: {str(e)}"}
+        return f"An error occurred while confirming boardroom decision: {str(e)}"
 
 def confirmBoardroomDecisionImmediateTerm(tool: Tool, data: DataProviders, timestamp: pd.Timestamp,
                                       ticker: str, rating: str, weighting: str, threeDayTarget: float, twoWeekTarget: float) -> Dict[str, Any]:

@@ -3,6 +3,7 @@ from dataquery import LRUCache, MacroDataProvider, NewsDataProvider, DailyPriceP
 from collectors.constants import START_DATE, END_DATE
 from collectors.rate_limiter import GlobalRateLimiters
 
+from threading import RLock
 from typing import Any, Dict, List, Callable
 import pandas as pd
 
@@ -21,7 +22,7 @@ class DataProviders:
         self.forex = ForexDataProvider(START_DATE, END_DATE, self.cache, self.rateLimiters)
 
         self.sentimentCache = LRUCache(8 * 1024 ** 2)  # 8 MB max size
-
+        self.sentimentLock = RLock()
 
 
 class Tool:
@@ -44,8 +45,16 @@ class Tool:
     
     def executeTool(self, data: DataProviders, timestamp: pd.Timestamp, args: Dict[str, Any]):
         try:
-            toolCall = self.function(self, data, timestamp, **args)
-            return toolCall
+            toolOutput = self.function(self, data, timestamp, **args)
+            if toolOutput is None:
+                return {"error": f"Tool '{self.name}' returned None."}
+            elif isinstance(toolOutput, str):
+                return {"error": toolOutput}        # Assume sole string return values are error messages            
+            elif not isinstance(toolOutput, dict):
+                return {"result": toolOutput}
+            
+            return toolOutput
+        
         except Exception as e:
             import traceback
             tb = traceback.format_exc()

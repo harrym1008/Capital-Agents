@@ -17,7 +17,7 @@ from llm.cloud.openrouter_client import OpenRouterClient
 
 from llm.llm_client import BaseLLMClient
 from llm.token_cost_tracker import TokenCostTracker
-from llmtools.functions.sentiment import preloadSentimentModelAsync
+from llmtools.functions.sentimentnews import preloadSentimentModelAsync
 from llmtools.tool_registry import ToolRegistry
 from ui.ui_hooks import emitEvent
 

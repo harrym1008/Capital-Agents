@@ -1,5 +1,7 @@
 import os
+import threading
 from abc import ABC, abstractmethod
+from typing import Optional
 import numpy as np
 
 
@@ -44,6 +46,7 @@ class BaseInferenceEngine(ABC):
         self.optimalBatchSize = optimalBatchSize
         self.maxSeqLen = maxSeqLen
         self.engineType = self.__class__.__name__
+        self.lock = threading.RLock()
 
         self.importModules()
 
@@ -69,24 +72,25 @@ class BaseInferenceEngine(ABC):
         if not texts:
             return np.empty((0, 3), dtype=np.float32)
 
-        allLogits = []
-        numSamples = len(texts)
-        for startIdx in range(0, numSamples, self.optimalBatchSize):
-            endIdx = min(startIdx + self.optimalBatchSize, numSamples)
-            batchTexts = texts[startIdx:endIdx]
-            encoded = self.tokenizer(
-                batchTexts,
-                padding="longest",
-                truncation=True,
-                max_length=self.maxSeqLen,
-                return_tensors="np"
-            )
-            batchInputIds = encoded["input_ids"]
-            batchAttMask = encoded["attention_mask"]
-            batchLogits = self._inferRaw(batchInputIds, batchAttMask)
-            allLogits.append(batchLogits)
+        with self.lock:
+            allLogits = []
+            numSamples = len(texts)
+            for startIdx in range(0, numSamples, self.optimalBatchSize):
+                endIdx = min(startIdx + self.optimalBatchSize, numSamples)
+                batchTexts = texts[startIdx:endIdx]
+                encoded = self.tokenizer(
+                    batchTexts,
+                    padding="longest",
+                    truncation=True,
+                    max_length=self.maxSeqLen,
+                    return_tensors="np"
+                )
+                batchInputIds = encoded["input_ids"]
+                batchAttMask = encoded["attention_mask"]
+                batchLogits = self._inferRaw(batchInputIds, batchAttMask)
+                allLogits.append(batchLogits)
 
-        return np.concatenate(allLogits, axis=0)
+            return np.concatenate(allLogits, axis=0)
 
 
 # TensorRT FP8 Inference Engine (requires CUDA and TensorRT)
@@ -312,3 +316,32 @@ def getBestInferenceEngine() -> BaseInferenceEngine | None:
 
     print("[FinBERT Engine] Neither TensorRT, ONNX, nor PyTorch model could be loaded.")
     return None
+
+
+# Global singleton engine instance and initialization lock
+sentimentEngine: Optional[BaseInferenceEngine] = None
+engineLoadLock = threading.RLock()
+engineLoadAttempted = False
+
+
+def getSentimentEngine() -> Optional[BaseInferenceEngine]:
+    global sentimentEngine, engineLoadAttempted
+
+    with engineLoadLock:
+        if not engineLoadAttempted:
+            engineLoadAttempted = True
+            sentimentEngine = getBestInferenceEngine()
+            if sentimentEngine is not None:
+                try:
+                    warmupText = ["Financial market sentiment analysis initialisation warmup."]
+                    _ = sentimentEngine.infer(warmupText)
+                except Exception as warmupError:
+                    print(f"[Sentiment Engine] Prewarm encountered an issue: {warmupError}")
+
+        return sentimentEngine
+
+
+def preloadSentimentModelAsync() -> threading.Thread:
+    thread = threading.Thread(target=getSentimentEngine, daemon=True, name="SentimentModelPreloader")
+    thread.start()
+    return thread

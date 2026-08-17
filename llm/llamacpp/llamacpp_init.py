@@ -49,7 +49,7 @@ def rudimentaryVramClear():
 
         # Reset any existing sentiment engine singleton before clearing VRAM
         try:
-            import llmtools.functions.sentiment as sentimentModule
+            import llmtools.functions.sentimentnews as sentimentModule
             sentimentModule.sentimentEngine = None
             sentimentModule.engineLoadAttempted = False
         except Exception:

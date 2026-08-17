@@ -22,7 +22,7 @@ class LlamaCppModel(Enum):
     GEMMA_4_E2B = "Gemma-4-E2B"
     GEMMA_4_E2B_CPU = "Gemma-4-E2B-CPU"
     
-    QWEN_36_27B = "Qwen-3.6-27B"
+    QWEN_38_27B = "Qwen-3.8-27B"
     QWEN_36_35B_A3B = "Qwen-3.6-35B-A3B"
 
     QWEN_35_9B = "Qwen-3.5-9B"
@@ -177,8 +177,8 @@ LLAMACPP_MODEL_TO_ARGS = {
         "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
     },
 
-    LlamaCppModel.QWEN_36_27B: {
-        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3.6-27B-MTP-UD-IQ3_XXS.gguf",
+    LlamaCppModel.QWEN_38_27B: {
+        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3.8-27B-UD-IQ3_XXS.gguf",
         "--port":           str(LLAMACPP_PORT),
         "--host":           "127.0.0.1",
         "--temp":           "0.5",
@@ -195,13 +195,19 @@ LLAMACPP_MODEL_TO_ARGS = {
         "-b":               "2048",
         "-ub":              "512",
         "--jinja":          _,
-        "-np":              "2",
+        "-np":              "1",
         "--cache-ram":      "4096",
-        "--ctx-size":       "131072",
+        "--ctx-size":       "65536",        # We cant fit 128k in with a 27b model!
         "-ngl":             "99",
-        "--reasoning":      "on",
+        "--spec-type":                  "draft-mtp",
+        "--spec-draft-n-max":           "2",
+        "--spec-draft-ngl":             "99",
+        "--cache-type-k-draft":   "q8_0",
+        "--cache-type-v-draft":   "q8_0",  
+        # "--reasoning":      "on",
         "--reasoning-preserve":   _,
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
+        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE,
+        "--chat-template-kwargs":       '{"reasoning_effort":"medium"}',
     },
 
     LlamaCppModel.QWEN_36_35B_A3B: {

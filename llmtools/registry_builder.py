@@ -6,7 +6,8 @@ from llmtools.functions.macro import fetchMacroContext, fetchMacroNews
 from llmtools.functions.company import fetchCompanyProfile, fetchCompanyRecentNews, fetchStockPricePerformance, calculateDistFromCurrPrice
 from llmtools.functions.edgar import fetchCompanyValuationMetrics, fetchIncomeStatement, fetchBalanceSheet, \
                                       fetchCashFlowStatement, fetchStatementOfEquity, fetchComprehensiveIncomeStatement 
-from llmtools.functions.sentiment import fetchTickerSentimentHistory, fetchSentimentDivergence, fetchMacroSentimentHistory
+from llmtools.functions.sentimentnews import fetchTickerSentimentHistory, fetchSentimentDivergence, fetchMacroSentimentHistory
+from llmtools.functions.sentiment10q import fetchLatest10QSentiment
 from llmtools.functions.other import (
     executePythonCalculation, 
     confirmBoardroomDecisionImmediateTerm,
@@ -301,26 +302,35 @@ def buildToolRegistry(initMacroThread=False):
     ))
 
 
-    # sentiment.py
+    # sentimentnews.py
     toolReg.registerTool(Tool(
         toolFunction=fetchTickerSentimentHistory,
         toolName="fetchTickerSentimentHistory",
-        toolDescription="Fetches the history of the news sentiment for a given stock ticker.",
+        toolDescription="Fetches the history of the (estimated) news sentiment for a given stock ticker.",
         parameterSchema=SCHEMAS["justTicker"]
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=fetchSentimentDivergence,
         toolName="fetchSentimentDivergence",
-        toolDescription="Analyzes the divergence between stock price performance and news sentiment over a 3-month period.",
+        toolDescription="Analyses the divergence between stock price performance and (estimated) news sentiment over a 3-month period.",
         parameterSchema=SCHEMAS["justTicker"]
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=fetchMacroSentimentHistory,
         toolName="fetchMacroSentimentHistory",
-        toolDescription="Fetches the history of the news sentiment for major macroeconomic and geopolitical topics.",
+        toolDescription="Fetches the history of the (estimated) news sentiment for major macroeconomic and geopolitical topics.",
         parameterSchema=SCHEMAS["empty"]
+    ))
+
+
+    # sentiment10q.py
+    toolReg.registerTool(Tool(
+        toolFunction=fetchLatest10QSentiment,
+        toolName="fetchLatest10QSentiment",
+        toolDescription="Fetches the most recent 10-Q filing for a given stock ticker, extracts the MD&A and Risk Factors sections, and estimates the operational sentiment score based on the text.",
+        parameterSchema=SCHEMAS["justTicker"]
     ))
 
 

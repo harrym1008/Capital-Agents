@@ -163,10 +163,6 @@ class EdgarDataProvider:
         accessionNumber = filing.accession_number
         cacheKey = f"edgar|filingDownload_{accessionNumber}"
 
-        cached = self.cache.get(cacheKey)
-        if cached is not None:
-            return cached
-
         with self.lock:
             cached = self.cache.get(cacheKey)
             if cached is not None:
