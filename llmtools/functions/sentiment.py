@@ -11,7 +11,8 @@ from llmtools.functions.company import fetchStockPricePerformance
 from llmtools.tool_registry import DataProviders, Tool
 from llmtools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, NumberType
 
-from finbert.finbert_engines import getBestInferenceEngine, logitsToPredictions
+from finbert.finbert_engines import getBestInferenceEngine, logitsToPredictions, \
+    TrtCudaInferenceEngine, OnnxCudaInferenceEngine, PytorchCudaInferenceEngine
 
 
 # Singleton model engine and re-entrant lock
@@ -29,10 +30,10 @@ def getSentimentEngine():
         with sentimentLock:
             if not engineLoadAttempted:
                 engineLoadAttempted = True
-                engine, eType, modelPath = getBestInferenceEngine()
+                engine = getBestInferenceEngine()
                 if engine is not None:
                     sentimentEngine = engine
-                    engineType = eType
+                    engineType = getattr(engine, "engineType", engine.__class__.__name__)
                     try:
                         warmupText = ["Financial market sentiment analysis initialisation warmup."]
                         _ = engine.infer(warmupText)
@@ -80,7 +81,7 @@ def scoreHeadlinesBatch(headlines: list[str]) -> list[dict] | None:
         return None
 
     try:
-        logits = engine.infer(headlines, batchSize=8)
+        logits = engine.infer(headlines)
         return logitsToPredictions(logits)
     except Exception as e:
         print(f"[Sentiment Engine] Inference error: {e}")
@@ -122,9 +123,25 @@ def scoreTextsWithCache(texts: list[str], data: DataProviders = None) -> list[di
     return results
 
 
-def sampleMonthlyArticles(newsDf: pd.DataFrame, maxPerMonth: int = 20) -> pd.DataFrame:
+def getMaxArticlesPerMonth() -> int:
+    engine, _ = getSentimentEngine()
+    engineType = type(engine)
+
+    if engineType is TrtCudaInferenceEngine:
+        return 100
+    elif engineType is OnnxCudaInferenceEngine:
+        return 50
+    elif engineType is PytorchCudaInferenceEngine:
+        return 30
+    return 12
+
+
+def sampleMonthlyArticles(newsDf: pd.DataFrame) -> pd.DataFrame:
     if newsDf is None or newsDf.empty:
         return newsDf
+
+    maxPerMonth = getMaxArticlesPerMonth()
+    print(maxPerMonth, " max articles per month")
 
     newsDfCopy = newsDf.copy()
     newsDfCopy["periodGroup"] = newsDfCopy["date"].dt.to_period("M")
@@ -247,8 +264,8 @@ def fetchTickerSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.T
         if newsDf["date"].dt.tz is not None:
             newsDf["date"] = newsDf["date"].dt.tz_convert("UTC").dt.tz_localize(None)
 
-        # Stratified monthly sampling: up to 20 articles per month max (max 240/year)
-        newsDf = sampleMonthlyArticles(newsDf, maxPerMonth=20)
+        # Stratified monthly sampling based on chosen inference engine
+        newsDf = sampleMonthlyArticles(newsDf)
 
         classificationDf = getClassificationDf(newsDf, bestMinTickers=2, contentTruncate=1024)
         rawPredictions = scoreTextsWithCache(classificationDf["text"].tolist(), data=data)
@@ -393,8 +410,8 @@ def fetchMacroSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.Ti
         if newsDf["date"].dt.tz is not None:
             newsDf["date"] = newsDf["date"].dt.tz_convert("UTC").dt.tz_localize(None)
 
-        # Stratified monthly sampling: up to 20 articles per month max (max 240/year)
-        newsDf = sampleMonthlyArticles(newsDf, maxPerMonth=20)
+        # Stratified monthly sampling based on chosen inference engine
+        newsDf = sampleMonthlyArticles(newsDf)
 
         classificationDf = getClassificationDf(newsDf, bestMinTickers=8, contentTruncate=1024)
         classificationDf["weight"] = 1.0

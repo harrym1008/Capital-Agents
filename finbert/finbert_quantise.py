@@ -41,14 +41,34 @@ def loadFinancialPhraseBank(sampleCount, returnRightSide=False):
     return texts, trueLabels
 
 
-def convertToFp32Onnx(modelId, onnxPath):
-    print(f"[Step 1] Loading FP32 model and tokeniser...")
-    model = AutoModelForSequenceClassification.from_pretrained(modelId).cuda()
-    # tokeniser = AutoTokenizer.from_pretrained(modelId)
+# Fuse attention operations into single kernels to prevent memory blowup in ONNX Runtime
+def optimizeOnnxGraph(onnxPath: str):
+    try:
+        from onnxruntime.transformers import optimizer
+        print(f"  [ONNX Optimizer] Optimizing attention subgraphs in {onnxPath}...")
+        optimizedModel = optimizer.optimize_model(
+            onnxPath,
+            model_type="bert",
+            num_heads=12,
+            hidden_size=768,
+            use_gpu=True
+        )
+        optimizedModel.save_model_to_file(onnxPath)
+        print(f"  [ONNX Optimizer] Successfully fused attention nodes in {onnxPath}")
+    except Exception as e:
+        print(f"  [ONNX Optimizer] Optional graph optimization skipped: {e}")
+
+
+def convertToFp32Onnx(modelId, onnxPath, maxSeqLen=768):
+    print(f"[Step 1] Loading FP32 model with native SDPA (FlashAttention) and tokenizer...")
+    model = AutoModelForSequenceClassification.from_pretrained(
+        modelId,
+        attn_implementation="sdpa"
+    ).cuda()
 
     dummyInput = (
-        torch.ones(1, 1024, dtype=torch.long, device="cuda"),
-        torch.ones(1, 1024, dtype=torch.long, device="cuda"),
+        torch.ones(1, maxSeqLen, dtype=torch.long, device="cuda"),
+        torch.ones(1, maxSeqLen, dtype=torch.long, device="cuda"),
     )
 
     print(f"[Step 2] Exporting FP32 model to ONNX...")
@@ -66,19 +86,29 @@ def convertToFp32Onnx(modelId, onnxPath):
         opset_version=17,
         dynamo=False
     )
+    optimizeOnnxGraph(onnxPath)
     print(f"  FP32 ONNX model exported to {onnxPath}")
     return onnxPath
 
 
-def calibrateAndQuantiseIntoOnnx(modelId, onnxSuffix, quantConfig, maxSamples):
-    print(f"[Step 1] Loading model, tokeniser and calibration data...")
-    model = AutoModelForSequenceClassification.from_pretrained(modelId).cuda()
-    tokeniser = AutoTokenizer.from_pretrained(modelId, cache_dir="data/models", model_max_length=1024)
+def calibrateAndQuantiseIntoOnnx(modelId, onnxSuffix, quantConfig, maxSamples, maxSeqLen=768):
+    print(f"[Step 1] Loading model, tokenizer and calibration data...")
+    model = AutoModelForSequenceClassification.from_pretrained(
+        modelId,
+        attn_implementation="sdpa"
+    ).cuda()
+    tokenizer = AutoTokenizer.from_pretrained(modelId, cache_dir="finbert/models/hf", model_max_length=maxSeqLen)
 
-    # Quantisation data requires a representation of the input data, but not that much. 
-    calibrationTexts = loadFinancialPhraseBank(maxSamples)[0]       # Dont load the true labels
+    # Quantisation data requires a representation of the input data
+    calibrationTexts = loadFinancialPhraseBank(maxSamples)[0]       # Don't load the true labels
 
-    encodedInputs = tokeniser(calibrationTexts, padding=True, truncation=True, max_length=1024, return_tensors="pt").to("cuda")
+    encodedInputs = tokenizer(
+        calibrationTexts,
+        padding=True,
+        truncation=True,
+        max_length=maxSeqLen,
+        return_tensors="pt"
+    ).to("cuda")
 
     def forwardLoop(modelToCalibrate):
         numSamples = encodedInputs["input_ids"].shape[0]
@@ -112,7 +142,7 @@ def calibrateAndQuantiseIntoOnnx(modelId, onnxSuffix, quantConfig, maxSamples):
     return onnxPath
 
 
-def compileTensorRtEngine(onnxPath, enginePath):
+def compileTensorRtEngine(onnxPath, enginePath, maxBatchSize=16, maxSeqLen=768):
     print(f"[Step 4] Configuring TensorRT engine...")
     trtLogger = trt.Logger(trt.Logger.WARNING)
     builder = trt.Builder(trtLogger)
@@ -128,14 +158,14 @@ def compileTensorRtEngine(onnxPath, enginePath):
             raise RuntimeError("Failed to parse ONNX model.")
 
     config = builder.create_builder_config()
-    config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 2 * (1024 ** 3))
+    config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 1 * (1024 ** 3))
 
     profile = builder.create_optimization_profile()
-    profile.set_shape("input_ids", min=(1, 1), opt=(4, 128), max=(8, 1024))
-    profile.set_shape("attention_mask", min=(1, 1), opt=(4, 128), max=(8, 1024))
+    profile.set_shape("input_ids", min=(1, 1), opt=(4, 128), max=(maxBatchSize, maxSeqLen))
+    profile.set_shape("attention_mask", min=(1, 1), opt=(4, 128), max=(maxBatchSize, maxSeqLen))
     config.add_optimization_profile(profile)
 
-    print(f"[Step 5] Building TensorRT engine...")
+    print(f"[Step 5] Building TensorRT engine (Max Batch: {maxBatchSize}, Max SeqLen: {maxSeqLen})...")
     serialisedEngine = builder.build_serialized_network(network, config)
 
     if not serialisedEngine:
@@ -149,14 +179,17 @@ def compileTensorRtEngine(onnxPath, enginePath):
 
 
 def main():
-    # All models are enforced a maximum of 1024 tokens
+    # Enforce maximum of 768 tokens and batch size 16
+    maxSeqLen = 768
+    maxBatchSize = 16
     modelsDir = "finbert/models"
 
     # Download the ModernFinBERT model and export it to FP32 ONNX
     print(f"Converting FP32 model to ONNX...")
     onnxPathFp32 = convertToFp32Onnx(
         "tabularisai/ModernFinBERT",
-        onnxPath=f"{modelsDir}/ModernFinBERT_fp32.onnx"
+        onnxPath=f"{modelsDir}/ModernFinBERT_fp32.onnx",
+        maxSeqLen=maxSeqLen
     )
 
     # Build the FP8 TensorRT engine
@@ -165,10 +198,17 @@ def main():
         "tabularisai/ModernFinBERT",
         onnxSuffix="fp8",
         quantConfig=mtq.FP8_DEFAULT_CFG,
-        maxSamples=256
+        maxSamples=256,
+        maxSeqLen=maxSeqLen
     )
-    compileTensorRtEngine(onnxPathFp8, f"{modelsDir}/ModernFinBERT_fp8.engine")
-    os.remove(onnxPathFp8)          # Delete intermediate ONNX file
+    compileTensorRtEngine(
+        onnxPathFp8,
+        f"{modelsDir}/ModernFinBERT_fp8.engine",
+        maxBatchSize=maxBatchSize,
+        maxSeqLen=maxSeqLen
+    )
+    if os.path.exists(onnxPathFp8):
+        os.remove(onnxPathFp8)          # Delete intermediate ONNX file
 
 if __name__ == "__main__":
     main()

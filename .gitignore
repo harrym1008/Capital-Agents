@@ -191,6 +191,7 @@ data/
 output/
 art/
 finbert/FinancialPhraseBank-v1.0/
+finbert/models/
 exec/projexp/
 exec/tests/output/
 

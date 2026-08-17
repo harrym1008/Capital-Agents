@@ -1,5 +1,6 @@
 import os, sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(ROOT)
 
 import time
 import random
@@ -13,7 +14,7 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from scipy.spatial.distance import cosine
 from scipy.special import softmax, kl_div
 
-from finbert.finbert_engines import TrtInferenceEngine, OnnxInferenceEngine
+from finbert.finbert_engines import TrtCudaInferenceEngine, OnnxCudaInferenceEngine
 from finbert.finbert_quantise import loadFinancialPhraseBank
 
 
@@ -57,10 +58,10 @@ def runPytorchModelFp32(model, tokeniser, texts, batchSize, benchBatchSizes, tim
     return logits, benchResults
 
 
-def runTensorRtModelFp8(engine, tokeniser, texts, batchSize, benchBatchSizes, timedRuns):
+def runTensorRtModelFp8(engine, texts, benchBatchSizes, timedRuns):
     # Validation inference over the full dataset
     print(f"Validating FP8 TensorRT engine...")
-    logits = engine.infer(texts, batchSize=batchSize)
+    logits = engine.infer(texts)
 
     # Latency benchmark across batch sizes
     print(f"Benchmarking FP8 TensorRT engine...")
@@ -69,16 +70,13 @@ def runTensorRtModelFp8(engine, tokeniser, texts, batchSize, benchBatchSizes, ti
         benchTexts = loadFinancialPhraseBank(256, returnRightSide=True)[0]
         random.shuffle(benchTexts)
         benchTexts = benchTexts[:bs]
-        encoded = tokeniser(benchTexts, padding="longest", truncation=True, return_tensors="pt")
-        inputIds = encoded["input_ids"].numpy()
-        attentionMask = encoded["attention_mask"].numpy()
 
         startEvent = torch.cuda.Event(enable_timing=True)
         endEvent = torch.cuda.Event(enable_timing=True)
         latencies = []
         for _ in range(timedRuns):
             startEvent.record()
-            engine.infer(inputIds, attentionMask)
+            engine.infer(benchTexts)
             endEvent.record()
             torch.cuda.synchronize()
             latencies.append(startEvent.elapsed_time(endEvent))
@@ -89,10 +87,10 @@ def runTensorRtModelFp8(engine, tokeniser, texts, batchSize, benchBatchSizes, ti
     return logits, benchResults
 
 
-def runOnnxModelFp32(engine, tokeniser, texts, batchSize, benchBatchSizes, timedRuns):
+def runOnnxModelFp32(engine, texts, benchBatchSizes, timedRuns):
     # Validation inference over the full dataset
     print(f"Validating FP32 ONNX Runtime model...")
-    logits = engine.infer(texts, batchSize=batchSize)
+    logits = engine.infer(texts)
 
     # Latency benchmark across batch sizes
     print(f"Benchmarking FP32 ONNX Runtime model...")
@@ -101,14 +99,11 @@ def runOnnxModelFp32(engine, tokeniser, texts, batchSize, benchBatchSizes, timed
         benchTexts = loadFinancialPhraseBank(256, returnRightSide=True)[0]
         random.shuffle(benchTexts)
         benchTexts = benchTexts[:bs]
-        encoded = tokeniser(benchTexts, padding="longest", truncation=True, return_tensors="pt")
-        inputIds = encoded["input_ids"].numpy()
-        attentionMask = encoded["attention_mask"].numpy()
 
         latencies = []
         for _ in range(timedRuns):
             start = time.perf_counter()
-            engine.infer(inputIds, attentionMask)
+            engine.infer(benchTexts)
             latencies.append((time.perf_counter() - start) * 1000)
 
         meanMs = float(np.mean(latencies))
@@ -169,17 +164,20 @@ def main():
     validateBatchSize = 8
     seqLen = 512         # typical sentence length for financial text
     timedRuns = 100
-    testBatchSizes = [1, 2, 4, 8, 16, 32]
+    testBatchSizes = [1, 2, 4, 8, 16]
 
     print("Loading FP32 PyTorch model...")
-    tokeniser = AutoTokenizer.from_pretrained(modelId, cache_dir="data/models", model_max_length=1024)
-    model = AutoModelForSequenceClassification.from_pretrained(modelId).cuda().eval()
+    tokeniser = AutoTokenizer.from_pretrained(modelId, cache_dir="finbert/models/hf", model_max_length=768)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        modelId,
+        attn_implementation="sdpa"
+    ).cuda().eval()
 
     print("Loading TensorRT FP8 engine...")
-    trtEngine = TrtInferenceEngine(enginePath)
+    trtEngine = TrtCudaInferenceEngine(enginePath)
 
     print("Loading FP32 ONNX Runtime model...")
-    onnxEngine = OnnxInferenceEngine(fp32OnnxPath)
+    onnxEngine = OnnxCudaInferenceEngine(fp32OnnxPath)
 
     gpuName = torch.cuda.get_device_name(0)
     import onnxruntime as ort
@@ -195,8 +193,8 @@ def main():
 
     print(f"\nRunning validation ({len(texts)} sentences) and benchmark...")
     fp32Logits, fp32Bench = runPytorchModelFp32(model, tokeniser, texts, validateBatchSize, testBatchSizes, timedRuns)
-    onnxLogits, onnxBench = runOnnxModelFp32(onnxEngine, tokeniser, texts, validateBatchSize, testBatchSizes, timedRuns)
-    trtLogits, trtBench = runTensorRtModelFp8(trtEngine, tokeniser, texts, validateBatchSize, testBatchSizes, timedRuns)
+    onnxLogits, onnxBench = runOnnxModelFp32(onnxEngine, texts, testBatchSizes, timedRuns)
+    trtLogits, trtBench = runTensorRtModelFp8(trtEngine, texts, testBatchSizes, timedRuns)
 
     fp8Metrics = computeMetrics(fp32Logits, trtLogits)
     fp32OnnxMetrics = computeMetrics(fp32Logits, onnxLogits)

@@ -1,4 +1,5 @@
 import os
+from abc import ABC, abstractmethod
 import numpy as np
 
 
@@ -19,140 +20,6 @@ def logitsToPredictions(logits: np.ndarray) -> list[dict]:
     return predictions
 
 
-# TRT inference helper, lazily loads modules to save VRAM and avoid import errors if env doesn't support TRT
-class TrtInferenceEngine:
-    def __init__(self, enginePath: str, tokenizer=None):
-        import tensorrt as trt
-        import torch
-
-        self.logger = trt.Logger(trt.Logger.WARNING)
-        trt.init_libnvinfer_plugins(self.logger, "")
-
-        with open(enginePath, "rb") as f:
-            runtime = trt.Runtime(self.logger)
-            self.engine = runtime.deserialize_cuda_engine(f.read())
-
-        if self.engine is None:
-            raise RuntimeError(f"Failed to deserialize TensorRT engine from {enginePath}")
-
-        self.context = self.engine.create_execution_context()
-        self.stream = torch.cuda.Stream()
-
-        if tokenizer is None:
-            from transformers import AutoTokenizer
-            tokenizer = AutoTokenizer.from_pretrained("tabularisai/ModernFinBERT", cache_dir="data/models", model_max_length=1024)
-        self.tokenizer = tokenizer
-
-    def _inferRaw(self, inputIds: np.ndarray, attentionMask: np.ndarray) -> np.ndarray:
-        import torch
-        batchSize, seqLen = inputIds.shape
-        self.context.set_input_shape("input_ids", (batchSize, seqLen))
-        self.context.set_input_shape("attention_mask", (batchSize, seqLen))
-
-        dInputIds = torch.from_numpy(inputIds.astype(np.int64)).cuda().contiguous()
-        dAttMask = torch.from_numpy(attentionMask.astype(np.int64)).cuda().contiguous()
-
-        numClasses = self.engine.get_tensor_shape("logits")[-1]
-        if numClasses < 0:
-            numClasses = 3
-        dOutput = torch.empty((batchSize, numClasses), dtype=torch.float32, device="cuda").contiguous()
-
-        self.context.set_tensor_address("input_ids", dInputIds.data_ptr())
-        self.context.set_tensor_address("attention_mask", dAttMask.data_ptr())
-        self.context.set_tensor_address("logits", dOutput.data_ptr())
-
-        self.context.execute_async_v3(self.stream.cuda_stream)
-        self.stream.synchronize()
-
-        return dOutput.cpu().numpy()
-
-    def infer(self, inputs, attentionMask: np.ndarray = None, batchSize: int = 8) -> np.ndarray:
-        if isinstance(inputs, np.ndarray):
-            return self._inferRaw(inputs, attentionMask)
-
-        if not isinstance(inputs, (list, tuple)):
-            inputs = [inputs]
-
-        if not inputs:
-            return np.empty((0, 3), dtype=np.float32)
-
-        allLogits = []
-        numSamples = len(inputs)
-        for startIdx in range(0, numSamples, batchSize):
-            endIdx = min(startIdx + batchSize, numSamples)
-            batchTexts = inputs[startIdx:endIdx]
-            encoded = self.tokenizer(
-                batchTexts,
-                padding="longest",
-                truncation=True,
-                max_length=1024,
-                return_tensors="np"
-            )
-            batchInputIds = encoded["input_ids"]
-            batchAttMask = encoded["attention_mask"]
-            batchLogits = self._inferRaw(batchInputIds, batchAttMask)
-            allLogits.append(batchLogits)
-
-        return np.concatenate(allLogits, axis=0)
-
-
-# ONNX inference engine, lazily loads modules to save VRAM and avoid import errors if env doesn't support ONNX
-class OnnxInferenceEngine:
-    def __init__(self, onnxPath: str, tokenizer=None):
-        import onnxruntime as ort
-
-        availableProviders = ort.get_available_providers()
-        providers = ["CPUExecutionProvider"]
-        if "CUDAExecutionProvider" in availableProviders:
-            providers.insert(0, "CUDAExecutionProvider")
-        self.session = ort.InferenceSession(onnxPath, providers=providers)
-        self.provider = self.session.get_providers()[0]
-
-        if tokenizer is None:
-            from transformers import AutoTokenizer
-            tokenizer = AutoTokenizer.from_pretrained("tabularisai/ModernFinBERT", cache_dir="data/models", model_max_length=1024)
-        self.tokenizer = tokenizer
-
-
-    def _inferRaw(self, inputIds: np.ndarray, attentionMask: np.ndarray) -> np.ndarray:
-        inputs = {
-            "input_ids": inputIds.astype(np.int64),
-            "attention_mask": attentionMask.astype(np.int64)
-        }
-        outputs = self.session.run(["logits"], inputs)
-        return outputs[0]
-
-
-    def infer(self, inputs, attentionMask: np.ndarray = None, batchSize: int = 8) -> np.ndarray:
-        if isinstance(inputs, np.ndarray):
-            return self._inferRaw(inputs, attentionMask)
-
-        if not isinstance(inputs, (list, tuple)):
-            inputs = [inputs]
-
-        if not inputs:
-            return np.empty((0, 3), dtype=np.float32)
-
-        allLogits = []
-        numSamples = len(inputs)
-        for startIdx in range(0, numSamples, batchSize):
-            endIdx = min(startIdx + batchSize, numSamples)
-            batchTexts = inputs[startIdx:endIdx]
-            encoded = self.tokenizer(
-                batchTexts,
-                padding="longest",
-                truncation=True,
-                max_length=1024,
-                return_tensors="np"
-            )
-            batchInputIds = encoded["input_ids"]
-            batchAttMask = encoded["attention_mask"]
-            batchLogits = self._inferRaw(batchInputIds, batchAttMask)
-            allLogits.append(batchLogits)
-
-        return np.concatenate(allLogits, axis=0)
-
-
 def isTensorRtSupported() -> bool:
     try:
         import tensorrt as trt
@@ -166,35 +33,282 @@ def isTensorRtSupported() -> bool:
         if builder is None:
             return False
         return True
-        
     except Exception:
         return False
 
 
-def getBestInferenceEngine():
+# Base class for all FinBERT inference engines
+class BaseInferenceEngine(ABC):
+    def __init__(self, modelPathOrId: str, optimalBatchSize: int = 16, maxSeqLen: int = 768):
+        self.modelPathOrId = modelPathOrId
+        self.optimalBatchSize = optimalBatchSize
+        self.maxSeqLen = maxSeqLen
+        self.engineType = self.__class__.__name__
+
+        self.importModules()
+
+        from transformers import AutoTokenizer
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            "tabularisai/ModernFinBERT",
+            cache_dir="data/models",
+            model_max_length=self.maxSeqLen
+        )
+
+    @abstractmethod
+    def importModules(self) -> None:
+        pass
+
+    @abstractmethod
+    def _inferRaw(self, inputIds: np.ndarray, attentionMask: np.ndarray) -> np.ndarray:
+        pass
+
+    def infer(self, texts: list[str] | str) -> np.ndarray:
+        if isinstance(texts, str):
+            texts = [texts]
+
+        if not texts:
+            return np.empty((0, 3), dtype=np.float32)
+
+        allLogits = []
+        numSamples = len(texts)
+        for startIdx in range(0, numSamples, self.optimalBatchSize):
+            endIdx = min(startIdx + self.optimalBatchSize, numSamples)
+            batchTexts = texts[startIdx:endIdx]
+            encoded = self.tokenizer(
+                batchTexts,
+                padding="longest",
+                truncation=True,
+                max_length=self.maxSeqLen,
+                return_tensors="np"
+            )
+            batchInputIds = encoded["input_ids"]
+            batchAttMask = encoded["attention_mask"]
+            batchLogits = self._inferRaw(batchInputIds, batchAttMask)
+            allLogits.append(batchLogits)
+
+        return np.concatenate(allLogits, axis=0)
+
+
+# TensorRT FP8 Inference Engine (requires CUDA and TensorRT)
+class TrtCudaInferenceEngine(BaseInferenceEngine):
+    def __init__(self, enginePath: str = "finbert/models/ModernFinBERT_fp8.engine", optimalBatchSize: int = 16, maxSeqLen: int = 768):
+        self.enginePath = enginePath
+        super().__init__(modelPathOrId=enginePath, optimalBatchSize=optimalBatchSize, maxSeqLen=maxSeqLen)
+
+        self.logger = self.trt.Logger(self.trt.Logger.WARNING)
+        self.trt.init_libnvinfer_plugins(self.logger, "")
+
+        with open(self.enginePath, "rb") as f:
+            runtime = self.trt.Runtime(self.logger)
+            self.engine = runtime.deserialize_cuda_engine(f.read())
+
+        if self.engine is None:
+            raise RuntimeError(f"Failed to deserialize TensorRT engine from {self.enginePath}")
+
+        self.context = self.engine.create_execution_context()
+        self.stream = self.torch.cuda.Stream()
+
+    def importModules(self) -> None:
+        import tensorrt as trt
+        import torch
+        self.trt = trt
+        self.torch = torch
+
+    def _inferRaw(self, inputIds: np.ndarray, attentionMask: np.ndarray) -> np.ndarray:
+        batchSize, seqLen = inputIds.shape
+        self.context.set_input_shape("input_ids", (batchSize, seqLen))
+        self.context.set_input_shape("attention_mask", (batchSize, seqLen))
+
+        dInputIds = self.torch.from_numpy(inputIds.astype(np.int64)).cuda().contiguous()
+        dAttMask = self.torch.from_numpy(attentionMask.astype(np.int64)).cuda().contiguous()
+
+        numClasses = self.engine.get_tensor_shape("logits")[-1]
+        if numClasses < 0:
+            numClasses = 3
+        dOutput = self.torch.empty((batchSize, numClasses), dtype=self.torch.float32, device="cuda").contiguous()
+
+        self.context.set_tensor_address("input_ids", dInputIds.data_ptr())
+        self.context.set_tensor_address("attention_mask", dAttMask.data_ptr())
+        self.context.set_tensor_address("logits", dOutput.data_ptr())
+
+        self.context.execute_async_v3(self.stream.cuda_stream)
+        self.stream.synchronize()
+
+        return dOutput.cpu().numpy()
+
+
+# ONNX Runtime CUDA FP32 Inference Engine (requires CUDA and ONNX Runtime)
+class OnnxCudaInferenceEngine(BaseInferenceEngine):
+    """ONNX Runtime FP32 Inference Engine running on CUDAExecutionProvider."""
+
+    def __init__(self, onnxPath: str = "finbert/models/ModernFinBERT_fp32.onnx", optimalBatchSize: int = 8, maxSeqLen: int = 768):
+        self.onnxPath = onnxPath
+        super().__init__(modelPathOrId=onnxPath, optimalBatchSize=optimalBatchSize, maxSeqLen=maxSeqLen)
+
+        cudaOptions = {
+            "arena_extend_strategy": "kSameAsRequested",
+            "cudnn_conv_algo_search": "DEFAULT",
+            "do_copy_in_default_stream": "1",
+        }
+        self.session = self.ort.InferenceSession(self.onnxPath, providers=[("CUDAExecutionProvider", cudaOptions)])
+        self.provider = self.session.get_providers()[0]
+
+    def importModules(self) -> None:
+        import onnxruntime as ort
+        import torch
+        self.ort = ort
+        self.torch = torch
+
+    def _inferRaw(self, inputIds: np.ndarray, attentionMask: np.ndarray) -> np.ndarray:
+        inputs = {
+            "input_ids": inputIds.astype(np.int64),
+            "attention_mask": attentionMask.astype(np.int64)
+        }
+        outputs = self.session.run(["logits"], inputs)
+        return outputs[0]
+
+
+# PyTorch CUDA FP32 Inference Engine (requires CUDA and PyTorch)
+class PytorchCudaInferenceEngine(BaseInferenceEngine):
+    def __init__(self, modelId: str = "tabularisai/ModernFinBERT", optimalBatchSize: int = 16, maxSeqLen: int = 768):
+        self.modelId = modelId
+        super().__init__(modelPathOrId=modelId, optimalBatchSize=optimalBatchSize, maxSeqLen=maxSeqLen)
+
+        self.model = self.AutoModelForSequenceClassification.from_pretrained(
+            self.modelId,
+            attn_implementation="sdpa"
+        ).cuda().eval()
+
+    def importModules(self) -> None:
+        import torch
+        from transformers import AutoModelForSequenceClassification
+        self.torch = torch
+        self.AutoModelForSequenceClassification = AutoModelForSequenceClassification
+
+    def _inferRaw(self, inputIds: np.ndarray, attentionMask: np.ndarray) -> np.ndarray:
+        tInputIds = self.torch.from_numpy(inputIds.astype(np.int64)).cuda()
+        tAttMask = self.torch.from_numpy(attentionMask.astype(np.int64)).cuda()
+
+        with self.torch.no_grad():
+            outputs = self.model(input_ids=tInputIds, attention_mask=tAttMask)
+            logits = outputs.logits.cpu().numpy()
+        return logits
+
+
+# Onnx Runtime CPU FP32 Inference Engine (requires just ONNX runtime)
+class OnnxCpuInferenceEngine(BaseInferenceEngine):
+    """ONNX Runtime FP32 Inference Engine running on CPUExecutionProvider."""
+
+    def __init__(self, onnxPath: str = "finbert/models/ModernFinBERT_fp32.onnx", optimalBatchSize: int = 4, maxSeqLen: int = 768):
+        self.onnxPath = onnxPath
+        super().__init__(modelPathOrId=onnxPath, optimalBatchSize=optimalBatchSize, maxSeqLen=maxSeqLen)
+
+        self.session = self.ort.InferenceSession(self.onnxPath, providers=["CPUExecutionProvider"])
+        self.provider = "CPUExecutionProvider"
+
+    def importModules(self) -> None:
+        import onnxruntime as ort
+        self.ort = ort
+
+    def _inferRaw(self, inputIds: np.ndarray, attentionMask: np.ndarray) -> np.ndarray:
+        inputs = {
+            "input_ids": inputIds.astype(np.int64),
+            "attention_mask": attentionMask.astype(np.int64)
+        }
+        outputs = self.session.run(["logits"], inputs)
+        return outputs[0]
+
+
+# PyTorch CPU FP32 Inference Engine (requires just PyTorch)
+class PytorchCpuInferenceEngine(BaseInferenceEngine):
+    """Native PyTorch FP32 Inference Engine running on CPU."""
+
+    def __init__(self, modelId: str = "tabularisai/ModernFinBERT", optimalBatchSize: int = 4, maxSeqLen: int = 768):
+        self.modelId = modelId
+        super().__init__(modelPathOrId=modelId, optimalBatchSize=optimalBatchSize, maxSeqLen=maxSeqLen)
+
+        self.model = self.AutoModelForSequenceClassification.from_pretrained(
+            self.modelId,
+            attn_implementation="eager"
+        ).to("cpu").eval()
+
+    def importModules(self) -> None:
+        import torch
+        from transformers import AutoModelForSequenceClassification
+        self.torch = torch
+        self.AutoModelForSequenceClassification = AutoModelForSequenceClassification
+
+    def _inferRaw(self, inputIds: np.ndarray, attentionMask: np.ndarray) -> np.ndarray:
+        tInputIds = self.torch.from_numpy(inputIds.astype(np.int64)).to("cpu")
+        tAttMask = self.torch.from_numpy(attentionMask.astype(np.int64)).to("cpu")
+
+        with self.torch.no_grad():
+            outputs = self.model(input_ids=tInputIds, attention_mask=tAttMask)
+            logits = outputs.logits.numpy()
+        return logits
+
+
+
+# Gets the best available inference engine for FinBERT, ideally the best performing (trt) then falling back to the next best option if not available
+def getBestInferenceEngine() -> BaseInferenceEngine | None:
     trtPath = "finbert/models/ModernFinBERT_fp8.engine"
     onnxPath = "finbert/models/ModernFinBERT_fp32.onnx"
+    modelId = "tabularisai/ModernFinBERT"
 
-    # 1. Check if TensorRT is supported and engine file exists
-    if isTensorRtSupported():
+    import torch
+    hasCuda = torch.cuda.is_available()
+
+    inferenceTest = ["Financial market sentiment analysis initialisation warmup."]
+
+    # 1. FP8 TensorRT on CUDA (Batch Size = 16)
+    if hasCuda and isTensorRtSupported():
         if os.path.exists(trtPath):
             try:
-                engine = TrtInferenceEngine(trtPath)
-                _ = engine.infer(["Financial market sentiment analysis initialisation warmup."])
-                print(f"[FinBERT Engine] Successfully loaded TensorRT model from {trtPath}")
-                return engine, "TensorRT", trtPath
+                engine = TrtCudaInferenceEngine(trtPath)
+                _ = engine.infer(inferenceTest)
+                print(f"[FinBERT Engine] Successfully loaded TensorRT FP8 model from {trtPath} (Batch Size: {engine.optimalBatchSize})")
+                return engine
             except Exception as e:
-                print(f"[FinBERT Engine] TensorRT load failed: {e}. Defaulting to ONNX...")
+                print(f"[FinBERT Engine] TensorRT load failed: {e}. Falling back to next engine...")
 
-    # 2. Default to ONNX Runtime if TensorRT is not available or failed
+    # 2. FP32 ONNX on CUDA (Batch Size = 8 to constrain VRAM)
+    if hasCuda and os.path.exists(onnxPath):
+        try:
+            engine = OnnxCudaInferenceEngine(onnxPath)
+            _ = engine.infer(inferenceTest)
+            print(f"[FinBERT Engine] Successfully loaded ONNX CUDA model from {onnxPath} (Batch Size: {engine.optimalBatchSize})")
+            return engine
+        except Exception as e:
+            print(f"[FinBERT Engine] ONNX CUDA load failed: {e}. Falling back to PyTorch CUDA...")
+
+    # 3. FP32 PyTorch on CUDA (Batch Size = 16)
+    if hasCuda:
+        try:
+            engine = PytorchCudaInferenceEngine(modelId=modelId)
+            _ = engine.infer(inferenceTest)
+            print(f"[FinBERT Engine] Successfully loaded PyTorch FP32 CUDA model (Batch Size: {engine.optimalBatchSize})")
+            return engine
+        except Exception as e:
+            print(f"[FinBERT Engine] PyTorch CUDA load failed: {e}. Falling back to CPU engines...")
+
+    # 4. FP32 ONNX on CPU (Batch Size = 4)
     if os.path.exists(onnxPath):
         try:
-            engine = OnnxInferenceEngine(onnxPath)
-            _ = engine.infer(["Financial market sentiment analysis initialisation warmup."])
-            print(f"[FinBERT Engine] Successfully loaded ONNX model from {onnxPath} ({engine.provider})")
-            return engine, "ONNX", onnxPath
+            engine = OnnxCpuInferenceEngine(onnxPath)
+            _ = engine.infer(inferenceTest)
+            print(f"[FinBERT Engine] Successfully loaded ONNX CPU model from {onnxPath} (Batch Size: {engine.optimalBatchSize})")
+            return engine
         except Exception as e:
-            print(f"[FinBERT Engine] ONNX load failed: {e}")
+            print(f"[FinBERT Engine] ONNX CPU load failed: {e}")
 
-    print("[FinBERT Engine] Neither TensorRT nor ONNX model could be loaded.")
-    return None, None, None
+    # 5. FP32 PyTorch on CPU (Batch Size = 4)
+    try:
+        engine = PytorchCpuInferenceEngine(modelId=modelId)
+        _ = engine.infer(inferenceTest)
+        print(f"[FinBERT Engine] Successfully loaded PyTorch CPU model (Batch Size: {engine.optimalBatchSize})")
+        return engine
+    except Exception as e:
+        print(f"[FinBERT Engine] PyTorch CPU load failed: {e}")
+
+    print("[FinBERT Engine] Neither TensorRT, ONNX, nor PyTorch model could be loaded.")
+    return None
