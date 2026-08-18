@@ -67,6 +67,12 @@ class BoardroomEngine:
                 for f in futures:
                     f.cancel()
                 raise
+            except Exception:
+                if isStopRequested():
+                    for f in futures:
+                        f.cancel()
+                    raise SimulationStoppedException("Simulation stopped by user.")
+                raise
             return results
 
 

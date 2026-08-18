@@ -59,6 +59,7 @@ def executeBoardroomRating(
 
     if simulatedDateStr is None:
         simulatedDateStr = time.strftime("%Y-%m-%d", time.localtime())
+        config.simulatedDateStr = simulatedDateStr
 
     timestamp = pd.Timestamp(f"{simulatedDateStr} 09:00").tz_localize(NEW_YORK).tz_convert(UTC)
 
@@ -73,15 +74,7 @@ def executeBoardroomRating(
     boardroom = generateBoardroom(toolRegistry, timestamp)
     boardroom.assignClientDuo(clientDuo)
 
-    boardroom.execute(config=SingleEquityRatingConfig(
-        ticker=tickerToEval,
-        simulatedDateStr=simulatedDateStr,
-        timeHorizon=timeHorizon,
-        boardroomPace=boardroomPace,
-        maxIterations=config.maxIterations,
-        temperature=config.temperature,
-        generateSummaries=config.generateSummaries
-    ))
+    boardroom.execute(config=config)
 
     endTime = time.time()
     elapsedSeconds = endTime - startTime

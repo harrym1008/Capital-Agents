@@ -66,6 +66,7 @@ class BoardroomConfig(ABC):
     generateSummaries: bool = True
     maxIterations: int = 10
     temperature: float = 0.5
+    thinkingBudget: int = 2048
 
     @abstractmethod
     def getPromptArgs(self) -> Dict[str, str]:
@@ -99,6 +100,7 @@ class SingleEquityRatingConfig(BoardroomConfig):
         maxIterations = int(data.get("maxIterations", 10))
         temperature = float(data.get("temperature", 0.5))
         generateSummaries = bool(data.get("generateSummaries", True))
+        thinkingBudget = int(data.get("thinkingBudget", 2048))
 
         return cls(
             ticker=ticker,
@@ -107,8 +109,9 @@ class SingleEquityRatingConfig(BoardroomConfig):
             boardroomPace=boardroomPace,
             maxIterations=maxIterations,
             temperature=temperature,
-            generateSummaries=generateSummaries
+            generateSummaries=generateSummaries,
+            thinkingBudget=thinkingBudget
         )
 
-    def unpack(self) -> tuple[str, Optional[str], TimeHorizon, BoardroomPace, int, float, bool]:
-        return self.ticker, self.simulatedDateStr, self.timeHorizon, self.boardroomPace, self.maxIterations, self.temperature, self.generateSummaries
+    def unpack(self) -> tuple[str, Optional[str], TimeHorizon, BoardroomPace, int, float, bool, int]:
+        return self.ticker, self.simulatedDateStr, self.timeHorizon, self.boardroomPace, self.maxIterations, self.temperature, self.generateSummaries, self.thinkingBudget

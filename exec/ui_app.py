@@ -11,7 +11,7 @@ except AttributeError:
 import json
 import asyncio
 import threading
-from flask import Flask, render_template, redirect
+from flask import Flask, render_template, redirect, jsonify
 import websockets
 
 from dotenv import load_dotenv
@@ -64,21 +64,58 @@ def marketSimPage():
     return render_template("marketsim.html")
 
 
-# Track active websocket connection and the event loop it runs on
-activeWebsocket = None
+# Track connected websockets and the asyncio event loop
+connectedWebsockets = set()
+connectedWebsocketsLock = threading.Lock()
 eventLoop = None
 
-def broadcastEvent(eventData):
-    global activeWebsocket, eventLoop
-    if activeWebsocket and eventLoop:
-        message = json.dumps(eventData)
-        # Thread-safe scheduling of the ws send coroutine on the asyncio event loop
-        asyncio.run_coroutine_threadsafe(activeWebsocket.send(message), eventLoop)
+activeBoardroomThread = None
+isBoardroomRunning = False
+boardroomStateLock = threading.Lock()
 
+def isBoardroomActive() -> bool:
+    global activeBoardroomThread, isBoardroomRunning
+    with boardroomStateLock:
+        return bool(isBoardroomRunning and activeBoardroomThread is not None and activeBoardroomThread.is_alive())
+
+def stopBoardroomSync(timeout: float = 5.0) -> bool:
+    global activeBoardroomThread
+    requestStop()
+    with boardroomStateLock:
+        thread = activeBoardroomThread
+    if thread and thread.is_alive():
+        thread.join(timeout=timeout)
+    return not isBoardroomActive()
+
+def broadcastEvent(eventData):
+    global connectedWebsockets, eventLoop
+    if not eventLoop:
+        return
+    with connectedWebsocketsLock:
+        sockets = list(connectedWebsockets)
+    if sockets:
+        message = json.dumps(eventData)
+        for ws in sockets:
+            try:
+                asyncio.run_coroutine_threadsafe(ws.send(message), eventLoop)
+            except Exception:
+                pass
+
+
+@app.route("/api/boardroom/status")
+def apiBoardroomStatus():
+    return jsonify({"isRunning": isBoardroomActive()})
+
+
+@app.route("/api/boardroom/stop", methods=["POST"])
+def apiBoardroomStop():
+    stopped = stopBoardroomSync(timeout=5.0)
+    return jsonify({"ok": True, "stopped": stopped, "isRunning": isBoardroomActive()})
 
 
 def runBoardroom(config):
     """Run boardroom simulation using active clients from serverManager."""
+    global isBoardroomRunning, activeBoardroomThread
     try:
         from boardroom.boardroom_runner import executeBoardroomConfig
 
@@ -97,48 +134,67 @@ def runBoardroom(config):
         print("Boardroom evaluation stopped by user.")
         emitEvent("simStopped", {"message": "Simulation stopped by user."})
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        emitEvent("error", {"message": f"{e.__class__.__name__}: {str(e)}"})
+        if isStopRequested():
+            print("Boardroom evaluation stopped by user.")
+            emitEvent("simStopped", {"message": "Simulation stopped by user."})
+        else:
+            import traceback
+            traceback.print_exc()
+            emitEvent("error", {"message": f"{e.__class__.__name__}: {str(e)}"})
     finally:
+        with boardroomStateLock:
+            isBoardroomRunning = False
+            activeBoardroomThread = None
         resetStop()
 
 
 def handleBoardroomStart(data, websocket, eventLoop):
+    global activeBoardroomThread, isBoardroomRunning
     resetStop()
     from boardroom.boardroom_config import SingleEquityRatingConfig
     config = SingleEquityRatingConfig.fromDict(data)
 
-    simThread = threading.Thread(
-        target=runBoardroom,
-        args=(config,),
-        daemon=True
-    )
-    simThread.start()
+    with boardroomStateLock:
+        isBoardroomRunning = True
+        simThread = threading.Thread(
+            target=runBoardroom,
+            args=(config,),
+            daemon=True
+        )
+        activeBoardroomThread = simThread
+        simThread.start()
     return {"ok": True, "message": "Boardroom simulation started."}
 
 def handleBoardroomStop(data, websocket, eventLoop):
-    requestStop()
-    return {"ok": True, "message": "Stop requested."}
+    stopped = stopBoardroomSync(timeout=5.0)
+    return {"ok": True, "stopped": stopped, "isRunning": isBoardroomActive(), "message": "Stop requested."}
+
+def handleBoardroomStatus(data, websocket, eventLoop):
+    return {"ok": True, "action": "status", "isRunning": isBoardroomActive()}
 
 registerWsAction("start", handleBoardroomStart)
 registerWsAction("stop", handleBoardroomStop)
+registerWsAction("status", handleBoardroomStatus)
 
 
 async def websocketHandler(websocket):
-    global activeWebsocket, eventLoop
-    activeWebsocket = websocket
+    global connectedWebsockets, eventLoop
     eventLoop = asyncio.get_running_loop()
+    with connectedWebsocketsLock:
+        connectedWebsockets.add(websocket)
     
-    print("Client connected to Boardroom WebSocket")
+    print(f"Client connected to Boardroom WebSocket (total: {len(connectedWebsockets)})")
     try:
         async for message in websocket:
             await handleWsMessage(websocket, message, eventLoop)
     except websockets.exceptions.ConnectionClosed:
-        print("Client disconnected from Boardroom WebSocket")
+        pass
+    except Exception as e:
+        print(f"WebSocket error: {e}")
     finally:
-        if activeWebsocket == websocket:
-            activeWebsocket = None
+        with connectedWebsocketsLock:
+            connectedWebsockets.discard(websocket)
+        print(f"Client disconnected from Boardroom WebSocket (remaining: {len(connectedWebsockets)})")
 
 def startWebsocketServer():
     async def main():

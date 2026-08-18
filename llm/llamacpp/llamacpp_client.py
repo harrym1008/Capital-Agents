@@ -16,16 +16,25 @@ class LlamaCppClient(BaseLLMClient):
     def _getExtraBody(self, thinkingBudget: Optional[int] = None):
         extraBody = {}
         if thinkingBudget is not None:
-            extraBody["thinking_budget_tokens"] = thinkingBudget
-            extraBody["reasoning_budget"] = thinkingBudget            
-
-            if thinkingBudget <= 256:
-                reasoningEffort = "low"
-            elif thinkingBudget <= 2048:
-                reasoningEffort = "medium"
+            if thinkingBudget <= 0:
+                extraBody["thinking_budget_tokens"] = 0
+                extraBody["reasoning_budget"] = 0
+                extraBody["reasoning_effort"] = "none"
+                extraBody["enable_thinking"] = False
+                extraBody["chat_template_kwargs"] = {
+                    "enable_thinking": False
+                }
             else:
-                reasoningEffort = "high"
-            extraBody["reasoning_effort"] = reasoningEffort
+                extraBody["thinking_budget_tokens"] = thinkingBudget
+                extraBody["reasoning_budget"] = thinkingBudget            
+
+                if thinkingBudget <= 256:
+                    reasoningEffort = "low"
+                elif thinkingBudget <= 2048:
+                    reasoningEffort = "medium"
+                else:
+                    reasoningEffort = "high"
+                extraBody["reasoning_effort"] = reasoningEffort
             
         return extraBody
     

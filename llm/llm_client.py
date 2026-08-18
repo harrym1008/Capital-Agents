@@ -17,7 +17,8 @@ from llm.token_cost_tracker import TokenCostTracker
 from ui.ui_hooks import (
     emitEvent, getCurrentAgent, setCurrentAgent,
     getAgentPhase, setAgentPhase, getCurrentStage, setCurrentStage,
-    isStopRequested, SimulationStoppedException
+    isStopRequested, SimulationStoppedException,
+    registerStopCallback, unregisterStopCallback
 )
 
 
@@ -51,6 +52,28 @@ class BaseLLMClient(ABC):
             from llm.server_manager import serverManager
             self.costTracker = serverManager.costTracker
 
+        self.activeStreams = set()
+        self.streamLock = threading.Lock()
+        registerStopCallback(self.closeActiveStreams)
+
+    def registerActiveStream(self, responseStream):
+        with self.streamLock:
+            self.activeStreams.add(responseStream)
+
+    def unregisterActiveStream(self, responseStream):
+        with self.streamLock:
+            self.activeStreams.discard(responseStream)
+
+    def closeActiveStreams(self):
+        with self.streamLock:
+            streamsToClose = list(self.activeStreams)
+            self.activeStreams.clear()
+        for stream in streamsToClose:
+            try:
+                if hasattr(stream, "close"):
+                    stream.close()
+            except Exception:
+                pass
 
     @abstractmethod
     def _createOpenaiClient(self) -> OpenAI:
@@ -66,8 +89,12 @@ class BaseLLMClient(ABC):
         pass
 
     def _createResponseStream(self, **kwargs):
+        if isStopRequested():
+            raise SimulationStoppedException("Simulation stopped by user.")
         rateLimitAttempts = 0
         while True:
+            if isStopRequested():
+                raise SimulationStoppedException("Simulation stopped by user.")
             try:
                 return self.openaiClient.chat.completions.create(**kwargs)
             except RateLimitError as rateErr:
@@ -150,114 +177,141 @@ class BaseLLMClient(ABC):
         currentState = "idle"
         lastUsage = None
 
-        for chunk in responseStream:
-            if isStopRequested():
-                raise SimulationStoppedException("Simulation stopped by user.")
-
-            # Final stream chunks carries usage statistics
-            usage = getattr(chunk, "usage", None)
-            if usage is not None:
-                lastUsage = usage
-
-            if not chunk.choices:
-                continue
-            delta = chunk.choices[0].delta
-
-            # 1. Capture reasoning content tokens
-            reasoningChunk = getattr(delta, "reasoning", None) or getattr(delta, "reasoning_content", None) 
-            if reasoningChunk:                              # ^^^^  Support both llamacpp and OpenRouter naming conventions
-                if isinstance(reasoningChunk, dict):
-                    reasoningChunk = reasoningChunk.get("text", "")     # OpenRouter might return reasoning as a dict with a "text" key
-
-                fullReasoning += reasoningChunk
-
-                # Emit reasoning token
-                if currentState != "reasoning":
-                    if currentState == "content":
-                        emitEvent("contentEnd")
-                    emitEvent("reasoningStart", {"phase": getAgentPhase()})
-                    currentState = "reasoning"
-                emitEvent("reasoningToken", {"token": reasoningChunk, "phase": getAgentPhase()})
-
-                if responsePrint.printThinking():
-                    if not isThinking:
-                        self._safePrint(f"\n{ANSI.DIM}[Thinking]: ", end="", flush=True)
-                        isThinking = True
-                    self._safePrint(reasoningChunk, end="", flush=True)
-                elif responsePrint == ResponsePrintMode.ONE_TOKEN_ONLY:
-                    self._safePrint(f"{re.sub(r'[\x00-\x1F\x7F]', '', reasoningChunk)}                 ", end="\r", flush=True)
-
-            # 2. Capture regular response text tokens
-            contentChunk = getattr(delta, "content", None)
-            if contentChunk:
-                fullContent += contentChunk
-
-                # Emit content token
-                if currentState != "content":
-                    if currentState == "reasoning":
-                        emitEvent("reasoningEnd")
-                    emitEvent("contentStart", {"phase": getAgentPhase()})
-                    currentState = "content"
-                emitEvent("contentToken", {"token": contentChunk, "phase": getAgentPhase()})
-
-                if responsePrint.printResponse():
-                    if isThinking:
-                        self._safePrint(f"\n{ANSI.RESET}[Response]: ", end="", flush=True)
-                        isThinking = False
-                    elif fullContent == "":
-                        self._safePrint("\n[Response]: ", end="", flush=True)
-                    self._safePrint(contentChunk, end="", flush=True)
-                elif responsePrint == ResponsePrintMode.ONE_TOKEN_ONLY:
-                    self._safePrint(f"{re.sub(r'[\x00-\x1F\x7F]', '', contentChunk)}                 ", end="\r", flush=True)
-
-            # 3. Assemble fragmented tool call tokens as they arrive
-            toolCallsChunk = getattr(delta, "tool_calls", None)
-            if toolCallsChunk:
-                for toolCallDelta in toolCallsChunk:
-                    index = toolCallDelta.index
-                    while len(toolCallsList) <= index:
-                        toolCallsList.append({
-                            "id": "",
-                            "type": "function",
-                            "function": {"name": "", "arguments": ""}
-                        })
-                    
-                    if not isToolCallStreaming:
-                        self._safePrint(f"\n\n{ANSI.DIM}[Tool Calls]: ", end="", flush=True)
-                        isToolCallStreaming = True
-
-                    currentCall = toolCallsList[index]
-                    if getattr(toolCallDelta, "id", None):
-                        currentCall["id"] += toolCallDelta.id
-                    if getattr(toolCallDelta, "function", None):
-                        funcDelta = toolCallDelta.function
-                        if getattr(funcDelta, "name", None):
-                            if not currentCall["function"]["name"]:
-                                self._safePrint(f"\n{ANSI.RESET}{ANSI.BOLD}[Tool #{index}]: {funcDelta.name} -> ", end="", flush=True)
-                            else:
-                                self._safePrint(funcDelta.name, end="", flush=True)
-                            currentCall["function"]["name"] += funcDelta.name
-                            emitEvent("toolCallStreamStart", {
-                                "index": index,
-                                "toolName": currentCall["function"]["name"]
-                            })
-                        if getattr(funcDelta, "arguments", None):
-                            self._safePrint(funcDelta.arguments, end="", flush=True)
-                            currentCall["function"]["arguments"] += funcDelta.arguments
-                            emitEvent("toolCallStreamToken", {
-                                "index": index,
-                                "token": funcDelta.arguments
-                            })
-
-        # Close active streaming states at the end of the response stream
-        # Wrap in try/except so cleanup events don't crash during a stop
+        self.registerActiveStream(responseStream)
         try:
-            if currentState == "reasoning":
-                emitEvent("reasoningEnd")
-            elif currentState == "content":
-                emitEvent("contentEnd")
+            for chunk in responseStream:
+                if isStopRequested():
+                    raise SimulationStoppedException("Simulation stopped by user.")
+
+                # Final stream chunks carries usage statistics
+                usage = getattr(chunk, "usage", None)
+                if usage is not None:
+                    lastUsage = usage
+
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+
+                # 1. Capture reasoning content tokens
+                reasoningChunk = getattr(delta, "reasoning", None) or getattr(delta, "reasoning_content", None) 
+                if reasoningChunk:                              # ^^^^  Support both llamacpp and OpenRouter naming conventions
+                    if isinstance(reasoningChunk, dict):
+                        reasoningChunk = reasoningChunk.get("text", "")     # OpenRouter might return reasoning as a dict with a "text" key
+
+                    fullReasoning += reasoningChunk
+
+                    # Emit reasoning token
+                    if currentState != "reasoning":
+                        if currentState == "content":
+                            emitEvent("contentEnd")
+                        emitEvent("reasoningStart", {"phase": getAgentPhase()})
+                        currentState = "reasoning"
+                    emitEvent("reasoningToken", {"token": reasoningChunk, "phase": getAgentPhase()})
+
+                    if responsePrint.printThinking():
+                        if not isThinking:
+                            self._safePrint(f"\n{ANSI.DIM}[Thinking]: ", end="", flush=True)
+                            isThinking = True
+                        self._safePrint(reasoningChunk, end="", flush=True)
+                    elif responsePrint == ResponsePrintMode.ONE_TOKEN_ONLY:
+                        self._safePrint(f"{re.sub(r'[\x00-\x1F\x7F]', '', reasoningChunk)}                 ", end="\r", flush=True)
+
+                # 2. Capture regular response text tokens
+                contentChunk = getattr(delta, "content", None)
+                if contentChunk:
+                    fullContent += contentChunk
+
+                    # Emit content token
+                    if currentState != "content":
+                        if currentState == "reasoning":
+                            emitEvent("reasoningEnd")
+                        emitEvent("contentStart", {"phase": getAgentPhase()})
+                        currentState = "content"
+                    emitEvent("contentToken", {"token": contentChunk, "phase": getAgentPhase()})
+
+                    if responsePrint.printResponse():
+                        if isThinking:
+                            self._safePrint(f"\n{ANSI.RESET}[Response]: ", end="", flush=True)
+                            isThinking = False
+                        elif fullContent == "":
+                            self._safePrint("\n[Response]: ", end="", flush=True)
+                        self._safePrint(contentChunk, end="", flush=True)
+                    elif responsePrint == ResponsePrintMode.ONE_TOKEN_ONLY:
+                        self._safePrint(f"{re.sub(r'[\x00-\x1F\x7F]', '', contentChunk)}                 ", end="\r", flush=True)
+
+                # 3. Assemble fragmented tool call tokens as they arrive
+                toolCallsChunk = getattr(delta, "tool_calls", None)
+                if toolCallsChunk:
+                    for toolCallDelta in toolCallsChunk:
+                        index = toolCallDelta.index
+                        while len(toolCallsList) <= index:
+                            toolCallsList.append({
+                                "id": "",
+                                "type": "function",
+                                "function": {"name": "", "arguments": ""}
+                            })
+                        
+                        if not isToolCallStreaming:
+                            self._safePrint(f"\n\n{ANSI.DIM}[Tool Calls]: ", end="", flush=True)
+                            isToolCallStreaming = True
+
+                        currentCall = toolCallsList[index]
+                        if getattr(toolCallDelta, "id", None):
+                            currentCall["id"] += toolCallDelta.id
+                        if getattr(toolCallDelta, "function", None):
+                            funcDelta = toolCallDelta.function
+                            if getattr(funcDelta, "name", None):
+                                if not currentCall["function"]["name"]:
+                                    self._safePrint(f"\n{ANSI.RESET}{ANSI.BOLD}[Tool #{index}]: {funcDelta.name} -> ", end="", flush=True)
+                                else:
+                                    self._safePrint(funcDelta.name, end="", flush=True)
+                                currentCall["function"]["name"] += funcDelta.name
+                                emitEvent("toolCallStreamStart", {
+                                    "index": index,
+                                    "toolName": currentCall["function"]["name"]
+                                })
+                            if getattr(funcDelta, "arguments", None):
+                                self._safePrint(funcDelta.arguments, end="", flush=True)
+                                currentCall["function"]["arguments"] += funcDelta.arguments
+                                emitEvent("toolCallStreamToken", {
+                                    "index": index,
+                                    "token": funcDelta.arguments
+                                })
+
         except SimulationStoppedException:
-            pass
+            # Tell the OpenAI-compatible API to stop generating tokens by closing the response stream
+            if hasattr(responseStream, "close"):
+                try:
+                    responseStream.close()
+                except Exception:
+                    pass
+            raise
+        except Exception as e:
+            if hasattr(responseStream, "close"):
+                try:
+                    responseStream.close()
+                except Exception:
+                    pass
+            if isStopRequested():
+                raise SimulationStoppedException("Simulation stopped by user.") from e
+            raise
+        finally:
+            self.unregisterActiveStream(responseStream)
+            if hasattr(responseStream, "close"):
+                try:
+                    responseStream.close()
+                except Exception:
+                    pass
+
+            # Close active streaming states at the end of the response stream
+            # Wrap in try/except so cleanup events don't crash during a stop
+            try:
+                if currentState == "reasoning":
+                    emitEvent("reasoningEnd")
+                elif currentState == "content":
+                    emitEvent("contentEnd")
+            except SimulationStoppedException:
+                pass
 
         if ((fullContent and responsePrint.printResponse()) or 
             (fullReasoning and responsePrint.printThinking())) and len(toolCallsList) == 0:
@@ -415,13 +469,14 @@ class BaseLLMClient(ABC):
                 toolChoiceSetting = "auto" if toolSchemas else None
 
             self._applyRateLimit()
+            maxTokensToUse = max(8192, (thinkingBudget or 0) + 4096)
             responseKwargs = dict(
                 model=self.defaultModel,
                 messages=messageHistory,
                 tools=toolSchemas if toolSchemas else None,
                 tool_choice=toolChoiceSetting,
                 temperature=temperature,
-                max_tokens=8192,
+                max_tokens=maxTokensToUse,
                 stream=True,
             )
             streamOptions = self._getStreamOptions()
@@ -513,13 +568,14 @@ class BaseLLMClient(ABC):
         })
 
         self._applyRateLimit()
+        maxTokensToUse = max(8192, (thinkingBudget or 0) + 4096)
         finalResponseKwargs = dict(
             model=self.defaultModel,
             messages=messageHistory,
             tools=toolSchemas if toolSchemas else None,
             tool_choice="none",
             temperature=temperature,
-            max_tokens=8192,
+            max_tokens=maxTokensToUse,
             stream=True,
         )
         finalStreamOptions = self._getStreamOptions()

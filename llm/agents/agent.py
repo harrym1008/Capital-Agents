@@ -86,7 +86,7 @@ class FinancialAgent:
             historyToUse, 
             toolRegistry, 
             timestamp, 
-            thinkingBudget=THINKING_BUDGET, 
+            thinkingBudget=config.thinkingBudget, 
             responsePrint=ResponsePrintMode.FULL,
             requireInitialTools=requireInitialTools,
             permittedTools=self.tools,

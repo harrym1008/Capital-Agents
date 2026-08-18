@@ -9,7 +9,6 @@ from flask import request, jsonify
 from collectors.constants import NEW_YORK
 from llm.llamacpp.llamacpp_args import LlamaCppModel, LLAMACPP_PORT
 from llm.server_manager import serverManager
-from simulation.simulation_api import simulationManager
 
 
 
@@ -136,6 +135,7 @@ def registerApiRoutes(app):
                         pass
 
         try:
+            from simulation.simulation_api import simulationManager
             chartData = simulationManager.generateOhlcvChartData(ticker, simDateTs, targets=targetsList, horizon=horizon)
             return jsonify(chartData)
         except Exception as e:

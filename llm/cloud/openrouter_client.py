@@ -33,20 +33,29 @@ class OpenRouterClient(BaseLLMClient):
     def _getExtraBody(self, thinkingBudget: Optional[int] = None):
         extraBody = {}
         if thinkingBudget is not None:
-            if thinkingBudget == 0:
-                extraBody = {
-                    "reasoning": {
-                        "enabled": False
-                    }
+            if thinkingBudget <= 0:
+                extraBody["reasoning"] = {
+                    "enabled": False,
+                    "max_tokens": 0
+                }
+                extraBody["thinking"] = {
+                    "type": "disabled"
+                }
+                extraBody["chat_template_kwargs"] = {
+                    "enable_thinking": False
                 }
             else:
-                effort = "low" if thinkingBudget < 512 else ("medium" if thinkingBudget < 2048 else "high")
-                extraBody = {
-                    "reasoning": {
-                        "enabled": True,
-                        "max_tokens": thinkingBudget,
-                        # "effort": effort
-                    }
+                extraBody["reasoning"] = {
+                    "enabled": True,
+                    "max_tokens": thinkingBudget
+                }
+                extraBody["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": thinkingBudget
+                }
+                extraBody["chat_template_kwargs"] = {
+                    "enable_thinking": True,
+                    "thinking_budget": thinkingBudget
                 }
 
         if self.providerRouter and self.providerRouter.strip() and self.providerRouter.strip().lower() != "auto":

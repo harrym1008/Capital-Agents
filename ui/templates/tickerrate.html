@@ -18,8 +18,8 @@
     {% endwith %}
 
     <!-- Generation Settings Modal Overlay -->
-    <div id="settingsOverlay" class="setup-overlay" style="display: none;" onclick="handleSettingsOverlayClick(event)">
-        <div class="splash-load-model-window" style="position: relative;" onclick="event.stopPropagation()">
+    <div id="settingsOverlay" class="setup-overlay" style="display: none;" onmousedown="handleSettingsOverlayMouseDown(event)">
+        <div class="splash-load-model-window" style="position: relative;" onmousedown="event.stopPropagation()">
             <button type="button" class="modal-close-btn" onclick="closeSettingsModal()" title="Close">&times;</button>
             <h1 id="pageTitle">Generation Settings</h1>
 
@@ -28,6 +28,11 @@
                 <div class="model-select-form-group">
                     <label for="maxItersInput">Max Thinking Iterations:</label>
                     <input type="number" id="maxItersInput" value="6" min="1" max="12" step="1">
+                </div>
+
+                <div class="model-select-form-group">
+                    <label for="thinkingBudgetInput">Thinking Budget (Tokens):</label>
+                    <input type="number" id="thinkingBudgetInput" value="2048" min="0" max="65536" step="128">
                 </div>
 
                 <div class="model-select-form-group">
@@ -46,6 +51,22 @@
                 </div>
 
                 <button type="button" id="closeSettingsBtn" onclick="closeSettingsModal()" style="width: 50%; margin: 10px 0 0 25%; font-size: 120%;">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Boardroom Running Modal Overlay -->
+    <div id="activeBoardroomOverlay" class="setup-overlay" style="display: none;">
+        <div class="splash-load-model-window" style="gap: 36px; text-align: center;">
+            <h1 style="color: #ef4444;">Boardroom Simulation Running</h1>
+            <p>
+                A boardroom simulation is currently running in the background.
+                You must stop the ongoing boardroom before you start a new one.
+            </p>
+            <div style="display: flex; justify-content: center; gap: 12px; margin-top: 10px;">
+                <button type="button" id="killBoardroomBtn" class="stop-btn" onclick="killActiveBoardroom()">
+                    Kill Active Boardroom
+                </button>
             </div>
         </div>
     </div>
@@ -460,6 +481,7 @@
                     break;
 
                 case "simStopped":
+                    hideActiveBoardroomModal();
                     setControlsRunningState(false);
                     if (timerInterval) {
                         clearInterval(timerInterval);
@@ -469,6 +491,7 @@
                     break;
 
                 case "error":
+                    hideActiveBoardroomModal();
                     alert("Simulation Error: " + payload.message);
                     setControlsRunningState(false);
                     if (timerInterval) {
@@ -1336,7 +1359,11 @@
 
         function appendReasoningToken(stageNum, agentRole, token) {
             const compoundKey = `${stageNum}_${agentRole}`;
-            const active = activeBlocks[compoundKey];
+            let active = activeBlocks[compoundKey];
+            if (!active || active.type !== 'thinking') {
+                startReasoningBlock(stageNum, agentRole);
+                active = activeBlocks[compoundKey];
+            }
             if (active && active.type === 'thinking') {
                 active.rawText = (active.rawText || "") + token;
 
@@ -1399,7 +1426,11 @@
 
         function appendContentToken(stageNum, agentRole, token, phase) {
             const compoundKey = `${stageNum}_${agentRole}`;
-            const active = activeBlocks[compoundKey];
+            let active = activeBlocks[compoundKey];
+            if (!active || (active.type !== 'content' && active.type !== 'summary')) {
+                startContentBlock(stageNum, agentRole, phase);
+                active = activeBlocks[compoundKey];
+            }
             if (active && (active.type === 'content' || active.type === 'summary')) {
                 active.rawText = (active.rawText || "") + token;
                 active.element.innerHTML = parseMarkdown(active.rawText);
@@ -1850,6 +1881,8 @@
             highestStageNumber = 0;
 
             const horizon = document.getElementById("horizonSelect").value;
+            const thinkingBudgetVal = parseInt(document.getElementById("thinkingBudgetInput").value);
+            const thinkingBudget = isNaN(thinkingBudgetVal) ? 2048 : thinkingBudgetVal;
 
             socket.send(JSON.stringify({
                 action: "start",
@@ -1860,6 +1893,7 @@
                 useSimDate: useSimDate,
                 simulatedDate: simulatedDate,
                 maxIterations: parseInt(document.getElementById("maxItersInput").value) || 6,
+                thinkingBudget: thinkingBudget,
                 temperature: parseFloat(document.getElementById("temperatureInput").value) || 0.5,
                 generateSummaries: document.getElementById("generateSummariesCheckbox").checked
             }));
@@ -1879,7 +1913,7 @@
             if (overlay) overlay.style.display = "none";
         }
 
-        function handleSettingsOverlayClick(event) {
+        function handleSettingsOverlayMouseDown(event) {
             if (event.target.id === "settingsOverlay") {
                 closeSettingsModal();
             }
@@ -1914,10 +1948,85 @@
             }
         });
 
+        function showActiveBoardroomModal() {
+            const overlay = document.getElementById("activeBoardroomOverlay");
+            if (overlay) overlay.style.display = "flex";
+        }
+
+        function hideActiveBoardroomModal() {
+            const overlay = document.getElementById("activeBoardroomOverlay");
+            if (overlay) overlay.style.display = "none";
+        }
+
+        async function checkBoardroomStatus() {
+            try {
+                const res = await fetch('/api/boardroom/status');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.isRunning) {
+                        showActiveBoardroomModal();
+                    } else {
+                        hideActiveBoardroomModal();
+                    }
+                }
+            } catch (e) {
+                console.error("Error checking boardroom status:", e);
+            }
+        }
+
+        async function killActiveBoardroom() {
+            const killBtn = document.getElementById("killBoardroomBtn");            
+            if (killBtn) killBtn.disabled = true;
+
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ action: "stop" }));
+            }
+
+            try {
+                const res = await fetch('/api/boardroom/stop', { method: 'POST' });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.stopped || !data.isRunning) {
+                        hideActiveBoardroomModal();
+                        setControlsRunningState(false);
+                        if (killBtn) killBtn.disabled = false;
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.error("Error stopping boardroom:", e);
+            }
+
+            let attempts = 0;
+            const pollInterval = setInterval(async () => {
+                attempts++;
+                try {
+                    const res = await fetch('/api/boardroom/status');
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (!data.isRunning || attempts >= 20) {
+                            clearInterval(pollInterval);
+                            hideActiveBoardroomModal();
+                            setControlsRunningState(false);
+                            if (killBtn) killBtn.disabled = false;
+                        }
+                    }
+                } catch (e) {
+                    if (attempts >= 20) {
+                        clearInterval(pollInterval);
+                        hideActiveBoardroomModal();
+                        setControlsRunningState(false);
+                        if (killBtn) killBtn.disabled = false;
+                    }
+                }
+            }, 300);
+        }
+
         initStagesBar(document.getElementById("modeSelect").value || "fast");
         setupAutoScroll(document.getElementById("sidebarContent"));
         connectWebsocket();
         checkServerStatus();
+        checkBoardroomStatus();
 
         // Test Demo Function to showcase Macro Analyst stage with all markdown elements, thinking, tool calls, 429, and summaries
         window.runTestDemo = function(animated = false) {

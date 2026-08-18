@@ -7,9 +7,18 @@ _local = threading.local()
 eventCallback = None
 
 stopRequestedEvent = threading.Event()
+_stopCallbacks = []
 
 class SimulationStoppedException(Exception):
     pass
+
+def registerStopCallback(callback):
+    if callback not in _stopCallbacks:
+        _stopCallbacks.append(callback)
+
+def unregisterStopCallback(callback):
+    if callback in _stopCallbacks:
+        _stopCallbacks.remove(callback)
 
 def setEventCallback(callback):
     global eventCallback
@@ -17,6 +26,11 @@ def setEventCallback(callback):
 
 def requestStop():
     stopRequestedEvent.set()
+    for cb in list(_stopCallbacks):
+        try:
+            cb()
+        except Exception as e:
+            print(f"Error in stop callback: {e}")
 
 def resetStop():
     stopRequestedEvent.clear()
