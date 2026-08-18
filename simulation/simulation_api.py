@@ -2,14 +2,15 @@ import os
 import time
 import math
 import random
+import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 from flask import request, session
 
 from concurrent.futures import ThreadPoolExecutor
-from ui.ws_api import registerWsAction
+from ui.ws_api import registerWsAction, sendWsResponse
 
-from collectors.constants import END_DATE_STR, ALL_TICKERS_FILE, NYSE_DIRECTORY, NASDAQ_DIRECTORY, NEW_YORK
+from collectors.constants import END_DATE_STR, ALL_TICKERS_FILE, NYSE_DIRECTORY, NASDAQ_DIRECTORY, NEW_YORK, START_DATE
 from collectors.rate_limiter import GlobalRateLimiters
 
 from dataquery.lru_cache import LRUCache
@@ -25,7 +26,6 @@ from llmtools.functions.company import calculate30DayAverageVolume, calculateSha
 
 from simulation.market_sim import MarketSimulation
 from simulation.orders import MarketOrder, LimitOrder, StopOrder, StopLimitOrder, OrderSide, OrderStatus
-from ui.ws_api import generateOhlcvChartData, sendWsResponse
 
 
 class SimulationManager:
@@ -34,6 +34,7 @@ class SimulationManager:
         self.tickerProvider = TickerDataProvider()
         self.rateLimiters = GlobalRateLimiters()
         self.priceProvider = DailyPriceProvider(self.tickerProvider, self.simCache, self.rateLimiters)
+        self.ohlcvChartCache = {}
 
         self.userSimulations = {}
         self.userHistory = {}
@@ -58,6 +59,298 @@ class SimulationManager:
                         self.availableTickers.append(ticker)
         except Exception as e:
             raise RuntimeError(f"Failed to load available tickers: {str(e)}")
+
+    def getRollingMean(self, series, window=3):
+        s = pd.Series(series)
+        return s.rolling(window=window, center=True, min_periods=1).mean().values
+
+    def computeBezierThroughPoints(self, pointsX, pointsY, numSamples=300):
+        n = len(pointsX)
+        if n < 2:
+            return np.array(pointsX), np.array(pointsY)
+        
+        xPts = np.array(pointsX, dtype=np.float64)
+        yPts = np.array(pointsY, dtype=np.float64)
+        
+        def catmullRomPoint(t, p0, p1, p2, p3):
+            t2 = t * t
+            t3 = t2 * t
+            return 0.5 * (
+                2 * p1 +
+                (-p0 + p2) * t +
+                (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
+                (-p0 + 3 * p1 - 3 * p2 + p3) * t3
+            )
+        
+        samplesPerSegment = max(numSamples // n, 50)
+        xAll = []
+        yAll = []
+        
+        for i in range(n - 1):
+            p0 = xPts[max(i - 1, 0)]
+            p1 = xPts[i]
+            p2 = xPts[min(i + 1, n - 1)]
+            p3 = xPts[min(i + 2, n - 1)]
+            
+            y0 = yPts[max(i - 1, 0)]
+            y1 = yPts[i]
+            y2 = yPts[min(i + 1, n - 1)]
+            y3 = yPts[min(i + 2, n - 1)]
+            
+            for j in range(samplesPerSegment):
+                t = j / samplesPerSegment
+                x = catmullRomPoint(t, p0, p1, p2, p3)
+                y = catmullRomPoint(t, y0, y1, y2, y3)
+                xAll.append(x)
+                yAll.append(y)
+        
+        xAll.append(xPts[-1])
+        yAll.append(yPts[-1])
+        return np.array(xAll), np.array(yAll)
+
+    def getFuturePerformanceChunks(self, futureDates, futureCloses, splineVals):
+        numPoints = len(futureCloses)
+        if numPoints == 0:
+            return []
+            
+        if splineVals is None or len(splineVals) != numPoints:
+            pts = [{"x": pd.Timestamp(d).strftime("%Y-%m-%d"), "y": round(float(c), 2)} for d, c in zip(futureDates, futureCloses)]
+            return [{"color": "#f43f5e", "points": pts}]
+            
+        diffVals = futureCloses - splineVals
+        refinedDates = []
+        refinedCloses = []
+        refinedDiffs = []
+        
+        for i in range(numPoints - 1):
+            d1 = futureDates[i]
+            c1 = futureCloses[i]
+            diff1 = diffVals[i]
+            
+            refinedDates.append(d1)
+            refinedCloses.append(c1)
+            refinedDiffs.append(diff1)
+            
+            diff2 = diffVals[i + 1]
+            if (diff1 > 0 and diff2 < 0) or (diff1 < 0 and diff2 > 0):
+                d2 = futureDates[i + 1]
+                c2 = futureCloses[i + 1]
+                
+                t = diff1 / (diff1 - diff2)
+                t1 = d1.timestamp()
+                t2 = d2.timestamp()
+                tCross = t1 + t * (t2 - t1)
+                if getattr(d1, 'tzinfo', None) is not None:
+                    dCross = pd.Timestamp(tCross, unit='s', tz=d1.tzinfo).to_pydatetime()
+                else:
+                    dCross = pd.Timestamp(tCross, unit='s').to_pydatetime()
+                    
+                cCross = c1 + t * (c2 - c1)
+                diffCross = 0.0
+                
+                refinedDates.append(dCross)
+                refinedCloses.append(cCross)
+                refinedDiffs.append(diffCross)
+                
+        refinedDates.append(futureDates[-1])
+        refinedCloses.append(futureCloses[-1])
+        refinedDiffs.append(diffVals[-1])
+        
+        refinedDatesArr = np.array(refinedDates)
+        refinedClosesArr = np.array(refinedCloses)
+        refinedDiffsArr = np.array(refinedDiffs)
+        
+        chunks = []
+        
+        def extractChunksForMask(mask, color):
+            n = len(mask)
+            inChunk = False
+            chunkStart = 0
+            for idx in range(n):
+                if mask[idx]:
+                    if not inChunk:
+                        inChunk = True
+                        chunkStart = idx
+                else:
+                    if inChunk:
+                        cDates = refinedDatesArr[chunkStart:idx]
+                        cCloses = refinedClosesArr[chunkStart:idx]
+                        if len(cDates) >= 2:
+                            pts = [{"x": pd.Timestamp(d).strftime("%Y-%m-%d"), "y": round(float(c), 2)} for d, c in zip(cDates, cCloses)]
+                            chunks.append({"color": color, "points": pts})
+                        inChunk = False
+            if inChunk:
+                cDates = refinedDatesArr[chunkStart:n]
+                cCloses = refinedClosesArr[chunkStart:n]
+                if len(cDates) >= 2:
+                    pts = [{"x": pd.Timestamp(d).strftime("%Y-%m-%d"), "y": round(float(c), 2)} for d, c in zip(cDates, cCloses)]
+                    chunks.append({"color": color, "points": pts})
+
+        extractChunksForMask(refinedDiffsArr >= 0, '#10b981')
+        extractChunksForMask(refinedDiffsArr <= 0, '#f43f5e')
+        return chunks
+
+    def generateOhlcvChartData(self, ticker, simDateTs, targets=None, horizon="long"):
+        todayTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
+        if targets is None:
+            targets = []
+
+        simDateTs = pd.Timestamp(simDateTs)
+        if simDateTs.tzinfo is None:
+            simDateTs = simDateTs.tz_localize(NEW_YORK)
+        else:
+            simDateTs = simDateTs.tz_convert(NEW_YORK)
+
+        horizonStr = (horizon or "long").lower()
+        simDateStr = simDateTs.strftime("%Y-%m-%d")
+        cacheKey = f"{ticker}_{simDateStr}_{horizonStr}"
+
+        if not targets and cacheKey in self.ohlcvChartCache:
+            return self.ohlcvChartCache[cacheKey]
+        
+        if horizonStr in ["immediate", "1m"]:
+            startDateTs = simDateTs - pd.DateOffset(months=1)
+            endDateTs = simDateTs + pd.DateOffset(months=1)
+        elif horizonStr in ["short", "3m"]:
+            startDateTs = simDateTs - pd.DateOffset(months=3)
+            endDateTs = simDateTs + pd.DateOffset(months=3)
+        elif horizonStr in ["medium", "1y", "12m"]:
+            startDateTs = simDateTs - pd.DateOffset(years=1)
+            endDateTs = simDateTs + pd.DateOffset(years=1)
+        elif horizonStr in ["3y", "36m"]:
+            startDateTs = simDateTs - pd.DateOffset(years=3)
+            endDateTs = simDateTs + pd.DateOffset(years=3)
+        elif horizonStr in ["all", "max"]:
+            startDateTs = START_DATE if isinstance(START_DATE, pd.Timestamp) else pd.Timestamp(START_DATE, tz=NEW_YORK)
+            endDateTs = simDateTs + pd.DateOffset(years=1)
+        elif horizonStr == "long":
+            startDateTs = simDateTs - pd.DateOffset(years=1)
+            endDateTs = simDateTs + pd.DateOffset(years=3)
+        else:   # elif horizonStr == "distant":
+            startDateTs = simDateTs - pd.DateOffset(years=2)
+            endDateTs = simDateTs + pd.DateOffset(years=10)
+        
+        if targets:
+            maxTargetMonths = max([t[0] for t in targets])
+            targetEndTs = simDateTs + pd.DateOffset(months=int(maxTargetMonths))
+            if targetEndTs > endDateTs:
+                endDateTs = targetEndTs
+        
+        profile = self.tickerProvider.getTickerProfile(ticker)
+        if profile and profile.ipoDate is not None:
+            ipoTs = pd.Timestamp(profile.ipoDate)
+            if ipoTs.tzinfo is None:
+                ipoTs = ipoTs.tz_localize(NEW_YORK)
+            else:
+                ipoTs = ipoTs.tz_convert(NEW_YORK)
+            if ipoTs > startDateTs:
+                startDateTs = ipoTs
+
+        # Uses self.priceProvider (which shares self.simCache and priceProvider.adjustPriceDataSplits)
+        dfHistorical = self.priceProvider.getPeriodDailyTickerData(ticker, startDateTs, simDateTs, referenceDate=simDateTs)
+        
+        dfFuture = pd.DataFrame()
+        if targets and simDateTs < todayTs:
+            futureEndTs = min(endDateTs, todayTs)
+            dfFuture = self.priceProvider.getPeriodDailyTickerData(ticker, simDateTs, futureEndTs, referenceDate=simDateTs)
+            
+        lastHistoricalClose = None
+        allPrices = []
+        historicalPoints = []
+        if not dfHistorical.empty and "close" in dfHistorical.columns:
+            dfCleanHist = dfHistorical.dropna(subset=["close"])
+            if not dfCleanHist.empty:
+                dateCol = "dateNy" if "dateNy" in dfCleanHist.columns else "date"
+                dateStrs = [pd.Timestamp(d).strftime("%Y-%m-%d") for d in dfCleanHist[dateCol]]
+                closesRaw = dfCleanHist["close"].to_numpy(dtype=float)
+                histClosesSmooth = self.getRollingMean(closesRaw, window=3)
+                lastHistoricalClose = histClosesSmooth[-1]
+                allPrices.extend(histClosesSmooth.tolist())
+                historicalPoints = [{"x": d, "y": round(float(c), 2)} for d, c in zip(dateStrs, histClosesSmooth)]
+                
+        futureDates = []
+        futureClosesSmooth = []
+        if not dfFuture.empty and "close" in dfFuture.columns:
+            dfCleanFuture = dfFuture.dropna(subset=["close"])
+            if not dfCleanFuture.empty:
+                dateColFut = "dateNy" if "dateNy" in dfCleanFuture.columns else "date"
+                futureDates = [pd.Timestamp(d).to_pydatetime() for d in dfCleanFuture[dateColFut]]
+                closesRaw = dfCleanFuture["close"].to_numpy(dtype=float)
+                futureClosesSmooth = self.getRollingMean(closesRaw, window=3)
+                allPrices.extend(futureClosesSmooth.tolist())
+                
+        startTime = startDateTs.timestamp()
+        simDateDaysFromStart = (simDateTs - startDateTs).total_seconds() / 86400.0
+        targetX = [simDateDaysFromStart]
+        targetY = [lastHistoricalClose if lastHistoricalClose is not None else (allPrices[0] if allPrices else 100.0)]
+        
+        simDateStr = simDateTs.strftime("%Y-%m-%d")
+        simAnchorPoint = {"x": simDateStr, "y": round(float(targetY[0]), 2)}
+
+        targetPoints = []
+        for monthsOffset, price in targets:
+            targetDateTs = simDateTs + pd.DateOffset(months=int(monthsOffset))
+            daysFromStart = (targetDateTs - startDateTs).total_seconds() / 86400.0
+            targetX.append(daysFromStart)
+            targetY.append(price)
+            allPrices.append(price)
+            targetPoints.append({
+                "x": targetDateTs.strftime("%Y-%m-%d"),
+                "y": round(float(price), 2),
+                "months": int(monthsOffset)
+            })
+            
+        minPrice = min(allPrices) if allPrices else 0.0
+        maxPrice = max(allPrices) if allPrices else 100.0
+        priceRange = maxPrice - minPrice
+        if priceRange == 0:
+            priceRange = maxPrice * 0.2 if maxPrice > 0 else 10.0
+            
+        leeway = max(priceRange * 0.08, minPrice * 0.05)
+        yMinCandidate = minPrice - leeway
+        
+        if yMinCandidate <= 0 or minPrice < 1.0:
+            yMin = 0.0
+        else:
+            yMin = max(0.0, yMinCandidate)
+            
+        yMax = maxPrice + max(priceRange * 0.08, maxPrice * 0.05)
+
+        curvePoints = []
+        splineVals = None
+        curveX, curveY = None, None
+        if len(targets) > 0:
+            curveX, curveY = self.computeBezierThroughPoints(targetX, targetY, numSamples=400)
+            for x, y in zip(curveX, curveY):
+                dt = pd.Timestamp(round(startTime + x * 86400.0), unit='s', tz=NEW_YORK)
+                curvePoints.append({"x": dt.strftime("%Y-%m-%d"), "y": round(float(y), 2)})
+
+        futureChunks = []
+        if len(futureDates) > 0:
+            if curveX is not None and len(curveX) > 0:
+                futureDays = np.array([(pd.Timestamp(d) - startDateTs).total_seconds() / 86400.0 for d in futureDates])
+                splineVals = np.interp(futureDays, curveX, curveY)
+            futureChunks = self.getFuturePerformanceChunks(futureDates, futureClosesSmooth, splineVals)
+
+        res = {
+            "ticker": ticker,
+            "simDate": simDateStr,
+            "startDate": startDateTs.strftime("%Y-%m-%d"),
+            "endDate": endDateTs.strftime("%Y-%m-%d"),
+            "yMin": round(float(yMin), 2),
+            "yMax": round(float(yMax), 2),
+            "historical": historicalPoints,
+            "simAnchor": simAnchorPoint,
+            "targetPoints": targetPoints,
+            "targetCurve": curvePoints,
+            "futureChunks": futureChunks
+        }
+        if not targets:
+            if len(self.ohlcvChartCache) > 1000:
+                self.ohlcvChartCache.clear()
+            self.ohlcvChartCache[cacheKey] = res
+
+        return res
             
 
     def cleanNans(self, obj):
@@ -428,7 +721,7 @@ class SimulationManager:
                 if row is not None and "close" in row and pd.notna(row["close"]):
                     lastPrice = float(row["close"])
 
-        chartData = generateOhlcvChartData(ticker, simDateTs, targets=[], horizon=timeframeStr)
+        chartData = self.generateOhlcvChartData(ticker, simDateTs, targets=[], horizon=timeframeStr)
         if lastPrice is None and chartData and chartData.get("simAnchor"):
             lastPrice = chartData["simAnchor"].get("y")
 
@@ -477,7 +770,7 @@ class SimulationManager:
             pass
 
         timeframeStr = (timeframe or "3M").lower()
-        chartData = generateOhlcvChartData(ticker, simDateTs, targets=[], horizon=timeframeStr)
+        chartData = self.generateOhlcvChartData(ticker, simDateTs, targets=[], horizon=timeframeStr)
 
         currentPrice = None
         historical = []
@@ -540,7 +833,7 @@ class SimulationManager:
         # order form never shows $0.00. generateOhlcvChartData is cached, so this is cheap.
         if lastPrice is None or lastPrice == 0:
             try:
-                chartData = generateOhlcvChartData(ticker, simDateTs, targets=[], horizon="3m")
+                chartData = self.generateOhlcvChartData(ticker, simDateTs, targets=[], horizon="3m")
                 if chartData and chartData.get("simAnchor"):
                     anchorPrice = chartData["simAnchor"].get("y")
                     if anchorPrice:
@@ -805,7 +1098,7 @@ class SimulationManager:
 
         fastData = self.fetchFastInspectorMetrics(dataProviders, ticker, targetTs, timeframeStr)
 
-        chartData = generateOhlcvChartData(ticker, targetTs, targets=[], horizon=(timeframeStr or "3m").lower())
+        chartData = self.generateOhlcvChartData(ticker, targetTs, targets=[], horizon=(timeframeStr or "3m").lower())
         # if fastData["lastPrice"] is None and chartData and chartData.get("simAnchor"):
         #     fastData["lastPrice"] = chartData["simAnchor"].get("y")
 
@@ -1059,7 +1352,7 @@ def registerSimulationWsRoutes():
             simDateTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
 
         try:
-            chartData = generateOhlcvChartData(ticker, simDateTs, targets=[], horizon=timeframeStr.lower())
+            chartData = simulationManager.generateOhlcvChartData(ticker, simDateTs, targets=[], horizon=timeframeStr.lower())
             priceChange = None
             historical = (chartData or {}).get("historical") or []
             currentPrice = (chartData or {}).get("simAnchor", {}).get("y")
