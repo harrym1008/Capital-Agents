@@ -53,7 +53,8 @@ def emitEvent(eventType, data=None):
     stopSafeEvents = {
         "simStopped", "simComplete", "error",
         "toolCallEnd", "agentRunEnd",
-        "contentEnd", "reasoningEnd"
+        "contentEnd", "reasoningEnd",
+        "rateLimit"
     }
     if eventType not in stopSafeEvents and isStopRequested():
         raise SimulationStoppedException("Simulation stopped by user.")

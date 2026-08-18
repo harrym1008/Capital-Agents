@@ -460,6 +460,12 @@
                     }
                     if (typeof stopMetricsPolling === 'function') stopMetricsPolling();
                     break;
+
+                case "rateLimit":
+                    if (agentRole) {
+                        appendRateLimitToAgentFeed(activeStage, agentRole, payload);
+                    }
+                    break;
             }
         }
 
@@ -1208,6 +1214,19 @@
             }
         }
 
+        function appendRateLimitToAgentFeed(stageNum, agentRole, payload) {
+            if (!agentRole) return;
+            const pane = getOrCreateAgentPane(stageNum, agentRole);
+            if (!pane || !pane.feed) return;
+
+            const item = document.createElement("div");
+            item.className = "rate-limit-feed-item";
+            const waitTime = payload.waitTime !== undefined ? `${payload.waitTime} seconds` : "a few seconds";
+            item.innerText = payload.message || `Received 429 "Too Many Requests". Waiting for ${waitTime}...`;
+            pane.feed.appendChild(item);
+            scrollFeedToBottom(pane.feed);
+        }
+
         function startReasoningBlock(stageNum, agentRole) {
             const pane = getOrCreateAgentPane(stageNum, agentRole);
             const compoundKey = `${stageNum}_${agentRole}`;
@@ -1793,6 +1812,221 @@
         initStagesBar(document.getElementById("modeSelect").value || "fast");
         connectWebsocket();
         checkServerStatus();
+
+        // Test Demo Function to showcase Macro Analyst stage with all markdown elements, thinking, tool calls, 429, and summaries
+        window.runTestDemo = function(animated = false) {
+            console.log("Running Test Demo Simulation (animated=" + animated + ")...");
+            
+            const events = [
+                // 1. Stage 1: Macro Environment Analysis Layout
+                {
+                    type: "stageStart",
+                    stageNum: 1,
+                    stageName: "Macro Environment Analysis",
+                    agents: [{ role: "Macro Analyst", color: "cyan", name: "Macro Analyst" }]
+                },
+                // 2. Start Macro Analyst raw agent run
+                {
+                    type: "agentRunStart",
+                    agentRole: "Macro Analyst",
+                    agentColor: "cyan",
+                    phase: "raw",
+                    stageNum: 1
+                },
+                // 3. Reasoning / Thinking Stage
+                {
+                    type: "reasoningStart",
+                    stageNum: 1,
+                    agentRole: "Macro Analyst"
+                },
+                {
+                    type: "reasoningToken",
+                    stageNum: 1,
+                    agentRole: "Macro Analyst",
+                    token: "Here is some reasoning text... \n\nI will now perform a tool call:"
+                },
+                {
+                    type: "reasoningEnd",
+                    stageNum: 1,
+                    agentRole: "Macro Analyst"
+                },
+                // 4. Rate Limit (HTTP 429) Message Element
+                {
+                    type: "rateLimit",
+                    stageNum: 1,
+                    agentRole: "Macro Analyst",
+                    agentColor: "cyan",
+                    waitTime: 8.0,
+                    message: "Received 429 \"Too Many Requests\". Waiting for 8.0 seconds..."
+                },
+                // 5. Tool Call 1: Fake tool 'exampleToolCall'
+                {
+                    type: "toolCallStart",
+                    stageNum: 1,
+                    agentRole: "Macro Analyst",
+                    toolName: "exampleToolCall",
+                    args: JSON.stringify({ query: "lorem ipsum", limit: 5, filter: "active" }),
+                    callId: "call_example_001",
+                    toolIndex: 0
+                },
+                {
+                    type: "toolCallEnd",
+                    stageNum: 1,
+                    agentRole: "Macro Analyst",
+                    toolName: "exampleToolCall",
+                    callId: "call_example_001",
+                    status: "success",
+                    result: JSON.stringify({ status: "ok", results: ["lorem", "ipsum", "dolor"] }),
+                    stdout: "",
+                    variables: {},
+                    toolIndex: 0
+                },
+                // 6. Tool Call 2: Python Calculation Tool with stdout & variables
+                {
+                    type: "toolCallStart",
+                    stageNum: 1,
+                    agentRole: "Macro Analyst",
+                    toolName: "executePythonCalculation",
+                    args: JSON.stringify({ code: "valA = 100\nvalB = 25\nresult = valA * valB\nprint(f'Calculated output: {result}')" }),
+                    callId: "call_py_002",
+                    toolIndex: 1
+                },
+                {
+                    type: "toolCallEnd",
+                    stageNum: 1,
+                    agentRole: "Macro Analyst",
+                    toolName: "executePythonCalculation",
+                    callId: "call_py_002",
+                    status: "success",
+                    result: JSON.stringify({ success: true }),
+                    stdout: "Calculated output: 2500",
+                    variables: { valA: 100, valB: 25, result: 2500 },
+                    toolIndex: 1
+                },
+                // 7. Content Stage: Comprehensive Markdown Demonstration in Lorem Ipsum
+                {
+                    type: "contentStart",
+                    stageNum: 1,
+                    agentRole: "Macro Analyst",
+                    phase: "raw"
+                },
+                {
+                    type: "contentToken",
+                    stageNum: 1,
+                    agentRole: "Macro Analyst",
+                    phase: "raw",
+                    token: `# Heading 1
+## Heading 2
+### Heading 3
+#### Heading 4
+##### Heading 5
+###### Heading 6
+
+Here is some **bold text**, some *italic text*, and some ***bold italic text***.
+
+
+---
+Here are some vertical bars...
+---
+---
+
+### Here is a table:
+
+| Column Header 1 | Column Header 2 | Column Header 3 | Column Header 4 |
+| :--- | :--- | :--- | :--- |
+| **Row Item Alpha** | Data Value 1 | **Status A** | \$120.50 |
+| **Row Item Beta** | Data Value 2 | *Status B* | \$340.00 |
+| **Row Item Gamma** | Data Value 3 | *Status C* | \$95.25 |
+| **Row Item Delta** | Data Value 4 | **Status D** | \$1,500.00 |
+
+---
+
+Dollar test:  $150,000.34
+Dollar test two: \$1,234.56
+
+- **Bullet Point A:** Lorem ipsum yadda yadda
+- **Bullet Point B:** Lorem ipsum yadda yadda
+- **Bullet Point C:** Lorem ipsum yadda yadda
+
+---
+
+### Outro:
+1. First numbered item with *italic text*.
+2. Second numbered item with **bold text**.
+3. Third numbered item.
+---
+
+# The end.`
+                },
+                {
+                    type: "contentEnd",
+                    stageNum: 1,
+                    agentRole: "Macro Analyst"
+                },
+                {
+                    type: "agentRunEnd",
+                    stageNum: 1,
+                    agentRole: "Macro Analyst"
+                },
+                // 8. Summary Phase: Boardroom Summary Log & Sidebar
+                {
+                    type: "agentRunStart",
+                    stageNum: 1,
+                    agentRole: "Macro Analyst",
+                    agentColor: "cyan",
+                    phase: "summary"
+                },
+                {
+                    type: "contentStart",
+                    stageNum: 1,
+                    agentRole: "Macro Analyst",
+                    phase: "summary"
+                },
+                {
+                    type: "contentToken",
+                    stageNum: 1,
+                    agentRole: "Macro Analyst",
+                    phase: "summary",
+                    token: `Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+                    \n\nRating: **BUY**, Weight: **OVERWEIGHT**, 12-mo target: **$150.00**, 36-mo target: **$200.00**.`
+                },
+                {
+                    type: "contentEnd",
+                    stageNum: 1,
+                    agentRole: "Macro Analyst"
+                },
+                {
+                    type: "agentRunEnd",
+                    stageNum: 1,
+                    agentRole: "Macro Analyst"
+                }
+            ];
+
+            if (!animated) {
+                events.forEach(evt => handleSimulationEvent(evt));
+                console.log("✓ Test Demo rendered immediately into Stage 1 (Macro Analyst)!");
+            } else {
+                let idx = 0;
+                function playNext() {
+                    if (idx < events.length) {
+                        const evt = events[idx++];
+                        handleSimulationEvent(evt);
+                        let delay = 120;
+                        if (evt.type === "reasoningStart" || evt.type === "toolCallStart") delay = 300;
+                        if (evt.type === "rateLimit") delay = 600;
+                        if (evt.type === "contentStart") delay = 180;
+                        setTimeout(playNext, delay);
+                    } else {
+                        console.log("✓ Animated Test Demo completed!");
+                    }
+                }
+                playNext();
+            }
+        };
+
+        // Aliases for quick access in DevTools console
+        window.testMacroStage = window.runTestDemo;
+        window.testDemo = window.runTestDemo;
     </script>
 </body>
 </html>

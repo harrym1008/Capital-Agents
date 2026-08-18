@@ -12,18 +12,17 @@ class OpenRouterClient(BaseLLMClient):
     def __init__(self, apiKey: str, model: str, providerRouter: Optional[str] = None, costTracker: Optional[Any] = None):
         self.apiKey = apiKey
         self.providerRouter = providerRouter
+        super().__init__(defaultModel=model, allowParallel=True, costTracker=costTracker)
         if model.endswith(":free"):
             self.rateLimiter = RateLimiter("openrouter", 20, 60)  # 20 requests per minute max for free tier
         else:
             self.rateLimiter = RateLimiter("openrouter", 10, 1)  # No limit for paid tier (10 a second is safe)
-        super().__init__(defaultModel=model, allowParallel=True, costTracker=costTracker)
 
     def _createOpenaiClient(self) -> OpenAI:
         return OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=self.apiKey,
             default_headers={
-                "HTTP-Referer": "https://localhost:3000",
                 "X-Title": "CapitalAgents"
             }
         )
@@ -60,7 +59,8 @@ class OpenRouterClient(BaseLLMClient):
     
 
     def _applyRateLimit(self):
-        waitTime = self.rateLimiter.getWaitTime()
-        if waitTime > 0.05:
-            print(f"{ANSI.DIM}[Rate Limited by OpenRouter - waiting {waitTime:.1f} seconds]{ANSI.RESET}")
-            time.sleep(waitTime)
+        if self.rateLimiter is not None:
+            waitTime = self.rateLimiter.getWaitTime()
+            if waitTime > 0.05:
+                print(f"{ANSI.DIM}[Rate Limited by OpenRouter - waiting {waitTime:.1f} seconds]{ANSI.RESET}")
+                time.sleep(waitTime)

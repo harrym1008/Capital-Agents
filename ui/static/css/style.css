@@ -463,3 +463,17 @@ header h1 {
     text-overflow: ellipsis;
     max-width: 40%;
 }
+
+
+.rate-limit-feed-item {
+    background-color: #ffeeee;
+    border: 1.5px solid #ef4444;
+    border-radius: 6px;
+    padding: 8px 14px;
+    color: #b91c1c;
+    font-size: 13px;
+    font-weight: 600;
+    margin: 6px 0;
+    flex-shrink: 0;
+}
+

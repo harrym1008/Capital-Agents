@@ -44,17 +44,21 @@ class RateLimiter:
             self.lastCallTime = time.time()
 
         
-    def got429(self, iters=0):
-        waitTime = self.period * iters/4 + 1
+    def calculate429WaitTime(self, iters=0):
+        waitTime = self.period * iters / 4 + 1
         if iters >= 10:
             waitTime = self.period * (iters - 9)
+        return waitTime
 
+    def got429(self, iters=0):
+        waitTime = self.calculate429WaitTime(iters)
         print(f"[{self.name}] Received 429 \"Too Many Requests\". Waiting for {waitTime} seconds...")
         with self.lock:
             backoffUntil = time.time() + waitTime
             if backoffUntil > self.nextAllowedTime:
                 self.nextAllowedTime = backoffUntil
         time.sleep(waitTime)   # Exponential backoff
+        return waitTime
 
 
     def non429Error(self, e):

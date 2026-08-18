@@ -23,9 +23,8 @@ class OpenRouterSummaryClient(BaseLLMClient):
             raise ValueError("OPENROUTER_API_KEY environment variable is not set.")
 
         self.apiKey = apiKey
-        self.rateLimiter = RateLimiter("openrouter", 20, 60)  # 20 requests per minute max for free tier
-
         super().__init__(defaultModel=SUMMARY_MODEL, allowParallel=True)
+        self.rateLimiter = RateLimiter("openrouter", 20, 60)  # 20 requests per minute max for free tier
 
     def _createOpenaiClient(self) -> OpenAI:
         return OpenAI(
@@ -49,9 +48,10 @@ class OpenRouterSummaryClient(BaseLLMClient):
         }
 
     def _applyRateLimit(self):
-        waitTime = self.rateLimiter.getWaitTime()
-        if waitTime > 0.05:
-            time.sleep(waitTime)
+        if self.rateLimiter is not None:
+            waitTime = self.rateLimiter.getWaitTime()
+            if waitTime > 0.05:
+                time.sleep(waitTime)
     
 
     def summariseText(self,
@@ -72,7 +72,7 @@ class OpenRouterSummaryClient(BaseLLMClient):
 
         try:
             self._applyRateLimit()
-            stream = self.openaiClient.chat.completions.create(
+            stream = self._createResponseStream(
                 model=self.defaultModel,
                 messages=messages,
                 temperature=0.25,

@@ -1,12 +1,13 @@
 import json
 import re
+import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from enum import Enum
 
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 import pandas as pd
 
 from cli.ansi import ANSI
@@ -41,6 +42,8 @@ class BaseLLMClient(ABC):
         
         self.allowParallel = allowParallel
         self.printLock = threading.Lock() if allowParallel else None
+        if not hasattr(self, "rateLimiter"):
+            self.rateLimiter = None
 
         if costTracker is not None:
             self.costTracker = costTracker
@@ -61,6 +64,67 @@ class BaseLLMClient(ABC):
 
     def _applyRateLimit(self):
         pass
+
+    def _createResponseStream(self, **kwargs):
+        rateLimitAttempts = 0
+        while True:
+            try:
+                return self.openaiClient.chat.completions.create(**kwargs)
+            except RateLimitError as rateErr:
+                rateLimitAttempts += 1
+                if rateLimitAttempts > 10:
+                    print(f"Giving up after {rateLimitAttempts - 1} retries due to rate limiting.")
+                    raise
+
+                if self.rateLimiter is not None:
+                    if hasattr(self.rateLimiter, "calculate429WaitTime"):
+                        waitTime = self.rateLimiter.calculate429WaitTime(rateLimitAttempts)
+                    else:
+                        waitTime = self.rateLimiter.period * rateLimitAttempts / 4 + 1
+                else:
+                    waitTime = rateLimitAttempts * 2
+
+                emitEvent("rateLimit", {
+                    "waitTime": round(waitTime, 1),
+                    "message": f"Received 429 \"Too Many Requests\". Waiting for {waitTime:.1f} seconds..."
+                })
+
+                if self.rateLimiter is not None:
+                    self.rateLimiter.got429(rateLimitAttempts)
+                else:
+                    time.sleep(waitTime)
+            except Exception as reqErr:
+                errStr = str(reqErr)
+                isRateLimit = False
+                statusCode = getattr(reqErr, "status_code", None) or getattr(getattr(reqErr, "response", None), "status_code", None)
+                if statusCode == 429:
+                    isRateLimit = True
+                elif "429" in errStr or ("rate" in errStr.lower() and "limit" in errStr.lower()):
+                    isRateLimit = True
+
+                if isRateLimit and rateLimitAttempts < 10:
+                    rateLimitAttempts += 1
+                    if self.rateLimiter is not None:
+                        if hasattr(self.rateLimiter, "calculate429WaitTime"):
+                            waitTime = self.rateLimiter.calculate429WaitTime(rateLimitAttempts)
+                        else:
+                            waitTime = self.rateLimiter.period * rateLimitAttempts / 4 + 1
+                    else:
+                        waitTime = rateLimitAttempts * 2
+
+                    emitEvent("rateLimit", {
+                        "waitTime": round(waitTime, 1),
+                        "message": f"Received 429 \"Too Many Requests\". Waiting for {waitTime:.1f} seconds..."
+                    })
+
+                    if self.rateLimiter is not None:
+                        self.rateLimiter.got429(rateLimitAttempts)
+                    else:
+                        time.sleep(waitTime)
+                elif "tool_choice" in errStr and kwargs.get("tool_choice") == "required":
+                    kwargs["tool_choice"] = "auto"
+                else:
+                    raise reqErr
 
     def newTask(self):
         return self.costTracker.newTask()
@@ -368,15 +432,7 @@ class BaseLLMClient(ABC):
             if extraBody is not None:
                 responseKwargs["extra_body"] = extraBody
 
-            try:
-                responseStream = self.openaiClient.chat.completions.create(**responseKwargs)
-            except Exception as reqErr:
-                errStr = str(reqErr)
-                if "tool_choice" in errStr and responseKwargs.get("tool_choice") == "required":
-                    responseKwargs["tool_choice"] = "auto"
-                    responseStream = self.openaiClient.chat.completions.create(**responseKwargs)
-                else:
-                    raise reqErr
+            responseStream = self._createResponseStream(**responseKwargs)
             content, reasoning, toolCallsList, usage = self.handleResponseStream(responseStream, responsePrint)
             self.costTracker.recordUsage(usage)
 
@@ -474,7 +530,7 @@ class BaseLLMClient(ABC):
         if finalExtraBody is not None:
             finalResponseKwargs["extra_body"] = finalExtraBody
             
-        finalResponseStream = self.openaiClient.chat.completions.create(**finalResponseKwargs)
+        finalResponseStream = self._createResponseStream(**finalResponseKwargs)
         finalContent, _, _, finalUsage = self.handleResponseStream(finalResponseStream, responsePrint)
         self.costTracker.recordUsage(finalUsage)
         
