@@ -80,16 +80,21 @@
         </div>
         <button id="runBtn" class="run-btn" onclick="startSimulation()">Start Analysis</button>
         <button id="stopBtn" class="stop-btn" onclick="stopSimulation()" style="display: none;">Stop Analysis</button>
-        <div id="simulationTimer" style="margin-left: auto; font-size: 14px; font-weight: 700; color: #0f172a; padding: 6px 12px; border: 2px solid #0f172a; border-radius: 4px; background-color: #f8fafc; display: none;">
-            0 mins 0.00 secs
-        </div>
     </div>
 
     <div class="stages-bar" id="stagesBar">
-        <!-- Stages will be populated dynamically -->
+        <div class="stages-scroll-container" id="stagesScrollContainer">
+            <!-- Stages will be populated dynamically -->
+        </div>
+        <div class="stages-actions" id="stagesActions">
+            <div id="simulationTimer" class="simulation-timer" style="display: none;">
+                0 mins 0.00 secs
+            </div>
+            <button id="summariesBtn" class="summaries-btn" onclick="toggleSidebar()">Summaries</button>
+        </div>
     </div>
 
-    <div class="main-layout" style="display: flex; flex: 1; overflow: hidden; position: relative;">
+    <div class="main-layout" style="display: flex; flex: 1; min-height: 0; overflow: hidden; position: relative;">
         <div class="workspace">
             <div id="llamaLoadingContainer" class="llama-loader">
                 <div class="llama-loader-title">
@@ -395,9 +400,8 @@
                 case "toolCallEnd":
                     if (payload.toolName && payload.toolName.startsWith("confirmBoardroomDecision")) {
                         updateUploadReceipt(payload.result, payload.status === "success" ? "UPLOADED" : "FAILED");
-                    } else {
-                        endToolBlock(activeStage, agentRole, payload.toolName, payload.callId, payload.status, payload.result, payload.stdout, payload.variables, payload.toolIndex);
                     }
+                    endToolBlock(activeStage, agentRole, payload.toolName, payload.callId, payload.status, payload.result, payload.stdout, payload.variables, payload.toolIndex);
                     break;
 
                 case "agentRunEnd":
@@ -421,7 +425,7 @@
                     if (payload.totalTime) {
                         const timerEl = document.getElementById("simulationTimer");
                         if (timerEl) {
-                            timerEl.innerText = "⏱ " + payload.totalTime;
+                            timerEl.innerText = payload.totalTime;
                         }
                     }
                     
@@ -906,8 +910,24 @@
 
 
 
+        function updateSummariesBtnState() {
+            const summariesBtn = document.getElementById("summariesBtn");
+            const generateSummariesCheckbox = document.getElementById("generateSummariesCheckbox");
+            if (summariesBtn && generateSummariesCheckbox) {
+                summariesBtn.disabled = !generateSummariesCheckbox.checked;
+                if (summariesBtn.disabled) {
+                    summariesBtn.style.opacity = "0.5";
+                    summariesBtn.style.cursor = "not-allowed";
+                } else {
+                    summariesBtn.style.opacity = "1";
+                    summariesBtn.style.cursor = "pointer";
+                }
+            }
+        }
+
         function initStagesBar(mode) {
-            const bar = document.getElementById("stagesBar");
+            const bar = document.getElementById("stagesScrollContainer");
+            if (!bar) return;
             bar.innerHTML = "";
             const stages = defaultStages[mode];
             stages.forEach(stage => {
@@ -945,6 +965,7 @@
             qaWorkspace.style.display = "none";
             qaWorkspace.style.flex = "1";
             qaWorkspace.style.minHeight = "0";
+            qaWorkspace.style.height = "100%";
             qaWorkspace.style.flexDirection = "column";
             qaWorkspace.style.alignItems = "stretch";
             qaWorkspace.style.overflow = "hidden";
@@ -952,7 +973,7 @@
             qaWorkspace.style.gap = "20px";
             
             qaWorkspace.innerHTML = `
-                <div id="qaChatHistory" style="flex: 1; display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 1000px; margin: 0 auto; overflow-y: auto; padding-right: 10px;">
+                <div id="qaChatHistory" style="flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 1000px; margin: 0 auto; overflow-y: auto; padding-right: 10px;">
                     <!-- Chat history will populate here -->
                 </div>
 
@@ -1027,25 +1048,7 @@
                 }
             }, 100);
 
-            const summariesBtn = document.createElement("button");
-            summariesBtn.className = "summaries-btn";
-            summariesBtn.id = "summariesBtn";
-            summariesBtn.innerText = "Summaries";
-            
-            // Grey out the summaries button if generate summaries is disabled
-            const generateSummariesCheckbox = document.getElementById("generateSummariesCheckbox");
-            summariesBtn.disabled = generateSummariesCheckbox ? !generateSummariesCheckbox.checked : false;
-            if (summariesBtn.disabled) {
-                summariesBtn.style.opacity = "0.5";
-                summariesBtn.style.cursor = "not-allowed";
-            }
-            
-            summariesBtn.onclick = function() {
-                if (!this.disabled) {
-                    toggleSidebar();
-                }
-            };
-            bar.appendChild(summariesBtn);
+            updateSummariesBtnState();
         }
 
         function showStageWorkspace(stageNum) {
@@ -1109,7 +1112,7 @@
                 const isDecisionUpload = stageName.includes("Decision Upload");
                 if (isDecisionUpload) {
                     stageWorkspace.innerHTML = `
-                        <div class="upload-receipt-container" style="flex: 1; max-width: 440px; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); align-self: flex-start; height: calc(100vh - 230px); overflow-y: auto;">
+                        <div class="upload-receipt-container" style="flex: 1; max-width: 440px; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); align-self: stretch; height: 100%; min-height: 0; overflow-y: auto; box-sizing: border-box;">
                             <h2 style="font-size: 18px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 16px; text-align: center;">BOARDROOM DECISION REPORT</h2>
                             <div style="display: grid; grid-template-columns: 160px 1fr; gap: 14px; font-size: 14px; line-height: 1.2;">
                                 <div style="font-weight: 700; color: #475569;">Asset Ticker:</div>
@@ -1164,6 +1167,58 @@
             stageWorkspace.style.display = "flex";
         }
 
+        // ── Auto-scroll system ──────────────────────────────────────
+        // Tracks user intent via wheel/touch only. No scroll-event
+        // listener, so programmatic scrollTop writes and innerHTML
+        // mutations can never accidentally re-lock or unlock.
+
+        function setupAutoScroll(el) {
+            if (!el || el._autoScrollReady) return;
+            el._autoScrollReady = true;
+            el._userScrolledAway = false;
+
+            el.addEventListener('wheel', (e) => {
+                if (e.deltaY < 0) {
+                    // Any upward wheel tick → user wants to read, unlock immediately
+                    el._userScrolledAway = true;
+                } else if (e.deltaY > 0) {
+                    // Downward wheel tick → check after browser applies it
+                    requestAnimationFrame(() => {
+                        const gap = el.scrollHeight - el.clientHeight - el.scrollTop;
+                        if (gap < 30) {
+                            el._userScrolledAway = false;
+                        }
+                    });
+                }
+            }, { passive: true });
+
+            // Touch: swipe-up-to-read detection
+            let touchY = 0;
+            el.addEventListener('touchstart', (e) => {
+                if (e.touches.length) touchY = e.touches[0].clientY;
+            }, { passive: true });
+            el.addEventListener('touchmove', (e) => {
+                if (e.touches.length && e.touches[0].clientY > touchY + 5) {
+                    el._userScrolledAway = true;
+                }
+            }, { passive: true });
+            el.addEventListener('touchend', () => {
+                requestAnimationFrame(() => {
+                    const gap = el.scrollHeight - el.clientHeight - el.scrollTop;
+                    if (gap < 30) el._userScrolledAway = false;
+                });
+            }, { passive: true });
+        }
+
+        function autoScroll(el) {
+            if (!el || el._userScrolledAway) return;
+            el.scrollTop = el.scrollHeight;
+        }
+
+        function scrollFeedToBottom(feed) {
+            autoScroll(feed);
+        }
+
         function createAgentPane(stageNum, agentRole, agentColor, displayName) {
             const workspace = document.getElementById(`stageWorkspace-${stageNum}`);
             if (!workspace) return;
@@ -1192,6 +1247,7 @@
 
             const feed = document.createElement("div");
             feed.className = "agent-feed";
+            setupAutoScroll(feed);
             pane.appendChild(feed);
 
             workspace.appendChild(pane);
@@ -1204,14 +1260,6 @@
                 createAgentPane(stageNum, agentRole, agentColor, agentRole);
             }
             return activeAgentPanes[compoundKey];
-        }
-
-        function scrollFeedToBottom(feed) {
-            const threshold = 60;
-            const isNearBottom = (feed.scrollHeight - feed.clientHeight - feed.scrollTop) < threshold;
-            if (isNearBottom) {
-                feed.scrollTop = feed.scrollHeight;
-            }
         }
 
         function appendRateLimitToAgentFeed(stageNum, agentRole, payload) {
@@ -1245,13 +1293,32 @@
 
             const content = document.createElement("div");
             content.className = "collapsible-content";
+
+            // Thinking blocks get their own scroll tracking flag.
+            // We use a closure variable instead of an element property
+            // because innerHTML replacement can disturb element state.
+            let thinkingScrolledAway = false;
+
+            content.addEventListener('wheel', (e) => {
+                if (e.deltaY < 0) {
+                    thinkingScrolledAway = true;
+                } else if (e.deltaY > 0) {
+                    requestAnimationFrame(() => {
+                        const gap = content.scrollHeight - content.clientHeight - content.scrollTop;
+                        if (gap < 30) thinkingScrolledAway = false;
+                    });
+                }
+            }, { passive: true });
             
             block.appendChild(header);
             block.appendChild(content);
             pane.feed.appendChild(block);
             
-            pane.feed.scrollTop = pane.feed.scrollHeight;
-            activeBlocks[compoundKey] = { type: 'thinking', element: content, block, rawText: "" };
+            scrollFeedToBottom(pane.feed);
+            activeBlocks[compoundKey] = {
+                type: 'thinking', element: content, block, rawText: "",
+                isScrolledAway: () => thinkingScrolledAway
+            };
         }
 
         function appendReasoningToken(stageNum, agentRole, token) {
@@ -1259,12 +1326,19 @@
             const active = activeBlocks[compoundKey];
             if (active && active.type === 'thinking') {
                 active.rawText = (active.rawText || "") + token;
-                active.element.innerHTML = parseMarkdown(active.rawText);
-                
-                // Check if the user is scrolled near the bottom of the thinking block before snapping it
+
+                // Save scroll position before innerHTML replacement
                 const el = active.element;
-                const isNearBottomEl = (el.scrollHeight - el.clientHeight - el.scrollTop) < 60;
-                if (isNearBottomEl) {
+                const savedTop = el.scrollTop;
+                const scrolledAway = active.isScrolledAway();
+
+                el.innerHTML = parseMarkdown(active.rawText);
+
+                if (scrolledAway) {
+                    // Restore position — browser may have reset it
+                    el.scrollTop = savedTop;
+                } else {
+                    // Locked to bottom — snap to end
                     el.scrollTop = el.scrollHeight;
                 }
                 
@@ -1295,7 +1369,7 @@
                 summaryBox.appendChild(content);
                 pane.feed.appendChild(summaryBox);
                 
-                pane.feed.scrollTop = pane.feed.scrollHeight;
+                scrollFeedToBottom(pane.feed);
                 activeBlocks[compoundKey] = { type: 'summary', element: content, block: summaryBox, rawText: "" };
                 
                 // Also create summary box inside the right-hand sidebar
@@ -1305,7 +1379,7 @@
                 div.className = "raw-output-area";
                 pane.feed.appendChild(div);
                 
-                pane.feed.scrollTop = pane.feed.scrollHeight;
+                scrollFeedToBottom(pane.feed);
                 activeBlocks[compoundKey] = { type: 'content', element: div, block: div, rawText: "" };
             }
         }
@@ -1328,7 +1402,7 @@
                         
                         const sidebarContent = document.getElementById("sidebarContent");
                         if (sidebarContent) {
-                            sidebarContent.scrollTop = sidebarContent.scrollHeight;
+                            autoScroll(sidebarContent);
                         }
                     }
                 }
@@ -1359,7 +1433,7 @@
             box.appendChild(content);
             sidebarContent.appendChild(box);
             
-            sidebarContent.scrollTop = sidebarContent.scrollHeight;
+            autoScroll(sidebarContent);
 
             // Automatically open sidebar when summaries start streaming
             const sidebar = document.getElementById("summarySidebar");
@@ -1369,6 +1443,8 @@
         }
 
         function toggleSidebar() {
+            const btn = document.getElementById("summariesBtn");
+            if (btn && btn.disabled) return;
             const sidebar = document.getElementById("summarySidebar");
             if (sidebar) {
                 sidebar.classList.toggle("collapsed");
@@ -1468,7 +1544,7 @@
                 toolBlock.appendChild(content);
                 pane.feed.appendChild(toolBlock);
 
-                pane.feed.scrollTop = pane.feed.scrollHeight;
+                scrollFeedToBottom(pane.feed);
                 activeBlocks[compoundKey] = { type: 'tool', element: content, block: toolBlock };
             } else {
                 // Just update the name
@@ -1592,7 +1668,7 @@
             toolBlock.appendChild(header);
             toolBlock.appendChild(content);
 
-            pane.feed.scrollTop = pane.feed.scrollHeight;
+            scrollFeedToBottom(pane.feed);
             activeBlocks[compoundKey] = { type: 'tool', element: content, block: toolBlock };
         }
 
@@ -1652,7 +1728,7 @@
                 const compoundKey = `${stageNum}_${agentRole}`;
                 if (activeAgentPanes[compoundKey]) {
                     const feed = activeAgentPanes[compoundKey].feed;
-                    feed.scrollTop = feed.scrollHeight;
+                    scrollFeedToBottom(feed);
                 }
             }
         }
@@ -1792,24 +1868,17 @@
 
         // Toggle summaries button state when checkbox changes
         document.getElementById("generateSummariesCheckbox").addEventListener("change", function() {
-            const btn = document.getElementById("summariesBtn");
-            if (btn) {
-                btn.disabled = !this.checked;
-                if (btn.disabled) {
-                    btn.style.opacity = "0.5";
-                    btn.style.cursor = "not-allowed";
-                    const sidebar = document.getElementById("summarySidebar");
-                    if (sidebar && !sidebar.classList.contains("collapsed")) {
-                        sidebar.classList.add("collapsed");
-                    }
-                } else {
-                    btn.style.opacity = "1";
-                    btn.style.cursor = "pointer";
+            updateSummariesBtnState();
+            if (!this.checked) {
+                const sidebar = document.getElementById("summarySidebar");
+                if (sidebar && !sidebar.classList.contains("collapsed")) {
+                    sidebar.classList.add("collapsed");
                 }
             }
         });
 
         initStagesBar(document.getElementById("modeSelect").value || "fast");
+        setupAutoScroll(document.getElementById("sidebarContent"));
         connectWebsocket();
         checkServerStatus();
 

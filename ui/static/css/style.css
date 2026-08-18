@@ -112,11 +112,24 @@ header h1 {
 .stages-bar {
     background-color: #fff;
     border-bottom: 1px solid #e2e8f0;
-    padding: 12px 30px;
+    padding: 8px 30px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    flex-shrink: 0;
+    min-height: 48px;
+}
+
+.stages-scroll-container {
     display: flex;
     align-items: center;
     gap: 24px;
     overflow-x: auto;
+    overflow-y: hidden;
+    flex: 1;
+    min-width: 0;
+    padding-bottom: 2px;
 }
 
 .stage-item {
@@ -128,6 +141,7 @@ header h1 {
     white-space: nowrap;
     cursor: pointer;
     transition: color 0.2s;
+    flex-shrink: 0;
 }
 
 .stage-item:hover {
@@ -156,37 +170,84 @@ header h1 {
     background-color: #2563eb;
 }
 
-.summaries-btn {
+.stages-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
     margin-left: auto;
+}
+
+.simulation-timer {
+    font-size: 13px;
+    font-weight: 700;
+    color: #0f172a;
+    padding: 6px 12px;
+    border: 2px solid #0f172a;
+    border-radius: 4px;
+    background-color: #f8fafc;
+    white-space: nowrap;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+
+.summaries-btn {
+    white-space: nowrap;
+}
+
+.main-layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    position: relative;
 }
 
 .workspace {
     flex: 1;
+    min-width: 0;
+    min-height: 0;
     padding: 20px 30px;
     display: flex;
     flex-direction: column;
     gap: 15px;
     overflow: hidden;
+    box-sizing: border-box;
 }
 
 .panes-container {
     display: flex;
     gap: 20px;
     flex: 1;
+    min-height: 0;
+    min-width: 0;
     align-items: stretch;
     position: relative;
+    overflow: hidden;
 }
 
 .stage-workspace {
     width: 100%;
+    height: 100%;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
     display: none; /* toggled to flex via JS */
     gap: 20px;
     align-items: stretch;
     justify-content: center;
+    overflow: hidden;
+    box-sizing: border-box;
 }
 
 .agent-pane {
     flex: 1;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    max-height: 100%;
     border: 3px solid #000000;
     background-color: #ffffff;
     border-radius: 8px;
@@ -195,14 +256,31 @@ header h1 {
     flex-direction: column;
     gap: 15px;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-    height: calc(100vh - 230px);
     overflow: hidden; /* Scroll isolated inside agent-feed */
     max-width: 70%;
+    box-sizing: border-box;
+}
+
+.upload-receipt-container {
+    flex: 1;
+    max-width: 440px;
+    min-width: 320px;
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    border: 3px solid #000;
+    border-radius: 8px;
+    background-color: #fff;
+    padding: 24px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    overflow-y: auto;
+    box-sizing: border-box;
 }
 
 .qa-agent-pane {
     height: auto;
-    max-height: 60vh;
+    max-height: none;
+    flex: none;
 }
 
 .agent-header {
@@ -225,6 +303,7 @@ header h1 {
     font-size: 18px;
     border: 3px solid transparent;
     background-color: #f1f5f9;
+    flex-shrink: 0;
 }
 
 .agent-role-name {
@@ -235,6 +314,7 @@ header h1 {
 
 .agent-feed {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -380,7 +460,9 @@ header h1 {
 /* Collapsible Summary Sidebar styling */
 .summary-sidebar {
     width: 20%;
-    height: auto;
+    min-width: 280px;
+    height: 100%;
+    min-height: 0;
     background-color: #ffffff;
     border-left: 2px solid #e2e8f0;
     display: flex;
@@ -390,6 +472,7 @@ header h1 {
     flex-shrink: 0;
     box-shadow: -4px 0 10px rgba(0, 0, 0, 0.05);
     z-index: 10;
+    box-sizing: border-box;
 }
 
 .summary-sidebar.collapsed {
