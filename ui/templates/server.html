@@ -26,12 +26,13 @@
                     <div class="model-select-form-group">
                         <label for="provider">LLM Server:</label>
                         <select id="provider">
+                            <option value="llamacpp" selected>Llama.cpp</option>
                             <option value="openrouter">OpenRouter</option>
-                            <option value="llamacpp">Llama.cpp</option>
+                            <option value="openaicompatible">OpenAI Compatible</option>
                         </select>
                     </div>
 
-                    <div class="model-select-form-group" id="openrouterConfig">
+                    <div class="model-select-form-group hidden" id="openrouterConfig">
                         <!-- Full-Width Model Selector -->
                         <div style="margin-bottom: 10px;">
                             <label for="openrouterModelName" style="margin-bottom: 6px; display: block;">Selected Model:</label>
@@ -68,12 +69,37 @@
                         </div>
                     </div>
 
+                    <div class="model-select-form-group hidden" id="openaiCompatibleConfig" style="display: flex; flex-direction: column; gap: 14px;">
+                        <div>
+                            <label for="openaiBaseUrl" style="margin-bottom: 6px; display: block;">Base URL:</label>
+                            <input
+                                id="openaiBaseUrl"
+                                type="text"
+                                placeholder="e.g. http://localhost:8000/v1 or https://api.openai.com/v1"
+                                autocomplete="off"
+                            >
+                        </div>
+                        <div>
+                            <label for="openaiApiKey" style="margin-bottom: 6px; display: block;">API Key:</label>
+                            <input
+                                id="openaiApiKey"
+                                type="password"
+                                placeholder="API Key (optional for local servers)"
+                                autocomplete="off"
+                            >
+                        </div>
+                        <div>
+                            <label for="openaiModelName" style="margin-bottom: 6px; display: block;">Model Name / ID:</label>
+                            <input
+                                id="openaiModelName"
+                                type="text"
+                                placeholder="e.g. gpt-4o, llama-3.1-8b-instruct, default..."
+                                autocomplete="off"
+                            >
+                        </div>
+                    </div>
 
-
-
-
-
-                    <div class="model-select-form-group hidden" id="llamacppConfig">
+                    <div class="model-select-form-group" id="llamacppConfig">
                         <label for="llamaModel">Selected Model:</label>
                         <select id="llamaModel">
                             <option>Loading...</option>
@@ -194,18 +220,28 @@
         function updateProviderUI() {
             const provider = document.getElementById("provider").value;
             const openrouterConfig = document.getElementById("openrouterConfig");
+            const openaiCompatibleConfig = document.getElementById("openaiCompatibleConfig");
             const llamacppConfig = document.getElementById("llamacppConfig");
             const llamacppOptions = document.getElementById("llamacppOptions");
             const parallelCheckbox = document.getElementById("parallelCheckbox");
 
             if (provider === "openrouter") {
                 openrouterConfig.classList.remove("hidden");
+                openaiCompatibleConfig.classList.add("hidden");
                 llamacppConfig.classList.add("hidden");
                 llamacppOptions.style.display = "none";
                 // OpenRouter forces parallel slots ON
                 parallelCheckbox.checked = true;
+            } else if (provider === "openaicompatible") {
+                openrouterConfig.classList.add("hidden");
+                openaiCompatibleConfig.classList.remove("hidden");
+                llamacppConfig.classList.add("hidden");
+                llamacppOptions.style.display = "none";
+                // OpenAI Compatible forces parallel slots ON
+                parallelCheckbox.checked = true;
             } else {
                 openrouterConfig.classList.add("hidden");
+                openaiCompatibleConfig.classList.add("hidden");
                 llamacppConfig.classList.remove("hidden");
                 llamacppOptions.style.display = "flex";
             }
@@ -617,8 +653,8 @@
                 const res = await fetch('/api/server/status');
                 if (res.ok) {
                     const data = await res.json();
-                    const isRunning = data.running || data.llamacppRunning || data.summaryServerRunning || data.openrouterRunning;
-                    const provider = data.provider || (data.openrouterRunning ? "openrouter" : (data.llamacppRunning ? "llamacpp" : ""));
+                    const isRunning = data.running || data.llamacppRunning || data.summaryServerRunning || data.openrouterRunning || data.openaiCompatibleRunning;
+                    const provider = data.provider || (data.openrouterRunning ? "openrouter" : (data.openaiCompatibleRunning ? "openaicompatible" : (data.llamacppRunning ? "llamacpp" : "")));
                     updateServerStatus(isRunning, provider);
                     if (data.costData) {
                         updateCostUI(data.costData);
@@ -626,7 +662,14 @@
 
                     if (isRunning) {
                         // Present server status panel directly
-                        const provName = data.provider ? (data.provider === "openrouter" ? "OpenRouter" : "Llama.cpp") : "Active Server";
+                        let provName = "Active Server";
+                        if (data.provider === "openrouter") {
+                            provName = "OpenRouter";
+                        } else if (data.provider === "openaicompatible") {
+                            provName = "OpenAI Compatible";
+                        } else if (data.provider === "llamacpp") {
+                            provName = "Llama.cpp";
+                        }
                         document.getElementById("displayProvider").textContent = provName;
                         document.getElementById("displayModel").textContent = data.modelName || "Active Server Process";
                         document.getElementById("displayParallel").textContent = "Enabled";
@@ -657,10 +700,12 @@
         // "Start Server" button listener
         document.getElementById("loadModelBtn").addEventListener("click", async () => {
             const provider = document.getElementById("provider").value;
-            const wantSummaryServer = (provider === "openrouter") ? false : document.getElementById("summaryServerCheckbox").checked;
-            const allowParallel = (provider === "openrouter") ? true : document.getElementById("parallelCheckbox").checked;
+            const wantSummaryServer = (provider === "openrouter" || provider === "openaicompatible") ? false : document.getElementById("summaryServerCheckbox").checked;
+            const allowParallel = (provider === "openrouter" || provider === "openaicompatible") ? true : document.getElementById("parallelCheckbox").checked;
 
             let modelName = "";
+            let baseUrl = "";
+            let apiKey = "";
             let providerRouter = "auto";
 
             if (provider === "openrouter") {
@@ -674,6 +719,14 @@
                 if (hiddenInput) {
                     providerRouter = hiddenInput.value;
                 }
+            } else if (provider === "openaicompatible") {
+                baseUrl = document.getElementById("openaiBaseUrl").value.trim();
+                if (!baseUrl) {
+                    alert("Please enter a Base URL for the OpenAI Compatible server.");
+                    return;
+                }
+                apiKey = document.getElementById("openaiApiKey").value.trim();
+                modelName = document.getElementById("openaiModelName").value.trim() || "default";
             } else {
                 modelName = document.getElementById("llamaModel").value;
                 if (!modelName || modelName === "No models found" || modelName === "Failed to load") {
@@ -684,10 +737,20 @@
 
 
             // Populate status panel details
-            const displayModelStr = (provider === "openrouter" && providerRouter && providerRouter !== "auto")
-                ? `${modelName} [Router: ${providerRouter}]`
-                : modelName;
-            document.getElementById("displayProvider").textContent = provider === "openrouter" ? "OpenRouter" : "Llama.cpp";
+            let displayProviderStr = "Llama.cpp";
+            let displayModelStr = modelName;
+
+            if (provider === "openrouter") {
+                displayProviderStr = "OpenRouter";
+                if (providerRouter && providerRouter !== "auto") {
+                    displayModelStr = `${modelName} [Router: ${providerRouter}]`;
+                }
+            } else if (provider === "openaicompatible") {
+                displayProviderStr = "OpenAI Compatible";
+                displayModelStr = `${modelName} (${baseUrl})`;
+            }
+
+            document.getElementById("displayProvider").textContent = displayProviderStr;
             document.getElementById("displayModel").textContent = displayModelStr;
             document.getElementById("displayParallel").textContent = allowParallel ? "Enabled" : "Disabled";
             document.getElementById("displaySummary").textContent = wantSummaryServer ? "Enabled" : "Disabled";
@@ -712,6 +775,8 @@
                     body: JSON.stringify({
                         provider: provider,
                         model: modelName,
+                        baseUrl: baseUrl,
+                        apiKey: apiKey,
                         providerRouter: providerRouter,
                         allowParallel: allowParallel,
                         wantSummaryServer: wantSummaryServer,

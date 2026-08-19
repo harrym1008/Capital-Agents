@@ -30,7 +30,7 @@
                     <input type="number" id="maxItersInput" value="6" min="1" max="12" step="1">
                 </div>
 
-                <div class="model-select-form-group">
+                <div class="model-select-form-group" id="thinkingBudgetGroup">
                     <label for="thinkingBudgetInput">Thinking Budget (Tokens):</label>
                     <input type="number" id="thinkingBudgetInput" value="2048" min="0" max="65536" step="128">
                 </div>
@@ -332,14 +332,29 @@
 
 
 
+        let currentServerProvider = "";
+
+        function updateGenerationSettingsUI(provider) {
+            const thinkingGroup = document.getElementById("thinkingBudgetGroup");
+            if (thinkingGroup) {
+                if (provider === "openaicompatible") {
+                    thinkingGroup.style.display = "none";
+                } else {
+                    thinkingGroup.style.display = "flex";
+                }
+            }
+        }
+
         async function checkServerStatus() {
             try {
                 const res = await fetch('/api/server/status');
                 if (res.ok) {
                     const data = await res.json();
-                    const isRunning = data.running || data.llamacppRunning || data.summaryServerRunning || data.openrouterRunning;
-                    const provider = data.provider || (data.openrouterRunning ? "openrouter" : (data.llamacppRunning ? "llamacpp" : ""));
+                    const isRunning = data.running || data.llamacppRunning || data.summaryServerRunning || data.openrouterRunning || data.openaiCompatibleRunning;
+                    const provider = data.provider || (data.openrouterRunning ? "openrouter" : (data.openaiCompatibleRunning ? "openaicompatible" : (data.llamacppRunning ? "llamacpp" : "")));
+                    currentServerProvider = (provider || "").toLowerCase();
                     updateServerStatus(isRunning, provider);
+                    updateGenerationSettingsUI(currentServerProvider);
                     if (data.costData) {
                         updateCostUI(data.costData);
                     }
@@ -2000,6 +2015,7 @@
         };
 
         function openSettingsModal() {
+            updateGenerationSettingsUI(currentServerProvider);
             const overlay = document.getElementById("settingsOverlay");
             if (overlay) overlay.style.display = "flex";
         }

@@ -12,6 +12,7 @@ from llm.summarise.local_summary import LlamaCppSummaryClient
 
 from llm.llamacpp.llamacpp_client import LlamaCppClient
 from llm.cloud.openrouter_client import OpenRouterClient
+from llm.cloud.openai_compatible_client import OpenAICompatibleClient
 
 from llm.llm_client import BaseLLMClient
 from llm.token_cost_tracker import TokenCostTracker
@@ -101,6 +102,7 @@ class LoadedModelType(Enum):
     NONE = "none"
     OPENROUTER = "openrouter"
     LLAMACPP = "llamacpp"
+    OPENAI_COMPATIBLE = "openaicompatible"
 
 
 # Server manager class which handles starting/stopping LLM servers and managing clients
@@ -125,6 +127,10 @@ class ServerManager:
     @property
     def openrouterRunning(self) -> bool:
         return self.loadedModelType == LoadedModelType.OPENROUTER
+
+    @property
+    def openaiCompatibleRunning(self) -> bool:
+        return self.loadedModelType == LoadedModelType.OPENAI_COMPATIBLE
 
     def recordLog(self, logLine: str):
         self.startupLogs.append(logLine)
@@ -165,16 +171,48 @@ class ServerManager:
         self.metricsThread = threading.Thread(target=metricsLoop, daemon=True)
         self.metricsThread.start()
 
-    def startServer(self, provider: str, modelName: str, providerRouter: Optional[str] = None, allowParallel: bool = True, wantSummaryServer: bool = False, preclearVram: bool = False):
+    def startServer(self, provider: str, modelName: str, baseUrl: Optional[str] = None, apiKey: Optional[str] = None, providerRouter: Optional[str] = None, allowParallel: bool = True, wantSummaryServer: bool = False, preclearVram: bool = False):
         with self.serverLock:
             if self.loadedModelType != LoadedModelType.NONE:
                 self.stopServerInternal()
 
             self.startupLogs.clear()
             self.costTracker.reset()
-            providerClean = provider.strip().lower()
+            providerClean = provider.strip().lower().replace("_", "").replace("-", "")
 
             match providerClean:
+                case "openaicompatible" | "openai":
+                    try:
+                        cleanBaseUrl = (baseUrl or "").strip()
+                        if not cleanBaseUrl:
+                            return False, "Base URL is required for OpenAI Compatible provider."
+
+                        cleanApiKey = (apiKey or "").strip()
+                        cleanModel = modelName.strip() if modelName else "default"
+                        self.recordLog(f"Initializing OpenAI Compatible test for model '{cleanModel}' at '{cleanBaseUrl}'...")
+
+                        client = OpenAICompatibleClient(baseUrl=cleanBaseUrl, apiKey=cleanApiKey, model=cleanModel)
+                        success, result = testLlmClient(client, cleanModel)
+
+                        if not success:
+                            return False, f"OpenAI Compatible test failed: {result}"
+
+                        self.boardroomClient = client
+                        self.summaryClient = None
+                        self.loadedModelType = LoadedModelType.OPENAI_COMPATIBLE
+                        self.loadedModelName = cleanModel
+
+                        # Initialise the sentiment engine when using OpenAI Compatible
+                        self.recordLog("Loading sentiment model asynchronously...")
+                        preloadSentimentModelAsync()
+
+                        return True, f"OpenAI Compatible server active and verified (Response: '{result}')."
+
+                    except Exception as e:
+                        errorMsg = f"OpenAI Compatible setup failed: {e.__class__.__name__}: {str(e)}"
+                        emitEvent("error", {"message": errorMsg})
+                        return False, errorMsg
+
                 case "openrouter":
                     try:
                         apiKey = os.getenv("OPENROUTER_API_KEY", "")
@@ -300,7 +338,7 @@ class ServerManager:
                     except Exception:
                         pass
                 self.boardroomProcess = None
-            case LoadedModelType.OPENROUTER:
+            case LoadedModelType.OPENROUTER | LoadedModelType.OPENAI_COMPATIBLE:
                 pass
             case _:
                 pass
@@ -345,6 +383,7 @@ class ServerManager:
             "summaryServerRunning": self.summaryServerRunning,
             "llamacppRunning": self.loadedModelType == LoadedModelType.LLAMACPP,
             "openrouterRunning": self.loadedModelType == LoadedModelType.OPENROUTER,
+            "openaiCompatibleRunning": self.loadedModelType == LoadedModelType.OPENAI_COMPATIBLE,
             "openrouterModel": self.loadedModelName if self.loadedModelType == LoadedModelType.OPENROUTER else "",
             "startupLogs": self.startupLogs,
             "costData": self.costTracker.getPayload(),

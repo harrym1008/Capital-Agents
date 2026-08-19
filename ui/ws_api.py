@@ -74,13 +74,21 @@ def registerApiRoutes(app):
     @app.route("/api/server/start", methods=["POST"])
     @app.route("/api/llamacpp/start", methods=["POST"])
     @app.route("/api/openrouter/start", methods=["POST"])
+    @app.route("/api/openai/start", methods=["POST"])
     def apiStartServer():
         data = request.get_json(silent=True) or {}
         provider = data.get("provider")
         if not provider:
-            provider = "openrouter" if request.path.endswith("/openrouter/start") else "llamacpp"
+            if request.path.endswith("/openrouter/start"):
+                provider = "openrouter"
+            elif request.path.endswith("/openai/start"):
+                provider = "openaicompatible"
+            else:
+                provider = "llamacpp"
 
         modelName = data.get("model", "GEMMA_4_12B").strip()
+        baseUrl = data.get("baseUrl") or data.get("base_url")
+        apiKey = data.get("apiKey") or data.get("api_key")
         providerRouter = data.get("providerRouter") or data.get("router")
         allowParallel = data.get("allowParallel", True)
         wantSummaryServer = data.get("wantSummaryServer", False)
@@ -89,6 +97,8 @@ def registerApiRoutes(app):
         success, message = serverManager.startServer(
             provider=provider,
             modelName=modelName,
+            baseUrl=baseUrl,
+            apiKey=apiKey,
             providerRouter=providerRouter,
             allowParallel=allowParallel,
             wantSummaryServer=wantSummaryServer,
@@ -100,6 +110,7 @@ def registerApiRoutes(app):
     @app.route("/api/server/stop", methods=["POST"])
     @app.route("/api/llamacpp/stop", methods=["POST"])
     @app.route("/api/openrouter/stop", methods=["POST"])
+    @app.route("/api/openai/stop", methods=["POST"])
     @app.route("/api/llamacpp/summary/stop", methods=["POST"])
     def apiStopServer():
         message = serverManager.stopServer()

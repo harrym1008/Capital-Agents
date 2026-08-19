@@ -62,8 +62,8 @@
                 const res = await fetch('/api/server/status');
                 if (res.ok) {
                     const data = await res.json();
-                    const isRunning = data.running || data.llamacppRunning || data.summaryServerRunning || data.openrouterRunning;
-                    const provider = data.provider || (data.openrouterRunning ? "openrouter" : (data.llamacppRunning ? "llamacpp" : ""));
+                    const isRunning = data.running || data.llamacppRunning || data.summaryServerRunning || data.openrouterRunning || data.openaiCompatibleRunning;
+                    const provider = data.provider || (data.openrouterRunning ? "openrouter" : (data.openaiCompatibleRunning ? "openaicompatible" : (data.llamacppRunning ? "llamacpp" : "")));
                     updateServerStatus(isRunning, provider);
                     if (data.costData) {
                         updateCostUI(data.costData);
