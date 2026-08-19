@@ -130,14 +130,6 @@
 
     <div class="main-layout" style="display: flex; flex: 1; min-height: 0; overflow: hidden; position: relative;">
         <div class="workspace">
-            <div id="llamaLoadingContainer" class="llama-loader">
-                <div class="llama-loader-title">
-                    <span>Llama.cpp Process Output (Loading Server...)</span>
-                    <span class="status-running" style="padding: 1px 4px; border-radius: 2px; font-size: 9px; color: #000;">BOOTING</span>
-                </div>
-                <pre id="llamaLoadingLogs" style="margin: 0; white-space: pre-wrap;"></pre>
-            </div>
-
             <div class="panes-container" id="panesContainer">
                 <!-- Dynamic workspace stages will go here -->
             </div>
@@ -163,6 +155,7 @@
         let highestStageNumber = 0;
         let currentTicker = "NVDA";
         let currentSimulatedDate = null;
+        let qaTurnCounter = 0;
 
         function formatOrdinalDate(dateInput) {
             if (!dateInput) {
@@ -311,7 +304,8 @@
             "Aggressive Risk Analyst": { class: "yellow", initials: "AR", name: "Aggressive Risk" },
             "Conservative Risk Analyst": { class: "blue", initials: "CR", name: "Conservative Risk" },
             "Impartial Portfolio Manager": { class: "magenta", initials: "PM", name: "Portfolio Manager" },
-            "One-Shot Analyst": { class: "cyan", initials: "OS", name: "One-Shot Analyst" }
+            "One-Shot Analyst": { class: "cyan", initials: "OS", name: "One-Shot Analyst" },
+            "Boardroom Spokesperson": { class: "cyan", initials: "SP", name: "Boardroom Spokesperson" }
         };
 
         const defaultStages = {
@@ -383,15 +377,16 @@
                     updateCostUI(payload);
                     break;
 
-                case "llamaCppStartupLog":
-                    appendLlamaLog(payload.log);
-                    break;
-
                 case "stageStart":
                     setupStageLayout(payload.stageNum, payload.stageName, payload.agents);
                     break;
                 
                 case "agentRunStart":
+                    if (activeStage === "qa") {
+                        const compoundKey = `qa_${agentRole}`;
+                        delete activeBlocks[compoundKey];
+                        delete activeAgentPanes[compoundKey];
+                    }
                     getOrCreateAgentPane(activeStage, agentRole, agentColor);
                     break;
 
@@ -442,6 +437,19 @@
                     endCurrentBlock(activeStage, agentRole);
                     break;
 
+                case "qaComplete":
+                    const qCompleteSendBtn = document.getElementById("qaSendBtn");
+                    const qCompleteInput = document.getElementById("qaInput");
+                    if (qCompleteSendBtn) {
+                        qCompleteSendBtn.disabled = false;
+                        qCompleteSendBtn.innerText = "Send";
+                    }
+                    if (qCompleteInput) {
+                        qCompleteInput.disabled = false;
+                        qCompleteInput.focus();
+                    }
+                    break;
+
                 case "simComplete":
                     setControlsRunningState(false);
                     
@@ -483,6 +491,10 @@
                 case "simStopped":
                     hideActiveBoardroomModal();
                     setControlsRunningState(false);
+                    const qStopBtn = document.getElementById("qaSendBtn");
+                    const qStopInp = document.getElementById("qaInput");
+                    if (qStopBtn) { qStopBtn.disabled = false; qStopBtn.innerText = "Send"; }
+                    if (qStopInp) { qStopInp.disabled = false; }
                     if (timerInterval) {
                         clearInterval(timerInterval);
                         timerInterval = null;
@@ -494,6 +506,10 @@
                     hideActiveBoardroomModal();
                     alert("Simulation Error: " + payload.message);
                     setControlsRunningState(false);
+                    const qErrBtn = document.getElementById("qaSendBtn");
+                    const qErrInp = document.getElementById("qaInput");
+                    if (qErrBtn) { qErrBtn.disabled = false; qErrBtn.innerText = "Send"; }
+                    if (qErrInp) { qErrInp.disabled = false; }
                     if (timerInterval) {
                         clearInterval(timerInterval);
                         timerInterval = null;
@@ -507,16 +523,6 @@
                     }
                     break;
             }
-        }
-
-        function appendLlamaLog(logLine) {
-            const container = document.getElementById("llamaLoadingContainer");
-            const logsPre = document.getElementById("llamaLoadingLogs");
-            if (container.style.display !== "flex") {
-                container.style.display = "flex";
-            }
-            logsPre.textContent += logLine + "\n";
-            container.scrollTop = container.scrollHeight;
         }
 
         function updateUploadReceipt(dataString, status) {
@@ -1003,14 +1009,18 @@
             qaWorkspace.style.minHeight = "0";
             qaWorkspace.style.height = "100%";
             qaWorkspace.style.flexDirection = "column";
-            qaWorkspace.style.alignItems = "stretch";
-            qaWorkspace.style.overflow = "hidden";
-            qaWorkspace.style.padding = "20px 30px";
-            qaWorkspace.style.gap = "20px";
             
             qaWorkspace.innerHTML = `
                 <div id="qaChatHistory" style="flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 1000px; margin: 0 auto; overflow-y: auto; padding-right: 10px;">
-                    <!-- Chat history will populate here -->
+                    <div class="agent-pane qa-agent-pane qa-welcome-pane">
+                        <div class="agent-header">
+                            <div class="agent-avatar agent-cyan">SP</div>
+                            <div class="agent-role-name">Boardroom Spokesperson</div>
+                        </div>
+                        <div class="agent-feed" style="font-size: 15px; overflow-y: visible; line-height: 1.6; color: #1e293b;">
+                            Welcome to the Boardroom Q&A. You can ask any question regarding the evaluation, financial models, valuation metrics, or risk assessment, and I will summarize directly or transfer you to the relevant specialist analyst.
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Standard Input Area at the bottom -->
@@ -1021,56 +1031,60 @@
             `;
             panesContainer.appendChild(qaWorkspace);
 
-            // Bind mock Q&A send logic
+            // Bind real Q&A send logic
             setTimeout(() => {
+                const qaChatHistory = document.getElementById("qaChatHistory");
+                if (qaChatHistory) {
+                    setupAutoScroll(qaChatHistory);
+                }
+
                 const qaInput = document.getElementById("qaInput");
                 const sendBtn = document.getElementById("qaSendBtn");
                 if (qaInput && sendBtn) {
                     const sendMsg = () => {
                         const val = qaInput.value.trim();
                         if (val) {
+                            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                                alert("WebSocket is not connected. Trying to connect...");
+                                connectWebsocket();
+                                return;
+                            }
+
                             const chatLog = document.getElementById("qaChatHistory");
+                            const turnIndex = qaTurnCounter++;
                             const userMsg = document.createElement('div');
-                            userMsg.className = "agent-pane qa-agent-pane";
-                            userMsg.style.cssText = "flex: none; max-width: 100%; height: auto;";
+                            userMsg.className = "agent-pane qa-user-pane";
+                            userMsg.setAttribute("data-turn-index", turnIndex);
+                            userMsg.style.cssText = "flex: none; height: auto;";
                             userMsg.innerHTML = `
                                 <div class="agent-header">
                                     <div class="agent-avatar" style="border: 3px solid #f97316; color: #f97316; background-color: #f1f5f9;">U</div>
                                     <div class="agent-role-name">You</div>
+                                    <button type="button" class="qa-delete-btn" onclick="deleteQaTurn(${turnIndex}, this)">Delete Message</button>
                                 </div>
-                                <div class="agent-feed" style="font-weight: bold; font-size: 16px; overflow-y: visible;">
+                                <div class="agent-feed" style="font-size: 16px; overflow-y: visible;">
                                     ${val}
                                 </div>
                             `;
                             chatLog.appendChild(userMsg);
+                            chatLog._userScrolledAway = false;
+                            autoScroll(chatLog);
                             
                             qaInput.value = '';
+                            qaInput.disabled = true;
+                            sendBtn.disabled = true;
+                            sendBtn.innerText = "Thinking...";
                             
                             setTimeout(() => {
-                                chatLog.scrollTop = chatLog.scrollHeight;
+                                autoScroll(chatLog);
                             }, 50);
                             
-                            // Simulate agent response for now
-                            setTimeout(() => {
-                                const agentMsg = document.createElement('div');
-                                agentMsg.className = "agent-pane qa-agent-pane";
-                                agentMsg.style.cssText = "flex: none; max-width: 100%; height: auto;";
-                                agentMsg.innerHTML = `
-                                    <div class="agent-header">
-                                        <div class="agent-avatar agent-magenta">PM</div>
-                                        <div class="agent-role-name">Portfolio Manager (Q&A)</div>
-                                    </div>
-                                    <div class="agent-feed" style="overflow-y: visible;">
-                                        <div style="font-size: 14px; color: #0f172a;">
-                                            This is a placeholder response. The backend logic will be connected soon to answer your question about: '${val}'.
-                                        </div>
-                                    </div>
-                                `;
-                                chatLog.appendChild(agentMsg);
-                                setTimeout(() => {
-                                    chatLog.scrollTop = chatLog.scrollHeight;
-                                }, 50);
-                            }, 600);
+                            socket.send(JSON.stringify({
+                                action: "qa_query",
+                                query: val,
+                                ticker: currentTicker,
+                                simulatedDate: currentSimulatedDate
+                            }));
                         }
                     };
                     
@@ -1085,6 +1099,60 @@
             }, 100);
 
             updateSummariesBtnState();
+        }
+
+        function initQaChatHistory() {
+            const chatLog = document.getElementById("qaChatHistory");
+            if (!chatLog) return;
+            chatLog.innerHTML = `
+                <div class="agent-pane qa-agent-pane qa-welcome-pane">
+                    <div class="agent-header">
+                        <div class="agent-avatar agent-cyan">SP</div>
+                        <div class="agent-role-name">Boardroom Spokesperson</div>
+                    </div>
+                    <div class="agent-feed" style="font-size: 15px; overflow-y: visible; line-height: 1.6; color: #1e293b;">
+                        Welcome to the Boardroom Q&A. You can ask any question regarding the evaluation, financial models, valuation metrics, or risk assessment, and I will summarize directly or transfer you to the relevant specialist analyst.
+                    </div>
+                </div>
+            `;
+            qaTurnCounter = 0;
+            setupAutoScroll(chatLog);
+        }
+
+        function deleteQaTurn(turnIndex, btnEl) {
+            const chatHistory = document.getElementById("qaChatHistory");
+            if (!chatHistory) return;
+
+            const userPane = btnEl.closest(".qa-user-pane");
+            if (userPane) {
+                let nextEl = userPane.nextElementSibling;
+                while (nextEl) {
+                    const toRemove = nextEl;
+                    nextEl = nextEl.nextElementSibling;
+                    toRemove.remove();
+                }
+                userPane.remove();
+            }
+
+            for (const key in activeAgentPanes) {
+                if (key.startsWith("qa_")) {
+                    delete activeAgentPanes[key];
+                }
+            }
+            for (const key in activeBlocks) {
+                if (key.startsWith("qa_")) {
+                    delete activeBlocks[key];
+                }
+            }
+
+            qaTurnCounter = turnIndex;
+
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    action: "qa_delete_turn",
+                    turnIndex: turnIndex
+                }));
+            }
         }
 
         function showStageWorkspace(stageNum) {
@@ -1118,8 +1186,6 @@
             if (stageNum > highestStageNumber) {
                 highestStageNumber = stageNum;
             }
-
-            document.getElementById("llamaLoadingContainer").style.display = "none";
 
             const items = document.querySelectorAll(".stage-item");
             items.forEach(item => {
@@ -1253,18 +1319,29 @@
 
         function scrollFeedToBottom(feed) {
             autoScroll(feed);
+            if (feed) {
+                const qaContainer = feed.closest ? feed.closest("#qaChatHistory") : null;
+                if (qaContainer) {
+                    autoScroll(qaContainer);
+                }
+            }
         }
 
         function createAgentPane(stageNum, agentRole, agentColor, displayName) {
-            const workspace = document.getElementById(`stageWorkspace-${stageNum}`);
+            let workspace;
+            if (stageNum === "qa") {
+                workspace = document.getElementById("qaChatHistory");
+            } else {
+                workspace = document.getElementById(`stageWorkspace-${stageNum}`);
+            }
             if (!workspace) return;
 
             const config = agentConfigs[agentRole] || { class: "cyan", initials: "A", name: displayName || agentRole };
             const compoundKey = `${stageNum}_${agentRole}`;
 
             const pane = document.createElement("div");
-            pane.className = "agent-pane";
-            pane.id = `pane-${stageNum}-${agentRole.replace(/\s+/g, '')}`;
+            pane.className = (stageNum === "qa") ? "agent-pane qa-agent-pane" : "agent-pane";
+            pane.id = `pane-${stageNum}-${agentRole.replace(/\s+/g, '')}-${Date.now()}`;
 
             const header = document.createElement("div");
             header.className = "agent-header";
@@ -1283,11 +1360,23 @@
 
             const feed = document.createElement("div");
             feed.className = "agent-feed";
+            if (stageNum === "qa") {
+                feed.style.overflowY = "visible";
+            }
             setupAutoScroll(feed);
             pane.appendChild(feed);
 
             workspace.appendChild(pane);
             activeAgentPanes[compoundKey] = { pane, feed };
+
+            if (stageNum === "qa") {
+                const chatLog = document.getElementById("qaChatHistory");
+                if (chatLog) {
+                    setTimeout(() => {
+                        chatLog.scrollTop = chatLog.scrollHeight;
+                    }, 30);
+                }
+            }
         }
 
         function getOrCreateAgentPane(stageNum, agentRole, agentColor) {
@@ -1883,6 +1972,13 @@
             const horizon = document.getElementById("horizonSelect").value;
             const thinkingBudgetVal = parseInt(document.getElementById("thinkingBudgetInput").value);
             const thinkingBudget = isNaN(thinkingBudgetVal) ? 2048 : thinkingBudgetVal;
+
+            const qaTab = document.getElementById("stageStep-qa");
+            if (qaTab) {
+                qaTab.style.display = "none";
+                qaTab.classList.add("disabled");
+            }
+            initQaChatHistory();
 
             socket.send(JSON.stringify({
                 action: "start",

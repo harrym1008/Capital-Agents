@@ -12,9 +12,18 @@ from boardroom.boardroom_config import BoardroomConfig
 
 from ui.ui_hooks import setCurrentAgent, setAgentPhase, emitEvent
 
-THINKING_BUDGET = 2048
-SUMMARISE_THINK_BUDGET = 128
+SUMMARISE_THINK_BUDGET = 256
 SUMMARISE_ENABLED = True
+
+ANSI_TO_COLOR_NAME = {
+    ANSI.CYAN: "cyan",
+    ANSI.GREEN: "green",
+    ANSI.RED: "red",
+    ANSI.YELLOW: "yellow",
+    ANSI.BLUE: "blue",
+    ANSI.MAGENTA: "magenta",
+    ANSI.WHITE: "white"
+}
 
 
 class FinancialAgent:
@@ -25,6 +34,7 @@ class FinancialAgent:
         self.agentRole = agentRole
         self.tools: List[Tool] = tools 
         self.color = ansiColor
+        self.colorName = ANSI_TO_COLOR_NAME.get(ansiColor, "cyan")
 
         self.simulatedDateStr = dateStr
         self.messageHistory = []
@@ -129,22 +139,28 @@ class FinancialAgent:
             subrole: Optional[str] = None,
             requireInitialTools: bool = False,
             summarisationOverride: Optional[bool] = None,
+            sysPromptOverride: Optional[str] = None,
         ):
-        generateSummary = (SUMMARISE_ENABLED and config.generateSummaries) if summarisationOverride is None else summarisationOverride
+        generateSummary = config.generateSummaries if summarisationOverride is None else summarisationOverride
         
         # Set agent context for UI streaming
-        setCurrentAgent(self.agentRole, self.color)
+        setCurrentAgent(self.agentRole, self.colorName)
         setAgentPhase("raw")
-        emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.color, "phase": "raw"})
+        emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.colorName, "phase": "raw"})
         
-        dateStr = self.simulatedDateStr if self.simulatedDateStr else timestamp.strftime("%Y-%m-%d")
-        sysPrompt = buildAgentSpecificSysPrompt(
-            dateStr=dateStr,
-            agentRole=self.agentRole,
-            agentToolsStr=self.getSpecificToolsStr(),
-            subrole=subrole,
-            promptArgs=config.getPromptArgs()
-        )
+        if sysPromptOverride is not None:
+            sysPrompt = sysPromptOverride
+        else:
+            dateStr = self.simulatedDateStr if self.simulatedDateStr else timestamp.strftime("%Y-%m-%d")
+            sysPrompt = buildAgentSpecificSysPrompt(
+                dateStr=dateStr,
+                agentRole=self.agentRole,
+                agentToolsStr=self.getSpecificToolsStr(),
+                subrole=subrole,
+                promptArgs=config.getPromptArgs()
+            )
+
+        # Run the actual inference function
         try:
             rawAnalysis = self.executeInternalAnalysis(
                 incomingMessage, toolRegistry, timestamp, config, sysPrompt, requireInitialTools
@@ -156,8 +172,9 @@ class FinancialAgent:
             return rawAnalysis, rawAnalysis
 
         setAgentPhase("summary")
-        emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.color, "phase": "summary"})
+        emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.colorName, "phase": "summary"})
 
+        # Summarise raw analysis for UI display
         try:
             uiSummary = self.generateUISummary(rawAnalysis, buildSummariseSysPrompt(self.agentRole, subrole, config.getPromptArgs()))
         finally:

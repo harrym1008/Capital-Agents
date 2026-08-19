@@ -1,18 +1,19 @@
+import re
+import json
+import traceback
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Any, Optional, List, Union
+from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 
-from concurrent.futures import ThreadPoolExecutor
-
 from cli.ansi import ANSI
-
 from llm.client_duo import ClientDuo
-from llmtools.registry_builder import ToolRegistry
+from llmtools.tool_registry import ToolRegistry, Tool
 from llm.agents.agent import FinancialAgent
+from llm.agents.agent_prompts import buildSpokespersonSysPrompt, buildSpecialistQnASysPrompt
 from boardroom.boardroom_config import BoardroomConfig, SingleEquityRatingConfig, TimeHorizon, BoardroomPace
-
-from ui.ui_hooks import getCurrentStage, setCurrentStage, emitEvent, SimulationStoppedException
+from ui.ui_hooks import getCurrentStage, isStopRequested, setCurrentStage, setCurrentAgent, setAgentPhase, emitEvent, SimulationStoppedException
 
 
 class BoardroomEngine:
@@ -37,6 +38,88 @@ class BoardroomEngine:
         self.consRiskAnalyst = agents.get("consRiskAnalyst")
         self.portManager = agents.get("portManager")
         self.oneShotAnalyst = agents.get("oneShotAnalyst")
+        self.spokesperson = agents.get("spokesperson")
+
+        self.specialistMap = {
+            "Macro Analyst": self.macroAnalyst,
+            "Bullish Value Analyst": self.bullAnalyst,
+            "Bearish Risk Analyst": self.bearAnalyst,
+            "Aggressive Risk Analyst": self.aggRiskAnalyst,
+            "Conservative Risk Analyst": self.consRiskAnalyst,
+            "Impartial Portfolio Manager": self.portManager,
+            "One-Shot Analyst": self.oneShotAnalyst
+        }
+
+        self.lastConfig: Optional[SingleEquityRatingConfig] = None
+        self.fullConvSummary: str = ""
+        self.qnaHistory: list = []
+        self.qnaTurns: list = []
+
+        self.configureTransferToolSchema(BoardroomPace.COMPLETE)
+
+
+    def deleteQnATurn(self, turnIndex: int) -> bool:
+        if 0 <= turnIndex < len(self.qnaTurns):
+            targetTurn = self.qnaTurns[turnIndex]
+            
+            # Prune spokesperson message history
+            if self.spokesperson:
+                spokespersonTargetLen = targetTurn.get("spokespersonHistoryLen", 0)
+                self.spokesperson.messageHistory = self.spokesperson.messageHistory[:spokespersonTargetLen]
+            
+            # Prune specialist message histories
+            for role, targetLen in targetTurn.get("specialistHistoryLens", {}).items():
+                agent = self.specialistMap.get(role)
+                if agent is not None:
+                    agent.messageHistory = agent.messageHistory[:targetLen]
+            
+            # Prune qnaTurns list
+            self.qnaTurns = self.qnaTurns[:turnIndex]
+            return True
+        return False
+
+
+    @staticmethod
+    def getActiveSpecialistRoles(pace: BoardroomPace) -> List[str]:
+        if pace == BoardroomPace.ONE_SHOT:
+            return ["One-Shot Analyst"]
+        elif pace == BoardroomPace.FAST:
+            return [
+                "Macro Analyst",
+                "Bullish Value Analyst",
+                "Bearish Risk Analyst",
+                "Impartial Portfolio Manager"
+            ]
+        else:
+            return [
+                "Macro Analyst",
+                "Bullish Value Analyst",
+                "Bearish Risk Analyst",
+                "Aggressive Risk Analyst",
+                "Conservative Risk Analyst",
+                "Impartial Portfolio Manager"
+            ]
+
+
+    def configureTransferToolSchema(self, pace: BoardroomPace = BoardroomPace.COMPLETE) -> None:
+        activeRoles = self.getActiveSpecialistRoles(pace)
+        transferTool = self.toolRegistry.getTool("transferToAgent") if self.toolRegistry else None
+        if transferTool:
+            transferTool.paramSchema = {
+                "type": "object",
+                "properties": {
+                    "agentRole": {
+                        "type": "string",
+                        "enum": activeRoles,
+                        "description": f"The exact name of the active specialist boardroom agent to transfer to ({', '.join(activeRoles)})."
+                    },
+                    "transferMessage": {
+                        "type": "string",
+                        "description": "A clear, concise instruction or summary of the question for the specialist agent to answer."
+                    }
+                },
+                "required": ["agentRole", "transferMessage"]
+            }
 
 
     def assignClientDuo(self, clientDuo: ClientDuo):
@@ -172,11 +255,13 @@ class BoardroomEngine:
             f"Task: Upload and log the final boardroom verdict for {targetTicker}.\n"
             f"Execute the {finalSubmitToolName} tool with ticker='{targetTicker}', rating, weighting and the {timeHorizonInfo['llmFinalLinePriceTargets']} based on your final decision."
         )
+        origTools = list(self.oneShotAnalyst.tools)
         self.oneShotAnalyst.clearTools()
         self.oneShotAnalyst.addTool(finalSubmitToolName, self.toolRegistry)
         _, _ = self.oneShotAnalyst.analyseAndReply(
             uploadPrompt, self.toolRegistry, self.timestamp, config, subrole="upload", requireInitialTools=False, summarisationOverride=False
         )
+        self.oneShotAnalyst.tools = origTools
 
         try:
             formattedExecutiveDecision = self.toolRegistry.getTool(finalSubmitToolName).toolLog[-1]
@@ -199,6 +284,9 @@ class BoardroomEngine:
 
         with open(f"output\\{targetTicker}_oneshot_{startTime.strftime('%Y-%m-%d_%H-%M-%S')}.ans", "w", encoding="utf-8") as f:
             f.write(convSummary)
+
+        self.lastConfig = config
+        self.fullConvSummary = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', convSummary)
 
 
 
@@ -326,6 +414,8 @@ class BoardroomEngine:
         with open(f"output\\{targetTicker}_fast_{startTime.strftime('%Y-%m-%d_%H-%M-%S')}.ans", "w", encoding="utf-8") as f:
             f.write(fullConvSummary)
         
+        self.lastConfig = config
+        self.fullConvSummary = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', fullConvSummary)
 
 
 
@@ -549,12 +639,17 @@ class BoardroomEngine:
         print(shortConvSummary)
 
         with open(f"output\\{targetTicker}_full_{startTime.strftime('%Y-%m-%d_%H-%M-%S')}.ans", "w", encoding="utf-8") as f:
-            f.write(fullConvSummary)       
+            f.write(fullConvSummary)
+
+        self.lastConfig = config
+        self.fullConvSummary = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', fullConvSummary)
         
 
     def executeSingleEquityRating(self, config: SingleEquityRatingConfig):
         if self.clientDuo is None:
             raise ValueError("ClientDuo is not assigned. Please assign a ClientDuo before executing the boardroom.")
+
+        self.configureTransferToolSchema(config.boardroomPace)
 
         self.clientDuo.boardroomClient.newTask()
         if self.clientDuo.summaryClient is not self.clientDuo.boardroomClient:
@@ -575,163 +670,156 @@ class BoardroomEngine:
             raise NotImplementedError(f"BoardroomConfig type '{type(config).__name__}' is not supported yet.")
 
 
+    def executeSpecialistTransfer(self, agentRole: str, transferMessage: str, config: SingleEquityRatingConfig) -> Dict[str, Any]:
+        specialist = self.specialistMap.get(agentRole)
+        if not specialist:
+            return {"error": f"Specialist agent '{agentRole}' not found."}
+
+        if self.clientDuo and not specialist.mainApiClient:
+            specialist.setClientDuo(self.clientDuo)
+
+        setCurrentStage("qa")
+
+        dateStr = config.simulatedDateStr if config and config.simulatedDateStr else self.timestamp.strftime("%Y-%m-%d")
+        sysPrompt = buildSpecialistQnASysPrompt(
+            dateStr=dateStr,
+            agentRole=agentRole,
+            toolsStr=specialist.getSpecificToolsStr(),
+            promptArgs=config.getPromptArgs() if config else None
+        )
+
+        incomingPrompt = (
+            f"The Boardroom Spokesperson has transferred the following user question to you:\n\n"
+            f"Transfer Request: {transferMessage}\n\n"
+            f"Task: Answer the user's question directly from your role as {agentRole}. "
+            f"Rely on your previous thinking steps, tool outputs, and message history from earlier stages."
+        )
+
+        try:
+            rawResponse, _ = specialist.analyseAndReply(
+                incomingMessage=incomingPrompt,
+                toolRegistry=self.toolRegistry,
+                timestamp=self.timestamp,
+                config=config,
+                subrole="qa",
+                requireInitialTools=False,
+                summarisationOverride=False,
+                sysPromptOverride=sysPrompt
+            )
+            return {
+                "status": "success",
+                "specialist": agentRole,
+                "response": rawResponse
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "specialist": agentRole,
+                "error": str(e)
+            }
+        finally:
+            emitEvent("agentRunEnd", {
+                "agentRole": agentRole,
+                "phase": "raw",
+                "stageNum": "qa"
+            })
+            if self.spokesperson:
+                setCurrentAgent("Boardroom Spokesperson", self.spokesperson.color)
+            setCurrentStage("qa")
+            setAgentPhase("raw")
 
 
-def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> BoardroomEngine:
-    timestampStr = timestamp.strftime("%Y-%m-%d")
-    toolMap = toolRegistry.getToolMap()
+    def processQnAQuery(self, query: str, config: Optional[SingleEquityRatingConfig] = None):
+        if config is None:
+            config = self.lastConfig
 
-    macroAgent = FinancialAgent(
-        agentRole="Macro Analyst",
-        tools=[
-            toolMap["fetchMacroContext"],
-            toolMap["fetchMacroNews"],
-            toolMap["fetchMacroSentimentHistory"],
-            toolMap["executePythonCalculation"]
-        ],
-        ansiColor=ANSI.CYAN,
-        dateStr=timestampStr
-    )
+        if config is None:
+            config = SingleEquityRatingConfig(
+                ticker="UNKNOWN",
+                simulatedDateStr=self.timestamp.strftime("%Y-%m-%d"),
+                timeHorizon=TimeHorizon.LONG,
+                boardroomPace=BoardroomPace.FAST
+            )
 
-    bullAgent = FinancialAgent(
-        agentRole="Bullish Value Analyst",
-        tools=[
-            toolMap["fetchCompanyProfile"],
-            toolMap["fetchCompanyValuationMetrics"],
-            toolMap["fetchIncomeStatement"],
-            toolMap["fetchBalanceSheet"],
-            toolMap["fetchCashFlowStatement"],
-            toolMap["fetchLatest10QSentiment"],
-            # toolMap["fetchStatementOfEquity"],
-            # toolMap["fetchComprehensiveIncomeStatement"],
-            toolMap["fetchStockPricePerformance"],
-            toolMap["fetchCompanyRecentNews"],
-            toolMap["fetchTickerSentimentHistory"],
-            toolMap["fetchSentimentDivergence"],
-            toolMap["calculateDistFromCurrPrice"],
-            toolMap["executePythonCalculation"]
-        ],
-        ansiColor=ANSI.GREEN,
-        dateStr=timestampStr
-    )
+        activeRoles = self.getActiveSpecialistRoles(config.boardroomPace)
+        self.configureTransferToolSchema(config.boardroomPace)
 
-    bearAgent = FinancialAgent(
-        agentRole="Bearish Risk Analyst",
-        tools=[
-            toolMap["fetchCompanyProfile"],
-            toolMap["fetchCompanyValuationMetrics"],
-            toolMap["fetchIncomeStatement"],
-            toolMap["fetchBalanceSheet"],
-            toolMap["fetchCashFlowStatement"],
-            toolMap["fetchLatest10QSentiment"],
-            # toolMap["fetchStatementOfEquity"],
-            # toolMap["fetchComprehensiveIncomeStatement"],
-            toolMap["fetchStockPricePerformance"],
-            toolMap["fetchCompanyRecentNews"],
-            toolMap["fetchTickerSentimentHistory"],
-            toolMap["fetchSentimentDivergence"],
-            toolMap["calculateDistFromCurrPrice"],
-            toolMap["executePythonCalculation"]
-        ],
-        ansiColor=ANSI.RED,
-        dateStr=timestampStr
-    )
+        transferTool = self.toolRegistry.getTool("transferToAgent") if self.toolRegistry else None
+        self.spokesperson.tools = [transferTool] if transferTool else []
+        if transferTool:
+            transferTool.toolLog.clear()
 
-    aggRiskAnalystAgent = FinancialAgent(
-        agentRole="Aggressive Risk Analyst",
-        tools=[
-            toolMap["fetchCompanyProfile"],
-            toolMap["fetchCompanyValuationMetrics"],
-            toolMap["fetchIncomeStatement"],
-            toolMap["fetchBalanceSheet"],
-            toolMap["fetchCashFlowStatement"],
-            toolMap["fetchLatest10QSentiment"],
-            # toolMap["fetchStatementOfEquity"],
-            # toolMap["fetchComprehensiveIncomeStatement"],
-            toolMap["fetchStockPricePerformance"],
-            toolMap["fetchCompanyRecentNews"],
-            toolMap["fetchTickerSentimentHistory"],
-            toolMap["fetchSentimentDivergence"],
-            toolMap["calculateDistFromCurrPrice"],
-            toolMap["executePythonCalculation"]
-        ],
-        ansiColor=ANSI.YELLOW,
-        dateStr=timestampStr
-    )
+        setCurrentStage("qa")
 
-    consRiskAnalystAgent = FinancialAgent(
-        agentRole="Conservative Risk Analyst",
-        tools=[
-            toolMap["fetchCompanyProfile"],
-            toolMap["fetchCompanyValuationMetrics"],
-            toolMap["fetchIncomeStatement"],
-            toolMap["fetchBalanceSheet"],
-            toolMap["fetchCashFlowStatement"],
-            toolMap["fetchLatest10QSentiment"],
-            # toolMap["fetchStatementOfEquity"],
-            # toolMap["fetchComprehensiveIncomeStatement"],
-            toolMap["fetchStockPricePerformance"],
-            toolMap["fetchCompanyRecentNews"],
-            toolMap["fetchTickerSentimentHistory"],
-            toolMap["fetchSentimentDivergence"],
-            toolMap["calculateDistFromCurrPrice"],
-            toolMap["executePythonCalculation"]
-        ],
-        ansiColor=ANSI.BLUE,
-        dateStr=timestampStr
-    )
+        contextStr = self.fullConvSummary or "No context found!"
+        dateStr = config.simulatedDateStr if config.simulatedDateStr else self.timestamp.strftime("%Y-%m-%d")
+        sysPrompt = buildSpokespersonSysPrompt(
+            dateStr=dateStr,
+            toolsStr="transferToAgent",
+            boardroomContextStr=contextStr,
+            promptArgs=config.getPromptArgs(),
+            activeRoles=activeRoles
+        )
 
-    portfolioManager = FinancialAgent(
-        agentRole="Impartial Portfolio Manager",
-        tools=[
-            toolMap["fetchCompanyProfile"],
-            # toolMap["fetchLatest10QSentiment"],
-            toolMap["executePythonCalculation"],
-            toolMap["calculateDistFromCurrPrice"],
-            toolMap["confirmBoardroomDecisionLongTerm"]
-        ],
-        ansiColor=ANSI.MAGENTA,
-        dateStr=timestampStr
-    )    
+        try:
+            turnRecord = {
+                "turnIndex": len(self.qnaTurns),
+                "userQuery": query,
+                "spokespersonHistoryLen": len(self.spokesperson.messageHistory) if self.spokesperson else 0,
+                "specialistHistoryLens": {
+                    role: len(agent.messageHistory)
+                    for role, agent in self.specialistMap.items()
+                    if agent is not None
+                }
+            }
+            self.qnaTurns.append(turnRecord)
+            self.qnaHistory.append({"role": "user", "content": query})
 
-    oneShotAnalyst = FinancialAgent(
-        agentRole="One-Shot Analyst",
-        tools=[
-            toolMap["fetchMacroContext"],
-            toolMap["fetchMacroNews"],
-            toolMap["fetchMacroSentimentHistory"],
-            toolMap["fetchCompanyProfile"],
-            toolMap["fetchCompanyValuationMetrics"],
-            toolMap["fetchIncomeStatement"],
-            toolMap["fetchBalanceSheet"],
-            toolMap["fetchCashFlowStatement"],
-            toolMap["fetchLatest10QSentiment"],
-            # toolMap["fetchStatementOfEquity"],
-            # toolMap["fetchComprehensiveIncomeStatement"],
-            toolMap["fetchStockPricePerformance"],
-            toolMap["fetchCompanyRecentNews"],
-            toolMap["fetchTickerSentimentHistory"],
-            toolMap["fetchSentimentDivergence"],
-            toolMap["calculateDistFromCurrPrice"],
-            toolMap["executePythonCalculation"]
-        ],
-        ansiColor=ANSI.CYAN,
-        dateStr=timestampStr
-    )
+            spokespersonPrompt = (
+                f"User Question: {query}\n\n"
+                f"Task: Review the question against the completed boardroom discussion context.\n"
+                f"- If this is a simple or high-level inquiry, answer directly.\n"
+                f"- If this requires specialist financial depth, quantitative valuation, macro analysis, or risk challenge, "
+                f"delegate to the specialist(s) using the 'transferToAgent' tool at the end of your response."
+            )
 
-    boardroom = BoardroomEngine(
-        agents={
-            "macroAnalyst": macroAgent,
-            "bullAnalyst": bullAgent,
-            "bearAnalyst": bearAgent,
-            "aggRiskAnalyst": aggRiskAnalystAgent,
-            "consRiskAnalyst": consRiskAnalystAgent,
-            "portManager": portfolioManager,
-            "oneShotAnalyst": oneShotAnalyst,
-        }, 
-        timestamp=timestamp,
-        toolRegistry=toolRegistry
-    )
+            rawSpokespersonResponse, _ = self.spokesperson.analyseAndReply(
+                incomingMessage=spokespersonPrompt,
+                toolRegistry=self.toolRegistry,
+                timestamp=self.timestamp,
+                config=config,
+                subrole="qa",
+                requireInitialTools=False,
+                summarisationOverride=False,
+                sysPromptOverride=sysPrompt
+            )
 
-    return boardroom
+            self.qnaHistory.append({"role": "assistant", "content": rawSpokespersonResponse})
+
+            # Check if transfers were logged during this turn
+            if transferTool and transferTool.toolLog:
+                for transferCall in list(transferTool.toolLog):
+                    agentRole = transferCall.get("agentRole")
+                    transferMessage = transferCall.get("transferMessage")
+                    if agentRole and transferMessage:
+                        self.executeSpecialistTransfer(agentRole, transferMessage, config)
+
+        except SimulationStoppedException:
+            emitEvent("simStopped", {"message": "Q&A stopped by user."})
+        except Exception as e:
+            if isStopRequested():
+                emitEvent("simStopped", {"message": "Q&A stopped by user."})
+            else:
+                traceback.print_exc()
+                emitEvent("error", {"message": f"Q&A Error: {str(e)}"})
+        finally:
+            emitEvent("agentRunEnd", {
+                "agentRole": "Boardroom Spokesperson",
+                "phase": "raw",
+                "stageNum": "qa"
+            })
+            emitEvent("qaComplete", {"stageNum": "qa"})
+
+
+
 

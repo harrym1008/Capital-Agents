@@ -543,17 +543,17 @@ class BaseLLMClient(ABC):
                         "content": stringResult
                     })
 
-                # Check for 'confirmBoardroomDecision' tool call and handle it
+                # Check for 'confirmBoardroomDecision' or 'transferToAgent' tool call and handle early completion
                 for toolCall in toolCallsList:
-                    if toolCall["function"]["name"].startswith("confirmBoardroomDecision"):
-                        # Find this tool call's id from messageHistory and if its status is 'success' assume the agent made the decision
+                    toolName = toolCall["function"]["name"]
+                    if toolName.startswith("confirmBoardroomDecision") or toolName == "transferToAgent":
+                        # Find this tool call's id from messageHistory and if its status is 'success' or 'transferred' assume completion
                         for msg in messageHistory:
                             if msg.get("role") == "tool" and msg.get("tool_call_id") == toolCall["id"]:
                                 if msg.get("content"):
                                     try:
                                         resultData = json.loads(msg["content"])
-                                        if isinstance(resultData, dict) and resultData.get("status") == "success":
-                                            # Agent has made a decision, return the accumulated content
+                                        if isinstance(resultData, dict) and (resultData.get("status") in ["success", "transferred"]):
                                             return accumulatedContent.strip()
                                     except json.JSONDecodeError:
                                         pass

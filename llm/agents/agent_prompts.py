@@ -1,4 +1,5 @@
-from typing import Dict, Optional
+from typing import Dict, List, Optional
+from boardroom.boardroom_config import TIME_HORIZON_INFO, TimeHorizon
 
 
 def buildSharedBaseSysPrompt(dateStr: str, toolsStr: str, agentRole: str, agentSpecificPrompt: str) -> str:
@@ -38,14 +39,13 @@ roleKeyMap = {
     "Aggressive Risk Analyst": "aggressiveRiskAnalyst",
     "Conservative Risk Analyst": "conservativeRiskAnalyst",
     "Impartial Portfolio Manager": "portfolioManager",
-
     "One-Shot Analyst": "oneShotAnalyst",
+    "Boardroom Spokesperson": "boardroomSpokesperson",
 }
 
 
 def buildAgentSpecificSysPrompt(dateStr: str, agentRole: str, agentToolsStr: str, subrole: str = None, promptArgs: Dict[str, str] = None) -> str:
     if not promptArgs:
-        from boardroom.boardroom_config import TIME_HORIZON_INFO, TimeHorizon
         promptArgs = TIME_HORIZON_INFO[TimeHorizon.LONG]
     roleKey = roleKeyMap.get(agentRole, agentRole)
     role = f"{roleKey}_{subrole}" if subrole else roleKey
@@ -54,8 +54,83 @@ def buildAgentSpecificSysPrompt(dateStr: str, agentRole: str, agentToolsStr: str
     return buildSharedBaseSysPrompt(dateStr, agentToolsStr, agentRole, agentSpecificPrompt)
 
 
+SPECIALIST_ROLE_DESCRIPTIONS = {
+    "One-Shot Analyst": "comprehensive macroeconomic, single-stock research, financial valuation, risk assessment, and rating analysis",
+    "Macro Analyst": "macroeconomic climate, interest rates, inflation, market regime",
+    "Bullish Value Analyst": "bullish investment thesis, valuation upside, growth catalysts",
+    "Bearish Risk Analyst": "bearish risk thesis, downside vulnerabilities, multiple compression",
+    "Aggressive Risk Analyst": "aggressive asset allocation, growth assumptions critique",
+    "Conservative Risk Analyst": "capital preservation, safety margins, solvency critique",
+    "Impartial Portfolio Manager": "balanced verdict synthesis, portfolio weighting, price targets"
+}
+
+
+def buildSpokespersonSysPrompt(
+    dateStr: str,
+    toolsStr: str,
+    boardroomContextStr: str,
+    promptArgs: Dict[str, str] = None,
+    activeRoles: Optional[List[str]] = None
+) -> str:
+    if not promptArgs:
+        promptArgs = TIME_HORIZON_INFO[TimeHorizon.LONG]
+
+    if not activeRoles:
+        activeRoles = [
+            "Macro Analyst",
+            "Bullish Value Analyst",
+            "Bearish Risk Analyst",
+            "Aggressive Risk Analyst",
+            "Conservative Risk Analyst",
+            "Impartial Portfolio Manager"
+        ]
+
+    rolesListStr = "\n".join([
+        f"     * '{role}' ({SPECIALIST_ROLE_DESCRIPTIONS.get(role, role)})"
+        for role in activeRoles
+    ])
+
+    spokespersonPrompt = (
+        f"You are the official Spokesperson for the CapitalAgents Investment Boardroom.\n"
+        f"A boardroom equity evaluation has recently concluded for the target asset.\n\n"
+        f"*** COMPLETED BOARDROOM DISCUSSION CONTEXT ***:\n"
+        f"{boardroomContextStr}\n\n"
+        f"*** YOUR ROLE AND MANDATE ***:\n"
+        f"1. You are the front-line coordinator and spokesperson representing the boardroom in post-evaluation Q&A with the user.\n"
+        f"2. For simple inquiries (e.g. quick summaries, final verdict confirmation, high-level clarifications), respond directly and concisely.\n"
+        f"3. For questions requiring deeper specialist knowledge, specific analyst perspectives, quantitative models, solvency stress-testing, or detailed thesis defense, you MUST delegate to the appropriate specialist agent(s) by calling the 'transferToAgent' tool.\n"
+        f"   - CRITICAL REQUIREMENT: You MUST ALWAYS output a message directly to the user FIRST stating that you are redirecting them to the specialist analyst and explaining why, BEFORE calling the 'transferToAgent' tool.\n"
+        f"   - For example: 'That is a specific valuation question regarding our growth assumptions. I will hand you over to our specialist analyst to address the model and expectations directly.'\n"
+        f"   - 'transferMessage' in the tool call must be a focused, clear summary of what question or perspective the specialist should address for the user.\n"
+        f"   - You can call 'transferToAgent' multiple times if the user's question touches multiple perspectives.\n"
+        f"   - Available specialist roles for transfer in this session:\n"
+        f"{rolesListStr}\n"
+        f"4. Maintain a professional, articulate, and objective financial tone at all times.\n"
+    )
+    return buildSharedBaseSysPrompt(dateStr, toolsStr, "Boardroom Spokesperson", spokespersonPrompt)
+
+
+def buildSpecialistQnASysPrompt(dateStr: str, agentRole: str, toolsStr: str, promptArgs: Dict[str, str] = None) -> str:
+    if not promptArgs:
+        promptArgs = TIME_HORIZON_INFO[TimeHorizon.LONG]
+
+    specialistPrompt = (
+        f"You are the {agentRole} participating in a post-evaluation Q&A session with the user.\n"
+        f"The Boardroom Spokesperson has transferred a question to you regarding your analysis and findings.\n\n"
+        f"*** YOUR TASK ***:\n"
+        f"1. Rely on your previous thinking steps, calculations, tool results, and message history from earlier boardroom stages to answer the question directly.\n"
+        f"2. Maintain strict consistency with your prior thesis, valuation models, risk parameters, ratings, and conclusions from the discussion.\n"
+        f"3. If the user or spokesperson requests a new calculation or updated model, use your 'executePythonCalculation' or data tools to compute exact figures.\n"
+        f"4. Provide a clear, insightful, and structured response matching your role and expertise.\n"
+    )
+    return buildSharedBaseSysPrompt(dateStr, toolsStr, agentRole, specialistPrompt)
+
 
 AGENT_SPECIFIC_SYS_PROMPTS = {
+    "boardroomSpokesperson": (
+        f"You are the official Spokesperson for the CapitalAgents Investment Boardroom.\n"
+        f"Summarize simple requests directly, or call 'transferToAgent' to delegate specialist questions to relevant boardroom analysts.\n"
+    ),
     "macroAnalyst": (
         f"You evaluate top-down macroeconomic factors, US market conditions, interest rates, and market regime classifications.\n\n"
 
@@ -274,7 +349,6 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
 
 def buildSummariseSysPrompt(agentRole: str, agentSubrole: str, promptArgs: Optional[Dict[str, str]] = None) -> str:
     if not promptArgs:
-        from boardroom.boardroom_config import TIME_HORIZON_INFO, TimeHorizon
         promptArgs = TIME_HORIZON_INFO[TimeHorizon.LONG]
     roleKey = roleKeyMap.get(agentRole, agentRole)
     role = f"{roleKey}_{agentSubrole}" if agentSubrole else roleKey

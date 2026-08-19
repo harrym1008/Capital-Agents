@@ -11,7 +11,7 @@ from llmtools.functions.company import fetchStockPricePerformance
 from llmtools.tool_registry import DataProviders, Tool
 from llmtools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, NumberType
 
-from llmtools.functions.sentiment import (
+from llmtools.functions.sentiment_main import (
     getTextHash,
     clearTorchCache,
     scoreHeadlinesBatch,

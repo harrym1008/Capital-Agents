@@ -39,8 +39,6 @@ label {
 }
 
 select, input[type="text"] {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-
     width: 100%;
     padding: 12px 14px;
     
@@ -104,7 +102,8 @@ button.btn-secondary:hover {
     border-radius: 6px;
 }
 
-.llama-loading-logs {
+.llama-loading-logs {    
+    font-family: monospace;
     white-space: pre-wrap;
     font-size: 10px;
     max-height: 180px;
@@ -163,7 +162,6 @@ button.btn-secondary:hover {
     overflow-y: auto;
     z-index: 1000;
     font-size: 14px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 .openrouter-dropdown::-webkit-scrollbar {
@@ -227,7 +225,6 @@ button.btn-secondary:hover {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 .openrouter-simple-info strong {
@@ -274,7 +271,6 @@ button.btn-secondary:hover {
     overflow-y: auto;
     z-index: 1000;
     font-size: 14px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 .openrouter-dropdown-no-results {

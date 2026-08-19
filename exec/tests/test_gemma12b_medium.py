@@ -6,7 +6,7 @@ import json
 import time
 
 from boardroom.boardroom_config import TIME_HORIZON_INFO, SingleEquityRatingConfig, BoardroomPace, TimeHorizon
-from boardroom.boardroom_runner import executeBoardroomConfig
+from boardroom.boardroom_mgr import executeBoardroomConfig
 
 from llm.server_manager import serverManager
 from llm.llamacpp.llamacpp_args import LlamaCppModel

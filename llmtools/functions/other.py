@@ -223,3 +223,17 @@ def confirmBoardroomDecisionLongTerm(tool: Tool, data: DataProviders, timestamp:
 def confirmBoardroomDecisionDistantTerm(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, 
                                         ticker: str, rating: str, weighting: str, threeYearTarget: float, tenYearTarget: float) -> Dict[str, Any]:
     return confirmBoardroomDecisionBase(tool, ticker, rating, weighting, "threeYearTarget", threeYearTarget, "tenYearTarget", tenYearTarget)
+
+
+def transferToAgent(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, 
+                    agentRole: str, transferMessage: str) -> Dict[str, Any]:
+    toolLogEntry = {
+        "agentRole": agentRole,
+        "transferMessage": transferMessage
+    }
+    tool.toolLog.append(toolLogEntry)
+    return {
+        "status": "transferred",
+        "agentRole": agentRole,
+        "transferMessage": transferMessage
+    }

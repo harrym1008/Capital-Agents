@@ -12,10 +12,6 @@ class TimeHorizon(Enum):
     DISTANT = "distant"
 
 
-class BoardroomType(Enum):
-    SINGLE_EQUITY_RATING = "single_equity_rating"
-
-
 class BoardroomPace(Enum):
     ONE_SHOT = "one_shot"
     FAST = "fast"

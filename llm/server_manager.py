@@ -10,14 +10,12 @@ from llm.llamacpp.llamacpp_args import LlamaCppModel, LLAMACPP_PORT, LLAMACPP_SU
 from llm.llamacpp.llamacpp_init import LlamaCppProcessInitiator, rudimentaryVramClear
 from llm.summarise.local_summary import LlamaCppSummaryClient
 
-from llm.agents.agent import THINKING_BUDGET
-
 from llm.llamacpp.llamacpp_client import LlamaCppClient
 from llm.cloud.openrouter_client import OpenRouterClient
 
 from llm.llm_client import BaseLLMClient
 from llm.token_cost_tracker import TokenCostTracker
-from llmtools.functions.sentimentnews import preloadSentimentModelAsync
+from llmtools.functions.sentiment_news import preloadSentimentModelAsync
 from llmtools.tool_registry import ToolRegistry
 from ui.ui_hooks import emitEvent
 
@@ -326,7 +324,7 @@ class ServerManager:
         if self.summaryServerRunning:
             return
         try:
-            client = LlamaCppSummaryClient(thinkingBudget=THINKING_BUDGET)
+            client = LlamaCppSummaryClient()
             ready = False
             for _ in range(120):
                 if isPortReachable("127.0.0.1", LLAMACPP_SUMMARY_PORT):

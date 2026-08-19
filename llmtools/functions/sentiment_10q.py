@@ -8,7 +8,7 @@ from edgar import Filing
 from llmtools.tool_registry import DataProviders, Tool
 from llmtools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, NumberType
 from dataquery.edgar_provider import EdgarDataProvider, FormType, CompanyRef
-from llmtools.functions.sentiment import (
+from llmtools.functions.sentiment_main import (
     scoreTextsWithCache,
     clearTorchCache,
     getSentimentEngine,

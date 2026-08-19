@@ -6,15 +6,16 @@ from llmtools.functions.macro import fetchMacroContext, fetchMacroNews
 from llmtools.functions.company import fetchCompanyProfile, fetchCompanyRecentNews, fetchStockPricePerformance, calculateDistFromCurrPrice
 from llmtools.functions.edgar import fetchCompanyValuationMetrics, fetchIncomeStatement, fetchBalanceSheet, \
                                       fetchCashFlowStatement, fetchStatementOfEquity, fetchComprehensiveIncomeStatement 
-from llmtools.functions.sentimentnews import fetchTickerSentimentHistory, fetchSentimentDivergence, fetchMacroSentimentHistory
-from llmtools.functions.sentiment10q import fetchLatest10QSentiment
+from llmtools.functions.sentiment_news import fetchTickerSentimentHistory, fetchSentimentDivergence, fetchMacroSentimentHistory
+from llmtools.functions.sentiment_10q import fetchLatest10QSentiment
 from llmtools.functions.other import (
     executePythonCalculation, 
     confirmBoardroomDecisionImmediateTerm,
     confirmBoardroomDecisionShortTerm, 
     confirmBoardroomDecisionMediumTerm, 
     confirmBoardroomDecisionLongTerm, 
-    confirmBoardroomDecisionDistantTerm
+    confirmBoardroomDecisionDistantTerm,
+    transferToAgent
 )
 
 from llmtools.lru_cacher import startPrecacheThread
@@ -203,7 +204,31 @@ SCHEMAS = {
             }
         },
         "required": ["code"]
-    }    
+    },
+
+    "transferToAgent": {
+        "type": "object",
+        "properties": {
+            "agentRole": {
+                "type": "string",
+                "enum": [
+                    "Macro Analyst",
+                    "Bullish Value Analyst",
+                    "Bearish Risk Analyst",
+                    "Aggressive Risk Analyst",
+                    "Conservative Risk Analyst",
+                    "Impartial Portfolio Manager",
+                    "One-Shot Analyst"
+                ],
+                "description": "The exact name of the specialist boardroom agent to transfer to."
+            },
+            "transferMessage": {
+                "type": "string",
+                "description": "A clear, concise instruction or summary of the question for the specialist agent to answer."
+            }
+        },
+        "required": ["agentRole", "transferMessage"]
+    }
 }
 
 
@@ -385,6 +410,13 @@ def buildToolRegistry(initMacroThread=False):
         toolDescription="Confirms the final stock rating, weighting, and 3-year & 10-year target prices for a stock "
                         "after the boardroom has produced its final consensus for a distant-term horizon.",
         parameterSchema=SCHEMAS["confirmDecisionDistantTerm"]
+    ))
+
+    toolReg.registerTool(Tool(
+        toolFunction=transferToAgent,
+        toolName="transferToAgent",
+        toolDescription="Transfers the conversation to a specialist boardroom agent with a summary of the question for them to answer directly.",
+        parameterSchema=SCHEMAS["transferToAgent"]
     ))
 
     if initMacroThread:

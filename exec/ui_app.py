@@ -69,23 +69,8 @@ connectedWebsockets = set()
 connectedWebsocketsLock = threading.Lock()
 eventLoop = None
 
-activeBoardroomThread = None
-isBoardroomRunning = False
-boardroomStateLock = threading.Lock()
-
-def isBoardroomActive() -> bool:
-    global activeBoardroomThread, isBoardroomRunning
-    with boardroomStateLock:
-        return bool(isBoardroomRunning and activeBoardroomThread is not None and activeBoardroomThread.is_alive())
-
-def stopBoardroomSync(timeout: float = 5.0) -> bool:
-    global activeBoardroomThread
-    requestStop()
-    with boardroomStateLock:
-        thread = activeBoardroomThread
-    if thread and thread.is_alive():
-        thread.join(timeout=timeout)
-    return not isBoardroomActive()
+from boardroom.boardroom_config import SingleEquityRatingConfig
+from boardroom.boardroom_mgr import boardroomManager
 
 def broadcastEvent(eventData):
     global connectedWebsockets, eventLoop
@@ -104,77 +89,57 @@ def broadcastEvent(eventData):
 
 @app.route("/api/boardroom/status")
 def apiBoardroomStatus():
-    return jsonify({"isRunning": isBoardroomActive()})
+    return jsonify({"isRunning": boardroomManager.isBoardroomActive()})
 
 
 @app.route("/api/boardroom/stop", methods=["POST"])
 def apiBoardroomStop():
-    stopped = stopBoardroomSync(timeout=5.0)
-    return jsonify({"ok": True, "stopped": stopped, "isRunning": isBoardroomActive()})
-
-
-def runBoardroom(config):
-    """Run boardroom simulation using active clients from serverManager."""
-    global isBoardroomRunning, activeBoardroomThread
-    try:
-        from boardroom.boardroom_runner import executeBoardroomConfig
-
-        boardroomClient, summaryClient = serverManager.getClients()
-
-        if not boardroomClient:
-            emitEvent("error", {"message": "No active LLM server found. Please start a server from the manager setup page."})
-            return
-
-        executeBoardroomConfig(
-            config=config,
-            boardroomClient=boardroomClient,
-            summaryClient=summaryClient
-        )
-    except SimulationStoppedException:
-        print("Boardroom evaluation stopped by user.")
-        emitEvent("simStopped", {"message": "Simulation stopped by user."})
-    except Exception as e:
-        if isStopRequested():
-            print("Boardroom evaluation stopped by user.")
-            emitEvent("simStopped", {"message": "Simulation stopped by user."})
-        else:
-            import traceback
-            traceback.print_exc()
-            emitEvent("error", {"message": f"{e.__class__.__name__}: {str(e)}"})
-    finally:
-        with boardroomStateLock:
-            isBoardroomRunning = False
-            activeBoardroomThread = None
-        resetStop()
+    stopped = boardroomManager.stopBoardroom(timeout=5.0)
+    return jsonify({"ok": True, "stopped": stopped, "isRunning": boardroomManager.isBoardroomActive()})
 
 
 def handleBoardroomStart(data, websocket, eventLoop):
-    global activeBoardroomThread, isBoardroomRunning
-    resetStop()
-    from boardroom.boardroom_config import SingleEquityRatingConfig
     config = SingleEquityRatingConfig.fromDict(data)
-
-    with boardroomStateLock:
-        isBoardroomRunning = True
-        simThread = threading.Thread(
-            target=runBoardroom,
-            args=(config,),
-            daemon=True
-        )
-        activeBoardroomThread = simThread
-        simThread.start()
-    return {"ok": True, "message": "Boardroom simulation started."}
+    ok, msg = boardroomManager.startBoardroom(config)
+    return {"ok": ok, "message": msg}
 
 def handleBoardroomStop(data, websocket, eventLoop):
-    stopped = stopBoardroomSync(timeout=5.0)
-    return {"ok": True, "stopped": stopped, "isRunning": isBoardroomActive(), "message": "Stop requested."}
+    stopped = boardroomManager.stopBoardroom(timeout=5.0)
+    return {"ok": True, "stopped": stopped, "isRunning": boardroomManager.isBoardroomActive(), "message": "Stop requested."}
 
 def handleBoardroomStatus(data, websocket, eventLoop):
-    return {"ok": True, "action": "status", "isRunning": isBoardroomActive()}
+    return {"ok": True, "action": "status", "isRunning": boardroomManager.isBoardroomActive()}
+
+def handleQaQuery(data, websocket, eventLoop):
+    query = data.get("query", "").strip()
+    if not query:
+        return {"ok": False, "error": "Query cannot be empty."}
+
+    if not boardroomManager.activeBoardroom:
+        return {"ok": False, "error": "No boardroom evaluation found. Please run a boardroom analysis first."}
+
+    qaThread = threading.Thread(
+        target=boardroomManager.processQnAQuery,
+        args=(query,),
+        daemon=True
+    )
+    qaThread.start()
+    return {"ok": True, "message": "Q&A query processing started."}
+
+
+def handleQaDeleteTurn(data, websocket, eventLoop):
+    turnIndex = data.get("turnIndex")
+    if turnIndex is not None:
+        ok = boardroomManager.deleteQnATurn(int(turnIndex))
+        return {"ok": ok, "turnIndex": turnIndex}
+    return {"ok": False, "error": "turnIndex is required"}
+
 
 registerWsAction("start", handleBoardroomStart)
 registerWsAction("stop", handleBoardroomStop)
 registerWsAction("status", handleBoardroomStatus)
+registerWsAction("qa_query", handleQaQuery)
+registerWsAction("qa_delete_turn", handleQaDeleteTurn)
 
 
 async def websocketHandler(websocket):

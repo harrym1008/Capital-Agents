@@ -8,8 +8,6 @@ LLAMACPP_PORT = 9081
 LLAMACPP_SUMMARY_PORT = 9082
 LLAMACPP_EXECUTABLE = "llama-server.exe"
 
-# THINKING_BUDGET = 128
-# SUMMARISE_THINK_BUDGET = 512
 THINKING_BUDGET_MESSAGE = "... my thinking allowance has been exhausted. I shall now produce my final response.\n"
 
 MODELS_FOLDER = os.getenv("BASE_LLM_DIRECTORY") or "I:\\LLM\\"
