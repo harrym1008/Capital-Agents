@@ -7,7 +7,7 @@
 
     <link rel="icon" type="image/png" href="/static/favicon.png">
     <link rel="stylesheet" href="/static/css/style.css">
-    <link rel="stylesheet" href="/static/css/server.css">
+    <link rel="stylesheet" href="/static/css/server_config.css">
 </head>
 <body>
 
@@ -75,7 +75,7 @@
                             <input
                                 id="openaiBaseUrl"
                                 type="text"
-                                placeholder="e.g. http://localhost:8000/v1 or https://api.openai.com/v1"
+                                placeholder="e.g. http://127.0.0.1:8000/v1, https://api.openai.com/v1"
                                 autocomplete="off"
                             >
                         </div>
@@ -84,36 +84,38 @@
                             <input
                                 id="openaiApiKey"
                                 type="password"
-                                placeholder="API Key (optional for local servers)"
+                                placeholder="optional for local servers"
                                 autocomplete="off"
                             >
                         </div>
                         <div>
-                            <label for="openaiModelName" style="margin-bottom: 6px; display: block;">Model Name / ID:</label>
+                            <label for="openaiModelName" style="margin-bottom: 6px; display: block;">Model Name:</label>
                             <input
                                 id="openaiModelName"
                                 type="text"
-                                placeholder="e.g. gpt-4o, llama-3.1-8b-instruct, default..."
+                                placeholder="e.g. gpt-5.6-sol, claude-opus-5"
                                 autocomplete="off"
                             >
                         </div>
                     </div>
 
                     <div class="model-select-form-group" id="llamacppConfig">
-                        <label for="llamaModel">Selected Model:</label>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                            <label for="llamaModel">Selected Model:</label>                            
+                        </div>
                         <select id="llamaModel">
                             <option>Loading...</option>
                         </select>
+                        <div id="llamaNoModelsNotice" class="hidden" style="display: flex; justify-content: space-between; flex-direction: column; color: #ef4444; gap: 4px; padding-bottom: 10px;">
+                            <span>No models have been configured!</span>
+                            <span>Click the <strong>'Configure Llama.cpp'</strong> button to setup models inside llama.cpp.</span>
+                        </div>
                     </div>
 
                     <div class="model-select-form-group" id="llamacppOptions" style="display: flex; flex-direction: column; gap: 12px;">
                         <label for="parallelCheckbox" class="parallel-checkbox">
                             <input type="checkbox" id="parallelCheckbox" checked>
                             Two Slots in Parallel
-                        </label>
-                        <label for="summaryServerCheckbox" class="parallel-checkbox">
-                            <input type="checkbox" id="summaryServerCheckbox">
-                            Separate Simultaneous Summary Server
                         </label>
                         <label for="preclearVramCheckbox" class="parallel-checkbox">
                             <input type="checkbox" id="preclearVramCheckbox">
@@ -122,6 +124,7 @@
                     </div>
 
                     <button id="loadModelBtn" style="width: 50%; margin: 10px 0 0 25%; font-size: 120%;">Start Server</button>
+                    <a id="configureLlamaBtn" href="/llamacpp-setup" class="aref-button btn-secondary" style="width: 50%; margin: 0 0 0 25%; font-size: 120%;">Configure Llama.cpp</a>
                 </div>
 
                 <!-- Active Server Management Panel (Simplified Plain Text View) -->
@@ -130,7 +133,6 @@
                         <p><strong>Provider:</strong> <span id="displayProvider">-</span></p>
                         <p><strong>Model:</strong> <span id="displayModel">-</span></p>
                         <p><strong>Parallel Slots:</strong> <span id="displayParallel">-</span></p>
-                        <p><strong>Summary Server:</strong> <span id="displaySummary">-</span></p>
                     </div>
 
                     <p style="font-size: 15px; font-weight: 600;">
@@ -224,12 +226,14 @@
             const llamacppConfig = document.getElementById("llamacppConfig");
             const llamacppOptions = document.getElementById("llamacppOptions");
             const parallelCheckbox = document.getElementById("parallelCheckbox");
+            const configureLlamaBtn = document.getElementById("configureLlamaBtn");
 
             if (provider === "openrouter") {
                 openrouterConfig.classList.remove("hidden");
                 openaiCompatibleConfig.classList.add("hidden");
                 llamacppConfig.classList.add("hidden");
                 llamacppOptions.style.display = "none";
+                configureLlamaBtn.classList.add("hidden");
                 // OpenRouter forces parallel slots ON
                 parallelCheckbox.checked = true;
             } else if (provider === "openaicompatible") {
@@ -237,6 +241,7 @@
                 openaiCompatibleConfig.classList.remove("hidden");
                 llamacppConfig.classList.add("hidden");
                 llamacppOptions.style.display = "none";
+                configureLlamaBtn.classList.add("hidden");
                 // OpenAI Compatible forces parallel slots ON
                 parallelCheckbox.checked = true;
             } else {
@@ -244,36 +249,45 @@
                 openaiCompatibleConfig.classList.add("hidden");
                 llamacppConfig.classList.remove("hidden");
                 llamacppOptions.style.display = "flex";
+                configureLlamaBtn.classList.remove("hidden");
             }
         }
 
         // Fetch Llama.cpp models from API and populate dropdown
         async function fetchLlamaCppModels() {
+            const select = document.getElementById("llamaModel");
+            const notice = document.getElementById("llamaNoModelsNotice");
             try {
                 const res = await fetch('/api/llamacpp-models');
                 if (!res.ok) throw new Error("HTTP error " + res.status);
                 const data = await res.json();
                 llamaCppModels = data.models || [];
 
-                const select = document.getElementById("llamaModel");
                 select.innerHTML = "";
-                llamaCppModels.forEach(model => {
-                    const option = document.createElement("option");
-                    option.value = model;
-                    option.textContent = model;
-                    if (model === "GEMMA_4_12B") option.selected = true;
-                    select.appendChild(option);
-                });
 
                 if (llamaCppModels.length === 0) {
+                    if (notice) notice.classList.remove("hidden");
                     const option = document.createElement("option");
-                    option.textContent = "No models found";
+                    option.value = "";
+                    option.textContent = "No models configured";
                     select.appendChild(option);
+                    select.disabled = true;
+                } else {
+                    if (notice) notice.classList.add("hidden");
+                    select.disabled = false;
+                    llamaCppModels.forEach((model, index) => {
+                        const option = document.createElement("option");
+                        const modelVal = typeof model === "object" ? (model.alias || model.displayName || model.id) : model;
+                        const modelText = typeof model === "object" ? (model.displayName || model.alias || model.fileName || modelVal) : model;
+                        option.value = modelVal;
+                        option.textContent = modelText;
+                        if (index === 0) option.selected = true;
+                        select.appendChild(option);
+                    });
                 }
             } catch (e) {
                 console.error("Failed to fetch LlamaCpp models:", e);
-                const select = document.getElementById("llamaModel");
-                select.innerHTML = '<option>Failed to load</option>';
+                select.innerHTML = '<option value="">Failed to load models</option>';
             }
         }
 
@@ -653,7 +667,7 @@
                 const res = await fetch('/api/server/status');
                 if (res.ok) {
                     const data = await res.json();
-                    const isRunning = data.running || data.llamacppRunning || data.summaryServerRunning || data.openrouterRunning || data.openaiCompatibleRunning;
+                    const isRunning = data.running || data.llamacppRunning || data.openrouterRunning || data.openaiCompatibleRunning;
                     const provider = data.provider || (data.openrouterRunning ? "openrouter" : (data.openaiCompatibleRunning ? "openaicompatible" : (data.llamacppRunning ? "llamacpp" : "")));
                     updateServerStatus(isRunning, provider);
                     if (data.costData) {
@@ -673,7 +687,6 @@
                         document.getElementById("displayProvider").textContent = provName;
                         document.getElementById("displayModel").textContent = data.modelName || "Active Server Process";
                         document.getElementById("displayParallel").textContent = "Enabled";
-                        document.getElementById("displaySummary").textContent = data.summaryServerRunning ? "Enabled" : "Disabled";
                         
                         document.getElementById("setupForm").classList.add("hidden");
                         document.getElementById("serverStatusPanel").classList.remove("hidden");
@@ -700,7 +713,6 @@
         // "Start Server" button listener
         document.getElementById("loadModelBtn").addEventListener("click", async () => {
             const provider = document.getElementById("provider").value;
-            const wantSummaryServer = (provider === "openrouter" || provider === "openaicompatible") ? false : document.getElementById("summaryServerCheckbox").checked;
             const allowParallel = (provider === "openrouter" || provider === "openaicompatible") ? true : document.getElementById("parallelCheckbox").checked;
 
             let modelName = "";
@@ -729,8 +741,8 @@
                 modelName = document.getElementById("openaiModelName").value.trim() || "default";
             } else {
                 modelName = document.getElementById("llamaModel").value;
-                if (!modelName || modelName === "No models found" || modelName === "Failed to load") {
-                    alert("Please select a valid model.");
+                if (!modelName || modelName === "No models found" || modelName === "No models configured" || modelName.includes("Failed")) {
+                    alert("Please configure a valid GGUF model in Llama.cpp Setup first.");
                     return;
                 }
             }
@@ -753,7 +765,6 @@
             document.getElementById("displayProvider").textContent = displayProviderStr;
             document.getElementById("displayModel").textContent = displayModelStr;
             document.getElementById("displayParallel").textContent = allowParallel ? "Enabled" : "Disabled";
-            document.getElementById("displaySummary").textContent = wantSummaryServer ? "Enabled" : "Disabled";
 
             // Switch views
             document.getElementById("setupForm").classList.add("hidden");
@@ -779,7 +790,6 @@
                         apiKey: apiKey,
                         providerRouter: providerRouter,
                         allowParallel: allowParallel,
-                        wantSummaryServer: wantSummaryServer,
                         preclearVram: document.getElementById("preclearVramCheckbox").checked
                     })
                 });

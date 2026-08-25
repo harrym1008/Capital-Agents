@@ -7,7 +7,6 @@ from typing import Any, Optional, Tuple
 
 from collectors.constants import UTC, NEW_YORK
 from llm.llm_client import BaseLLMClient
-from llm.client_duo import ClientDuo
 from llm.server_manager import serverManager
 
 from boardroom.boardroom_config import BoardroomConfig, SingleEquityRatingConfig
@@ -25,11 +24,18 @@ class BoardroomManager:
         self.activeBoardroom: Optional[BoardroomEngine] = None
         self.lastConfig: Optional[BoardroomConfig] = None
         self.toolRegistry: Optional[ToolRegistry] = None
-        self.boardroomClient: Optional[BaseLLMClient] = None
-        self.summaryClient: Optional[BaseLLMClient] = None
+        self.llmClient: Optional[BaseLLMClient] = None
         self.activeThread: Optional[threading.Thread] = None
         self.isBoardroomRunning: bool = False
         self.stateLock = threading.Lock()
+
+    @property
+    def boardroomClient(self) -> Optional[BaseLLMClient]:
+        return self.llmClient
+
+    @boardroomClient.setter
+    def boardroomClient(self, client: Optional[BaseLLMClient]):
+        self.llmClient = client
 
     def getToolRegistry(self) -> ToolRegistry:
         with self.stateLock:
@@ -37,14 +43,15 @@ class BoardroomManager:
                 self.toolRegistry = serverManager.getToolRegistry()
             return self.toolRegistry
 
-    def getClients(self) -> Tuple[Optional[BaseLLMClient], Optional[BaseLLMClient]]:
+    def getClient(self) -> Optional[BaseLLMClient]:
         with self.stateLock:
-            if self.boardroomClient is not None:
-                if self.summaryClient is not None:
-                    return self.boardroomClient, self.summaryClient
-                return self.boardroomClient, self.boardroomClient
-            boardroomClient, summaryClient = serverManager.getClients()
-            return boardroomClient, summaryClient
+            if self.llmClient is not None:
+                return self.llmClient
+            return serverManager.getClient()
+
+    def getClients(self) -> Tuple[Optional[BaseLLMClient], Optional[BaseLLMClient]]:
+        client = self.getClient()
+        return client, client
 
     def isBoardroomActive(self) -> bool:
         with self.stateLock:
@@ -60,15 +67,14 @@ class BoardroomManager:
         timestamp = pd.Timestamp(f"{config.simulatedDateStr} 09:00").tz_localize(NEW_YORK).tz_convert(UTC)
 
         toolRegistry = self.getToolRegistry()
-        boardroomClient, summaryClient = self.getClients()
-        if not boardroomClient:
+        llmClient = self.getClient()
+        if not llmClient:
             raise RuntimeError("No active LLM server found. Please start a server from the manager setup page.")
 
         startPrecacheThread(toolRegistry, timestamp, macroTools=False, ticker=config.ticker)
 
-        clientDuo = ClientDuo(boardroomClient, summaryClient)
         boardroom = generateBoardroom(toolRegistry, timestamp)
-        boardroom.assignClientDuo(clientDuo)
+        boardroom.assignClient(llmClient)
         boardroom.lastConfig = config
 
         with self.stateLock:
@@ -152,13 +158,13 @@ boardroomManager = BoardroomManager()
 
 def executeBoardroomConfig(
     config: BoardroomConfig,
-    boardroomClient: BaseLLMClient,
-    summaryClient: Optional[BaseLLMClient] = None,
+    llmClient: Optional[BaseLLMClient] = None,
+    boardroomClient: Optional[BaseLLMClient] = None,
     toolRegistry: ToolRegistry = None
 ) -> float:
+    activeClient = llmClient or boardroomClient
     if isinstance(config, SingleEquityRatingConfig):
-        boardroomManager.boardroomClient = boardroomClient
-        boardroomManager.summaryClient = summaryClient
+        boardroomManager.llmClient = activeClient
         if toolRegistry is not None:
             boardroomManager.toolRegistry = toolRegistry
         startTime = time.time()

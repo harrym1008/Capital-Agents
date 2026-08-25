@@ -153,18 +153,17 @@ button.btn-secondary:hover {
     position: absolute;
     left: 0;
     right: 0;
-    max-height: 280px;
+    max-height: 240px;
     background: #ffffff;
     color: #1e293b;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    border: 1px solid #c2c2c2;
+    border-radius: 3px;
     overflow-y: auto;
     z-index: 1000;
-    font-size: 14px;
+    font-size: 15px;
 }
 
-.openrouter-dropdown::-webkit-scrollbar {
+/* .openrouter-dropdown::-webkit-scrollbar {
     width: 6px;
 }
 
@@ -175,10 +174,10 @@ button.btn-secondary:hover {
 .openrouter-dropdown::-webkit-scrollbar-thumb {
     background: #cbd5e1;
     border-radius: 3px;
-}
+} */
 
 .openrouter-dropdown-item {
-    padding: 10px 14px;
+    padding: 8px 12px;
     cursor: pointer;
     display: flex;
     justify-content: space-between;
@@ -211,8 +210,8 @@ button.btn-secondary:hover {
 }
 
 .openrouter-dropdown-item .model-price-tag {
-    font-size: 12px;
-    color: #64748b;
+    font-size: 88%;
+    color: #808080;
     margin-left: 10px;
     white-space: nowrap;
 }

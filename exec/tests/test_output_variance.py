@@ -9,14 +9,13 @@ from boardroom.boardroom_config import TIME_HORIZON_INFO, SingleEquityRatingConf
 from boardroom.boardroom_mgr import executeBoardroomConfig
 
 from llm.server_manager import serverManager
-from llm.llamacpp.llamacpp_args import LlamaCppModel
 
 
 MODELS = {
-    # "GEMMA_4_E2B": LlamaCppModel.GEMMA_4_E2B,
-    # "GEMMA_4_E4B": LlamaCppModel.GEMMA_4_E4B,
-    # "GEMMA_4_12B": LlamaCppModel.GEMMA_4_12B,
-    "GEMMA_4_26B_A4B": LlamaCppModel.GEMMA_4_26B_A4B
+    # "GEMMA_4_E2B": "Gemma-4-E2B",
+    # "GEMMA_4_E4B": "Gemma-4-E4B",
+    # "GEMMA_4_12B": "Gemma-4-12B",
+    "GEMMA_4_26B_A4B": "Gemma-4-26B-E4B"
 }
 
 SIM_TIME_STR = "2026-06-24"
@@ -47,12 +46,11 @@ def runSingleEvaluation(model: str, ticker: str, mode: str):
             timeHorizon=TIME_HORIZON,
             boardroomPace=MODES[mode]
         )
-        boardroomClient, summaryClient = serverManager.getClients()
+        llmClient = serverManager.getClient()
 
         elapsedSeconds = executeBoardroomConfig(
             config=config,
-            boardroomClient=boardroomClient,
-            summaryClient=summaryClient,
+            llmClient=llmClient,
             toolRegistry=serverManager.getToolRegistry()
         )
         decisionToolOutput = serverManager.getToolRegistry().getTool(SUBMIT_TOOL).toolLog[-2]
@@ -87,8 +85,7 @@ def runAll():
         success, message = serverManager.startServer(
             provider="llamacpp",
             modelName=modelEnum.name,
-            allowParallel=True,
-            wantSummaryServer=False
+            allowParallel=True
         )
         if not success:
             print(f"Failed to start server for model {modelName}: {message}")

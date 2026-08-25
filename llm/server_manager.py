@@ -6,9 +6,8 @@ import urllib.request
 from enum import Enum
 from typing import Tuple, Optional, List, Any
 
-from llm.llamacpp.llamacpp_args import LlamaCppModel, LLAMACPP_PORT, LLAMACPP_SUMMARY_PORT
+from llm.llamacpp.llamacpp_args import LLAMACPP_PORT
 from llm.llamacpp.llamacpp_init import LlamaCppProcessInitiator, rudimentaryVramClear
-from llm.summarise.local_summary import LlamaCppSummaryClient
 
 from llm.llamacpp.llamacpp_client import LlamaCppClient
 from llm.cloud.openrouter_client import OpenRouterClient
@@ -16,7 +15,7 @@ from llm.cloud.openai_compatible_client import OpenAICompatibleClient
 
 from llm.llm_client import BaseLLMClient
 from llm.token_cost_tracker import TokenCostTracker
-from llmtools.functions.sentiment_news import preloadSentimentModelAsync
+from llmtools.functions.sentiment_news import preloadSentimentModelAsync, unloadSentimentEngine
 from llmtools.tool_registry import ToolRegistry
 from ui.ui_hooks import emitEvent
 
@@ -110,15 +109,21 @@ class ServerManager:
     def __init__(self):
         self.loadedModelType = LoadedModelType.NONE
         self.loadedModelName = ""
-        self.summaryServerRunning = False
         self.boardroomProcess = None
-        self.boardroomClient: Optional[BaseLLMClient] = None
-        self.summaryClient: Optional[BaseLLMClient] = None
+        self.llmClient: Optional[BaseLLMClient] = None
         self.startupLogs: List[str] = []
         self.metricsThread: Optional[threading.Thread] = None
         self.sharedToolRegistry: Optional[Any] = None
         self.costTracker = TokenCostTracker()
         self.serverLock = threading.Lock()
+
+    @property
+    def boardroomClient(self) -> Optional[BaseLLMClient]:
+        return self.llmClient
+
+    @boardroomClient.setter
+    def boardroomClient(self, client: Optional[BaseLLMClient]):
+        self.llmClient = client
 
     @property
     def llamacppRunning(self) -> bool:
@@ -143,13 +148,13 @@ class ServerManager:
                 self.sharedToolRegistry = buildToolRegistry()
             return self.sharedToolRegistry
 
+    def getClient(self) -> Optional[BaseLLMClient]:
+        with self.serverLock:
+            return self.llmClient
+
     def getClients(self) -> Tuple[Optional[BaseLLMClient], Optional[BaseLLMClient]]:
         with self.serverLock:
-            if not self.boardroomClient:
-                return None, None
-            if self.summaryClient is not None:
-                return self.boardroomClient, self.summaryClient
-            return self.boardroomClient, self.boardroomClient
+            return self.llmClient, self.llmClient
 
     def _startMetricsPolling(self):
         def metricsLoop():
@@ -171,7 +176,7 @@ class ServerManager:
         self.metricsThread = threading.Thread(target=metricsLoop, daemon=True)
         self.metricsThread.start()
 
-    def startServer(self, provider: str, modelName: str, baseUrl: Optional[str] = None, apiKey: Optional[str] = None, providerRouter: Optional[str] = None, allowParallel: bool = True, wantSummaryServer: bool = False, preclearVram: bool = False):
+    def startServer(self, provider: str, modelName: str, baseUrl: Optional[str] = None, apiKey: Optional[str] = None, providerRouter: Optional[str] = None, allowParallel: bool = True, preclearVram: bool = False):
         with self.serverLock:
             if self.loadedModelType != LoadedModelType.NONE:
                 self.stopServerInternal()
@@ -197,8 +202,7 @@ class ServerManager:
                         if not success:
                             return False, f"OpenAI Compatible test failed: {result}"
 
-                        self.boardroomClient = client
-                        self.summaryClient = None
+                        self.llmClient = client
                         self.loadedModelType = LoadedModelType.OPENAI_COMPATIBLE
                         self.loadedModelName = cleanModel
 
@@ -225,8 +229,7 @@ class ServerManager:
                         if not success:
                             return False, f"OpenRouter test failed: {result}"
 
-                        self.boardroomClient = client
-                        self.summaryClient = None
+                        self.llmClient = client
                         self.loadedModelType = LoadedModelType.OPENROUTER
                         self.loadedModelName = modelName
 
@@ -236,7 +239,6 @@ class ServerManager:
 
                         return True, f"OpenRouter server active and verified (Response: '{result}')."
 
-
                     except Exception as e:
                         errorMsg = f"OpenRouter setup failed: {e.__class__.__name__}: {str(e)}"
                         emitEvent("error", {"message": errorMsg})
@@ -244,15 +246,9 @@ class ServerManager:
 
                 case "llamacpp":
                     try:
-                        try:
-                            modelEnum = LlamaCppModel[modelName]
-                        except KeyError:
-                            return False, f"Unknown Llama.cpp model: {modelName}"
-
-                        argOverrides = {}
-                        if not allowParallel:
-                            argOverrides["-np"] = "1"
-                            argOverrides["--ctx-size"] = "65536"
+                        cleanModelName = (modelName or "").strip()
+                        if not cleanModelName:
+                            return False, "Model name or alias is required for Llama.cpp."
 
                         if preclearVram:
                             self.recordLog("Clearing VRAM...")
@@ -261,17 +257,17 @@ class ServerManager:
                             self.recordLog(f"VRAM cleared. Freed {freedVram:.2f} GB of VRAM.")
                         else:
                             pass
-                            # self.recordLog("Skipping VRAM pre-clear (not requested).")
+
                         self.recordLog("Loading sentiment model asynchronously...")
                         preloadSentimentModelAsync()       # Do this after vram clearing since the model needs to be in vram
 
-                        self.recordLog("Starting Llama.cpp boardroom server...")
+                        self.recordLog(f"Starting Llama.cpp boardroom server with model '{cleanModelName}'...")
                         serverProcess = LlamaCppProcessInitiator(
                             serverName="boardroom",
-                            model=modelEnum,
+                            model=cleanModelName,
                             printLogsToTerminal=True,
                             killExistingProcesses=True,
-                            argOverrides=argOverrides,
+                            allowParallel=allowParallel
                         )
 
                         serverErrorHolder = []
@@ -302,15 +298,20 @@ class ServerManager:
                                 pass
                             return False, f"Llama.cpp verification test failed: {result}"
 
-                        if wantSummaryServer:
-                            self.startSummServerInternal()
-                        else:
-                            self.summaryClient = None
-
-                        self.boardroomClient = boardroomClient
+                        self.llmClient = boardroomClient
                         self.loadedModelType = LoadedModelType.LLAMACPP
                         self.loadedModelName = modelName
                         self.boardroomProcess = serverProcess
+
+                        # Update last used model ID in configuration
+                        try:
+                            from llm.llamacpp.llamacpp_args import loadConfig, saveConfig
+                            currCfg = loadConfig()
+                            if getattr(serverProcess, "modelConfig", None) and serverProcess.modelConfig.get("id"):
+                                currCfg["lastUsedModelId"] = serverProcess.modelConfig.get("id")
+                                saveConfig(currCfg)
+                        except Exception:
+                            pass
 
                         # Start background metrics polling loop for Llama.cpp
                         self._startMetricsPolling()
@@ -343,44 +344,25 @@ class ServerManager:
             case _:
                 pass
 
-        if self.summaryClient:
-            try:
-                self.summaryClient.stop()
-            except Exception:
-                pass
-
-        self.boardroomClient = None
-        self.summaryClient = None
-        self.summaryServerRunning = False
+        self.llmClient = None
         prevType = self.loadedModelType.value
         self.loadedModelType = LoadedModelType.NONE
         self.loadedModelName = ""
         self.costTracker.reset()
-        return f"Server ({prevType}) stopped"
 
-    def startSummServerInternal(self):
-        if self.summaryServerRunning:
-            return
+        # Force unload sentiment engine when server is closed to free up VRAM
         try:
-            client = LlamaCppSummaryClient()
-            ready = False
-            for _ in range(120):
-                if isPortReachable("127.0.0.1", LLAMACPP_SUMMARY_PORT):
-                    ready = True
-                    break
-                time.sleep(0.5)
-            if ready:
-                self.summaryServerRunning = True
-                self.summaryClient = client
-        except Exception:
-            pass
+            unloadSentimentEngine()
+        except Exception as e:
+            print(f"Error unloading sentiment engine: {e}")
+
+        return f"Server ({prevType}) stopped"
 
     def getStatus(self):
         return {
             "running": self.loadedModelType != LoadedModelType.NONE,
             "provider": self.loadedModelType.value,
             "modelName": self.loadedModelName,
-            "summaryServerRunning": self.summaryServerRunning,
             "llamacppRunning": self.loadedModelType == LoadedModelType.LLAMACPP,
             "openrouterRunning": self.loadedModelType == LoadedModelType.OPENROUTER,
             "openaiCompatibleRunning": self.loadedModelType == LoadedModelType.OPENAI_COMPATIBLE,

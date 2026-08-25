@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CapitalAgents - Llama.cpp Setup</title>
+
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/llamacpp_setup.css">
+</head>
+<body>
+
+    {% include 'header.html' %}
+
+    <div class="llamacpp-page-wrapper">
+
+        <!-- Top Action Bar -->
+        <div class="top-action-bar">
+            <div class="page-heading-group">
+                <h1 class="page-title">Llama.cpp Configuration</h1>
+            </div>
+            <div class="top-actions">
+                <a href="/server-config" class="aref-button btn-secondary">Back to Server Configuration</a>
+                <button id="saveConfigBtn" class="btn-primary">Save Configuration</button>
+            </div>
+        </div>
+
+        <!-- Main 2-Column Layout: 2fr : 5fr -->
+        <div class="setup-grid">
+
+            <!-- Left Column (2fr): Global Arguments -->
+            <div class="setup-card">
+                <h2 class="card-title">Global Arguments</h2>
+
+                <div class="form-group">
+                    <label class="form-label" for="globalExePath">Llama Server Executable</label>
+                    <div class="input-with-button">
+                        <input id="globalExePath" type="text" class="form-input" placeholder="e.g. llama-server.exe or full path">
+                        <button id="browseExeBtn" class="btn-primary" style="white-space: nowrap;">Browse</button>
+                    </div>
+                    <div id="exePathHintMsg" class="form-hint-msg">
+                        The system will try to retrieve <span style="font-family: monospace;">llama-server.exe</span> from the system PATH environment variable.
+                    </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+                    <span class="subheading-label">Default Argument Flags</span>
+                    <div class="args-list-wrapper">
+                        <div id="globalArgsList" class="args-container">
+                            <!-- Dynamic Global Argument Rows -->
+                        </div>
+                        <div class="plus-row">
+                            <button id="addGlobalArgPlusBtn" class="btn-plus-hanging" title="Add global argument">+</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column (5fr): Model Selection & Per Model Arguments -->
+            <div class="setup-card">
+
+                <!-- Top Selected Model Box -->
+                <div class="selected-model-box">
+                    <div class="form-group">
+                        <label class="form-label" for="selectedModelDropdown">Selected Model:</label>
+                        <div class="input-with-button">
+                            <select id="selectedModelDropdown" class="form-select">
+                                <option value="">No models configured</option>
+                            </select>
+                            <button id="addModelBtn" class="btn-primary" style="white-space: nowrap;">Add Model</button>
+                            <button id="deleteModelBtn" class="btn-danger" style="white-space: nowrap;">Delete</button>
+                        </div>
+                    </div>
+
+                    <div id="modelMetadataContainer" class="hidden">
+                        <div class="form-group" style="margin-top: 10px;">
+                            <label class="form-label" for="modelAliasInput">Alias</label>
+                            <input id="modelAliasInput" type="text" class="form-input" placeholder="Model alias goes here.....">
+                        </div>
+
+                        <div class="form-group" style="margin-top: 10px;">
+                            <label class="form-label">Model File Path</label>
+                            <span id="modelFullPathSpan" style="font-family: monospace; font-size: 12px;"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lower Section: Per Model Arguments + Dedicated Sampling Parameters -->
+                <div style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+                    <h3 class="card-title" style="margin-bottom: 8px;">Per Model Arguments</h3>
+
+                    <div id="noModelNotice" class="empty-state-notice hidden">
+                        <span>No model selected</span>
+                    </div>
+
+                    <div id="modelArgsDetailsContainer" class="model-lower-section">
+                        
+                        <!-- Left Side: Dynamic Per-Model Flags List -->
+                        <div class="per-model-args-col">
+                            <div class="args-list-wrapper">
+                                <div id="modelArgsList" class="args-container">
+                                    <!-- Dynamic Per-Model Argument Rows -->
+                                </div>
+                                <div class="plus-row">
+                                    <button id="addModelArgPlusBtn" class="btn-plus-hanging" title="Add model argument">+</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Side: Dedicated Personality / Sampling Parameters -->
+                        <div class="sampling-params-col">
+                            <span class="subheading-label" style="margin-top: 0; margin-bottom: 4px;">Sampling Params</span>
+                            <div class="sampling-param-row">
+                                <span class="sampling-param-label">Temperature:</span>
+                                <input id="paramTemp" type="text" class="sampling-param-input">
+                            </div>
+                            <div class="sampling-param-row">
+                                <span class="sampling-param-label">Top P:</span>
+                                <input id="paramTopP" type="text" class="sampling-param-input">
+                            </div>
+                            <div class="sampling-param-row">
+                                <span class="sampling-param-label">Top K:</span>
+                                <input id="paramTopK" type="text" class="sampling-param-input">
+                            </div>
+                            <div class="sampling-param-row">
+                                <span class="sampling-param-label">Min P:</span>
+                                <input id="paramMinP" type="text" class="sampling-param-input">
+                            </div>
+                            <div class="sampling-param-row">
+                                <span class="sampling-param-label">Presence Penalty:</span>
+                                <input id="paramPresencePenalty" type="text" class="sampling-param-input">
+                            </div>
+                            <div class="sampling-param-row">
+                                <span class="sampling-param-label">Repetition Penalty:</span>
+                                <input id="paramRepeatPenalty" type="text" class="sampling-param-input">
+                            </div>
+                            <div class="sampling-param-row">
+                                <span class="sampling-param-label">Frequency Penalty:</span>
+                                <input id="paramFrequencyPenalty" type="text" class="sampling-param-input">
+                            </div>
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Browser Lock Overlay During Native File Dialog -->
+    <div id="browserLockOverlay" class="browser-lock-overlay hidden">
+        <div class="browser-lock-card">
+            <span>Waiting for file to be selected...</span>
+        </div>
+    </div>
+
+    <script>
+        const DISALLOWED_KEYS = new Set(["--host", "-h", "--port", "-p", "--log-verbosity", "-lv"]);
+
+        // Dedicated sampling parameter keys to avoid repetition in dynamic flag rows
+        const SAMPLING_PARAM_KEYS = {
+            "paramTemp": "--temp",
+            "paramTopP": "--top-p",
+            "paramTopK": "--top-k",
+            "paramMinP": "--min-p",
+            "paramPresencePenalty": "--presence-penalty",
+            "paramRepeatPenalty": "--repeat-penalty",
+            "paramFrequencyPenalty": "--frequency-penalty"
+        };
+
+        const SAMPLING_KEY_SET = new Set(Object.values(SAMPLING_PARAM_KEYS));
+
+        let configState = {
+            executablePath: "llama-server.exe",
+            globalArgs: [],
+            models: []
+        };
+        let selectedModelId = null;
+
+        function isKeyDisallowed(key) {
+            if (!key) return false;
+            return DISALLOWED_KEYS.has(key.trim().toLowerCase());
+        }
+
+        function normalizeArgList(rawArgs) {
+            const list = [];
+            if (Array.isArray(rawArgs)) {
+                rawArgs.forEach(item => {
+                    if (item && typeof item === "object") {
+                        const k = String(item.key || "").trim();
+                        if (k && !isKeyDisallowed(k)) {
+                            list.push({
+                                key: k,
+                                value: String(item.value !== undefined ? item.value : ""),
+                                enabled: item.enabled !== undefined ? Boolean(item.enabled) : true
+                            });
+                        }
+                    }
+                });
+            } else if (rawArgs && typeof rawArgs === "object") {
+                Object.entries(rawArgs).forEach(([k, v]) => {
+                    const kClean = String(k).trim();
+                    if (kClean && !isKeyDisallowed(kClean)) {
+                        list.push({
+                            key: kClean,
+                            value: String(v !== undefined ? v : ""),
+                            enabled: true
+                        });
+                    }
+                });
+            }
+            return list;
+        }
+
+        async function fetchConfig() {
+            try {
+                const res = await fetch("/api/llamacpp/config");
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.config) {
+                        configState = data.config;
+                        configState.globalArgs = normalizeArgList(configState.globalArgs);
+                        if (!configState.models) configState.models = [];
+                        configState.models.forEach(m => {
+                            m.args = normalizeArgList(m.args);
+                        });
+
+                        renderFullUI();
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to load Llama.cpp config:", err);
+            }
+        }
+
+        let autoSaveTimer = null;
+        function scheduleAutoSave(immediate = false) {
+            syncFormState();
+            if (autoSaveTimer) {
+                clearTimeout(autoSaveTimer);
+                autoSaveTimer = null;
+            }
+            if (immediate) {
+                saveConfig();
+            } else {
+                autoSaveTimer = setTimeout(() => {
+                    saveConfig();
+                }, 300);
+            }
+        }
+
+        async function saveConfig() {
+            syncFormState();
+            try {
+                await fetch("/api/llamacpp/config", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(configState)
+                });
+            } catch (err) {
+                console.error("Save error:", err);
+            }
+        }
+
+        function syncFormState() {
+            configState.executablePath = document.getElementById("globalExePath").value.trim() || "llama-server.exe";
+
+            if (selectedModelId) {
+                const model = configState.models.find(m => m.id === selectedModelId);
+                if (model) {
+                    model.alias = document.getElementById("modelAliasInput").value.trim();
+                }
+            }
+        }
+
+        function getActiveModelOverrides() {
+            if (!selectedModelId) return new Set();
+            const model = configState.models.find(m => m.id === selectedModelId);
+            if (!model || !Array.isArray(model.args)) return new Set();
+            
+            const activeSet = new Set();
+            model.args.forEach(a => {
+                if (a.enabled !== false && a.key) {
+                    activeSet.add(a.key.trim());
+                }
+            });
+            return activeSet;
+        }
+
+        function updateExePathHint() {
+            const val = (document.getElementById("globalExePath").value || "").trim();
+            const hintElem = document.getElementById("exePathHintMsg");
+            if (!hintElem) return;
+            const isJustFileName = !val || (!val.includes("/") && !val.includes("\\"));
+            if (isJustFileName) {
+                hintElem.classList.remove("hidden");
+            } else {
+                hintElem.classList.add("hidden");
+            }
+        }
+
+        function renderFullUI() {
+            document.getElementById("globalExePath").value = configState.executablePath || "llama-server.exe";
+            updateExePathHint();
+
+            renderModelDropdown();
+            renderSelectedModelDetails();
+            renderGlobalArgs();
+        }
+
+        function renderGlobalArgs() {
+            const container = document.getElementById("globalArgsList");
+            container.innerHTML = "";
+
+            const activeOverrides = getActiveModelOverrides();
+
+            configState.globalArgs.forEach((argItem, index) => {
+                if (isKeyDisallowed(argItem.key)) return;
+
+                const isEnabled = argItem.enabled !== false;
+                const isOverridden = isEnabled && activeOverrides.has(argItem.key);
+
+                const row = document.createElement("div");
+                let rowClasses = "arg-row";
+                if (!isEnabled) rowClasses += " is-disabled";
+                else if (isOverridden) rowClasses += " is-overridden";
+                row.className = rowClasses;
+
+                const statusBadge = document.createElement("div");
+                let badgeClass = "arg-status-badge ";
+                let badgeChar = "✓";
+                let badgeTitle = "Enabled (click to disable)";
+
+                if (!isEnabled) {
+                    badgeClass += "disabled";
+                    badgeChar = "✗";
+                    badgeTitle = "Disabled (click to enable)";
+                } else if (isOverridden) {
+                    badgeClass += "overridden";
+                    badgeChar = "O";
+                    badgeTitle = "Overridden by selected model (click to disable)";
+                } else {
+                    badgeClass += "active";
+                    badgeChar = "✓";
+                }
+
+                statusBadge.className = badgeClass;
+                statusBadge.textContent = badgeChar;
+                statusBadge.title = badgeTitle;
+                statusBadge.addEventListener("click", () => {
+                    argItem.enabled = !isEnabled;
+                    renderGlobalArgs();
+                    scheduleAutoSave(true);
+                });
+                row.appendChild(statusBadge);
+
+                const keyInput = document.createElement("input");
+                keyInput.type = "text";
+                keyInput.className = "arg-key-input";
+                keyInput.value = argItem.key;
+                // keyInput.placeholder = "--flag";
+                keyInput.addEventListener("change", (e) => {
+                    const newKey = e.target.value.trim();
+                    if (isKeyDisallowed(newKey)) {
+                        alert("Host (127.0.0.1), Port (9081), and Log Verbosity (4) are locked by system policy and cannot be altered.");
+                        keyInput.value = argItem.key;
+                        return;
+                    }
+                    argItem.key = newKey;
+                    renderGlobalArgs();
+                    scheduleAutoSave(true);
+                });
+                row.appendChild(keyInput);
+
+                const valInput = document.createElement("input");
+                valInput.type = "text";
+                valInput.className = "arg-val-input";
+                valInput.value = argItem.value;
+                // valInput.placeholder = "value";
+                valInput.addEventListener("input", (e) => {
+                    argItem.value = e.target.value;
+                    scheduleAutoSave(false);
+                });
+                valInput.addEventListener("change", () => {
+                    scheduleAutoSave(true);
+                });
+                row.appendChild(valInput);
+
+                const delBtn = document.createElement("button");
+                delBtn.className = "btn-icon-minus";
+                delBtn.textContent = "-";
+                delBtn.title = "Remove global argument";
+                delBtn.addEventListener("click", () => {
+                    configState.globalArgs.splice(index, 1);
+                    renderGlobalArgs();
+                    scheduleAutoSave(true);
+                });
+                row.appendChild(delBtn);
+
+                container.appendChild(row);
+            });
+        }
+
+        function renderModelDropdown() {
+            const dropdown = document.getElementById("selectedModelDropdown");
+            const deleteBtn = document.getElementById("deleteModelBtn");
+            dropdown.innerHTML = "";
+
+            if (!configState.models || configState.models.length === 0) {
+                const opt = document.createElement("option");
+                opt.value = "";
+                opt.textContent = "No models configured";
+                dropdown.appendChild(opt);
+                dropdown.disabled = true;
+                deleteBtn.disabled = true;
+                selectedModelId = null;
+                return;
+            }
+
+            dropdown.disabled = false;
+            deleteBtn.disabled = false;
+
+            // Sort models alphabetically by alias / filename (case-insensitive)
+            const sortedModels = [...configState.models].sort((a, b) => {
+                const nameA = (a.alias || a.modelPath || "").toLowerCase();
+                const nameB = (b.alias || b.modelPath || "").toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+
+            // Hoist lastUsedModelId to the top (index 0) if present
+            const lastUsedId = (configState.lastUsedModelId || "").trim();
+            if (lastUsedId) {
+                const idx = sortedModels.findIndex(m => m.id === lastUsedId || (m.alias && m.alias.toLowerCase() === lastUsedId.toLowerCase()));
+                if (idx > 0) {
+                    const [topModel] = sortedModels.splice(idx, 1);
+                    sortedModels.unshift(topModel);
+                }
+            }
+
+            if (!selectedModelId || !configState.models.some(m => m.id === selectedModelId)) {
+                selectedModelId = sortedModels[0].id;
+            }
+
+            sortedModels.forEach(m => {
+                const opt = document.createElement("option");
+                opt.value = m.id;
+                const fileName = m.modelPath ? m.modelPath.split(/[\/\\]/).pop().replace(/\.gguf$/i, "") : "model";
+                const displayAlias = m.alias || fileName;
+                opt.textContent = displayAlias;
+                opt.title = m.modelPath || displayAlias;
+                if (m.id === selectedModelId) opt.selected = true;
+                dropdown.appendChild(opt);
+            });
+        }
+
+        function renderSelectedModelDetails() {
+            const aliasInput = document.getElementById("modelAliasInput");
+            const pathSpan = document.getElementById("modelFullPathSpan");
+            const metadataContainer = document.getElementById("modelMetadataContainer");
+            const noModelNotice = document.getElementById("noModelNotice");
+            const detailsContainer = document.getElementById("modelArgsDetailsContainer");
+
+            if (!selectedModelId) {
+                if (aliasInput) {
+                    aliasInput.value = "";
+                    aliasInput.disabled = true;
+                }
+                if (pathSpan) pathSpan.textContent = "";
+                if (metadataContainer) metadataContainer.classList.add("hidden");
+                noModelNotice.classList.remove("hidden");
+                detailsContainer.classList.add("hidden");
+                return;
+            }
+
+            const model = configState.models.find(m => m.id === selectedModelId);
+            if (!model) {
+                if (aliasInput) {
+                    aliasInput.value = "";
+                    aliasInput.disabled = true;
+                }
+                if (pathSpan) pathSpan.textContent = "";
+                if (metadataContainer) metadataContainer.classList.add("hidden");
+                noModelNotice.classList.remove("hidden");
+                detailsContainer.classList.add("hidden");
+                return;
+            }
+
+            if (metadataContainer) metadataContainer.classList.remove("hidden");
+            if (aliasInput) aliasInput.disabled = false;
+            noModelNotice.classList.add("hidden");
+            detailsContainer.classList.remove("hidden");
+
+            aliasInput.value = model.alias || "";
+            if (pathSpan) pathSpan.textContent = model.modelPath || "";
+
+            renderModelArgs(model);
+            renderSamplingParams(model);
+        }
+
+        function renderSamplingParams(model) {
+            if (!Array.isArray(model.args)) model.args = [];
+
+            Object.entries(SAMPLING_PARAM_KEYS).forEach(([elemId, flagKey]) => {
+                const input = document.getElementById(elemId);
+                if (input) {
+                    const found = model.args.find(a => a.key === flagKey);
+                    input.value = (found && found.value !== undefined) ? found.value : "";
+                }
+            });
+        }
+
+        function renderModelArgs(model) {
+            const container = document.getElementById("modelArgsList");
+            container.innerHTML = "";
+
+            if (!Array.isArray(model.args)) model.args = [];
+
+            model.args.forEach((argItem, index) => {
+                if (isKeyDisallowed(argItem.key)) return;
+                if (SAMPLING_KEY_SET.has(argItem.key)) return; // Handled by dedicated sampling inputs
+
+                const isEnabled = argItem.enabled !== false;
+                const row = document.createElement("div");
+                row.className = "arg-row" + (isEnabled ? "" : " is-disabled");
+
+                const statusBadge = document.createElement("div");
+                let badgeClass = "arg-status-badge ";
+                let badgeChar = "✓";
+                let badgeTitle = "Enabled (click to disable)";
+
+                if (!isEnabled) {
+                    badgeClass += "disabled";
+                    badgeChar = "✗";
+                    badgeTitle = "Disabled (click to enable)";
+                } else {
+                    badgeClass += "active";
+                    badgeChar = "✓";
+                }
+
+                statusBadge.className = badgeClass;
+                statusBadge.textContent = badgeChar;
+                statusBadge.title = badgeTitle;
+                statusBadge.addEventListener("click", () => {
+                    argItem.enabled = !isEnabled;
+                    renderModelArgs(model);
+                    renderGlobalArgs();
+                    scheduleAutoSave(true);
+                });
+                row.appendChild(statusBadge);
+
+                const keyInput = document.createElement("input");
+                keyInput.type = "text";
+                keyInput.className = "arg-key-input";
+                keyInput.value = argItem.key;
+                keyInput.addEventListener("change", (e) => {
+                    const newKey = e.target.value.trim();
+                    if (isKeyDisallowed(newKey)) {
+                        alert("Host (127.0.0.1), Port (9081), and Log Verbosity (4) are locked by system policy and cannot be altered.");
+                        keyInput.value = argItem.key;
+                        return;
+                    }
+                    argItem.key = newKey;
+                    renderModelArgs(model);
+                    renderGlobalArgs();
+                    scheduleAutoSave(true);
+                });
+                row.appendChild(keyInput);
+
+                const valInput = document.createElement("input");
+                valInput.type = "text";
+                valInput.className = "arg-val-input";
+                valInput.value = argItem.value;
+                valInput.addEventListener("input", (e) => {
+                    argItem.value = e.target.value;
+                    scheduleAutoSave(false);
+                });
+                valInput.addEventListener("change", () => {
+                    scheduleAutoSave(true);
+                });
+                row.appendChild(valInput);
+
+                const delBtn = document.createElement("button");
+                delBtn.className = "btn-icon-minus";
+                delBtn.textContent = "-";
+                delBtn.title = "Remove argument";
+                delBtn.addEventListener("click", () => {
+                    model.args.splice(index, 1);
+                    renderModelArgs(model);
+                    renderGlobalArgs();
+                    scheduleAutoSave(true);
+                });
+                row.appendChild(delBtn);
+
+                container.appendChild(row);
+            });
+        }
+
+        function addNewGlobalArg() {
+            configState.globalArgs.push({ key: "", value: "", enabled: true });
+            renderGlobalArgs();
+            scheduleAutoSave(true);
+        }
+
+        function addNewModelArg() {
+            if (!selectedModelId) return;
+            const model = configState.models.find(m => m.id === selectedModelId);
+            if (!model) return;
+            if (!Array.isArray(model.args)) model.args = [];
+
+            model.args.push({ key: "", value: "", enabled: true });
+            renderModelArgs(model);
+            renderGlobalArgs();
+            scheduleAutoSave(true);
+        }
+
+        // Native OS File Dialog Action for Add Model
+        async function handleAddModel() {
+            const overlay = document.getElementById("browserLockOverlay");
+            overlay.classList.remove("hidden");
+
+            try {
+                const res = await fetch("/api/llamacpp/browse-gguf", { method: "POST" });
+                const data = await res.json();
+
+                if (!data.ok) {
+                    alert(data.error || "File selection failed");
+                    return;
+                }
+
+                if (data.cancelled || !data.filePath) {
+                    return;
+                }
+
+                const newModelId = "model_" + Date.now();
+                const newModel = {
+                    id: newModelId,
+                    alias: data.defaultAlias || "",
+                    modelPath: data.filePath,
+                    executablePath: "",
+                    args: []
+                };
+
+                configState.models.push(newModel);
+                selectedModelId = newModelId;
+                configState.lastUsedModelId = newModelId;
+
+                renderFullUI();
+                scheduleAutoSave(true);
+
+            } catch (err) {
+                console.error("Browse error:", err);
+                alert("Error opening OS file dialog");
+            } finally {
+                overlay.classList.add("hidden");
+            }
+        }
+
+        // Native OS File Dialog Action for Llama Executable
+        async function handleBrowseExe() {
+            const overlay = document.getElementById("browserLockOverlay");
+            overlay.classList.remove("hidden");
+
+            try {
+                const res = await fetch("/api/llamacpp/browse-executable", { method: "POST" });
+                const data = await res.json();
+
+                if (data.ok && !data.cancelled && data.filePath) {
+                    document.getElementById("globalExePath").value = data.filePath;
+                    configState.executablePath = data.filePath;
+                    updateExePathHint();
+                    scheduleAutoSave(true);
+                }
+            } catch (err) {
+                console.error("Browse executable error:", err);
+                alert("Error opening executable file dialog");
+            } finally {
+                overlay.classList.add("hidden");
+            }
+        }
+
+        // Setup Sampling Param Listeners
+        Object.entries(SAMPLING_PARAM_KEYS).forEach(([elemId, flagKey]) => {
+            const input = document.getElementById(elemId);
+            if (input) {
+                input.addEventListener("input", (e) => {
+                    if (!selectedModelId) return;
+                    const model = configState.models.find(m => m.id === selectedModelId);
+                    if (!model) return;
+                    if (!Array.isArray(model.args)) model.args = [];
+
+                    const val = e.target.value.trim();
+                    const existingIdx = model.args.findIndex(a => a.key === flagKey);
+
+                    if (val !== "") {
+                        if (existingIdx >= 0) {
+                            model.args[existingIdx].value = val;
+                            model.args[existingIdx].enabled = true;
+                        } else {
+                            model.args.push({ key: flagKey, value: val, enabled: true });
+                        }
+                    } else {
+                        if (existingIdx >= 0) {
+                            model.args.splice(existingIdx, 1);
+                        }
+                    }
+                    renderGlobalArgs();
+                    scheduleAutoSave(false);
+                });
+                input.addEventListener("change", () => {
+                    scheduleAutoSave(true);
+                });
+            }
+        });
+
+        // Event Listeners
+        document.getElementById("saveConfigBtn").addEventListener("click", () => {
+            scheduleAutoSave(true);
+        });
+
+        document.getElementById("globalExePath").addEventListener("input", (e) => {
+            configState.executablePath = e.target.value.trim();
+            updateExePathHint();
+            scheduleAutoSave(false);
+        });
+        document.getElementById("globalExePath").addEventListener("change", () => {
+            scheduleAutoSave(true);
+        });
+
+        document.getElementById("addGlobalArgPlusBtn").addEventListener("click", addNewGlobalArg);
+        document.getElementById("addModelArgPlusBtn").addEventListener("click", addNewModelArg);
+
+        document.getElementById("browseExeBtn").addEventListener("click", handleBrowseExe);
+        document.getElementById("addModelBtn").addEventListener("click", handleAddModel);
+
+        document.getElementById("selectedModelDropdown").addEventListener("change", (e) => {
+            syncFormState();
+            selectedModelId = e.target.value;
+            configState.lastUsedModelId = selectedModelId;
+            renderFullUI();
+            scheduleAutoSave(true);
+        });
+
+        document.getElementById("modelAliasInput").addEventListener("input", (e) => {
+            if (selectedModelId) {
+                const model = configState.models.find(m => m.id === selectedModelId);
+                if (model) {
+                    model.alias = e.target.value;
+                    const opt = document.querySelector(`#selectedModelDropdown option[value="${selectedModelId}"]`);
+                    if (opt) {
+                        opt.textContent = model.alias || "model";
+                    }
+                    scheduleAutoSave(false);
+                }
+            }
+        });
+        document.getElementById("modelAliasInput").addEventListener("change", () => {
+            scheduleAutoSave(true);
+        });
+
+        document.getElementById("deleteModelBtn").addEventListener("click", () => {
+            if (!selectedModelId) return;
+            const model = configState.models.find(m => m.id === selectedModelId);
+            const alias = model ? (model.alias || "this model") : "this model";
+            if (confirm(`Delete configuration for '${alias}'?`)) {
+                configState.models = configState.models.filter(m => m.id !== selectedModelId);
+                if (configState.lastUsedModelId === selectedModelId) {
+                    configState.lastUsedModelId = configState.models.length > 0 ? configState.models[0].id : "";
+                }
+                selectedModelId = configState.lastUsedModelId || (configState.models.length > 0 ? configState.models[0].id : null);
+                renderFullUI();
+                scheduleAutoSave(true);
+            }
+        });
+
+        // Initialize
+        fetchConfig();
+    </script>
+</body>
+</html>
+

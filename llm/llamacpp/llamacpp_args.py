@@ -1,521 +1,330 @@
-from enum import Enum
-
 import os
+import time
+from typing import Optional, Tuple, List, Dict, Any
 from dotenv import load_dotenv
 load_dotenv()
 
 LLAMACPP_PORT = 9081
-LLAMACPP_SUMMARY_PORT = 9082
 LLAMACPP_EXECUTABLE = "llama-server.exe"
 
-THINKING_BUDGET_MESSAGE = "... my thinking allowance has been exhausted. I shall now produce my final response.\n"
+CONFIG_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "llamacpp_config.json")
 
-MODELS_FOLDER = os.getenv("BASE_LLM_DIRECTORY") or "I:\\LLM\\"
-
-
-class LlamaCppModel(Enum):
-    GEMMA_4_26B_A4B = "Gemma-4-26B-E4B"
-    GEMMA_4_12B = "Gemma-4-12B"
-    GEMMA_4_E4B = "Gemma-4-E4B"
-    GEMMA_4_E2B = "Gemma-4-E2B"
-    GEMMA_4_E2B_CPU = "Gemma-4-E2B-CPU"
-    
-    QWEN_38_27B = "Qwen-3.8-27B"
-    QWEN_36_35B_A3B = "Qwen-3.6-35B-A3B"
-
-    QWEN_35_9B = "Qwen-3.5-9B"
-    QWEN_35_2B = "Qwen-3.5-2B"
-    QWEN_35_800M = "Qwen-3.5-0.8B"
-    
-    QWEN_3_1700M = "Qwen-3-1.7B"
-    QWEN_3_600M = "Qwen-3-0.6B"
-    GPT_OSS_20B = "GPT-OSS-20B"
-
-    TERNARY_BONSAI_27B = "Ternary-Bonsai-27B"
-    LING_3_TINY = "Ling-3-Tiny"
-    LFM_25_350M = "LFM-2.5-350M"
-
-    FORCE_FAILURE_TEST = "FORCE_FAILURE_TEST"
-
-    SUMMARY_MODEL = "Summary-Model"
-
-
-EMPTY_ARG = _ = ""
-EXECUTABLE_ARG_OVERRIDE = "EXECUTABLE_ARG_OVERRIDE"
-
-LLAMACPP_MODEL_TO_ARGS = {
-    LlamaCppModel.GEMMA_4_26B_A4B: {
-        "-m":               f"{MODELS_FOLDER}Gemma4\\gemma-4-26B-A4B-it-qat-UD-Q4_K_XL.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.5",
-        "--top-p":          "0.95",
-        "--top-k":          "64",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--load-mode":      "dio",
-        "--metrics":        _,
-        "-b":               "2048",
-        "-ub":              "512",
-        "--jinja":          _,
-        "-np":              "2",
-        "--cache-ram":      "4096",
-        "--ctx-size":       "131072",    # 65k context per slot (np=2) should be enough for almost every use case
-        "--fit":            "on",
-        "--fit-target":     "2400",
-        "--reasoning":      "on",
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-
-    LlamaCppModel.GEMMA_4_12B: {
-        "-m":               f"{MODELS_FOLDER}Gemma4\\gemma-4-12B-it-qat-UD-Q4_K_XL.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.5",
-        "--top-p":          "0.95",
-        "--top-k":          "64",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--load-mode":      "dio",
-        "--metrics":        _,
-        "-b":               "2048",
-        "-ub":              "512",
-        "--jinja":          _,
-        "-np":              "2",
-        "--cache-ram":      "4096",
-        "--ctx-size":       "131072",
-        "-ngl":             "99",
-        "--spec-type":                  "draft-mtp",
-        "--model-draft":                f"{MODELS_FOLDER}Gemma4\\mtp\\gemma-4-12B-it-Q8_0-MTP.gguf",
-        "--spec-draft-n-max":           "2",
-        "--spec-draft-ngl":             "99",
-        "--reasoning":      "on",
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-
-    LlamaCppModel.GEMMA_4_E4B: {
-        "-m":               f"{MODELS_FOLDER}Gemma4\\gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.5",
-        "--top-p":          "0.95",
-        "--top-k":          "64",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--load-mode":      "dio",
-        "--metrics":        _,
-        "-b":               "4096",
-        "-ub":              "1024",
-        "--jinja":          _,
-        "-np":              "2",
-        "--cache-ram":      "4096",
-        "--ctx-size":       "131072",
-        "-ngl":             "99",
-        "--spec-type":                  "draft-mtp",
-        "--model-draft":                f"{MODELS_FOLDER}Gemma4\\mtp\\gemma-4-E4B-it-Q8_0-MTP.gguf",
-        "--spec-draft-n-max":           "2",
-        "--spec-draft-ngl":             "99",
-        "--reasoning":      "on",
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-
-    LlamaCppModel.GEMMA_4_E2B: {
-        "-m":               f"{MODELS_FOLDER}Gemma4\\gemma-4-E2B-it-qat-UD-Q4_K_XL.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.5",
-        "--top-p":          "0.95",
-        "--top-k":          "64",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--load-mode":      "dio",
-        "--metrics":        _,
-        "-b":               "8192",
-        "-ub":              "1024",
-        "--jinja":          _,
-        "-np":              "2",
-        "--cache-ram":      "4096",
-        "--ctx-size":       "131072",
-        "-ngl":             "99",
-        "--spec-type":                  "draft-mtp",
-        "--model-draft":                f"{MODELS_FOLDER}Gemma4\\mtp\\gemma-4-E2B-it-Q8_0-MTP.gguf",
-        "--spec-draft-n-max":           "2",
-        "--spec-draft-ngl":             "99",
-        "--reasoning":      "on",
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-
-    LlamaCppModel.GEMMA_4_E2B_CPU: {
-        "-m":               f"{MODELS_FOLDER}Gemma4\\gemma-4-E2B-it-qat-UD-Q2_K_XL.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.5",
-        "--top-p":          "0.95",
-        "--top-k":          "64",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--load-mode":      "dio",
-        "--metrics":        _,
-        "--jinja":          _,
-        "-np":              "2",
-        "--cache-ram":      "1024",
-        "--ctx-size":       "131072",
-        "-ngl":             "0",
-        "--context-shift":  _,
-        # "--spec-type":                  "draft-mtp",
-        # "--model-draft":                f"{MODELS_FOLDER}Gemma4\\mtp\\gemma-4-E2B-it-Q8_0-MTP.gguf",
-        # "--spec-draft-n-max":           "2",
-        # "--spec-draft-ngl":             "0",
-        "--reasoning":      "on",
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-
-    LlamaCppModel.QWEN_38_27B: {
-        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3.8-27B-UD-IQ3_XXS.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.5",
-        "--top-p":          "0.95",
-        "--top-k":          "20",
-        "--min-p":          "0.0",
-        "--presence-penalty": "0.0",
-        "--repeat-penalty":   "1.0",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--load-mode":      "dio",
-        "--metrics":        _,
-        "-b":               "2048",
-        "-ub":              "512",
-        "--jinja":          _,
-        "-np":              "1",
-        "--cache-ram":      "4096",
-        "--ctx-size":       "65536",        # We cant fit 128k in with a 27b model!
-        "-ngl":             "99",
-        "--spec-type":                  "draft-mtp",
-        "--spec-draft-n-max":           "2",
-        "--spec-draft-ngl":             "99",
-        "--cache-type-k-draft":   "q8_0",
-        "--cache-type-v-draft":   "q8_0",  
-        # "--reasoning":      "on",
-        "--reasoning-preserve":   _,
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE,
-        "--chat-template-kwargs":       '{"reasoning_effort":"medium"}',
-    },
-
-    LlamaCppModel.QWEN_36_35B_A3B: {
-        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.5",
-        "--top-p":          "0.95",
-        "--top-k":          "20",
-        "--min-p":          "0.0",
-        "--presence-penalty": "0.0",
-        "--repeat-penalty":   "1.0",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--load-mode":      "dio",
-        "--metrics":        _,
-        "-b":               "2048",
-        "-ub":              "512",
-        "--jinja":          _,
-        "-np":              "2",
-        "--cache-ram":      "4096",
-        "--ctx-size":       "131072",
-        "--fit":            "on",
-        "--fit-target":     "2400",
-        "--reasoning":      "on",
-        "--reasoning-preserve":   _,
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-
-    LlamaCppModel.GPT_OSS_20B: {
-        "-m":               f"{MODELS_FOLDER}Others\\gpt-oss-20b-Q6_K.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.65",
-        "--top-p":          "1.0",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--load-mode":      "dio",
-        "--metrics":        _,
-        "-b":               "2048",
-        "-ub":              "512",
-        "--jinja":          _,
-        "-np":              "2",
-        "--cache-ram":      "4096",
-        "--ctx-size":       "131072",
-        "--reasoning":      "on",
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-
-    LlamaCppModel.QWEN_35_9B: {
-        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3.5-9B-MTP-Q8_0.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.6",
-        "--top-p":          "0.95",
-        "--top-k":          "20",
-        "--min-p":          "0.0",
-        "--presence-penalty": "1.5",
-        "--repeat-penalty":   "1.0",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--load-mode":      "dio",
-        "--metrics":        _,
-        "-b":               "2048",
-        "-ub":              "512",
-        "--jinja":          _,
-        "-np":              "2",
-        "--cache-ram":      "4096",
-        "--ctx-size":       "131072",
-        "--reasoning-preserve":         _,
-        "--spec-type":                  "draft-mtp",
-        "--spec-draft-n-max":           "2",
-        "--spec-draft-ngl":             "99",
-        "--reasoning":      "on",
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-
-    LlamaCppModel.QWEN_35_2B: {
-        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3.5-2B-MTP-UD-Q8_K_XL.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.6",
-        "--top-p":          "1.0",
-        "--top-k":          "20",
-        "--min-p":          "0.0",
-        "--presence-penalty": "2.0",
-        "--repeat-penalty":   "1.0",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--load-mode":      "dio",
-        "--metrics":        _,
-        "-b":               "4096",
-        "-ub":              "1024",
-        "--jinja":          _,
-        "-np":              "2",
-        "--cache-ram":      "4096",
-        "--ctx-size":       "131072",
-        "--reasoning-preserve":         _,
-        "--spec-type":                  "draft-mtp",
-        "--spec-draft-n-max":           "2",
-        "--spec-draft-ngl":             "99",
-        "--reasoning":      "on",
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-
-    LlamaCppModel.QWEN_35_800M: {
-        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3.5-0.8B-MTP-Q8_0.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.6",
-        "--top-p":          "1.0",
-        "--top-k":          "20",
-        "--min-p":          "0.0",
-        "--presence-penalty": "2.0",
-        "--repeat-penalty":   "1.0",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--load-mode":      "dio",
-        "--metrics":        _,
-        "-b":               "8192",
-        "-ub":              "2048",
-        "--jinja":          _,
-        "-np":              "2",
-        "--cache-ram":      "4096",
-        "--ctx-size":       "131072",
-        "--reasoning-preserve":         _,
-        "--spec-type":                  "draft-mtp",
-        "--spec-draft-n-max":           "2",
-        "--spec-draft-ngl":             "99",
-        "--reasoning":      "on",
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-
-    LlamaCppModel.QWEN_3_1700M: {
-        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3-1.7B-Q4_K_M.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.6",
-        "--top-p":          "0.95",
-        "--top-k":          "20",
-        "--min-p":          "0.0",
-        "--presence-penalty": "1.6",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--load-mode":      "dio",
-        "--metrics":        _,
-        # "-b":               "8192",
-        # "-ub":              "2048",
-        "--jinja":          _,
-        "-np":              "2",
-        "--cache-ram":      "4096",
-        "--ctx-size":       "65536",    # Qwen 3 has max context of 32k per slot
-        "--reasoning":      "on",
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-
-    LlamaCppModel.QWEN_3_600M: {
-        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3-0.6B-UD-Q4_K_XL.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.15",
-        "--top-p":          "0.8",
-        "--top-k":          "20",
-        "--repeat-penalty": "1.1",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--load-mode":      "dio",
-        "--metrics":        _,
-        # "-b":               "8192",
-        # "-ub":              "2048",
-        "--jinja":          _,
-        "-np":              "2",
-        "--cache-ram":      "4096",
-        "--ctx-size":       "65536",    # Qwen 3 has max context of 32k per slot
-        "--reasoning":      "on",
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-
-    LlamaCppModel.TERNARY_BONSAI_27B: {
-        EXECUTABLE_ARG_OVERRIDE: f"I:\\llamacpp-other\\bonsai-ternary-27b\\llama-server.exe",
-        "-m":               f"{MODELS_FOLDER}Bonsai\\Ternary-Bonsai-27B-Q2_0.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.5",
-        "--top-p":          "0.95",
-        "--top-k":          "20",
-        "--min-p":          "0.0",
-        "--presence-penalty": "0.0",
-        "--repeat-penalty":   "1.0",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--mlock":          _,
-        "--metrics":        _,
-        "-b":               "2048",
-        "-ub":              "512",
-        "--jinja":          _,
-        "-np":              "2",
-        "--cache-ram":      "4096",
-        "--ctx-size":       "131072",
-        "-ngl":             "99",
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-
-    LlamaCppModel.LING_3_TINY: {
-        EXECUTABLE_ARG_OVERRIDE: f"I:\\llamacpp-other\\ling-3.0-tiny\\llama-server.exe",
-        "-m":               f"{MODELS_FOLDER}Others\\Ling-3.0-tiny-Q6_K.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.5",
-        "--top-p":          "0.95",
-        "--top-k":          "20",
-        "--min-p":          "0.0",
-        "--presence-penalty": "0.0",
-        "--repeat-penalty":   "1.1",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--mlock":          _,
-        "--metrics":        _,
-        "-b":               "4096",
-        "-ub":              "1024",
-        "--jinja":          _,
-        "-np":              "2",
-        "--cache-ram":      "4096",
-        "--ctx-size":       "131072",
-        "-ngl":             "99",
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-
-    LlamaCppModel.LFM_25_350M: {
-        "-m":               f"{MODELS_FOLDER}Others\\LFM2.5-350M-Q5_K_M.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.1",
-        # "--top-p":          "0.95",
-        "--top-k":          "50",
-        "--min-p":          "0.0",
-        # "--presence-penalty": "0.0",
-        "--repeat-penalty":   "1.05",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--mlock":          _,
-        "--metrics":        _,
-        "-b":               "8192",
-        "-ub":              "2048",
-        "--jinja":          _,
-        "-np":              "2",
-        "--cache-ram":      "4096",
-        "--ctx-size":       "131072",
-        "-ngl":             "99",
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-
-    #==============================================================
-
-    LlamaCppModel.FORCE_FAILURE_TEST: {
-        "-m":               f"{MODELS_FOLDER}Qwen\\MODEL_THAT_DOESNT_EXIST.gguf",
-        "--port":           str(LLAMACPP_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.15",
-        "--top-p":          "0.8",
-        "--top-k":          "20",
-        "--repeat-penalty": "1.1",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "--load-mode":      "dio",
-        "--metrics":        _,
-        # "-b":               "8192",
-        # "-ub":              "2048",
-        "--jinja":          _,
-        "-np":              "2",
-        "--cache-ram":      "4096",
-        "--ctx-size":       "65536",    # Qwen 3 has max context of 32k per slot
-        "--reasoning":      "on",
-        "--reasoning-budget-message":   THINKING_BUDGET_MESSAGE
-    },
-
-
-    #==============================================================
-
-    LlamaCppModel.SUMMARY_MODEL: {
-        "-m":               f"{MODELS_FOLDER}Qwen\\Qwen3-0.6B-UD-Q4_K_XL.gguf",
-        "--port":           str(LLAMACPP_SUMMARY_PORT),
-        "--host":           "127.0.0.1",
-        "--temp":           "0.15",
-        "--top-p":          "0.8",
-        "--top-k":          "20",
-        "--repeat-penalty": "1.1",
-        "--flash-attn":     "on",
-        "--cache-type-k":   "q8_0",
-        "--cache-type-v":   "q8_0",
-        "-b":               "8192",
-        "-ub":              "2048",
-        "--load-mode":      "mlock",
-        "--jinja":          _,
-        "-np":              "5",
-        "--cache-ram":      "512",
-        "--ctx-size":       "30600",    # Each slot gets 6120 tokens to work with... if this is not enough,
-        "-ngl":             "99",       # the model will split the large text into smaller chunks and summarise them in multiple iterations 
-        "--reasoning":      "on",
-        "--reasoning-budget-message":   "OK, I am out of thinking budget. Time to produce the summary."
-    }
+LOCKED_ARGS = {
+    "--host": "127.0.0.1",
+    "--port": "9081",
+    "--log-verbosity": "4"
 }
+
+DISALLOWED_USER_KEYS = {"--host", "-h", "--port", "-p", "--log-verbosity", "-lv"}
+
+SAMPLING_FLAGS = {
+    "--temp",
+    "--top-p",
+    "--top-k",
+    "--min-p",
+    "--presence-penalty",
+    "--repeat-penalty",
+    "--frequency-penalty"
+}
+
+
+def isDisallowedKey(keyStr: str) -> bool:
+    if not keyStr:
+        return False
+    return keyStr.strip().lower() in DISALLOWED_USER_KEYS
+
+
+def cleanUserArgs(rawArgs: Any) -> List[Dict[str, Any]]:
+    cleaned = []
+    if isinstance(rawArgs, list):
+        for item in rawArgs:
+            if isinstance(item, dict):
+                k = str(item.get("key", "")).strip()
+                if not k or isDisallowedKey(k):
+                    continue
+                v = str(item.get("value", ""))
+                enabled = bool(item.get("enabled", True))
+                cleaned.append({"key": k, "value": v, "enabled": enabled})
+    elif isinstance(rawArgs, dict):
+        for k, v in rawArgs.items():
+            kClean = str(k).strip()
+            if not kClean or isDisallowedKey(kClean):
+                continue
+            cleaned.append({"key": kClean, "value": str(v), "enabled": True})
+    return cleaned
+
+
+def getDefaultConfig() -> Dict[str, Any]:
+    return {
+        "executablePath": "llama-server.exe",
+        "lastUsedModelId": "",
+        "globalArgs": [],
+        "models": []
+    }
+
+
+def loadConfig() -> Dict[str, Any]:
+    import json
+    if not os.path.exists(CONFIG_FILE_PATH):
+        defaultCfg = getDefaultConfig()
+        saveConfig(defaultCfg)
+        return defaultCfg
+    try:
+        with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+            cfg["lastUsedModelId"] = str(cfg.get("lastUsedModelId", "")).strip()
+            cfg["globalArgs"] = cleanUserArgs(cfg.get("globalArgs", []))
+            if "models" in cfg and isinstance(cfg["models"], list):
+                for m in cfg["models"]:
+                    if isinstance(m, dict):
+                        m["args"] = cleanUserArgs(m.get("args", []))
+            return cfg
+    except Exception:
+        return getDefaultConfig()
+
+
+def saveConfig(configData: Dict[str, Any]) -> bool:
+    import json
+    try:
+        cleanedData = {
+            "executablePath": configData.get("executablePath", "llama-server.exe").strip() or "llama-server.exe",
+            "lastUsedModelId": str(configData.get("lastUsedModelId", "")).strip(),
+            "globalArgs": cleanUserArgs(configData.get("globalArgs", [])),
+            "models": []
+        }
+        for m in configData.get("models", []):
+            if isinstance(m, dict):
+                cleanedData["models"].append({
+                    "id": m.get("id", f"model_{int(time.time()*1000)}"),
+                    "alias": m.get("alias", "").strip(),
+                    "modelPath": m.get("modelPath", "").strip(),
+                    "executablePath": m.get("executablePath", "").strip(),
+                    "args": cleanUserArgs(m.get("args", []))
+                })
+        with open(CONFIG_FILE_PATH, "w", encoding="utf-8") as f:
+            json.dump(cleanedData, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"Error saving Llama.cpp config: {e}")
+        return False
+
+
+def findModelConfig(modelIdentifier: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Finds a model config from llamacpp_config.json by ID, alias, filename, or fallback.
+    Returns (modelConfig, None) if found, or (None, errorMessage) if not found.
+    """
+    if not modelIdentifier:
+        return None, "No model identifier provided."
+    
+    cfg = loadConfig()
+    models = cfg.get("models", [])
+    if not models:
+        return None, "No models configured in Llama.cpp setup. Please configure a GGUF model first."
+    
+    cleanIdent = str(modelIdentifier).strip()
+    
+    # 1. Match by exact ID
+    for m in models:
+        if m.get("id") == cleanIdent:
+            return m, None
+            
+    # 2. Match by exact alias (case-insensitive)
+    for m in models:
+        if m.get("alias", "").strip().lower() == cleanIdent.lower():
+            return m, None
+            
+    # 3. Match by filename (with or without .gguf)
+    for m in models:
+        mPath = m.get("modelPath", "")
+        fName = os.path.basename(mPath)
+        fNameWithoutExt = fName[:-5] if fName.lower().endswith(".gguf") else fName
+        if fName.lower() == cleanIdent.lower() or fNameWithoutExt.lower() == cleanIdent.lower():
+            return m, None
+
+    # 4. Fallback: If only 1 model configured, use it
+    if len(models) == 1:
+        return models[0], None
+        
+    return None, f"Model '{cleanIdent}' was not found in Llama.cpp configuration."
+
+
+def buildLlamaCppCommandLine(modelIdentifier: str, allowParallel: bool = True, argOverrides: Optional[dict] = None) -> Tuple[str, List[str], Dict[str, Any]]:
+    """
+    Constructs the exact executable path and argument list to launch llama-server.exe.
+    Enforces locked parameters (--host 127.0.0.1, --port 9081, -lv 4), merges global and per-model
+    arguments, omits empty sampling parameters, and sets model/parallel options.
+    Returns (executablePath, commandArgs, modelConfig).
+    """
+    modelConfig, error = findModelConfig(modelIdentifier)
+    if error:
+        raise ValueError(error)
+        
+    modelPath = modelConfig.get("modelPath", "").strip()
+    if not modelPath:
+        raise ValueError(f"Model '{modelConfig.get('alias', modelIdentifier)}' has no GGUF file path configured.")
+    if not os.path.exists(modelPath):
+        raise FileNotFoundError(f"GGUF model file not found at '{modelPath}'.")
+        
+    cfg = loadConfig()
+    
+    # Resolve executable: model override > global executable > llama-server.exe
+    executablePath = modelConfig.get("executablePath", "").strip() or cfg.get("executablePath", "").strip() or LLAMACPP_EXECUTABLE
+    
+    # Prepare argument lists
+    globalArgsList = cleanUserArgs(cfg.get("globalArgs", []))
+    modelArgsList = cleanUserArgs(modelConfig.get("args", []))
+    
+    # Active per-model keys (that are enabled)
+    activeModelKeys = {a["key"].strip().lower() for a in modelArgsList if a.get("enabled", True)}
+    
+    commandArgs = [executablePath]
+    
+    # 1. Enforce forced/locked flags
+    commandArgs.extend(["--host", "127.0.0.1"])
+    commandArgs.extend(["--port", str(LLAMACPP_PORT)])
+    commandArgs.extend(["-lv", "4"])
+    
+    # 2. Add -m <modelPath>
+    commandArgs.extend(["-m", modelPath])
+    
+    # 3. Add enabled global arguments (unless overridden by active model arg)
+    for gArg in globalArgsList:
+        if not gArg.get("enabled", True):
+            continue
+        k = gArg.get("key", "").strip()
+        v = str(gArg.get("value", "")).strip()
+        if not k or isDisallowedKey(k):
+            continue
+        if k.lower() in activeModelKeys:
+            # Overridden by model
+            continue
+        # Check if empty sampling param
+        if k.lower() in SAMPLING_FLAGS and v == "":
+            continue
+        commandArgs.append(k)
+        if v != "":
+            commandArgs.append(v)
+            
+    # 4. Add enabled per-model arguments
+    for mArg in modelArgsList:
+        if not mArg.get("enabled", True):
+            continue
+        k = mArg.get("key", "").strip()
+        v = str(mArg.get("value", "")).strip()
+        if not k or isDisallowedKey(k):
+            continue
+        # Check if empty sampling param
+        if k.lower() in SAMPLING_FLAGS and v == "":
+            continue
+        commandArgs.append(k)
+        if v != "":
+            commandArgs.append(v)
+            
+    # 5. Apply any programmatic argOverrides
+    if argOverrides and isinstance(argOverrides, dict):
+        for k, v in argOverrides.items():
+            if isDisallowedKey(str(k)):
+                continue
+            commandArgs.append(str(k))
+            if str(v) != "":
+                commandArgs.append(str(v))
+                
+    # 6. If allowParallel is False, ensure -np 1
+    if not allowParallel:
+        hasParallelArg = any(arg in ("-np", "--parallel") for arg in commandArgs)
+        if not hasParallelArg:
+            commandArgs.extend(["-np", "1"])
+            
+    return executablePath, commandArgs, modelConfig
+
+
+def validateGgufPath(filePath: str) -> Tuple[bool, Any]:
+    if not filePath:
+        return False, "File path is required."
+    cleanPath = filePath.strip().strip('"').strip("'")
+    if not os.path.exists(cleanPath):
+        return False, f"File not found: {cleanPath}"
+    if not os.path.isfile(cleanPath):
+        return False, f"Path is not a regular file: {cleanPath}"
+    if not cleanPath.lower().endswith(".gguf"):
+        return False, "File does not have a .gguf extension."
+    try:
+        with open(cleanPath, "rb") as f:
+            header = f.read(4)
+            if header != b"GGUF":
+                return False, f"Invalid GGUF header magic. Expected 'GGUF', got '{header}'."
+    except Exception as e:
+        return False, f"Error reading file header: {str(e)}"
+    
+    fileSize = os.path.getsize(cleanPath)
+    fileName = os.path.basename(cleanPath)
+    return True, {"fileName": fileName, "filePath": cleanPath, "fileSizeBytes": fileSize}
+
+
+def getLlamaCppModelsList() -> List[Dict[str, Any]]:
+    cfg = loadConfig()
+    lastUsedId = cfg.get("lastUsedModelId", "").strip()
+    modelsList = []
+    for modelItem in cfg.get("models", []):
+        alias = modelItem.get("alias", "").strip()
+        modelPath = modelItem.get("modelPath", "").strip()
+        fileName = os.path.basename(modelPath) if modelPath else "unknown.gguf"
+        displayName = alias if alias else fileName
+        modelsList.append({
+            "id": modelItem.get("id", ""),
+            "alias": alias,
+            "displayName": displayName,
+            "fileName": fileName,
+            "modelPath": modelPath,
+            "args": modelItem.get("args", []),
+            "executablePath": modelItem.get("executablePath", "")
+        })
+
+    # Sort models alphabetically by display name / alias (case-insensitive)
+    modelsList.sort(key=lambda m: (m["displayName"] or m["alias"] or m["fileName"]).lower())
+
+    # Hoist last used model to index 0 if specified
+    if lastUsedId:
+        matchingIdx = next((i for i, m in enumerate(modelsList) if m["id"] == lastUsedId or m["alias"].lower() == lastUsedId.lower()), None)
+        if matchingIdx is not None and matchingIdx > 0:
+            lastUsedModel = modelsList.pop(matchingIdx)
+            modelsList.insert(0, lastUsedModel)
+
+    return modelsList
+
+
+def openNativeGgufFileDialog() -> str:
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        selectedPath = filedialog.askopenfilename(
+            title="Select GGUF Model File",
+            filetypes=[("GGUF Models", "*.gguf")]
+        )
+        root.destroy()
+        return selectedPath or ""
+    except Exception as e:
+        print(f"Error opening native GGUF file dialog: {e}")
+        return ""
+
+
+def openNativeExecutableFileDialog() -> str:
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        selectedPath = filedialog.askopenfilename(
+            title="Select Llama Server Executable",
+            filetypes=[("Executable Files", "*.exe"), ("All Files", "*.*")]
+        )
+        root.destroy()
+        return selectedPath or ""
+    except Exception as e:
+        print(f"Error opening native executable file dialog: {e}")
+        return ""

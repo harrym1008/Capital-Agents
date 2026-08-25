@@ -6,7 +6,9 @@
     <title>CapitalAgents - Single Ticker Rating</title>
 
     <link rel="icon" type="image/png" href="/static/favicon.png">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- <link rel="stylesheet" href="/static/css/ticker_rate.css"> -->
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1/dist/chartjs-adapter-luxon.umd.min.js"></script>
@@ -350,7 +352,7 @@
                 const res = await fetch('/api/server/status');
                 if (res.ok) {
                     const data = await res.json();
-                    const isRunning = data.running || data.llamacppRunning || data.summaryServerRunning || data.openrouterRunning || data.openaiCompatibleRunning;
+                    const isRunning = data.running || data.llamacppRunning || data.openrouterRunning || data.openaiCompatibleRunning;
                     const provider = data.provider || (data.openrouterRunning ? "openrouter" : (data.openaiCompatibleRunning ? "openaicompatible" : (data.llamacppRunning ? "llamacpp" : "")));
                     currentServerProvider = (provider || "").toLowerCase();
                     updateServerStatus(isRunning, provider);

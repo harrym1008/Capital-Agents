@@ -45,23 +45,27 @@ registerSimulationWsRoutes()
 
 @app.route("/")
 def landingPage():
-    return render_template("landing.html")
+    return render_template("landing_page.html")
 
 @app.route("/server-config")
 def serverSetupPage():
-    return render_template("server.html")
+    return render_template("server_config.html")
+
+@app.route("/llamacpp-setup")
+def llamacppSetupPage():
+    return render_template("llamacpp_setup.html")
+
+@app.route("/market-sim")
+def marketSimPage():
+    return render_template("market_sim.html")
 
 @app.route("/single-equity-rating")
-def indexPage():
+def singleEquityRatingPage():
     if serverManager.loadedModelType == LoadedModelType.NONE:
         return redirect("/")
 
-    serverManager.getToolRegistry()           # Ensure the tool registry is initialized
-    return render_template("tickerrate.html")
-
-@app.route("/marketsim")
-def marketSimPage():
-    return render_template("marketsim.html")
+    # serverManager.getToolRegistry()       
+    return render_template("ticker_rate.html")
 
 
 # Track connected websockets and the asyncio event loop

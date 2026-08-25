@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 
 from cli.ansi import ANSI
-from llm.client_duo import ClientDuo
+from llm.llm_client import BaseLLMClient
 from llmtools.tool_registry import ToolRegistry, Tool
 from llm.agents.agent import FinancialAgent
 from llm.agents.agent_prompts import buildSpokespersonSysPrompt, buildSpecialistQnASysPrompt
@@ -24,7 +24,7 @@ class BoardroomEngine:
             toolRegistry: ToolRegistry
         ):
 
-        self.clientDuo: ClientDuo = None
+        self.llmClient: Optional[BaseLLMClient] = None
         self.allowParallel = False
 
         self.timestamp = timestamp
@@ -122,11 +122,17 @@ class BoardroomEngine:
             }
 
 
-    def assignClientDuo(self, clientDuo: ClientDuo):
-        self.clientDuo = clientDuo
+    def assignClient(self, llmClient: BaseLLMClient):
+        self.llmClient = llmClient
         for agent in self.agentsList:
-            agent.setClientDuo(clientDuo)
-        self.allowParallel = clientDuo.boardroomClient.allowParallel
+            agent.setClient(llmClient)
+        self.allowParallel = llmClient.allowParallel
+
+    def assignClientDuo(self, clientDuo):
+        if hasattr(clientDuo, 'boardroomClient'):
+            self.assignClient(clientDuo.boardroomClient)
+        else:
+            self.assignClient(clientDuo)
 
 
     def _runAgentsConcurrently(self, *tasks):
@@ -646,14 +652,12 @@ class BoardroomEngine:
         
 
     def executeSingleEquityRating(self, config: SingleEquityRatingConfig):
-        if self.clientDuo is None:
-            raise ValueError("ClientDuo is not assigned. Please assign a ClientDuo before executing the boardroom.")
+        if self.llmClient is None:
+            raise ValueError("LLM client is not assigned. Please assign a client before executing the boardroom.")
 
         self.configureTransferToolSchema(config.boardroomPace)
 
-        self.clientDuo.boardroomClient.newTask()
-        if self.clientDuo.summaryClient is not self.clientDuo.boardroomClient:
-            self.clientDuo.summaryClient.newTask()
+        self.llmClient.newTask()
 
         if config.boardroomPace == BoardroomPace.ONE_SHOT:
             self.executeOneShotSingleEquityRating(config)
@@ -675,8 +679,8 @@ class BoardroomEngine:
         if not specialist:
             return {"error": f"Specialist agent '{agentRole}' not found."}
 
-        if self.clientDuo and not specialist.mainApiClient:
-            specialist.setClientDuo(self.clientDuo)
+        if self.llmClient and not specialist.llmClient:
+            specialist.setClient(self.llmClient)
 
         setCurrentStage("qa")
 

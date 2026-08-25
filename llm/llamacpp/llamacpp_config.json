@@ -1,0 +1,921 @@
+{
+  "executablePath": "llama-server.exe",
+  "lastUsedModelId": "model_1_gemma_4_26b_a4b",
+  "globalArgs": [
+    {
+      "key": "--flash-attn",
+      "value": "on",
+      "enabled": true
+    },
+    {
+      "key": "--cache-type-k",
+      "value": "q8_0",
+      "enabled": true
+    },
+    {
+      "key": "--cache-type-v",
+      "value": "q8_0",
+      "enabled": true
+    },
+    {
+      "key": "--jinja",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "--load-mode",
+      "value": "dio",
+      "enabled": true
+    },
+    {
+      "key": "--metrics",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "-np",
+      "value": "2",
+      "enabled": true
+    },
+    {
+      "key": "--cache-ram",
+      "value": "4096",
+      "enabled": true
+    },
+    {
+      "key": "--ctx-size",
+      "value": "131072",
+      "enabled": true
+    },
+    {
+      "key": "-b",
+      "value": "2048",
+      "enabled": true
+    },
+    {
+      "key": "-ub",
+      "value": "512",
+      "enabled": true
+    },
+    {
+      "key": "--reasoning",
+      "value": "on",
+      "enabled": true
+    },
+    {
+      "key": "--reasoning-budget-message",
+      "value": "... my thinking allowance has been exhausted. I shall now produce my final response.",
+      "enabled": true
+    }
+  ],
+  "models": [
+    {
+      "id": "model_1_gemma_4_26b_a4b",
+      "alias": "Gemma 4 26B-A4B",
+      "modelPath": "I:\\LLM\\Gemma4\\gemma-4-26B-A4B-it-qat-UD-Q4_K_XL.gguf",
+      "executablePath": "",
+      "args": [
+        {
+          "key": "--temp",
+          "value": "0.5",
+          "enabled": true
+        },
+        {
+          "key": "--top-p",
+          "value": "0.95",
+          "enabled": true
+        },
+        {
+          "key": "--top-k",
+          "value": "64",
+          "enabled": true
+        },
+        {
+          "key": "--spec-type",
+          "value": "draft-mtp",
+          "enabled": true
+        },
+        {
+          "key": "--spec-draft-n-max",
+          "value": "2",
+          "enabled": true
+        },
+        {
+          "key": "--spec-draft-ngl",
+          "value": "99",
+          "enabled": true
+        },
+        {
+          "key": "--model-draft",
+          "value": "I:\\LLM\\Gemma4\\mtp\\gemma-4-26B-A4B-it-Q8_0-MTP.gguf",
+          "enabled": true
+        },
+        {
+          "key": "--split-mode",
+          "value": "layer",
+          "enabled": true
+        },
+        {
+          "key": "--tensor-split",
+          "value": "10,8",
+          "enabled": true
+        },
+        {
+          "key": "--spec-draft-device",
+          "value": "CUDA1",
+          "enabled": true
+        },
+        {
+          "key": "-b",
+          "value": "4096",
+          "enabled": true
+        },
+        {
+          "key": "-ub",
+          "value": "1024",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "model_2_gemma_4_12b",
+      "alias": "Gemma 4 12B",
+      "modelPath": "I:\\LLM\\Gemma4\\gemma-4-12B-it-qat-UD-Q4_K_XL.gguf",
+      "executablePath": "",
+      "args": [
+        {
+          "key": "--temp",
+          "value": "0.5",
+          "enabled": true
+        },
+        {
+          "key": "--top-p",
+          "value": "0.95",
+          "enabled": true
+        },
+        {
+          "key": "--top-k",
+          "value": "64",
+          "enabled": true
+        },
+        {
+          "key": "--spec-type",
+          "value": "draft-mtp",
+          "enabled": true
+        },
+        {
+          "key": "--spec-draft-n-max",
+          "value": "2",
+          "enabled": true
+        },
+        {
+          "key": "--spec-draft-ngl",
+          "value": "99",
+          "enabled": true
+        },
+        {
+          "key": "--model-draft",
+          "value": "I:\\LLM\\Gemma4\\mtp\\gemma-4-12B-it-Q8_0-MTP.gguf",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "model_3_gemma_4_e4b",
+      "alias": "Gemma 4 E4B",
+      "modelPath": "I:\\LLM\\Gemma4\\gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf",
+      "executablePath": "",
+      "args": [
+        {
+          "key": "--temp",
+          "value": "0.5",
+          "enabled": true
+        },
+        {
+          "key": "--top-p",
+          "value": "0.95",
+          "enabled": true
+        },
+        {
+          "key": "--top-k",
+          "value": "64",
+          "enabled": true
+        },
+        {
+          "key": "-b",
+          "value": "4096",
+          "enabled": true
+        },
+        {
+          "key": "-ub",
+          "value": "1024",
+          "enabled": true
+        },
+        {
+          "key": "-ngl",
+          "value": "99",
+          "enabled": true
+        },
+        {
+          "key": "--spec-type",
+          "value": "draft-mtp",
+          "enabled": true
+        },
+        {
+          "key": "--spec-draft-n-max",
+          "value": "2",
+          "enabled": true
+        },
+        {
+          "key": "--spec-draft-ngl",
+          "value": "99",
+          "enabled": true
+        },
+        {
+          "key": "--model-draft",
+          "value": "I:\\LLM\\Gemma4\\mtp\\gemma-4-E4B-it-Q8_0-MTP.gguf",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "model_4_gemma_4_e2b",
+      "alias": "Gemma 4 E2B",
+      "modelPath": "I:\\LLM\\Gemma4\\gemma-4-E2B-it-qat-UD-Q4_K_XL.gguf",
+      "executablePath": "",
+      "args": [
+        {
+          "key": "--temp",
+          "value": "0.5",
+          "enabled": true
+        },
+        {
+          "key": "--top-p",
+          "value": "0.95",
+          "enabled": true
+        },
+        {
+          "key": "--top-k",
+          "value": "64",
+          "enabled": true
+        },
+        {
+          "key": "-b",
+          "value": "8192",
+          "enabled": true
+        },
+        {
+          "key": "-ub",
+          "value": "1024",
+          "enabled": true
+        },
+        {
+          "key": "-ngl",
+          "value": "99",
+          "enabled": true
+        },
+        {
+          "key": "--spec-type",
+          "value": "draft-mtp",
+          "enabled": true
+        },
+        {
+          "key": "--spec-draft-n-max",
+          "value": "2",
+          "enabled": true
+        },
+        {
+          "key": "--spec-draft-ngl",
+          "value": "99",
+          "enabled": true
+        },
+        {
+          "key": "--model-draft",
+          "value": "I:\\LLM\\Gemma4\\mtp\\gemma-4-E2B-it-Q8_0-MTP.gguf",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "model_5_gemma_4_e2b_cpu",
+      "alias": "Gemma 4 E2B CPU",
+      "modelPath": "I:\\LLM\\Gemma4\\gemma-4-E2B-it-qat-UD-Q2_K_XL.gguf",
+      "executablePath": "",
+      "args": [
+        {
+          "key": "--temp",
+          "value": "0.5",
+          "enabled": true
+        },
+        {
+          "key": "--top-p",
+          "value": "0.95",
+          "enabled": true
+        },
+        {
+          "key": "--cache-ram",
+          "value": "1024",
+          "enabled": true
+        },
+        {
+          "key": "--top-k",
+          "value": "64",
+          "enabled": true
+        },
+        {
+          "key": "-ngl",
+          "value": "0",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "model_7_qwen_36_35b_a3b",
+      "alias": "Qwen 3.6 35B-A3B",
+      "modelPath": "I:\\LLM\\Qwen\\Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "executablePath": "",
+      "args": [
+        {
+          "key": "--temp",
+          "value": "0.5",
+          "enabled": true
+        },
+        {
+          "key": "--top-p",
+          "value": "0.95",
+          "enabled": true
+        },
+        {
+          "key": "--top-k",
+          "value": "20",
+          "enabled": true
+        },
+        {
+          "key": "--min-p",
+          "value": "0.0",
+          "enabled": true
+        },
+        {
+          "key": "--presence-penalty",
+          "value": "0.0",
+          "enabled": true
+        },
+        {
+          "key": "--repeat-penalty",
+          "value": "1.0",
+          "enabled": true
+        },
+        {
+          "key": "--fit",
+          "value": "on",
+          "enabled": true
+        },
+        {
+          "key": "--fit-target",
+          "value": "2400",
+          "enabled": true
+        },
+        {
+          "key": "--reasoning-preserve",
+          "value": "",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "model_8_gpt_oss_20b",
+      "alias": "GPT-OSS 20B",
+      "modelPath": "I:\\LLM\\Others\\gpt-oss-20b-Q6_K.gguf",
+      "executablePath": "",
+      "args": [
+        {
+          "key": "--temp",
+          "value": "0.65",
+          "enabled": true
+        },
+        {
+          "key": "--top-p",
+          "value": "1.0",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "model_9_qwen_35_9b",
+      "alias": "Qwen 3.5 9B",
+      "modelPath": "I:\\LLM\\Qwen\\Qwen3.5-9B-MTP-Q8_0.gguf",
+      "executablePath": "",
+      "args": [
+        {
+          "key": "--temp",
+          "value": "0.6",
+          "enabled": true
+        },
+        {
+          "key": "--top-p",
+          "value": "0.95",
+          "enabled": true
+        },
+        {
+          "key": "--top-k",
+          "value": "20",
+          "enabled": true
+        },
+        {
+          "key": "--min-p",
+          "value": "0.0",
+          "enabled": true
+        },
+        {
+          "key": "--presence-penalty",
+          "value": "1.5",
+          "enabled": true
+        },
+        {
+          "key": "--repeat-penalty",
+          "value": "1.0",
+          "enabled": true
+        },
+        {
+          "key": "--reasoning-preserve",
+          "value": "",
+          "enabled": true
+        },
+        {
+          "key": "--spec-type",
+          "value": "draft-mtp",
+          "enabled": true
+        },
+        {
+          "key": "--spec-draft-n-max",
+          "value": "2",
+          "enabled": true
+        },
+        {
+          "key": "--spec-draft-ngl",
+          "value": "99",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "model_10_qwen_35_2b",
+      "alias": "Qwen 3.5 2B",
+      "modelPath": "I:\\LLM\\Qwen\\Qwen3.5-2B-MTP-UD-Q8_K_XL.gguf",
+      "executablePath": "",
+      "args": [
+        {
+          "key": "--temp",
+          "value": "0.6",
+          "enabled": true
+        },
+        {
+          "key": "--top-p",
+          "value": "1.0",
+          "enabled": true
+        },
+        {
+          "key": "--top-k",
+          "value": "20",
+          "enabled": true
+        },
+        {
+          "key": "--min-p",
+          "value": "0.0",
+          "enabled": true
+        },
+        {
+          "key": "--presence-penalty",
+          "value": "2.0",
+          "enabled": true
+        },
+        {
+          "key": "--repeat-penalty",
+          "value": "1.0",
+          "enabled": true
+        },
+        {
+          "key": "--reasoning-preserve",
+          "value": "",
+          "enabled": true
+        },
+        {
+          "key": "--spec-type",
+          "value": "draft-mtp",
+          "enabled": true
+        },
+        {
+          "key": "--spec-draft-n-max",
+          "value": "2",
+          "enabled": true
+        },
+        {
+          "key": "--spec-draft-ngl",
+          "value": "99",
+          "enabled": true
+        },
+        {
+          "key": "-b",
+          "value": "4096",
+          "enabled": true
+        },
+        {
+          "key": "-ub",
+          "value": "1024",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "model_11_qwen_35_800m",
+      "alias": "Qwen 3.5 0.8B",
+      "modelPath": "I:\\LLM\\Qwen\\Qwen3.5-0.8B-MTP-Q8_0.gguf",
+      "executablePath": "",
+      "args": [
+        {
+          "key": "--temp",
+          "value": "0.6",
+          "enabled": true
+        },
+        {
+          "key": "--top-p",
+          "value": "1.0",
+          "enabled": true
+        },
+        {
+          "key": "--top-k",
+          "value": "20",
+          "enabled": true
+        },
+        {
+          "key": "--min-p",
+          "value": "0.0",
+          "enabled": true
+        },
+        {
+          "key": "--presence-penalty",
+          "value": "2.0",
+          "enabled": true
+        },
+        {
+          "key": "--repeat-penalty",
+          "value": "1.0",
+          "enabled": true
+        },
+        {
+          "key": "-b",
+          "value": "8192",
+          "enabled": true
+        },
+        {
+          "key": "-ub",
+          "value": "2048",
+          "enabled": true
+        },
+        {
+          "key": "--reasoning-preserve",
+          "value": "",
+          "enabled": true
+        },
+        {
+          "key": "--spec-type",
+          "value": "draft-mtp",
+          "enabled": true
+        },
+        {
+          "key": "--spec-draft-n-max",
+          "value": "2",
+          "enabled": true
+        },
+        {
+          "key": "--spec-draft-ngl",
+          "value": "99",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "model_12_qwen_3_1700m",
+      "alias": "Qwen 3 1.7B",
+      "modelPath": "I:\\LLM\\Qwen\\Qwen3-1.7B-Q4_K_M.gguf",
+      "executablePath": "",
+      "args": [
+        {
+          "key": "--temp",
+          "value": "0.6",
+          "enabled": true
+        },
+        {
+          "key": "--top-p",
+          "value": "0.95",
+          "enabled": true
+        },
+        {
+          "key": "--ctx-size",
+          "value": "65536",
+          "enabled": true
+        },
+        {
+          "key": "--reasoning",
+          "value": "on",
+          "enabled": true
+        },
+        {
+          "key": "--top-k",
+          "value": "20",
+          "enabled": true
+        },
+        {
+          "key": "--min-p",
+          "value": "0.0",
+          "enabled": true
+        },
+        {
+          "key": "--presence-penalty",
+          "value": "1.6",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "model_13_qwen_3_600m",
+      "alias": "Qwen 3 0.6B",
+      "modelPath": "I:\\LLM\\Qwen\\Qwen3-0.6B-UD-Q4_K_XL.gguf",
+      "executablePath": "",
+      "args": [
+        {
+          "key": "--temp",
+          "value": "0.15",
+          "enabled": true
+        },
+        {
+          "key": "--top-p",
+          "value": "0.8",
+          "enabled": true
+        },
+        {
+          "key": "--ctx-size",
+          "value": "65536",
+          "enabled": true
+        },
+        {
+          "key": "--reasoning",
+          "value": "on",
+          "enabled": true
+        },
+        {
+          "key": "--top-k",
+          "value": "20",
+          "enabled": true
+        },
+        {
+          "key": "--repeat-penalty",
+          "value": "1.1",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "model_15_ling_3_tiny",
+      "alias": "Ling 3.0 Tiny",
+      "modelPath": "I:\\LLM\\Others\\Ling-3.0-tiny-Q6_K.gguf",
+      "executablePath": "I:\\llamacpp-other\\ling-3.0-tiny\\llama-server.exe",
+      "args": [
+        {
+          "key": "--temp",
+          "value": "0.5",
+          "enabled": true
+        },
+        {
+          "key": "--top-p",
+          "value": "0.95",
+          "enabled": true
+        },
+        {
+          "key": "--top-k",
+          "value": "20",
+          "enabled": true
+        },
+        {
+          "key": "--min-p",
+          "value": "0.0",
+          "enabled": true
+        },
+        {
+          "key": "--presence-penalty",
+          "value": "0.0",
+          "enabled": true
+        },
+        {
+          "key": "--repeat-penalty",
+          "value": "1.1",
+          "enabled": true
+        },
+        {
+          "key": "-b",
+          "value": "4096",
+          "enabled": true
+        },
+        {
+          "key": "-ub",
+          "value": "1024",
+          "enabled": true
+        },
+        {
+          "key": "-ngl",
+          "value": "99",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "model_16_lfm_25_350m",
+      "alias": "LFM 2.5 350M",
+      "modelPath": "I:\\LLM\\Others\\LFM2.5-350M-Q5_K_M.gguf",
+      "executablePath": "",
+      "args": [
+        {
+          "key": "--temp",
+          "value": "0.1",
+          "enabled": true
+        },
+        {
+          "key": "--top-k",
+          "value": "50",
+          "enabled": true
+        },
+        {
+          "key": "--min-p",
+          "value": "0.0",
+          "enabled": true
+        },
+        {
+          "key": "--repeat-penalty",
+          "value": "1.05",
+          "enabled": true
+        },
+        {
+          "key": "-b",
+          "value": "8192",
+          "enabled": true
+        },
+        {
+          "key": "-ub",
+          "value": "2048",
+          "enabled": true
+        },
+        {
+          "key": "-ngl",
+          "value": "99",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "model_17_force_failure_test",
+      "alias": "Test: Forced Failure",
+      "modelPath": "I:\\LLM\\Qwen\\MODEL_THAT_DOESNT_EXIST.gguf",
+      "executablePath": "",
+      "args": [
+        {
+          "key": "--temp",
+          "value": "0.15",
+          "enabled": true
+        },
+        {
+          "key": "--top-p",
+          "value": "0.8",
+          "enabled": true
+        },
+        {
+          "key": "-np",
+          "value": "2",
+          "enabled": true
+        },
+        {
+          "key": "--cache-ram",
+          "value": "4096",
+          "enabled": true
+        },
+        {
+          "key": "--ctx-size",
+          "value": "65536",
+          "enabled": true
+        },
+        {
+          "key": "--reasoning",
+          "value": "on",
+          "enabled": true
+        },
+        {
+          "key": "--top-k",
+          "value": "20",
+          "enabled": true
+        },
+        {
+          "key": "--repeat-penalty",
+          "value": "1.1",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "model_1787433204242",
+      "alias": "Qwen 3.8 27B",
+      "modelPath": "I:/LLM/Qwen/Qwen3.8-27B-UD-IQ4_XS.gguf",
+      "executablePath": "",
+      "args": [
+        {
+          "key": "--temp",
+          "value": "0.5",
+          "enabled": true
+        },
+        {
+          "key": "--top-p",
+          "value": "0.95",
+          "enabled": true
+        },
+        {
+          "key": "--top-k",
+          "value": "20",
+          "enabled": true
+        },
+        {
+          "key": "--min-p",
+          "value": "0.0",
+          "enabled": true
+        },
+        {
+          "key": "--presence-penalty",
+          "value": "0.0",
+          "enabled": true
+        },
+        {
+          "key": "--repeat-penalty",
+          "value": "1.0",
+          "enabled": true
+        },
+        {
+          "key": "--reasoning-preserve",
+          "value": "",
+          "enabled": true
+        },
+        {
+          "key": "--chat-template-kwargs",
+          "value": "{\"reasoning_effort\":\"medium\"}",
+          "enabled": true
+        },
+        {
+          "key": "-ngl",
+          "value": "all",
+          "enabled": true
+        },
+        {
+          "key": "--split-mode",
+          "value": "layer",
+          "enabled": true
+        },
+        {
+          "key": "--tensor-split",
+          "value": "7,3",
+          "enabled": true
+        },
+        {
+          "key": "--ctx-size",
+          "value": "131072",
+          "enabled": false
+        },
+        {
+          "key": "--spec-type",
+          "value": "draft-mtp",
+          "enabled": true
+        },
+        {
+          "key": "--spec-draft-n-max",
+          "value": "2",
+          "enabled": true
+        },
+        {
+          "key": "--spec-draft-ngl",
+          "value": "all",
+          "enabled": true
+        },
+        {
+          "key": "--cache-type-k-draft",
+          "value": "q8_0",
+          "enabled": true
+        },
+        {
+          "key": "--cache-type-v-draft",
+          "value": "q8_0",
+          "enabled": true
+        },
+        {
+          "key": "--spec-draft-device",
+          "value": "CUDA0",
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}

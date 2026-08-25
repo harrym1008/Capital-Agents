@@ -345,3 +345,45 @@ def preloadSentimentModelAsync() -> threading.Thread:
     thread = threading.Thread(target=getSentimentEngine, daemon=True, name="SentimentModelPreloader")
     thread.start()
     return thread
+
+
+def unloadSentimentEngine() -> bool:
+    global sentimentEngine, engineLoadAttempted
+
+    with engineLoadLock:
+        if sentimentEngine is not None:
+            try:
+                if hasattr(sentimentEngine, "context"):
+                    sentimentEngine.context = None
+                if hasattr(sentimentEngine, "engine"):
+                    sentimentEngine.engine = None
+                if hasattr(sentimentEngine, "stream"):
+                    sentimentEngine.stream = None
+                if hasattr(sentimentEngine, "session"):
+                    sentimentEngine.session = None
+                if hasattr(sentimentEngine, "model"):
+                    sentimentEngine.model = None
+                if hasattr(sentimentEngine, "tokenizer"):
+                    sentimentEngine.tokenizer = None
+                print("[FinBERT Engine] Sentiment engine unloaded and resources released.")
+            except Exception as e:
+                print(f"[FinBERT Engine] Error releasing engine resources: {e}")
+            finally:
+                sentimentEngine = None
+                engineLoadAttempted = False
+        else:
+            engineLoadAttempted = False
+
+    # Force garbage collection and CUDA cache release
+    import gc
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+    except Exception:
+        pass
+
+    return True
+

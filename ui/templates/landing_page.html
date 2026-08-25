@@ -7,7 +7,7 @@
 
     <link rel="icon" type="image/png" href="/static/favicon.png">
     <link rel="stylesheet" href="/static/css/style.css">
-    <link rel="stylesheet" href="/static/css/landing.css">
+    <link rel="stylesheet" href="/static/css/landing_page.css">
 </head>
 <body>
 
@@ -24,7 +24,7 @@
             <a href="/single-equity-rating" id="singleEquityBtn" class="aref-button landing-btn disabled">Single Equity Rating</a>
             <a href="/single-equity-rating" id="portfolioCreateBtn" class="aref-button landing-btn disabled">Portfolio Creation</a>
             <a href="/single-equity-rating" id="portfolioRebalanceBtn" class="aref-button landing-btn disabled">Portfolio Rebalancing</a>
-            <a href="/marketsim" id="portfolioSimulateBtn" class="aref-button landing-btn">LLM-less Portfolio Simulation</a>
+            <a href="/market-sim" id="portfolioSimulateBtn" class="aref-button landing-btn">LLM-less Portfolio Simulation</a>
         </div>
     </div>
 
@@ -62,7 +62,7 @@
                 const res = await fetch('/api/server/status');
                 if (res.ok) {
                     const data = await res.json();
-                    const isRunning = data.running || data.llamacppRunning || data.summaryServerRunning || data.openrouterRunning || data.openaiCompatibleRunning;
+                    const isRunning = data.running || data.llamacppRunning || data.openrouterRunning || data.openaiCompatibleRunning;
                     const provider = data.provider || (data.openrouterRunning ? "openrouter" : (data.openaiCompatibleRunning ? "openaicompatible" : (data.llamacppRunning ? "llamacpp" : "")));
                     updateServerStatus(isRunning, provider);
                     if (data.costData) {

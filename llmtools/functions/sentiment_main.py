@@ -7,6 +7,7 @@ from llmtools.tool_registry import DataProviders
 from finbert.finbert_engines import (
     getSentimentEngine,
     preloadSentimentModelAsync,
+    unloadSentimentEngine,
     logitsToPredictions,
     BaseInferenceEngine,
     TrtCudaInferenceEngine,

@@ -19,6 +19,7 @@ from llmtools.functions.sentiment_main import (
     normaliseTs,
     getSentimentEngine,
     preloadSentimentModelAsync,
+    unloadSentimentEngine,
     logitsToPredictions,
     TrtCudaInferenceEngine,
     OnnxCudaInferenceEngine,

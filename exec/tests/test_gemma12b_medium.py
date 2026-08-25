@@ -9,10 +9,9 @@ from boardroom.boardroom_config import TIME_HORIZON_INFO, SingleEquityRatingConf
 from boardroom.boardroom_mgr import executeBoardroomConfig
 
 from llm.server_manager import serverManager
-from llm.llamacpp.llamacpp_args import LlamaCppModel
 
 
-MODEL = LlamaCppModel.GEMMA_4_12B
+MODEL = "Gemma-4-12B"
 SIM_TIME_STR = "2025-01-31"
 
 TICKERS = ["MSFT", "KO", "MCD", "NFLX", "LLY", "NVDA", "MU", "JPM", "TSLA", "IBM"]
@@ -39,12 +38,11 @@ def runSingleEvaluation(model: str, ticker: str, runIndex: int):
             timeHorizon=TIME_HORIZON,
             boardroomPace=MODE
         )
-        boardroomClient, summaryClient = serverManager.getClients()
+        llmClient = serverManager.getClient()
 
         elapsedSeconds = executeBoardroomConfig(
             config=config,
-            boardroomClient=boardroomClient,
-            summaryClient=summaryClient,
+            llmClient=llmClient,
             toolRegistry=serverManager.getToolRegistry()
         )
         decisionToolOutput = serverManager.getToolRegistry().getTool(SUBMIT_TOOL).toolLog[-2]
@@ -83,8 +81,7 @@ def runAll():
     success, message = serverManager.startServer(
         provider="llamacpp",
         modelName=MODEL.name,
-        allowParallel=True,
-        wantSummaryServer=False
+        allowParallel=True
     )
     if not success:
         print(f"Failed to start server for model {MODEL.name}: {message}")

@@ -6,7 +6,6 @@ from cli.ansi import ANSI
 
 from llm.agents.agent_prompts import buildAgentSpecificSysPrompt, buildSummariseSysPrompt
 from llm.llm_client import BaseLLMClient, ResponsePrintMode
-from llm.client_duo import ClientDuo
 from llmtools.tool_registry import ToolRegistry, Tool
 from boardroom.boardroom_config import BoardroomConfig
 
@@ -28,8 +27,7 @@ ANSI_TO_COLOR_NAME = {
 
 class FinancialAgent:
     def __init__(self, agentRole: str, tools: List[Tool], ansiColor: str = ANSI.RESET, dateStr: str = None, maxIterations: int = 10):
-        self.mainApiClient: BaseLLMClient = None
-        self.summaryApiClient: BaseLLMClient = None
+        self.llmClient: Optional[BaseLLMClient] = None
 
         self.agentRole = agentRole
         self.tools: List[Tool] = tools 
@@ -40,10 +38,16 @@ class FinancialAgent:
         self.messageHistory = []
         self.maxIterations = maxIterations
 
+    @property
+    def mainApiClient(self) -> Optional[BaseLLMClient]:
+        return self.llmClient
 
-    def setClientDuo(self, clientDuo: ClientDuo):
-        self.mainApiClient = clientDuo.boardroomClient
-        self.summaryApiClient = clientDuo.summaryClient
+    @mainApiClient.setter
+    def mainApiClient(self, client: Optional[BaseLLMClient]):
+        self.llmClient = client
+
+    def setClient(self, llmClient: BaseLLMClient):
+        self.llmClient = llmClient
 
 
     def getSpecificToolsStr(self) -> str:
@@ -92,7 +96,7 @@ class FinancialAgent:
 
         print(f"\n{self.color}{ANSI.BOLD}========== [{self.agentRole}] is analysing... =========={ANSI.RESET}", end="")
         
-        rawAnalysis = self.mainApiClient.runConversation(
+        rawAnalysis = self.llmClient.runConversation(
             historyToUse, 
             toolRegistry, 
             timestamp, 
@@ -119,7 +123,7 @@ class FinancialAgent:
             {"role": "user", "content": f"Reformat the following raw analysis according to the instructions:\n\n{rawAnalysis}"}
         ]
 
-        uiSummary = self.summaryApiClient.runConversation(
+        uiSummary = self.llmClient.runConversation(
             tempHistory, 
             toolRegistry=None, 
             timestamp=pd.Timestamp.now(tz="UTC"), 

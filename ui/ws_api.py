@@ -7,7 +7,7 @@ import pandas as pd
 from flask import request, jsonify
 
 from collectors.constants import NEW_YORK
-from llm.llamacpp.llamacpp_args import LlamaCppModel, LLAMACPP_PORT
+from llm.llamacpp.llamacpp_args import LLAMACPP_PORT, loadConfig, saveConfig, validateGgufPath, getLlamaCppModelsList, openNativeGgufFileDialog, openNativeExecutableFileDialog
 from llm.server_manager import serverManager
 
 
@@ -19,12 +19,63 @@ openRouterCacheTime = 0
 def registerApiRoutes(app):
     @app.route("/api/llamacpp-models")
     def getLlamaCppModels():
-        models = [
-            member.name
-            for member in LlamaCppModel
-            if member.name != "SUMMARY_MODEL"
-        ]
+        models = getLlamaCppModelsList()
         return jsonify({"models": models})
+
+    @app.route("/api/llamacpp/config", methods=["GET", "POST"])
+    def apiLlamaCppConfig():
+        if request.method == "POST":
+            data = request.get_json(silent=True) or {}
+            if not isinstance(data, dict):
+                return jsonify({"ok": False, "error": "Invalid configuration data format"}), 400
+            saved = saveConfig(data)
+            return jsonify({"ok": saved, "config": loadConfig()})
+        else:
+            return jsonify({"ok": True, "config": loadConfig()})
+
+    @app.route("/api/llamacpp/validate-gguf", methods=["POST"])
+    def apiValidateGguf():
+        data = request.get_json(silent=True) or {}
+        filePath = data.get("filePath", "")
+        valid, result = validateGgufPath(filePath)
+        if valid:
+            return jsonify({"ok": True, "valid": True, "info": result})
+        else:
+            return jsonify({"ok": False, "valid": False, "error": result})
+
+    @app.route("/api/llamacpp/browse-gguf", methods=["POST"])
+    def apiBrowseGguf():
+        selectedPath = openNativeGgufFileDialog()
+        if not selectedPath:
+            return jsonify({"ok": True, "cancelled": True})
+        
+        valid, result = validateGgufPath(selectedPath)
+        if not valid:
+            return jsonify({"ok": False, "cancelled": False, "error": result})
+        
+        fileName = result.get("fileName", "")
+        defaultAlias = fileName[:-5] if fileName.lower().endswith(".gguf") else fileName
+        return jsonify({
+            "ok": True,
+            "cancelled": False,
+            "filePath": selectedPath,
+            "fileName": fileName,
+            "defaultAlias": defaultAlias
+        })
+
+    @app.route("/api/llamacpp/browse-executable", methods=["POST"])
+    def apiBrowseExecutable():
+        selectedPath = openNativeExecutableFileDialog()
+        if not selectedPath:
+            return jsonify({"ok": True, "cancelled": True})
+        return jsonify({
+            "ok": True,
+            "cancelled": False,
+            "filePath": selectedPath
+        })
+
+
+
 
     @app.route("/api/openrouter-models")
     def getOpenRouterModels():
@@ -91,7 +142,6 @@ def registerApiRoutes(app):
         apiKey = data.get("apiKey") or data.get("api_key")
         providerRouter = data.get("providerRouter") or data.get("router")
         allowParallel = data.get("allowParallel", True)
-        wantSummaryServer = data.get("wantSummaryServer", False)
         preclearVram = data.get("preclearVram", False)
 
         success, message = serverManager.startServer(
@@ -101,7 +151,6 @@ def registerApiRoutes(app):
             apiKey=apiKey,
             providerRouter=providerRouter,
             allowParallel=allowParallel,
-            wantSummaryServer=wantSummaryServer,
             preclearVram=preclearVram
         )
         return jsonify({"ok": success, "message": message})
@@ -111,7 +160,6 @@ def registerApiRoutes(app):
     @app.route("/api/llamacpp/stop", methods=["POST"])
     @app.route("/api/openrouter/stop", methods=["POST"])
     @app.route("/api/openai/stop", methods=["POST"])
-    @app.route("/api/llamacpp/summary/stop", methods=["POST"])
     def apiStopServer():
         message = serverManager.stopServer()
         return jsonify({"ok": True, "message": message})

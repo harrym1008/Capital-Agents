@@ -12,8 +12,8 @@ import psutil
 import time
 
 
-from llm.llamacpp.llamacpp_args import LLAMACPP_EXECUTABLE, LLAMACPP_PORT, LLAMACPP_SUMMARY_PORT, \
-    LlamaCppModel, EMPTY_ARG, LLAMACPP_MODEL_TO_ARGS, EXECUTABLE_ARG_OVERRIDE
+from typing import Optional, Any
+from llm.llamacpp.llamacpp_args import LLAMACPP_EXECUTABLE, LLAMACPP_PORT, buildLlamaCppCommandLine
 from ui.ui_hooks import emitEvent
 
 
@@ -26,8 +26,7 @@ class ServerState(Enum):
 
 def killRemainingLlamaCppProcesses(executablePath=LLAMACPP_EXECUTABLE):
     for connection in psutil.net_connections(kind='inet'):      # Find llamacpp processes listening to the ports used by the server
-        if connection.status == psutil.CONN_LISTEN and connection.laddr.port == LLAMACPP_PORT or \
-            connection.laddr.port == LLAMACPP_SUMMARY_PORT and connection.pid is not None:
+        if connection.status == psutil.CONN_LISTEN and connection.laddr.port == LLAMACPP_PORT and connection.pid is not None:
             try:
                 process = psutil.Process(connection.pid)
                 if process.name().lower() == executablePath.lower():
@@ -39,88 +38,153 @@ def killRemainingLlamaCppProcesses(executablePath=LLAMACPP_EXECUTABLE):
                 pass
 
 
-def rudimentaryVramClear():
+def rudimentaryVramClear() -> float:
+    freedVram = 0.0
+    nvmlInitialized = False
+
+    # Force unload sentiment engine and clear its references first
+    try:
+        from finbert.finbert_engines import unloadSentimentEngine
+        unloadSentimentEngine()
+    except Exception as e:
+        print(f"[VRAM Clear] Note: Sentiment unload failed or not loaded: {e}")
+
     try:
         import sys, gc, time, psutil
-        from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
-        
-        skip = False
-        freedVram = 0.0
+        import torch
+        from pynvml import (
+            nvmlInit,
+            nvmlShutdown,
+            nvmlDeviceGetCount,
+            nvmlDeviceGetHandleByIndex,
+            nvmlDeviceGetName,
+            nvmlDeviceGetMemoryInfo,
+        )
 
-        # Reset any existing sentiment engine singleton before clearing VRAM
-        try:
-            import llmtools.functions.sentiment_news as sentimentModule
-            sentimentModule.sentimentEngine = None
-            sentimentModule.engineLoadAttempted = False
-        except Exception:
-            pass
+        if not torch.cuda.is_available():
+            print("[VRAM Clear] CUDA is not available. Skipping VRAM clearance.")
+            gc.collect()
+            return 0.0
 
-        gpuMem = []
-        try:
-            nvmlInit()
-            handle = nvmlDeviceGetHandleByIndex(0)
+        nvmlInit()
+        nvmlInitialized = True
+        deviceCount = nvmlDeviceGetCount()
+
+        if deviceCount == 0:
+            print("[VRAM Clear] No NVIDIA GPU devices detected.")
+            return 0.0
+
+        totalSysRam = psutil.virtual_memory().total / (1024 ** 3)
+        gpuHandles = []
+        gpuNames = []
+        perGpuUsedBefore = []
+        perGpuTotal = []
+        perGpuFill = []
+
+        for i in range(deviceCount):
+            handle = nvmlDeviceGetHandleByIndex(i)
+            gpuHandles.append(handle)
+            name = nvmlDeviceGetName(handle)
+            if isinstance(name, bytes):
+                name = name.decode("utf-8")
+            gpuNames.append(name)
+
             memInfo = nvmlDeviceGetMemoryInfo(handle)
+            usedGb = memInfo.used / (1024 ** 3)
+            totalGb = memInfo.total / (1024 ** 3)
+            perGpuUsedBefore.append(usedGb)
+            perGpuTotal.append(totalGb)
+            perGpuFill.append(0.0)
 
-            totalVram = memInfo.total / (1024 ** 3)
-            totalSysRam = psutil.virtual_memory().total / (1024 ** 3)
-            targetAlloc = totalVram + min(totalSysRam * 0.25, 4)    # 25% of system RAM or 4GB overspill
+        totalVram = sum(perGpuTotal)
+        totalUsedBefore = sum(perGpuUsedBefore)
+        targetAlloc = totalVram + min(totalSysRam * 0.08, 4.0)
 
-            totalAlloc = 0
-            usedVramBefore = round(memInfo.used / (1024 ** 3), 2)
+        print(f"\n[VRAM Clear] Detected {deviceCount} NVIDIA GPU(s) | Total VRAM: {totalVram:.2f} GB | Host RAM: {totalSysRam:.2f} GB")
+        print(f"[VRAM Clear] Active VRAM before clear: {totalUsedBefore:.2f} GB | Target allocation: {targetAlloc:.2f} GB")
 
-            if usedVramBefore < 1.5:
-                print(f"VRAM usage is already low: {usedVramBefore:.2f}/{totalVram:.2f} GB. Skipping VRAM clearing.")
-                skip = True
-                freedVram = 0.0
-            
-            else:
-                print(f"Clearing VRAM: Before: {usedVramBefore:.2f}/{totalVram:.2f} GB...", end="\r", flush=True)
-                import torch
+        allocatedTensors = []
+        chunkElements = (512, 512, 256)
+        chunkBytes = 512 * 512 * 256 * 4
+        chunkGb = chunkBytes / (1024 ** 3)
+        totalAllocatedGb = 0.0
 
-                while True:
-                    try:
-                        emptyTensor = torch.empty((512, 512, 256), device="cuda")
-                        gpuMem.append(emptyTensor)
-                        totalAlloc += (512 * 512 * 256 * 4) / 1024**3
-                        print(f"Clearing VRAM | Before: {usedVramBefore:.2f}/{totalVram:.2f} GB | Allocated {totalAlloc:.2f} GB", end="\r", flush=True)
-                        if totalAlloc >= targetAlloc:
-                            break
-                        time.sleep(0.02)
-                    except RuntimeError:
-                        break
+        gpuActive = [True] * deviceCount
 
-                time.sleep(3)
+        # Phase 1: Dedicated VRAM Saturation across all GPUs
+        while any(gpuActive) and totalAllocatedGb < totalVram:
+            allocatedInLoop = False
+            for i in range(deviceCount):
+                if not gpuActive[i]:
+                    continue
+                try:
+                    tensor = torch.empty(chunkElements, dtype=torch.float32, device=f"cuda:{i}")
+                    allocatedTensors.append(tensor)
+                    perGpuFill[i] += chunkGb
+                    totalAllocatedGb += chunkGb
+                    allocatedInLoop = True
+                except (RuntimeError, torch.cuda.OutOfMemoryError):
+                    gpuActive[i] = False
 
-        finally:
-            gpuMem.clear()
-            del gpuMem
+                if totalAllocatedGb >= totalVram:
+                    break
 
-            if "torch" in sys.modules:
-                import torch
-                if torch.cuda.is_available():
-                    torch.cuda.synchronize()
+            if not allocatedInLoop:
+                break
+            time.sleep(0.01)
+
+        # Phase 2: Host System RAM Spillover
+        while totalAllocatedGb < targetAlloc:
+            try:
+                cpuTensor = torch.empty(chunkElements, dtype=torch.float32, device="cpu")
+                allocatedTensors.append(cpuTensor)
+                totalAllocatedGb += chunkGb
+                time.sleep(0.01)
+            except (RuntimeError, MemoryError):
+                break
+
+        print(f"[VRAM Clear] Allocation complete ({totalAllocatedGb:.2f} GB allocated). Releasing memory buffers...")
+        time.sleep(1.5)
+
+        # Phase 3: Cleanup and Synchronized Cache Flushing
+        allocatedTensors.clear()
+        del allocatedTensors
+        gc.collect()
+
+        for i in range(deviceCount):
+            try:
+                with torch.cuda.device(i):
+                    torch.cuda.synchronize(i)
                     torch.cuda.empty_cache()
                     torch.cuda.ipc_collect()
+            except Exception:
+                pass
 
-            # for module in ["torch", "psutil"]:
-            #     sys.modules.pop(module, None)
+        gc.collect()
+        time.sleep(1.5)
 
-            gc.collect()
-            time.sleep(1)
+        # Phase 4: Per-GPU Measurement & Verification
+        perGpuFreed = []
+        for i in range(deviceCount):
+            memInfo = nvmlDeviceGetMemoryInfo(gpuHandles[i])
+            usedAfterGb = memInfo.used / (1024 ** 3)
+            freed = max(0.0, perGpuUsedBefore[i] - usedAfterGb)
+            perGpuFreed.append(freed)
+            print(f"  -> GPU {i} ({gpuNames[i]}): {perGpuUsedBefore[i]:.2f} GB --> {usedAfterGb:.2f} GB (Freed: {freed:.2f} GB)")
 
-            if not skip:
-                memInfo = nvmlDeviceGetMemoryInfo(handle)
-                usedVramAfter = round(memInfo.used / (1024 ** 3), 2)
-                freedVram = round(usedVramBefore - usedVramAfter, 2)
-                print(f"\n  -> After: {usedVramAfter:.2f} GB | Freed: {freedVram:.2f} GB")
-
-            # sys.modules.pop("pynvml", None)
-            gc.collect()
-            time.sleep(1)
+        freedVram = round(sum(perGpuFreed), 2)
+        print(f"[VRAM Clear] Total VRAM freed across all GPUs: {freedVram:.2f} GB\n")
 
     except Exception as e:
-        print(f"Error during rudimentary VRAM clearing: {e}. Continuing without clearing VRAM.")
+        print(f"[VRAM Clear] Error during VRAM clearing: {e}. Continuing gracefully.")
         freedVram = 0.0
+
+    finally:
+        if nvmlInitialized:
+            try:
+                nvmlShutdown()
+            except Exception:
+                pass
 
     return freedVram
 
@@ -133,17 +197,20 @@ def checkExecutableExists(executablePath=LLAMACPP_EXECUTABLE):
 class LlamaCppProcessInitiator:
     def __init__(self, 
                 serverName: str, 
-                model: LlamaCppModel, 
+                model: str, 
                 printLogsToTerminal: bool = True,
                 killExistingProcesses: bool = True, 
+                allowParallel: bool = True,
                 argOverrides=None
         ):
         self.serverName = serverName
+        modelIdentifier = str(model).strip()
         
-        self.args = LLAMACPP_MODEL_TO_ARGS.get(model, {}).copy()
-        self.args.update(argOverrides or {})
-
-        self.llamacppExecutable = self.args.get(EXECUTABLE_ARG_OVERRIDE, LLAMACPP_EXECUTABLE)
+        self.llamacppExecutable, self.command, self.modelConfig = buildLlamaCppCommandLine(
+            modelIdentifier=modelIdentifier,
+            allowParallel=allowParallel,
+            argOverrides=argOverrides
+        )
 
         if not checkExecutableExists(self.llamacppExecutable):
             raise FileNotFoundError(f"Llama.cpp executable not found at '{self.llamacppExecutable}' and not in PATH. Please ensure it is built and available.")
@@ -153,7 +220,7 @@ class LlamaCppProcessInitiator:
                 killRemainingLlamaCppProcesses(LLAMACPP_EXECUTABLE)
             killRemainingLlamaCppProcesses(self.llamacppExecutable)
 
-        self.baseUrl = f"http://{self.args.get('--host', '127.0.0.1')}:{self.args.get('--port', LLAMACPP_PORT)}"
+        self.baseUrl = f"http://127.0.0.1:{LLAMACPP_PORT}"
         self.healthUrl = f"{self.baseUrl}/health"
         self.apiUrl = f"{self.baseUrl}/v1"
 
@@ -212,23 +279,15 @@ class LlamaCppProcessInitiator:
         thread.start()
         return thread
 
-    def start(self, readyTimeout=90):
+    def start(self, readyTimeout=120):
         with self.stateLock:
             if self.state in (ServerState.STARTING, ServerState.RUNNING):
                 return
             
-        command = [self.llamacppExecutable]
-        for key, value in self.args.items():
-            if key == EXECUTABLE_ARG_OVERRIDE:
-                continue            
-            command.append(key)
-            if value != EMPTY_ARG:
-                command.append(value)
-
-        print(f"[{self.serverName}] Starting Llama.cpp process with command:\n'{' '.join(command)}'")
+        print(f"[{self.serverName}] Starting Llama.cpp process with command:\n'{' '.join(self.command)}'")
                 
         self.setState(ServerState.STARTING)
-        self.process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        self.process = subprocess.Popen(self.command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                         text=True, bufsize=1)
         
         print(f"[{self.serverName}] Started Llama.cpp process PID={self.process.pid}")
