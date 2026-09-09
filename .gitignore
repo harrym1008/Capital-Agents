@@ -201,3 +201,4 @@ newtooltest.py
 *.onnx
 llm/llamacpp/llamacpp_args.py
 
+llm/llamacpp/llamacpp_config.json
