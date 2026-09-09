@@ -3,11 +3,32 @@ from collectors.constants import NEW_YORK, UTC
 
 from llmtools.tool_registry import ToolRegistry, Tool
 from llmtools.functions.macro import fetchMacroContext, fetchMacroNews
-from llmtools.functions.company import fetchCompanyProfile, fetchCompanyRecentNews, fetchStockPricePerformance, calculateDistFromCurrPrice
-from llmtools.functions.edgar import fetchCompanyValuationMetrics, fetchIncomeStatement, fetchBalanceSheet, \
-                                      fetchCashFlowStatement, fetchStatementOfEquity, fetchComprehensiveIncomeStatement 
-from llmtools.functions.sentiment_news import fetchTickerSentimentHistory, fetchSentimentDivergence, fetchMacroSentimentHistory
+from llmtools.functions.company import (
+    fetchCompanyProfile, 
+    fetchCompanyRecentNews, 
+    fetchStockPricePerformance, 
+    calculateDistFromCurrPrice
+)
+from llmtools.functions.edgar import (
+    fetchCompanyValuationMetrics, 
+    fetchIncomeStatement, 
+    fetchBalanceSheet, 
+    fetchCashFlowStatement, 
+    fetchStatementOfEquity, 
+    fetchComprehensiveIncomeStatement
+)
+from llmtools.functions.sentiment_news import (
+    fetchTickerSentimentHistory, 
+    fetchSentimentDivergence, 
+    fetchMacroSentimentHistory
+)
 from llmtools.functions.sentiment_10q import fetchLatest10QSentiment
+from llmtools.functions.sector import (
+    fetchSectorPerformance, 
+    fetchAllSectorRankings, 
+    fetchSectorProfile, 
+    DB_SECTOR_TO_TICKER
+)
 from llmtools.functions.other import (
     executePythonCalculation, 
     confirmBoardroomDecisionImmediateTerm,
@@ -21,8 +42,34 @@ from llmtools.functions.other import (
 from llmtools.lru_cacher import startPrecacheThread
 
 
+ALL_SECTORS_STRING = ", ".join([k for k in DB_SECTOR_TO_TICKER.keys()])
+    
 SCHEMAS = {
     "empty": {"type": "object", "properties": {}, "required": []},
+
+    "sectorQuery": {
+        "type": "object",
+        "properties": {
+            "sectorOrTicker": {
+                "type": "string",
+                "description": "The GICS sector name, selectable from this list: " + ALL_SECTORS_STRING + "."
+            }
+        },
+        "required": ["sectorOrTicker"]
+    },
+
+    "sectorRanking": {
+        "type": "object",
+        "properties": {
+            "lookback": {
+                "type": "string",
+                "enum": ["5d", "1mo", "3mo", "6mo", "12mo"],
+                "description": "The lookback period for ranking sectors (5d, 1mo, 3mo, 6mo, 12mo). Defaults to 1mo.",
+                "default": "1mo"
+            }
+        },
+        "required": []
+    },
 
     "macroNews": {
         "type": "object",
@@ -250,6 +297,29 @@ def buildToolRegistry(initMacroThread=False):
         toolName="fetchMacroNews",
         toolDescription="Fetches the latest geopolitical and macroeconomic headlines and stories via Benzinga.",
         parameterSchema=SCHEMAS["macroNews"]
+    ))
+
+
+    # sector.py
+    toolReg.registerTool(Tool(
+        toolFunction=fetchSectorPerformance,
+        toolName="fetchSectorPerformance",
+        toolDescription="Fetches trailing performance metrics (1d, 5d, 1mo, 3mo, 6mo, 12mo), technical indicators (RSI, 50/200 SMA), 52-week range, volatility, and relative alpha vs S&P 500 for a specific GICS sector or sector ETF.",
+        parameterSchema=SCHEMAS["sectorQuery"]
+    ))
+
+    toolReg.registerTool(Tool(
+        toolFunction=fetchAllSectorRankings,
+        toolName="fetchAllSectorRankings",
+        toolDescription="Fetches a ranked leaderboard of all 11 GICS sector ETFs by trailing performance over a specified lookback (5d, 1mo, 3mo, 6mo, 12mo) to evaluate sector rotation and leadership.",
+        parameterSchema=SCHEMAS["sectorRanking"]
+    ))
+
+    toolReg.registerTool(Tool(
+        toolFunction=fetchSectorProfile,
+        toolName="fetchSectorProfile",
+        toolDescription="Fetches the descriptive profile and industry categorization for a given GICS sector or sector ETF.",
+        parameterSchema=SCHEMAS["sectorQuery"]
     ))
 
 

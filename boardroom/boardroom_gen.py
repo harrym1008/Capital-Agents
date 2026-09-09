@@ -18,6 +18,7 @@ def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> Bo
             toolMap["fetchMacroContext"],
             toolMap["fetchMacroNews"],
             toolMap["fetchMacroSentimentHistory"],
+            toolMap["fetchAllSectorRankings"],
             toolMap["executePythonCalculation"]
         ],
         ansiColor=ANSI.CYAN,
@@ -36,6 +37,8 @@ def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> Bo
             # toolMap["fetchStatementOfEquity"],
             # toolMap["fetchComprehensiveIncomeStatement"],
             toolMap["fetchStockPricePerformance"],
+            toolMap["fetchSectorPerformance"],
+            toolMap["fetchSectorProfile"],
             toolMap["fetchCompanyRecentNews"],
             toolMap["fetchTickerSentimentHistory"],
             toolMap["fetchSentimentDivergence"],
@@ -58,6 +61,8 @@ def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> Bo
             # toolMap["fetchStatementOfEquity"],
             # toolMap["fetchComprehensiveIncomeStatement"],
             toolMap["fetchStockPricePerformance"],
+            toolMap["fetchSectorPerformance"],
+            toolMap["fetchSectorProfile"],
             toolMap["fetchCompanyRecentNews"],
             toolMap["fetchTickerSentimentHistory"],
             toolMap["fetchSentimentDivergence"],
@@ -80,6 +85,7 @@ def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> Bo
             # toolMap["fetchStatementOfEquity"],
             # toolMap["fetchComprehensiveIncomeStatement"],
             toolMap["fetchStockPricePerformance"],
+            toolMap["fetchSectorPerformance"],
             toolMap["fetchCompanyRecentNews"],
             toolMap["fetchTickerSentimentHistory"],
             toolMap["fetchSentimentDivergence"],
@@ -102,6 +108,7 @@ def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> Bo
             # toolMap["fetchStatementOfEquity"],
             # toolMap["fetchComprehensiveIncomeStatement"],
             toolMap["fetchStockPricePerformance"],
+            toolMap["fetchSectorPerformance"],
             toolMap["fetchCompanyRecentNews"],
             toolMap["fetchTickerSentimentHistory"],
             toolMap["fetchSentimentDivergence"],
@@ -131,6 +138,9 @@ def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> Bo
             toolMap["fetchMacroContext"],
             toolMap["fetchMacroNews"],
             toolMap["fetchMacroSentimentHistory"],
+            toolMap["fetchAllSectorRankings"],
+            toolMap["fetchSectorPerformance"],
+            toolMap["fetchSectorProfile"],
             toolMap["fetchCompanyProfile"],
             toolMap["fetchCompanyValuationMetrics"],
             toolMap["fetchIncomeStatement"],
@@ -149,6 +159,7 @@ def generateBoardroom(toolRegistry: ToolRegistry, timestamp: pd.Timestamp) -> Bo
         ansiColor=ANSI.CYAN,
         dateStr=timestampStr
     )
+
 
     spokespersonAgent = FinancialAgent(
         agentRole="Boardroom Spokesperson",

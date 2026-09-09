@@ -6,3 +6,4 @@ from .ticker_provider import TickerDataProvider
 from .short_provider import ShortDataProvider
 from .edgar_provider import EdgarDataProvider, FormType
 from .forex_provider import ForexDataProvider
+from .sector_provider import SectorDataProvider

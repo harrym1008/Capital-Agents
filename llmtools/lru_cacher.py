@@ -35,7 +35,9 @@ def precacheMacroToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Timestamp):
         CachedToolCall("fetchMacroContext", timestamp,),
         CachedToolCall("fetchMacroNews", timestamp, {"limit": 12}),
         CachedToolCall("fetchMacroSentimentHistory", timestamp),
+        CachedToolCall("fetchAllSectorRankings", timestamp, {"lookback": "1mo"}),
     ]
+
 
     with ThreadPoolExecutor(max_workers=len(toolCalls)) as executor:
         futureToTool = {

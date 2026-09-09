@@ -85,6 +85,10 @@ MACRO_DIRECTORY = "data/macro/"
 FOREX_DIRECTORY = "data/forex/"
 
 
+# For sector_dl_client.py
+SECTOR_DIRECTORY = "data/sectors/"
+
+
 # For news_sentiment_client.py
 NEWS_SENTIMENT_PARQUET_PATH = "data/newssentiment.parquet"
-NEWS_SENTIMENT_BATCHES_DIR = "data/sentiment_batches"
+NEWS_SENTIMENT_BATCHES_DIR = "data/sentiment_batches"
