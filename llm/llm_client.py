@@ -342,7 +342,11 @@ class BaseLLMClient(ABC):
 
         funcName = currentToolCall["function"]["name"]
         funcArgsString = currentToolCall["function"]["arguments"]
-        callId = currentToolCall["id"]
+        callId = currentToolCall.get("id")
+        if not callId or not "_" in callId:
+            uniqueTimestamp = str(time.perf_counter()).replace(".", "_")
+            callId = f"{callId or 'call'}_{uniqueTimestamp}"
+            currentToolCall["id"] = callId
 
         emitEvent("toolCallStart", {
             "toolName": funcName,
@@ -365,7 +369,7 @@ class BaseLLMClient(ABC):
         if funcName in toolRegistry.tools and (permittedToolNames is None or funcName in permittedToolNames):
             toolCalled = toolRegistry.tools[funcName]
             try:
-                toolResult = toolRegistry.executeTool(funcName, timestamp, funcArgsDict)
+                toolResult = toolRegistry.executeTool(funcName, timestamp, funcArgsDict, callId=callId)
                 stringResult = json.dumps(toolResult)
                 
                 with self.toolCallLock:                    
@@ -497,6 +501,12 @@ class BaseLLMClient(ABC):
             if not toolCallsList:
                 return accumulatedContent.strip()
             
+            for idx, call in enumerate(toolCallsList):
+                rawId = call.get("id") or f"call_{idx}"
+                if not "_" in rawId:
+                    uniqueTimestamp = str(time.perf_counter()).replace(".", "_")
+                    call["id"] = f"{rawId}_{uniqueTimestamp}"
+
             assistantMessageDict = {
                 "role": "assistant",
                 "content": content or "",

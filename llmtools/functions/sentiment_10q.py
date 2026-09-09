@@ -1,6 +1,6 @@
 import re
 import datetime
-from typing import Optional, List, Dict, Any
+from typing import Callable, Optional, List, Dict, Any
 import pandas as pd
 import numpy as np
 
@@ -8,13 +8,7 @@ from edgar import Filing
 from llmtools.tool_registry import DataProviders, Tool
 from llmtools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, NumberType
 from dataquery.edgar_provider import EdgarDataProvider, FormType, CompanyRef
-from llmtools.functions.sentiment_main import (
-    scoreTextsWithCache,
-    clearTorchCache,
-    getSentimentEngine,
-    logitsToPredictions,
-    deriveSentimentRating
-)
+from llmtools.functions.sentiment_main import scoreTextsWithCache, deriveSentimentRating
 
 
 ABBREVIATIONS_PATTERN = (
@@ -70,12 +64,17 @@ def extractSectionFromTenQ(filing: Filing, data: DataProviders, sectionType: str
     return filingObj[sectionType]
 
 
-def distillSectionSentences(rawText: str, data: DataProviders, confidenceThreshold: float = 0.24, maxWords: int = 800) -> tuple[str, list[float]]:
-    if not rawText:
+def distillSectionSentences(rawTextOrSentences: str | List[str], data: DataProviders, confidenceThreshold: float = 0.24, 
+                            maxWords: int = 800, onProgressCallback: Optional[Callable] = None) -> tuple[str, list[float]]:
+    if not rawTextOrSentences:
         return "", []
 
-    sentences = splitIntoSentences(rawText)
-    predictions = scoreTextsWithCache(sentences, data=data)
+    if isinstance(rawTextOrSentences, list):
+        sentences = rawTextOrSentences
+    else:
+        sentences = splitIntoSentences(rawTextOrSentences)
+
+    predictions = scoreTextsWithCache(sentences, data=data, onProgressCallback=onProgressCallback)
     if predictions is None:
         return "", []
 
@@ -104,7 +103,7 @@ def distillSectionSentences(rawText: str, data: DataProviders, confidenceThresho
     return cappedText, netScores
 
 
-def fetchLatest10QSentiment(tool: Optional[Tool], data: DataProviders, timestamp: pd.Timestamp, ticker: str) -> Dict[str, Any]:
+def fetchLatest10QSentiment(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str) -> Dict[str, Any]:
     ticker = ticker.upper().strip()
     companyRef = CompanyRef(ticker)
 
@@ -127,12 +126,26 @@ def fetchLatest10QSentiment(tool: Optional[Tool], data: DataProviders, timestamp
     if not mdaRaw and not rfRaw:
         return f"Could not extract MD&A or Risk Factors from 10-Q filing ({accessionNumber}) for {ticker}."
 
+    mdaSentences = splitIntoSentences(mdaRaw) if mdaRaw else []
+    rfSentences = splitIntoSentences(rfRaw) if rfRaw else []
+    totalSentences = len(mdaSentences) + len(rfSentences)
+
+    completedSentences = 0
+    def onProgressCallback(completedDelta: int = 1):
+        nonlocal completedSentences
+        completedSentences += completedDelta
+        if totalSentences > 0:
+            progressPct = (completedSentences / totalSentences) * 100.0
+            tool.updateProgress(progressPct)
+        else:
+            tool.updateProgress(0.0)
+
     # Distill MD&A and compute operational sentiment
     distilledMda, mdaNetScores = distillSectionSentences(
-        mdaRaw, data=data, confidenceThreshold=confThreshold, maxWords=maxWordsPerBlock
+        mdaSentences, data=data, confidenceThreshold=confThreshold, maxWords=maxWordsPerBlock, onProgressCallback=onProgressCallback
     )
     distilledRf, rfNetScores = distillSectionSentences(
-        rfRaw, data=data, confidenceThreshold=confThreshold, maxWords=maxWordsPerBlock
+        rfSentences, data=data, confidenceThreshold=confThreshold, maxWords=maxWordsPerBlock, onProgressCallback=onProgressCallback
     )
 
     mdaNetMean = round(float(np.mean(mdaNetScores)), 4) if mdaNetScores else 0.0

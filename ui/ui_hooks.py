@@ -60,6 +60,12 @@ def setCurrentStage(stageNum):
 def getCurrentStage():
     return getattr(_local, "stageNum", 0)
 
+def setCurrentCallId(callId):
+    _local.currentCallId = callId
+
+def getCurrentCallId():
+    return getattr(_local, "currentCallId", None)
+
 def emitEvent(eventType, data=None):
     global eventCallback
     # Allow cleanup/finalisation events to fire even when stop is requested,
@@ -82,8 +88,21 @@ def emitEvent(eventType, data=None):
             "stageNum": getCurrentStage(),
             "threadId": threading.get_ident()
         }
+        currentCallId = getCurrentCallId()
+        if currentCallId:
+            payload["callId"] = currentCallId
         if data:
             payload.update(data)
+        
+        # Format progression string if event is toolCallProgress
+        if eventType == "toolCallProgress":
+            rawProgress = payload.get("progress")
+            if isinstance(rawProgress, (int, float)):
+                clampedProgress = max(0.0, min(100.0, float(rawProgress)))
+                formattedProgress = f"{int(clampedProgress)}%" if clampedProgress.is_integer() else f"{clampedProgress:.1f}%"
+                payload["progress"] = formattedProgress
+                payload["numericProgress"] = clampedProgress
+
         try:
             eventCallback(payload)
         except Exception as e:

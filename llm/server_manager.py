@@ -15,8 +15,9 @@ from llm.cloud.openai_compatible_client import OpenAICompatibleClient
 
 from llm.llm_client import BaseLLMClient
 from llm.token_cost_tracker import TokenCostTracker
-from llmtools.functions.sentiment_news import preloadSentimentModelAsync, unloadSentimentEngine
 from llmtools.tool_registry import ToolRegistry
+
+from finbert.finbert_engines import preloadSentimentModelAsync, unloadSentimentEngine
 from ui.ui_hooks import emitEvent
 
 

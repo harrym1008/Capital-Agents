@@ -4,8 +4,9 @@ from collectors.constants import START_DATE, END_DATE
 from collectors.rate_limiter import GlobalRateLimiters
 
 from threading import RLock
-from typing import Any, Dict, List, Callable
+from typing import Any, Dict, List, Callable, Optional
 import pandas as pd
+from ui.ui_hooks import emitEvent, setCurrentCallId, getCurrentCallId
 
 
 class DataProviders:
@@ -33,6 +34,19 @@ class Tool:
         self.description = toolDescription
         self.paramSchema = parameterSchema
         self.toolLog = []
+        self.progressLock = RLock()
+
+    def updateProgress(self, progress: float | int, message: Optional[str] = None, callId: Optional[str] = None):
+        with self.progressLock:
+            effectiveCallId = callId or getCurrentCallId()
+            numericProgress = max(0.0, min(100.0, float(progress)))
+            emitEvent("toolCallProgress", {
+                "toolName": self.name,
+                "callId": effectiveCallId,
+                "progress": numericProgress,
+                "message": message,
+                "status": "running"
+            })
 
     def getToolSchema(self) -> Dict[str, Any]:
         return {
@@ -44,7 +58,9 @@ class Tool:
             }
         }
     
-    def executeTool(self, data: DataProviders, timestamp: pd.Timestamp, args: Dict[str, Any]):
+    def executeTool(self, data: DataProviders, timestamp: pd.Timestamp, args: Dict[str, Any], callId: Optional[str] = None):
+        if callId:
+            setCurrentCallId(callId)
         try:
             toolOutput = self.function(self, data, timestamp, **args)
             if toolOutput is None:
@@ -65,6 +81,9 @@ class Tool:
             }
             # raise e
             return error
+        finally:
+            if callId:
+                setCurrentCallId(None)
 
 
 class ToolRegistry:
@@ -85,9 +104,9 @@ class ToolRegistry:
     def getToolMap(self):
         return self.tools
 
-    def executeTool(self, toolName: str, timestamp: pd.Timestamp, arguments: Dict[str, Any] = {}):
+    def executeTool(self, toolName: str, timestamp: pd.Timestamp, arguments: Dict[str, Any] = {}, callId: Optional[str] = None):
         tool = self.getTool(toolName)
         if tool:
-            return tool.executeTool(self.dataProviders, timestamp, arguments)
+            return tool.executeTool(self.dataProviders, timestamp, arguments, callId=callId)
         else:
             raise ValueError(f"Tool '{toolName}' not found in registry.")

@@ -89,7 +89,7 @@ class MacroDataProvider:
                 available[series] = None
         return available
 
-    def downloadBatchYfinance(self, seriesList: list, startDate: pd.Timestamp, endDate: pd.Timestamp) -> dict:
+    def downloadBatchYfinance(self, seriesList: list, startDate: pd.Timestamp, endDate: pd.Timestamp, onProgressCallback=None) -> dict:
         results = {}
         if not seriesList:
             return results
@@ -118,6 +118,8 @@ class MacroDataProvider:
                 progress=False,
                 threads=True
             )
+            if onProgressCallback:
+                onProgressCallback(len(yfTickers))
 
             if rawDf.empty:
                 return results
@@ -155,7 +157,7 @@ class MacroDataProvider:
 
         return results
 
-    def downloadBatchFred(self, seriesList: list, startDate: pd.Timestamp, endDate: pd.Timestamp) -> dict:
+    def downloadBatchFred(self, seriesList: list, startDate: pd.Timestamp, endDate: pd.Timestamp, onProgressCallback=None) -> dict:
         results = {}
         if not seriesList or not self.fredClient:
             return results
@@ -193,6 +195,8 @@ class MacroDataProvider:
             for future in as_completed(futureToSeries):
                 try:
                     s, df = future.result()
+                    if onProgressCallback:
+                        onProgressCallback(1)
                     if not df.empty:
                         results[s] = df
                 except Exception:
@@ -208,6 +212,7 @@ class MacroDataProvider:
             res = self.downloadBatchFred([name], startDate, endDate)
             return res.get(name, pd.DataFrame())
         return pd.DataFrame()
+
 
     def loadSeries(self, name: MacroSeries) -> pd.DataFrame:
         key = f"macro|full_{name.parquetName}"
@@ -235,7 +240,7 @@ class MacroDataProvider:
             self.cache.put(key, df)
             return df
 
-    def ensureBulkCoverage(self, names: list, targetDate: pd.Timestamp):
+    def ensureBulkCoverage(self, names: list, targetDate: pd.Timestamp, onProgressCallback=None):
         targetNorm = self.normaliseTimestamp(targetDate)
         now = time.time()
         cooldownSeconds = 3600  # 1 hour cooldown per series/target date
@@ -277,7 +282,7 @@ class MacroDataProvider:
 
             if missingYf:
                 earliestStart = min([minMaxDates[s] for s in missingYf])
-                yfResults = self.downloadBatchYfinance(missingYf, earliestStart, targetNorm)
+                yfResults = self.downloadBatchYfinance(missingYf, earliestStart, targetNorm, onProgressCallback=onProgressCallback)
                 for s, dfInc in yfResults.items():
                     if not dfInc.empty:
                         fullDf = self.loadSeries(s)
@@ -296,7 +301,7 @@ class MacroDataProvider:
 
             if missingFred:
                 earliestStart = min([minMaxDates[s] for s in missingFred])
-                fredResults = self.downloadBatchFred(missingFred, earliestStart, targetNorm)
+                fredResults = self.downloadBatchFred(missingFred, earliestStart, targetNorm, onProgressCallback=onProgressCallback)
                 for s, dfInc in fredResults.items():
                     if not dfInc.empty:
                         fullDf = self.loadSeries(s)
@@ -354,13 +359,15 @@ class MacroDataProvider:
 
         return prior.iloc[-1][name.valueCol]
 
-    def getSnapshot(self, names: list, before: pd.Timestamp) -> pd.DataFrame:
-        self.ensureBulkCoverage(names, before)
+    def getSnapshot(self, names: list, before: pd.Timestamp, onProgressCallback=None) -> pd.DataFrame:
+        self.ensureBulkCoverage(names, before, onProgressCallback=onProgressCallback)
         beforeNorm = self.normaliseTimestamp(before)
 
         rows = []
         for name in names:
             df = self.loadSeries(name)
+            onProgressCallback(1)
+
             if df.empty:
                 continue
 
@@ -374,6 +381,7 @@ class MacroDataProvider:
                 "date": last["date"],
                 "value": last[name.valueCol]
             })
+
 
         if not rows:
             return pd.DataFrame(columns=["series", "date", "value"])

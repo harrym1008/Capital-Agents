@@ -1,19 +1,10 @@
 import hashlib
-from typing import Optional, List, Dict, Any
+from typing import Callable, Optional, List, Dict, Any
 import numpy as np
 import pandas as pd
-
+ 
 from llmtools.tool_registry import DataProviders
-from finbert.finbert_engines import (
-    getSentimentEngine,
-    preloadSentimentModelAsync,
-    unloadSentimentEngine,
-    logitsToPredictions,
-    BaseInferenceEngine,
-    TrtCudaInferenceEngine,
-    OnnxCudaInferenceEngine,
-    PytorchCudaInferenceEngine,
-)
+from finbert.finbert_engines import getSentimentEngine, logitsToPredictions
 
 
 def getTextHash(text: str) -> str:
@@ -31,7 +22,8 @@ def clearTorchCache() -> None:
         pass
 
 
-def scoreHeadlinesBatch(headlines: List[str]) -> Optional[List[Dict[str, Any]]]:
+
+def scoreHeadlinesBatch(headlines: List[str], onProgressCallback: Optional[Callable] = None) -> Optional[List[Dict[str, Any]]]:
     if not headlines:
         return []
 
@@ -40,7 +32,7 @@ def scoreHeadlinesBatch(headlines: List[str]) -> Optional[List[Dict[str, Any]]]:
         return None
 
     try:
-        logits = engine.infer(headlines)
+        logits = engine.infer(headlines, onProgressCallback=onProgressCallback)
         return logitsToPredictions(logits)
     except Exception as e:
         print(f"[Sentiment Engine] Inference error: {e}")
@@ -49,7 +41,9 @@ def scoreHeadlinesBatch(headlines: List[str]) -> Optional[List[Dict[str, Any]]]:
         clearTorchCache()
 
 
-def scoreTextsWithCache(texts: List[str], data: Optional[DataProviders] = None) -> Optional[List[Dict[str, Any]]]:
+
+def scoreTextsWithCache(texts: List[str], data: Optional[DataProviders] = None, 
+                        onProgressCallback: Optional[Callable] = None) -> Optional[List[Dict[str, Any]]]:
     if not texts:
         return []
 
@@ -63,12 +57,14 @@ def scoreTextsWithCache(texts: List[str], data: Optional[DataProviders] = None) 
             cachedVal = data.sentimentCache.get(key)
             if cachedVal is not None:
                 results[i] = cachedVal
+                if onProgressCallback:
+                    onProgressCallback(1)
                 continue
         uncachedIndices.append(i)
         uncachedTexts.append(text)
 
     if uncachedTexts:
-        newPredictions = scoreHeadlinesBatch(uncachedTexts)
+        newPredictions = scoreHeadlinesBatch(uncachedTexts, onProgressCallback=onProgressCallback)
         if newPredictions is None:
             return None
         for idx, text, pred in zip(uncachedIndices, uncachedTexts, newPredictions):

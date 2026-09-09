@@ -35,6 +35,9 @@ class LlamaCppClient(BaseLLMClient):
                 else:
                     reasoningEffort = "high"
                 extraBody["reasoning_effort"] = reasoningEffort
+                extraBody["chat_template_kwargs"] = {
+                    "enable_thinking": True
+                }
             
         return extraBody
     

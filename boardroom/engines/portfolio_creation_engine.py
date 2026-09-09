@@ -230,7 +230,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
 
         self.lastConfig = config
 
-    def execute(self, config: BoardroomConfig) -> None:
-        if not isinstance(config, PortfolioCreationConfig):
-            raise ValueError(f"PortfolioCreationBoardroomEngine requires PortfolioCreationConfig, got {type(config).__name__}")
+
+    def execute(self, config: PortfolioCreationConfig) -> None:
         self.executePortfolioCreation(config)
+        

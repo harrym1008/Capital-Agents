@@ -443,6 +443,10 @@
                     startToolBlock(activeStage, agentRole, payload.toolName, payload.args, payload.callId, payload.toolIndex);
                     break;
 
+                case "toolCallProgress":
+                    updateToolBlockProgress(activeStage, payload.callId, payload.progress);
+                    break;
+
                 case "toolCallEnd":
                     if (payload.toolName && payload.toolName.startsWith("confirmBoardroomDecision")) {
                         updateUploadReceipt(payload.result, payload.status === "success" ? "UPLOADED" : "FAILED");
@@ -1822,13 +1826,31 @@
             activeBlocks[compoundKey] = { type: 'tool', element: content, block: toolBlock };
         }
 
+        function updateToolBlockProgress(stageNum, callId, progress) {
+            let toolBlock = document.getElementById(`toolCall-${stageNum}-${callId}`);
+            if (!toolBlock) {
+                toolBlock = document.querySelector(`[id$="-${callId}"]`);
+            }
+            if (toolBlock) {
+                const badge = toolBlock.querySelector(".tool-status-badge");
+                if (badge) {
+                    badge.className = "tool-status-badge status-running";
+                    badge.innerText = String(progress).toUpperCase();
+                }
+            }
+        }
+
         function endToolBlock(stageNum, agentRole, toolName, callId, status, result, stdout, variables, toolIndex) {
-            const toolBlock = document.getElementById(`toolCall-${stageNum}-${callId}`);
+            let toolBlock = document.getElementById(`toolCall-${stageNum}-${callId}`);
+            if (!toolBlock) {
+                toolBlock = document.querySelector(`[id$="-${callId}"]`);
+            }
             if (toolBlock) {
                 const badge = toolBlock.querySelector(".tool-status-badge");
                 if (badge) {
                     badge.className = `tool-status-badge status-${status}`;
-                    badge.innerText = status.toUpperCase();
+                    const displayStatus = status === "success" ? "COMPLETE" : (status === "error" ? "ERROR" : status.toUpperCase());
+                    badge.innerText = displayStatus;
                 }
 
                 const content = toolBlock.querySelector(".collapsible-content");

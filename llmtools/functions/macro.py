@@ -71,9 +71,24 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
     if cached is not None:
         return cached
 
-    jsonResult = {}
+    progress = 0
     allSeries = data.macro.getAllSeries()
-    todaySnapshot = data.macro.getSnapshot(allSeries, timestamp)
+    total = len(allSeries) * 8    # Once for bulk coverage, again for snapshotting
+
+    def onProgressCallback(completedDelta: int = 1):
+        nonlocal progress
+        progress += completedDelta
+        if total > 0:
+            progressPct = (progress / total) * 100.0
+            tool.updateProgress(progressPct)
+        else:
+            tool.updateProgress(0.0)
+
+    jsonResult = {}
+    todaySnapshot = data.macro.getSnapshot(allSeries, timestamp, onProgressCallback=onProgressCallback)
+
+    # progress = len(allSeries)
+    # tool.updateProgress(progress)
 
     pastDates = {
         "5d": timestamp - pd.DateOffset(weeks=1),
@@ -84,7 +99,7 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
         "3y": timestamp - pd.DateOffset(years=3),
         "5y": timestamp - pd.DateOffset(years=5)
     }
-    pastSnapshots = {name: data.macro.getSnapshot(allSeries, date) for name, date in pastDates.items()}
+    pastSnapshots = {name: data.macro.getSnapshot(allSeries, date, onProgressCallback=onProgressCallback) for name, date in pastDates.items()}
 
     for series in allSeries:
         seriesIdentifier = series.parquetName
@@ -165,6 +180,8 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
                 "history": outputsPerPeriod
             }
 
+        # onProgressCallback(1)
+
     jsonOutput = cleanData({"date": timestamp.strftime("%Y-%m-%d"), "macroContext": cleanData(jsonResult)})
     data.cache.put(cacheKey, jsonOutput)
     return jsonOutput
@@ -174,22 +191,20 @@ def fetchMacroNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, lim
     limit = min(max(limit, 1), 18)
     jsonResult = []
 
+    progress = 0
+    def onProgressCallback(completedDelta: int = 1):
+        nonlocal progress
+        progress += completedDelta
+        tool.updateProgress(progress / limit * 100.0)
+
     newsWithContent = data.news.getRecentNewsForTickers(
         tickers=["SPY", "QQQ", "DIA", "GLD", "SLV", "VIX", "USO", "TLT"],
         before=timestamp,
         limit=limit,
         mustHaveContent=True,
-        maxReferencedTickers=15
+        maxReferencedTickers=15,
+        onProgressCallback=lambda x: tool.updateProgress(x)
     )
-
-    if newsWithContent is None or newsWithContent.empty:
-        newsWithContent = data.news.getRecentNewsForTickers(
-            tickers=["SPY", "QQQ", "DIA", "GLD", "SLV", "VIX", "USO", "TLT"],
-            before=timestamp,
-            limit=limit,
-            mustHaveContent=False,
-            maxReferencedTickers=15
-        )
 
     idx = 0
     if newsWithContent is not None and not newsWithContent.empty:

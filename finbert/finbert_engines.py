@@ -1,7 +1,7 @@
 import os
 import threading
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Callable, Optional
 import numpy as np
 
 
@@ -65,7 +65,7 @@ class BaseInferenceEngine(ABC):
     def _inferRaw(self, inputIds: np.ndarray, attentionMask: np.ndarray) -> np.ndarray:
         pass
 
-    def infer(self, texts: list[str] | str) -> np.ndarray:
+    def infer(self, texts: list[str] | str, onProgressCallback: Optional[Callable] = None) -> np.ndarray:
         if isinstance(texts, str):
             texts = [texts]
 
@@ -89,6 +89,9 @@ class BaseInferenceEngine(ABC):
                 batchAttMask = encoded["attention_mask"]
                 batchLogits = self._inferRaw(batchInputIds, batchAttMask)
                 allLogits.append(batchLogits)
+
+                if onProgressCallback:
+                    onProgressCallback(len(batchTexts))
 
             return np.concatenate(allLogits, axis=0)
 

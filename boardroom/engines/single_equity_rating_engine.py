@@ -309,7 +309,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
             return [{"role": "Impartial Portfolio Manager", "color": self.portManager.color, "name": "Portfolio Manager"}]
         return []
 
-    def executeOneShotSingleEquityRating(self, config: SingleEquityRatingConfig):
+    def executeOneShotBoardroom(self, config: SingleEquityRatingConfig):
         targetTicker = config.ticker
         pace = config.boardroomPace
         timeHorizonInfo = config.getTimeHorizonInfo()
@@ -377,7 +377,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
 
 
 
-    def executeFastSingleEquityRating(self, config: SingleEquityRatingConfig):
+    def executeFastSingleBoardroom(self, config: SingleEquityRatingConfig):
         targetTicker = config.ticker
         pace = config.boardroomPace
         timeHorizonInfo = config.getTimeHorizonInfo()
@@ -505,7 +505,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
 
 
 
-    def executeCompleteSingleEquityRating(self, config: SingleEquityRatingConfig):
+    def executeCompleteSingleBoardroom(self, config: SingleEquityRatingConfig):
         targetTicker = config.ticker
         pace = config.boardroomPace
         timeHorizonInfo = config.getTimeHorizonInfo()
@@ -730,7 +730,8 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         self.fullConvSummary = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', fullConvSummary)
         
 
-    def executeSingleEquityRating(self, config: SingleEquityRatingConfig):
+
+    def execute(self, config: SingleEquityRatingConfig):
         if self.llmClient is None:
             raise ValueError("LLM client is not assigned. Please assign a client before executing the boardroom.")
 
@@ -739,18 +740,12 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         self.llmClient.newTask()
 
         if config.boardroomPace == BoardroomPace.ONE_SHOT:
-            self.executeOneShotSingleEquityRating(config)
+            self.executeOneShotBoardroom(config)
         elif config.boardroomPace == BoardroomPace.FAST:
-            self.executeFastSingleEquityRating(config)
+            self.executeFastSingleBoardroom(config)
         else:
-            self.executeCompleteSingleEquityRating(config)
+            self.executeCompleteSingleBoardroom(config)
 
-
-    def execute(self, config: BoardroomConfig):
-        if isinstance(config, SingleEquityRatingConfig):
-            self.executeSingleEquityRating(config)
-        else:
-            raise NotImplementedError(f"BoardroomConfig type '{type(config).__name__}' is not supported yet.")
 
 
     def executeSpecialistTransfer(self, agentRole: str, transferMessage: str, config: SingleEquityRatingConfig) -> Dict[str, Any]:

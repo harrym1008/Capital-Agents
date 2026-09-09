@@ -12,19 +12,11 @@ from llmtools.tool_registry import DataProviders, Tool
 from llmtools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, NumberType
 
 from llmtools.functions.sentiment_main import (
-    getTextHash,
-    clearTorchCache,
-    scoreHeadlinesBatch,
     scoreTextsWithCache,
     normaliseTs,
     getSentimentEngine,
-    preloadSentimentModelAsync,
-    unloadSentimentEngine,
-    logitsToPredictions,
-    TrtCudaInferenceEngine,
-    OnnxCudaInferenceEngine,
-    PytorchCudaInferenceEngine,
 )
+from finbert.finbert_engines import TrtCudaInferenceEngine, OnnxCudaInferenceEngine, PytorchCudaInferenceEngine
 
 
 def getModernFinbertPipeline():
@@ -170,7 +162,19 @@ def fetchTickerSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.T
         newsDf = sampleMonthlyArticles(newsDf)
 
         classificationDf = getClassificationDf(newsDf, bestMinTickers=2, contentTruncate=1024)
-        rawPredictions = scoreTextsWithCache(classificationDf["text"].tolist(), data=data)
+        totalTexts = len(classificationDf)
+        completedTexts = 0
+
+        def onProgressCallback(completedDelta: int = 1):
+            nonlocal completedTexts
+            completedTexts += completedDelta
+            if totalTexts > 0:
+                progressPct = (completedTexts / totalTexts) * 100.0
+                tool.updateProgress(progressPct)
+            else:
+                tool.updateProgress(0.0)
+
+        rawPredictions = scoreTextsWithCache(classificationDf["text"].tolist(), data=data, onProgressCallback=onProgressCallback)
         if rawPredictions is None:
             return f"Not available because sentiment classification models could not be loaded."
 
@@ -315,7 +319,20 @@ def fetchMacroSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.Ti
 
     classificationDf = getClassificationDf(newsDf, bestMinTickers=8, contentTruncate=1024)
     classificationDf["weight"] = 1.0
-    rawPredictions = scoreTextsWithCache(classificationDf["text"].tolist(), data=data)
+
+    totalTexts = len(classificationDf)
+    completedTexts = 0
+
+    def onProgressCallback(completedDelta: int = 1):
+        nonlocal completedTexts
+        completedTexts += completedDelta
+        if totalTexts > 0:
+            progressPct = (completedTexts / totalTexts) * 100.0
+            tool.updateProgress(progressPct)
+        else:
+            tool.updateProgress(0.0)
+
+    rawPredictions = scoreTextsWithCache(classificationDf["text"].tolist(), data=data, onProgressCallback=onProgressCallback)
     if rawPredictions is None:
         return f"Not available because sentiment classification models could not be loaded."
 

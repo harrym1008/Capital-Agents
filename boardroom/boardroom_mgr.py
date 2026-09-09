@@ -3,7 +3,7 @@ import math
 import threading
 import traceback
 import pandas as pd
-from typing import Any, Optional, Tuple
+from typing import Optional, Tuple
 
 from collectors.constants import UTC, NEW_YORK
 from llm.llm_client import BaseLLMClient
