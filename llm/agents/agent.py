@@ -68,14 +68,14 @@ class FinancialAgent:
 
 
     def executeInternalAnalysis(
-            self, 
-            incomingMessage: str,
-            toolRegistry: ToolRegistry,
-            timestamp: pd.Timestamp,
-            config: BoardroomConfig,
-            systemPrompt: Optional[str] = None,
-            requireInitialTools: bool = False
-        ):
+        self, 
+        incomingMessage: str,
+        toolRegistry: ToolRegistry,
+        timestamp: pd.Timestamp,
+        config: BoardroomConfig,
+        systemPrompt: Optional[str] = None,
+        requireInitialTools: bool = False
+    ):
         if systemPrompt:
             if len(self.messageHistory) == 0:
                 self.messageHistory.append(None)
@@ -114,10 +114,10 @@ class FinancialAgent:
 
 
     def generateUISummary(
-            self, 
-            rawAnalysis: str, 
-            systemPrompt: Optional[str] = None
-        ):
+        self, 
+        rawAnalysis: str, 
+        systemPrompt: Optional[str] = None
+    ):
         tempHistory = [
             {"role": "system", "content": systemPrompt},
             {"role": "user", "content": f"Reformat the following raw analysis according to the instructions:\n\n{rawAnalysis}"}
@@ -136,15 +136,15 @@ class FinancialAgent:
 
 
     def analyseAndReply(self, 
-            incomingMessage: str, 
-            toolRegistry: ToolRegistry,
-            timestamp: pd.Timestamp,
-            config: BoardroomConfig,
-            subrole: Optional[str] = None,
-            requireInitialTools: bool = False,
-            summarisationOverride: Optional[bool] = None,
-            sysPromptOverride: Optional[str] = None,
-        ):
+        incomingMessage: str, 
+        toolRegistry: ToolRegistry,
+        timestamp: pd.Timestamp,
+        config: BoardroomConfig,
+        subrole: Optional[str] = None,
+        requireInitialTools: bool = False,
+        summarisationOverride: Optional[bool] = None,
+        sysPromptOverride: Optional[str] = None,
+    ):
         generateSummary = config.generateSummaries if summarisationOverride is None else summarisationOverride
         
         # Set agent context for UI streaming
@@ -152,6 +152,8 @@ class FinancialAgent:
         setAgentPhase("raw")
         emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.colorName, "phase": "raw"})
         
+        mode = config.modeName if hasattr(config, "modeName") else "SingleEquityRating"
+
         if sysPromptOverride is not None:
             sysPrompt = sysPromptOverride
         else:
@@ -160,6 +162,7 @@ class FinancialAgent:
                 dateStr=dateStr,
                 agentRole=self.agentRole,
                 agentToolsStr=self.getSpecificToolsStr(),
+                mode=mode,
                 subrole=subrole,
                 promptArgs=config.getPromptArgs()
             )
@@ -180,7 +183,7 @@ class FinancialAgent:
 
         # Summarise raw analysis for UI display
         try:
-            uiSummary = self.generateUISummary(rawAnalysis, buildSummariseSysPrompt(self.agentRole, subrole, config.getPromptArgs()))
+            uiSummary = self.generateUISummary(rawAnalysis, buildSummariseSysPrompt(self.agentRole, mode, subrole, config.getPromptArgs()))
         finally:
             emitEvent("agentRunEnd", {"agentRole": self.agentRole, "phase": "summary"})
 

@@ -9,9 +9,9 @@ from collectors.constants import UTC, NEW_YORK
 from llm.llm_client import BaseLLMClient
 from llm.server_manager import serverManager
 
-from boardroom.boardroom_config import BoardroomConfig, SingleEquityRatingConfig
+from boardroom.boardroom_config import BoardroomConfig, SingleEquityRatingConfig, PortfolioCreationConfig
 from boardroom.boardroom_engine import BoardroomEngine
-from boardroom.boardroom_gen import generateBoardroom
+from boardroom.engines import SingleEquityBoardroomEngine, PortfolioCreationBoardroomEngine
 
 from llmtools.lru_cacher import startPrecacheThread
 from llmtools.tool_registry import ToolRegistry
@@ -61,19 +61,36 @@ class BoardroomManager:
                 self.activeThread.is_alive()
             )
 
-    def setupNewBoardroom(self, config: SingleEquityRatingConfig) -> BoardroomEngine:
-        if config.simulatedDateStr is None:
-            config.simulatedDateStr = time.strftime("%Y-%m-%d", time.localtime())
-        timestamp = pd.Timestamp(f"{config.simulatedDateStr} 09:00").tz_localize(NEW_YORK).tz_convert(UTC)
+    def setupNewBoardroom(self, config: BoardroomConfig) -> BoardroomEngine:
+        if isinstance(config, SingleEquityRatingConfig):
+            if config.simulatedDateStr is None:
+                config.simulatedDateStr = time.strftime("%Y-%m-%d", time.localtime())
+            timestamp = pd.Timestamp(f"{config.simulatedDateStr} 09:00").tz_localize(NEW_YORK).tz_convert(UTC)
+            ticker = config.ticker
+        elif isinstance(config, PortfolioCreationConfig):
+            simDate = config.simulatedDateStr if config.simulatedDateStr else time.strftime("%Y-%m-%d", time.localtime())
+            timestamp = pd.Timestamp(f"{simDate} 09:00").tz_localize(NEW_YORK).tz_convert(UTC)
+            ticker = None
+        else:
+            timestamp = pd.Timestamp.now(tz=UTC)
+            ticker = None
 
         toolRegistry = self.getToolRegistry()
         llmClient = self.getClient()
         if not llmClient:
             raise RuntimeError("No active LLM server found. Please start a server from the manager setup page.")
 
-        startPrecacheThread(toolRegistry, timestamp, macroTools=False, ticker=config.ticker)
+        if ticker:
+            startPrecacheThread(toolRegistry, timestamp, macroTools=False, ticker=ticker)
+        else:
+            startPrecacheThread(toolRegistry, timestamp, macroTools=True, ticker=None)
 
-        boardroom = generateBoardroom(toolRegistry, timestamp)
+        if isinstance(config, SingleEquityRatingConfig):
+            boardroom = SingleEquityBoardroomEngine(toolRegistry=toolRegistry, timestamp=timestamp)
+        elif isinstance(config, PortfolioCreationConfig):
+            boardroom = PortfolioCreationBoardroomEngine(toolRegistry=toolRegistry, timestamp=timestamp)
+        else:
+            raise ValueError(f"Unsupported boardroom config type: {type(config).__name__}")
         boardroom.assignClient(llmClient)
         boardroom.lastConfig = config
 
@@ -83,7 +100,7 @@ class BoardroomManager:
 
         return boardroom
 
-    def runBoardroomTask(self, config: SingleEquityRatingConfig):
+    def runBoardroomTask(self, config: BoardroomConfig):
         startTime = time.time()
         try:
             boardroom = self.setupNewBoardroom(config)
@@ -111,7 +128,7 @@ class BoardroomManager:
                 self.activeThread = None
             resetStop()
 
-    def startBoardroom(self, config: SingleEquityRatingConfig) -> Tuple[bool, str]:
+    def startBoardroom(self, config: BoardroomConfig) -> Tuple[bool, str]:
         if self.isBoardroomActive():
             return False, "A boardroom simulation is already running."
 
@@ -137,12 +154,12 @@ class BoardroomManager:
         return not self.isBoardroomActive()
 
     def processQnAQuery(self, query: str) -> None:
-        if self.activeBoardroom:
+        if self.activeBoardroom and hasattr(self.activeBoardroom, "processQnAQuery"):
             self.activeBoardroom.processQnAQuery(query)
 
     def deleteQnATurn(self, turnIndex: int) -> bool:
         with self.stateLock:
-            if self.activeBoardroom:
+            if self.activeBoardroom and hasattr(self.activeBoardroom, "deleteQnATurn"):
                 return self.activeBoardroom.deleteQnATurn(turnIndex)
             return False
 
@@ -159,22 +176,19 @@ boardroomManager = BoardroomManager()
 def executeBoardroomConfig(
     config: BoardroomConfig,
     llmClient: Optional[BaseLLMClient] = None,
-    boardroomClient: Optional[BaseLLMClient] = None,
-    toolRegistry: ToolRegistry = None
+    toolRegistry: ToolRegistry = None,
+    **kwargs
 ) -> float:
-    activeClient = llmClient or boardroomClient
-    if isinstance(config, SingleEquityRatingConfig):
-        boardroomManager.llmClient = activeClient
-        if toolRegistry is not None:
-            boardroomManager.toolRegistry = toolRegistry
-        startTime = time.time()
-        boardroom = boardroomManager.setupNewBoardroom(config)
-        boardroom.execute(config=config)
+    activeClient = llmClient or kwargs.get("boardroomClient")
+    boardroomManager.llmClient = activeClient
+    if toolRegistry is not None:
+        boardroomManager.toolRegistry = toolRegistry
+    startTime = time.time()
+    boardroom = boardroomManager.setupNewBoardroom(config)
+    boardroom.execute(config=config)
 
-        elapsedSeconds = time.time() - startTime
-        mins = math.floor(elapsedSeconds / 60)
-        secs = elapsedSeconds % 60
-        emitEvent("simComplete", {"totalTime": f"{mins} mins {secs:.3f} secs"})
-        return elapsedSeconds
-    else:
-        raise NotImplementedError(f"BoardroomConfig type '{type(config).__name__}' is not supported yet.")
+    elapsedSeconds = time.time() - startTime
+    mins = math.floor(elapsedSeconds / 60)
+    secs = elapsedSeconds % 60
+    emitEvent("simComplete", {"totalTime": f"{mins} mins {secs:.3f} secs"})
+    return elapsedSeconds

@@ -27,6 +27,7 @@ from llmtools.functions.sector import (
     fetchSectorPerformance, 
     fetchAllSectorRankings, 
     fetchSectorProfile, 
+    confirmSectorAllocation,
     DB_SECTOR_TO_TICKER
 )
 from llmtools.functions.other import (
@@ -47,6 +48,21 @@ ALL_SECTORS_STRING = ", ".join([k for k in DB_SECTOR_TO_TICKER.keys()])
 SCHEMAS = {
     "empty": {"type": "object", "properties": {}, "required": []},
 
+    "confirmSectorAllocation": {
+        "type": "object",
+        "properties": {
+            "sectorAllocations": {
+                "type": "object",
+                "description": "Mapping of sector names (or ETF tickers) to percentage numbers summing to 100% (e.g. {'information_technology': 35.0, 'health_care': 25.0, 'financials': 20.0, 'cash': 20.0})."
+            },
+            "rationale": {
+                "type": "string",
+                "description": "Clear executive rationale explaining the macro, cyclical, and risk justification for this sector weighting."
+            }
+        },
+        "required": ["sectorAllocations", "rationale"]
+    },
+
     "sectorQuery": {
         "type": "object",
         "properties": {
@@ -57,6 +73,7 @@ SCHEMAS = {
         },
         "required": ["sectorOrTicker"]
     },
+
 
     "sectorRanking": {
         "type": "object",
@@ -320,6 +337,13 @@ def buildToolRegistry(initMacroThread=False):
         toolName="fetchSectorProfile",
         toolDescription="Fetches the descriptive profile and industry categorization for a given GICS sector or sector ETF.",
         parameterSchema=SCHEMAS["sectorQuery"]
+    ))
+
+    toolReg.registerTool(Tool(
+        toolFunction=confirmSectorAllocation,
+        toolName="confirmSectorAllocation",
+        toolDescription="Confirms and records the executive sector allocation decisions (%-wise) for the portfolio.",
+        parameterSchema=SCHEMAS["confirmSectorAllocation"]
     ))
 
 

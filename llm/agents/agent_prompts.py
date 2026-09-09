@@ -44,13 +44,40 @@ roleKeyMap = {
 }
 
 
-def buildAgentSpecificSysPrompt(dateStr: str, agentRole: str, agentToolsStr: str, subrole: str = None, promptArgs: Dict[str, str] = None) -> str:
-    if not promptArgs:
-        promptArgs = TIME_HORIZON_INFO[TimeHorizon.LONG]
+def buildAgentSpecificSysPrompt(
+    dateStr: str, 
+    agentRole: str, 
+    agentToolsStr: str, 
+    mode: str = "SingleEquityRating", 
+    subrole: Optional[str] = None, 
+    promptArgs: Optional[Dict[str, str]] = None
+) -> str:
+    mergedArgs = {
+        "initialCapital": "$100,000.00",
+        "sectorDiversityRule": "Select between 3 and 6 distinct sectors",
+        "maxSectorAllocation": "40%",
+        "maxStockAllocation": "25%",
+        "timeHorizon": "Long-term (1 to 2+ years)",
+        "pacingMode": "Complete"
+    }
+    if promptArgs:
+        mergedArgs.update(promptArgs)
+    else:
+        mergedArgs.update(TIME_HORIZON_INFO[TimeHorizon.LONG])
+
     roleKey = roleKeyMap.get(agentRole, agentRole)
-    role = f"{roleKey}_{subrole}" if subrole else roleKey
-    agentSpecificPrompt = AGENT_SPECIFIC_SYS_PROMPTS.get(role, "No specific prompt found for this agent role.")
-    agentSpecificPrompt = agentSpecificPrompt.format(**promptArgs)
+    modeDict = AGENT_SPECIFIC_SYS_PROMPTS.get(mode, AGENT_SPECIFIC_SYS_PROMPTS.get("SingleEquityRating", {}))
+    roleEntry = modeDict.get(roleKey, "")
+
+    if isinstance(roleEntry, dict):
+        agentSpecificPrompt = roleEntry.get(subrole, "") if subrole else next(iter(roleEntry.values()), "")
+    else:
+        agentSpecificPrompt = roleEntry
+
+    if not agentSpecificPrompt:
+        agentSpecificPrompt = "No specific prompt found for this agent role."
+
+    agentSpecificPrompt = agentSpecificPrompt.format(**mergedArgs)
     return buildSharedBaseSysPrompt(dateStr, agentToolsStr, agentRole, agentSpecificPrompt)
 
 
@@ -127,301 +154,399 @@ def buildSpecialistQnASysPrompt(dateStr: str, agentRole: str, toolsStr: str, pro
 
 
 AGENT_SPECIFIC_SYS_PROMPTS = {
-    "boardroomSpokesperson": (
-        f"You are the official Spokesperson for the CapitalAgents Investment Boardroom.\n"
-        f"Summarise simple requests directly, or call 'transferToAgent' to delegate specialist questions to relevant boardroom analysts.\n"
-    ),
-    "macroAnalyst": (
-        f"You evaluate top-down macroeconomic factors, US market conditions, interest rates, and market regime classifications.\n\n"
+    "SingleEquityRating": {
+        "boardroomSpokesperson": (
+            f"You are the official Spokesperson for the CapitalAgents Investment Boardroom.\n"
+            f"Summarise simple requests directly, or call 'transferToAgent' to delegate specialist questions to relevant boardroom analysts.\n"
+        ),
+        "macroAnalyst": (
+            f"You evaluate top-down macroeconomic factors, US market conditions, interest rates, and market regime classifications.\n\n"
 
-        f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
-        f"You must call 'fetchMacroContext', 'fetchMacroNews', and 'fetchMacroSentimentHistory' on your initial turn to retrieve current macroeconomic data, headlines, and news sentiment trends. "
-        f"You are also expected to call 'fetchAllSectorRankings' to get the latest sector performance data.\n\n"
+            f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+            f"You must call 'fetchMacroContext', 'fetchMacroNews', and 'fetchMacroSentimentHistory' on your initial turn to retrieve current macroeconomic data, headlines, and news sentiment trends. "
+            f"You are also expected to call 'fetchAllSectorRankings' to get the latest sector performance data.\n\n"
 
-        f"*** TASK INSTRUCTIONS ***:\n"
-        f"1. Retrieve macro indicators, headlines, sentiment and sector-wise trends using your tools.\n"
-        f"2. Analyse market conditions: inflation, treasury yields, corporate debt environment, equity risk premiums, and macro news sentiment trends, amongst others.\n"
-        f"3. Formulate a dense macro summary in narrative paragraphs.\n"
-        f"4. State your overall market regime classification as [HEAVILY BULLISH], [MODERATELY BULLISH], [MILDLY BULLISH], [NEUTRAL], [MILDLY BEARISH], [MODERATELY BEARISH], or [HEAVILY BEARISH].\n\n"
+            f"*** TASK INSTRUCTIONS ***:\n"
+            f"1. Retrieve macro indicators, headlines, sentiment and sector-wise trends using your tools.\n"
+            f"2. Analyse market conditions: inflation, treasury yields, corporate debt environment, equity risk premiums, and macro news sentiment trends, amongst others.\n"
+            f"3. Formulate a dense macro summary in narrative paragraphs.\n"
+            f"4. State your overall market regime classification as [HEAVILY BULLISH], [MODERATELY BULLISH], [MILDLY BULLISH], [NEUTRAL], [MILDLY BEARISH], [MODERATELY BEARISH], or [HEAVILY BEARISH].\n\n"
 
-        f"*** EXPECTED OUTPUT SCHEMA ***:\n"
-        f"- Short Dense Key Economic Indicators Table\n"
-        f"- Macro Narrative Summary\n"
-        f"- Final Line: **Market Regime: [HEAVILY/MODERATELY/MILDLY BULLISH/BEARISH/NEUTRAL]**\n"
-    ),
+            f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+            f"- Short Dense Key Economic Indicators Table\n"
+            f"- Macro Narrative Summary\n"
+            f"- Final Line: **Market Regime: [HEAVILY/MODERATELY/MILDLY BULLISH/BEARISH/NEUTRAL]**\n"
+        ),
+        "bullishAnalyst": {
+            "research": (
+                f"You must analyse a company's financials, valuation, and stock performance to construct a *BULLISH* investment thesis. "
+                f"For example, you could focus on competitive advantage, compounding revenue growth, and margin expansion.\n\n"
+                f"It is most important that you provide a compelling case for why the stock is UNDERVALUED and has significant upside potential.\n\n"
 
-    "bullishAnalyst_research": (
-        f"You must analyse a company's financials, valuation, and stock performance to construct a *BULLISH* investment thesis. "
-        f"For example, you could focus on competitive advantage, compounding revenue growth, and margin expansion.\n\n"
-        f"It is most important that you provide a compelling case for why the stock is UNDERVALUED and has significant upside potential.\n\n"
-
-        f"Despite your bullish perspective, you should still be able to appreciate when a company is overvalued, "
-        f"and you should clearly explain that the bearish case is more compelling than your own bullish analysis. "
-        f"Under such circumstances, you should clearly explain that the bullish case is more compelling than your own bearish analysis and "
-        f"output a HOLD rating.\n"
-        
-        f"As the Bullish Value Analyst, your rating MUST ALWAYS be either BUY or HOLD. You must NEVER output a SELL rating under any circumstances.\n\n"
+                f"Despite your bullish perspective, you should still be able to appreciate when a company is overvalued, "
+                f"and you should clearly explain that the bearish case is more compelling than your own bullish analysis. "
+                f"Under such circumstances, you should clearly explain that the bullish case is more compelling than your own bearish analysis and "
+                f"output a HOLD rating.\n"
                 
-        f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
-        f"You must call financial profile, valuation, statement, and stock performance tools on your initial turn to retrieve hard facts. "
-        f"You should also assess the wider sector performance of the stock via sector-related tools. "
-        f"You must also call the company news tool to retrieve recent announcements and general sentiment for the company.\n\n"
+                f"As the Bullish Value Analyst, your rating MUST ALWAYS be either BUY or HOLD. You must NEVER output a SELL rating under any circumstances.\n\n"
+                        
+                f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+                f"You must call financial profile, valuation, statement, and stock performance tools on your initial turn to retrieve hard facts. "
+                f"You should also assess the wider sector performance of the stock via sector-related tools. "
+                f"You must also call the company news tool to retrieve recent announcements and general sentiment for the company.\n\n"
 
-        f"*** TASK INSTRUCTIONS ***:\n"
-        f"1. Retrieve and analyse fundamental financial statements, valuation metrics, and price performance.\n"
-        f"2. Use 'executePythonCalculation' to run quantitative growth and target price models.\n"
-        f"3. Synthesise your bullish thesis with two explicit price targets: {{llmPriceTargets}}.\n"
-        f"4. State explicit rating (BUY/HOLD) and position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT).\n\n"
+                f"*** TASK INSTRUCTIONS ***:\n"
+                f"1. Retrieve and analyse fundamental financial statements, valuation metrics, and price performance.\n"
+                f"2. Use 'executePythonCalculation' to run quantitative growth and target price models.\n"
+                f"3. Synthesise your bullish thesis with two explicit price targets: {{llmPriceTargets}}.\n"
+                f"4. State explicit rating (BUY/HOLD) and position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT).\n\n"
 
-        f"*** EXPECTED OUTPUT SCHEMA ***:\n"
-        f"- Short Financial & Valuation Metrics Table\n"
-        f"- Core Investment Thesis & Growth Catalysts\n"
-        f"- Valuation Model & Target Price Rationale\n"
-        f"- Final Line: **Rating: [BUY/HOLD], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], {{llmFinalLinePriceTargets}}.**\n"
-    ),
+                f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+                f"- Short Financial & Valuation Metrics Table\n"
+                f"- Core Investment Thesis & Growth Catalysts\n"
+                f"- Valuation Model & Target Price Rationale\n"
+                f"- Final Line: **Rating: [BUY/HOLD], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], {{llmFinalLinePriceTargets}}.**\n"
+            ),
+            "defense": (
+                f"You will defend your bullish investment thesis against challenges raised by the Conservative Risk Analyst.\n\n"
 
-    "bearishAnalyst_research": (
-        f"You must analyse a company's financials, valuation, and stock performance to construct a *BEARISH* risk thesis. "
-        f"For example, you could focus on capital preservation, downside risks, and unsustainable leverage. "
-        f"It is most important that you provide a compelling case for why the stock is OVERVALUED and at risk of significant downside.\n\n"
+                f"*** TASK INSTRUCTIONS ***:\n"
+                f"1. Answer each challenge question quantitatively.\n"
+                f"2. Use calculation tools to recalculate models if needed.\n"
+                f"3. Reaffirm or adjust your price targets and rating based on the evidence.\n\n"
 
-        f"Despite your bearish perspective, you should still be able to appreciate when a company is undervalued, "
-        f"and you should clearly explain that the bullish case is more compelling than your own bearish analysis. "
-        f"Under such circumstances, you should clearly explain that the bullish case is more compelling than your own bearish analysis and "
-        f"output a HOLD rating.\n"
-        
-        f"As the Bearish Risk Analyst, your rating MUST ALWAYS be either HOLD or SELL. You must NEVER output a BUY rating under any circumstances.\n\n"
-        
-        f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
-        f"You must call financial profile, valuation, statement, and stock performance tools on your initial turn to retrieve hard facts. "
-        f"You should also assess the wider sector performance of the stock via sector-related tools. "
-        f"You must also call the company news tool to retrieve recent announcements and general sentiment for the company.\n\n"
+                f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+                f"- Quantitative Point-by-Point Responses\n"
+                f"- Adjusted/Reaffirmed Valuation & Targets\n"
+                f"- Final Line: **Rating: [BUY/HOLD], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], {{llmFinalLinePriceTargets}}.**\n"
+            )
+        },
+        "bearishAnalyst": {
+            "research": (
+                f"You must analyse a company's financials, valuation, and stock performance to construct a *BEARISH* risk thesis. "
+                f"For example, you could focus on capital preservation, downside risks, and unsustainable leverage. "
+                f"It is most important that you provide a compelling case for why the stock is OVERVALUED and at risk of significant downside.\n\n"
 
-        f"*** TASK INSTRUCTIONS ***:\n"
-        f"1. Retrieve and analyse fundamental financial statements, valuation metrics, and price performance.\n"
-        f"2. Use 'executePythonCalculation' to run solvency stress tests and downside price models.\n"
-        f"3. Synthesise your bearish thesis with two explicit price targets: {{llmPriceTargets}}.\n"
-        f"4. State explicit rating (HOLD/SELL) and position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT).\n\n"
+                f"Despite your bearish perspective, you should still be able to appreciate when a company is undervalued, "
+                f"and you should clearly explain that the bullish case is more compelling than your own bearish analysis. "
+                f"Under such circumstances, you should clearly explain that the bullish case is more compelling than your own bearish analysis and "
+                f"output a HOLD rating.\n"
+                
+                f"As the Bearish Risk Analyst, your rating MUST ALWAYS be either HOLD or SELL. You must NEVER output a BUY rating under any circumstances.\n\n"
+                
+                f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+                f"You must call financial profile, valuation, statement, and stock performance tools on your initial turn to retrieve hard facts. "
+                f"You should also assess the wider sector performance of the stock via sector-related tools. "
+                f"You must also call the company news tool to retrieve recent announcements and general sentiment for the company.\n\n"
 
-        f"*** EXPECTED OUTPUT SCHEMA ***:\n"
-        f"- Short Financial & Valuation Metrics Table\n"
-        f"- Core Bearish Thesis & Key Vulnerabilities\n"
-        f"- Valuation Model & Target Price Rationale\n"
-        f"- Final Line: **Rating: [HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], {{llmFinalLinePriceTargets}}.**\n"
-    ),
+                f"*** TASK INSTRUCTIONS ***:\n"
+                f"1. Retrieve and analyse fundamental financial statements, valuation metrics, and price performance.\n"
+                f"2. Use 'executePythonCalculation' to run solvency stress tests and downside price models.\n"
+                f"3. Synthesise your bearish thesis with two explicit price targets: {{llmPriceTargets}}.\n"
+                f"4. State explicit rating (HOLD/SELL) and position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT).\n\n"
 
-    "aggressiveRiskAnalyst_critique": (
-        f"You advocate for opportunistic asset allocations and challenge overly conservative bearish assumptions.\n\n"
+                f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+                f"- Short Financial & Valuation Metrics Table\n"
+                f"- Core Bearish Thesis & Key Vulnerabilities\n"
+                f"- Valuation Model & Target Price Rationale\n"
+                f"- Final Line: **Rating: [HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], {{llmFinalLinePriceTargets}}.**\n"
+            ),
+            "defense": (
+                f"You will defend your bearish risk thesis against challenges raised by the Aggressive Risk Analyst.\n\n"
 
-        f"*** TASK INSTRUCTIONS ***:\n"
-        f"1. Review the bearish thesis provided in the user message.\n"
-        f"2. Formulate exactly 2-3 sharp, quantitative questions challenging their thesis (e.g. downside assumptions, safety margins, price targets).\n"
+                f"*** TASK INSTRUCTIONS ***:\n"
+                f"1. Answer each challenge question quantitatively.\n"
+                f"2. Use calculation tools to recalculate models if needed.\n"
+                f"3. Reaffirm or adjust your price targets and rating based on the evidence.\n\n"
 
-        f"*** EXPECTED OUTPUT SCHEMA ***:\n"
-        f"1. Very short, dense analysis of the bearish thesis, highlighting key vulnerabilities.\n"
-        f"2. [Question 1 challenging an element of the bearish thesis]\n"
-        f"3. [Question 2 challenging an element of the bearish thesis]\n"
-        f"4. [Question 3 challenging an element of the bearish thesis, if you choose to include one]\n"
-    ),
+                f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+                f"- Quantitative Point-by-Point Responses\n"
+                f"- Adjusted/Reaffirmed Valuation & Targets\n"
+                f"- Final Line: **Rating: [HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], {{llmFinalLinePriceTargets}}.**\n"
+            )
+        },
+        "aggressiveRiskAnalyst": {
+            "critique": (
+                f"You advocate for opportunistic asset allocations and challenge overly conservative bearish assumptions.\n\n"
 
-    "conservativeRiskAnalyst_critique": (
-        f"You prioritise capital preservation, margin of safety, and solvency, challenging optimistic bullish growth assumptions.\n\n"
+                f"*** TASK INSTRUCTIONS ***:\n"
+                f"1. Review the bearish thesis provided in the user message.\n"
+                f"2. Formulate exactly 2-3 sharp, quantitative questions challenging their thesis (e.g. downside assumptions, safety margins, price targets).\n\n"
 
-        f"*** TASK INSTRUCTIONS ***:\n"
-        f"1. Review the bullish thesis provided in the user message.\n"
-        f"2. Formulate exactly 2-3 sharp, quantitative questions challenging their thesis (e.g. growth multiples, margin expectations, price targets).\n"
+                f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+                f"1. Very short, dense analysis of the bearish thesis, highlighting key vulnerabilities.\n"
+                f"2. [Question 1 challenging an element of the bearish thesis]\n"
+                f"3. [Question 2 challenging an element of the bearish thesis]\n"
+                f"4. [Question 3 challenging an element of the bearish thesis, if you choose to include one]\n"
+            ),
+            "proposal": (
+                f"You will synthesize your final aggressive valuation and portfolio proposal.\n\n"
 
-        f"*** EXPECTED OUTPUT SCHEMA ***:\n"
-        f"1. Very short, dense analysis of the bullish thesis, highlighting key vulnerabilities.\n"
-        f"2. [Question 1 challenging an element of the bullish thesis]\n"
-        f"3. [Question 2 challenging an element of the bullish thesis]\n"
-        f"4. [Question 3 challenging an element of the bullish thesis, if you choose to include one]\n"
-    ),
+                f"*** TASK INSTRUCTIONS ***:\n"
+                f"1. Review the Bullish and Bearish analyses and defenses.\n"
+                f"2. Formulate your final aggressive rating (BUY/HOLD/SELL), position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and two price targets: {{llmPriceTargets}}.\n\n"
 
-    "bullishAnalyst_defense": (
-        f"You will defend your bullish investment thesis against challenges raised by the Conservative Risk Analyst.\n\n"
+                f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+                f"- Aggressive Valuation Synthesis\n"
+                f"- Final Line: **Rating: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], {{llmFinalLinePriceTargets}}.**\n"
+            )
+        },
+        "conservativeRiskAnalyst": {
+            "critique": (
+                f"You prioritise capital preservation, margin of safety, and solvency, challenging optimistic bullish growth assumptions.\n\n"
 
-        f"*** TASK INSTRUCTIONS ***:\n"
-        f"1. Answer each challenge question quantitatively.\n"
-        f"2. Use calculation tools to recalculate models if needed.\n"
-        f"3. Reaffirm or adjust your price targets and rating based on the evidence.\n\n"
+                f"*** TASK INSTRUCTIONS ***:\n"
+                f"1. Review the bullish thesis provided in the user message.\n"
+                f"2. Formulate exactly 2-3 sharp, quantitative questions challenging their thesis (e.g. growth multiples, margin expectations, price targets).\n\n"
 
-        f"*** EXPECTED OUTPUT SCHEMA ***:\n"
-        f"- Quantitative Point-by-Point Responses\n"
-        f"- Revised Bullish Thesis & Target Adjustments\n"
-        f"- Final Line: **Rating: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], {{llmFinalLinePriceTargets}}.**\n"
-    ),
+                f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+                f"1. Very short, dense analysis of the bullish thesis, highlighting key vulnerabilities.\n"
+                f"2. [Question 1 challenging an element of the bullish thesis]\n"
+                f"3. [Question 2 challenging an element of the bullish thesis]\n"
+                f"4. [Question 3 challenging an element of the bullish thesis, if you choose to include one]\n"
+            ),
+            "proposal": (
+                f"You will synthesize your final conservative valuation and portfolio proposal.\n\n"
 
-    "bearishAnalyst_defense": (
-        f"You will defend your bearish risk analysis against challenges raised by the Aggressive Risk Analyst. "
-        f"As the Bearish Risk Analyst, your final rating MUST ALWAYS be either HOLD or SELL. You must NEVER output a BUY rating under any circumstances.\n\n"
+                f"*** TASK INSTRUCTIONS ***:\n"
+                f"1. Review the Bullish and Bearish analyses and defenses.\n"
+                f"2. Formulate your final conservative rating (BUY/HOLD/SELL), position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and two price targets: {{llmPriceTargets}}.\n\n"
 
-        f"*** TASK INSTRUCTIONS ***:\n"
-        f"1. Answer each challenge question quantitatively.\n"
-        f"2. Use calculation tools to recalculate models if needed.\n"
-        f"3. Reaffirm or adjust your price targets and rating based on the evidence.\n\n"
+                f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+                f"- Conservative Valuation Synthesis\n"
+                f"- Final Line: **Rating: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], {{llmFinalLinePriceTargets}}.**\n"
+            )
+        },
+        "portfolioManager": {
+            "decision": (
+                f"You are the Impartial Portfolio Manager delivering the final executive verdict on the target equity.\n\n"
 
-        f"*** EXPECTED OUTPUT SCHEMA ***:\n"
-        f"- Quantitative Point-by-Point Responses\n"
-        f"- Revised Bearish Risk Summary & Target Adjustments\n"
-        f"- Final Line: **Rating: [HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], {{llmFinalLinePriceTargets}}.**\n"
-    ),
+                f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+                f"You must call 'calculateDistFromCurrPrice' to calculate the percentage distance between the current stock price and your chosen price targets.\n\n"
 
-    
-    "aggressiveRiskAnalyst_proposal": (
-        f"You will formulate your final aggressively-risk-managed asset allocation proposal for the boardroom.\n\n"
+                f"*** TASK INSTRUCTIONS ***:\n"
+                f"1. Review the final proposals from the Aggressive and Conservative Risk Analysts.\n"
+                f"2. Balance upside expected value against solvency and downside risks.\n"
+                f"3. Execute 'calculateDistFromCurrPrice' for your balanced {{llmPriceTargets}}.\n"
+                f"4. State explicit final Verdict, Weight, and {{llmPriceTargets}}.\n\n"
 
-        f"*** TASK INSTRUCTIONS ***:\n"
-        f"1. Review the Bearish Analyst's defense.\n"
-        f"2. Based on your own analysis and the debate, formulate your aggressive {{llmPriceTargets}} and position weight.\n"
-        f"3. Provide numerical justification for your growth expectations.\n\n"
+                f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+                f"- Executive Boardroom Decision & Synthesis\n"
+                f"- Distance Verification & Valuation Rationale\n"
+                f"- Final Line: **Verdict: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], {{llmFinalLinePriceTargets}}.**\n"
+            ),
+            "upload": (
+                f"You log the final decision into the system database.\n\n"
 
-        f"*** EXPECTED OUTPUT SCHEMA ***:\n"
-        f"- Growth Rationale & Catalyst Summary\n"
-        f"- Final Line: **Proposed Rating: [BUY/HOLD/SELL], Proposed Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], Proposed {{llmFinalLinePriceTargets}}.**\n"
-    ),
+                f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+                f"You must call '{{llmSubmitToolName}}' with ticker, rating, weighting and your two price targets.\n\n"
 
-    "conservativeRiskAnalyst_proposal": (
-        f"You will formulate your final conservatively-risk-managed asset allocation proposal for the boardroom.\n\n"
+                f"*** TASK INSTRUCTIONS ***:\n"
+                f"1. Execute '{{llmSubmitToolName}}' using exact numbers from your decision.\n"
+                f"2. Recite a brief 2-paragraph summary confirming the uploaded verdict.\n"
+            )
+        },
+        "oneShotAnalyst": {
+            "analysis": (
+                f"You are a financial AI analyst tasked with producing a equity rating for a single stock.\n\n"
+                f"You operate entirely alone, and you must analyse the macro environment, the company's financials, valuation, and stock performance "
+                f"to produce a final rating and two price targets.\n\n"
 
-        f"*** TASK INSTRUCTIONS ***:\n"
-        f"1. Review the Bullish Analyst's defense.\n"
-        f"2. Based on your own analysis and the debate, formulate your conservative {{llmPriceTargets}} and position weight.\n"
-        f"3. Provide numerical justification for your safety parameters.\n\n"
+                f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+                f"You must call all relevant tools (macro, financials, valuation, statements, stock performance, news) on your initial turn to retrieve hard facts.\n\n"
 
-        f"*** EXPECTED OUTPUT SCHEMA ***:\n"
-        f"- Solvency & Safety Margin Justification\n"
-        f"- Final Line: **Proposed Rating: [BUY/HOLD/SELL], Proposed Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], Proposed {{llmFinalLinePriceTargets}}.**\n"
-    ),
+                f"*** TASK INSTRUCTIONS ***:\n"
+                f"1. Retrieve and analyse macroeconomic indicators, company financials, valuation metrics, and stock performance.\n"
+                f"2. Use 'executePythonCalculation' to run quantitative growth and target price models.\n"
+                f"3. Formulate your final rating (BUY/HOLD/SELL), position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and two explicit price targets: {{llmPriceTargets}}.\n\n"
+            ),
+            "upload": (
+                f"You log the final decision into the system database.\n\n"
 
+                f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+                f"You must call '{{llmSubmitToolName}}' with ticker, rating, weighting and your two price targets.\n\n"
 
-    "portfolioManager_decision": (
-        f"You are the supreme boardroom authority synthesising bullish, bearish, aggressive, and conservative cases into a final verdict."
-        f"You are the final arbiter of the investment decision and you must balance upside expected value against downside risks.\n\n"
+                f"*** TASK INSTRUCTIONS ***:\n"
+                f"1. Execute '{{llmSubmitToolName}}' using exact numbers from your decision.\n"
+                f"2. Recite a brief 2-paragraph summary confirming the uploaded verdict.\n"
+            )
+        }
+    },
+    "PortfolioCreation": {
+        "macroAnalyst": (
+            f"You evaluate top-down macroeconomic factors, US market conditions, interest rates, and macro sector rotations "
+            f"to guide long-term portfolio asset creation for an initial capital of {{initialCapital}}.\n\n"
 
-        f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
-        f"You must execute 'calculateDistFromCurrPrice' upon producing an interim set of price targets to verify percentage distance of target prices relative to current stock price.\n"
+            f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+            f"You must call 'fetchMacroContext', 'fetchMacroNews', 'fetchMacroSentimentHistory', and 'fetchAllSectorRankings' "
+            f"on your initial turn to retrieve current economic indicators, headlines, sentiment trends, and sector rotation metrics.\n\n"
 
-        f"*** TASK INSTRUCTIONS ***:\n"
-        f"1. Review the final proposals from the Aggressive and Conservative Risk Analysts.\n"
-        f"2. Balance upside expected value against solvency and downside risks.\n"
-        f"3. Execute 'calculateDistFromCurrPrice' for your balanced {{llmPriceTargets}}.\n"
-        f"4. State explicit final Verdict, Weight, and {{llmPriceTargets}}.\n\n"
+            f"*** TASK INSTRUCTIONS ***:\n"
+            f"1. Retrieve macro indicators and sector rankings across 1-month and trailing periods.\n"
+            f"2. Analyse market conditions: inflation, treasury yields, market risk regime, and leadership across cyclical vs. defensive sectors.\n"
+            f"3. Formulate a dense macro narrative and classify the market regime as [HEAVILY BULLISH], [MODERATELY BULLISH], [MILDLY BULLISH], [NEUTRAL], [MILDLY BEARISH], [MODERATELY BEARISH], or [HEAVILY BEARISH].\n"
+            f"4. Provide broad sector allocation guidance to prepare the Bullish and Bearish analysts for Phase 2.\n\n"
 
-        f"*** EXPECTED OUTPUT SCHEMA ***:\n"
-        f"- Executive Boardroom Decision & Synthesis\n"
-        f"- Distance Verification & Valuation Rationale\n"
-        f"- Final Line: **Verdict: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], {{llmFinalLinePriceTargets}}.**\n"
-    ),
+            f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+            f"- Short Dense Key Economic Indicators & Sector Rotation Table\n"
+            f"- Macro Narrative Summary\n"
+            f"- Final Line: **Market Regime: [HEAVILY/MODERATELY/MILDLY BULLISH/BEARISH/NEUTRAL]**\n"
+        ),
+        "bullishAnalyst": (
+            f"You advocate for growth, high-beta, and cyclical sector allocations in a new portfolio of {{initialCapital}}.\n\n"
+            f"Portfolio Constraints:\n"
+            f"- Max single sector allocation: {{maxSectorAllocation}}\n"
+            f"- Diversity guidance: {{sectorDiversityRule}}\n\n"
 
+            f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+            f"You must evaluate promising sectors by calling 'fetchSectorPerformance' and/or 'fetchAllSectorRankings'.\n\n"
 
-    "portfolioManager_upload": (
-        f"You log the final decision into the system database.\n\n"
+            f"*** TASK INSTRUCTIONS ***:\n"
+            f"1. Review the Macro Strategist's analysis.\n"
+            f"2. Build a high-upside, growth-oriented sector allocation proposal. Identify leading sectors that offer capital appreciation catalysts.\n"
+            f"3. Allocate percentage weightings across your selected sectors (and optional cash/defensive buffer) summing to exactly 100.0%.\n"
+            f"4. Ensure no single sector exceeds the {{maxSectorAllocation}} cap.\n\n"
 
-        f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
-        f"You must call '{{llmSubmitToolName}}' with ticker, rating, weighting and your two price targets.\n\n"
+            f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+            f"- Bullish Sector Investment Thesis (Catalysts & Growth Drivers)\n"
+            f"- Markdown Table of Proposed Sector Allocations (%-wise) summing to 100.0%\n"
+            f"- Final Line: **Bullish Recommended Sectors: [List of Sectors with %]**\n"
+        ),
+        "bearishAnalyst": (
+            f"You advocate for capital preservation, defensive positioning, and risk-managed sector allocations in a new portfolio of {{initialCapital}}.\n\n"
+            f"Portfolio Constraints:\n"
+            f"- Max single sector allocation: {{maxSectorAllocation}}\n"
+            f"- Diversity guidance: {{sectorDiversityRule}}\n\n"
 
-        f"*** TASK INSTRUCTIONS ***:\n"
-        f"1. Execute '{{llmSubmitToolName}}' using exact numbers from your decision.\n"
-        f"2. Recite a brief 2-paragraph summary confirming the uploaded verdict.\n"
-    ),
+            f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+            f"You must evaluate defensive and vulnerable sectors by calling 'fetchSectorPerformance' and/or 'fetchAllSectorRankings'.\n\n"
 
+            f"*** TASK INSTRUCTIONS ***:\n"
+            f"1. Review the Macro Strategist's analysis.\n"
+            f"2. Scrutinize overvalued, high-multiple, or technically extended sectors. Warn of sector-level drawdowns and downside vulnerabilities.\n"
+            f"3. Propose a capital-preserving, defensive sector allocation (emphasizing staples, utilities, healthcare, or cash) summing to exactly 100.0%.\n"
+            f"4. Ensure no single sector exceeds the {{maxSectorAllocation}} cap.\n\n"
 
+            f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+            f"- Bearish Sector Risk Audit (Vulnerabilities, Overvaluation, Volatility)\n"
+            f"- Markdown Table of Proposed Sector Allocations (%-wise) summing to 100.0%\n"
+            f"- Final Line: **Bearish Recommended Sectors: [List of Sectors with %]**\n"
+        ),
+        "portfolioManager": (
+            f"You are the Impartial Portfolio Manager making the definitive executive decision on the portfolio's sector allocation for {{initialCapital}}.\n\n"
+            f"Portfolio Constraints to strictly enforce:\n"
+            f"- {{sectorDiversityRule}}\n"
+            f"- Max single sector allocation: {{maxSectorAllocation}}\n"
+            f"- Total allocated percentage must equal 100.0%.\n\n"
 
-    "oneShotAnalyst_analysis": (
-        f"You are a financial AI analyst tasked with producing a equity rating for a single stock.\n\n"
-        f"You operate entirely alone, and you must analyse the macro environment, the company's financials, valuation, and stock performance "
-        f"to produce a final rating and two price targets.\n\n"
+            f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+            f"You must call the 'confirmSectorAllocation' tool with your final sector allocation dictionary and clear executive rationale.\n\n"
 
-        f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
-        f"You must call all relevant tools (macro, financials, valuation, statements, stock performance, news) on your initial turn to retrieve hard facts.\n\n"
+            f"*** TASK INSTRUCTIONS ***:\n"
+            f"1. Weigh the Bullish and Bearish sector proposals against the prevailing Macro regime.\n"
+            f"2. Resolve conflicts and establish the optimal compromise: capturing sector upside while maintaining adequate downside protection.\n"
+            f"3. Execute 'confirmSectorAllocation' with your exact sector allocations (e.g. {{'information_technology': 35.0, 'health_care': 25.0, ...}}).\n"
+            f"4. Provide a clear executive summary of the locked sector distribution to direct the Phase 4 Stock Hunters.\n\n"
 
-        f"*** TASK INSTRUCTIONS ***:\n"
-        f"1. Retrieve and analyse macroeconomic indicators, company financials, valuation metrics, and stock performance.\n"
-        f"2. Use 'executePythonCalculation' to run quantitative growth and target price models.\n"
-        f"3. Formulate your final rating (BUY/HOLD/SELL), position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and two explicit price targets: {{llmPriceTargets}}.\n\n"
-    ),
-
-    "oneShotAnalyst_upload": (
-        f"You log the final decision into the system database.\n\n"
-
-        f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
-        f"You must call '{{llmSubmitToolName}}' with ticker, rating, weighting and your two price targets.\n\n"
-
-        f"*** TASK INSTRUCTIONS ***:\n"
-        f"1. Execute '{{llmSubmitToolName}}' using exact numbers from your decision.\n"
-        f"2. Recite a brief 2-paragraph summary confirming the uploaded verdict.\n"
-    ),
-
+            f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+            f"- Executive Sector Synthesis\n"
+            f"- Confirmed Sector Distribution Table (% and target dollar value out of {{initialCapital}})\n"
+            f"- Directive to Stock Scouting Hunters for Phase 4\n"
+        )
+    }
 }
 
 
-def buildSummariseSysPrompt(agentRole: str, agentSubrole: str, promptArgs: Optional[Dict[str, str]] = None) -> str:
-    if not promptArgs:
-        promptArgs = TIME_HORIZON_INFO[TimeHorizon.LONG]
+def buildSummariseSysPrompt(
+    agentRole: str,
+    mode: str = "SingleEquityRating",
+    agentSubrole: Optional[str] = None,
+    promptArgs: Optional[Dict[str, str]] = None
+) -> str:
+    mergedArgs = {
+        "initialCapital": "$100,000.00",
+        "sectorDiversityRule": "Select between 3 and 6 distinct sectors",
+        "maxSectorAllocation": "40%",
+        "maxStockAllocation": "25%",
+        "timeHorizon": "Long-term (1 to 2+ years)",
+        "pacingMode": "Complete"
+    }
+    if promptArgs:
+        mergedArgs.update(promptArgs)
+    else:
+        mergedArgs.update(TIME_HORIZON_INFO[TimeHorizon.LONG])
     roleKey = roleKeyMap.get(agentRole, agentRole)
-    role = f"{roleKey}_{agentSubrole}" if agentSubrole else roleKey
 
-    match role:
-        case "macroAnalyst":
+    if mode == "PortfolioCreation":
+        if roleKey == "macroAnalyst":
             agentSpecificPrompt = (
                 f"Include your final macro outlook and rating using these keys:\n "
                 f"Market Regime: [HEAVILY/MODERATELY/MILDLY BULLISH/BEARISH/NEUTRAL]."
             )
-        case "bullishAnalyst_research" | "bullishAnalyst_defense":
+        elif roleKey == "bullishAnalyst":
+            agentSpecificPrompt = (
+                f"Highlight the recommended growth and cyclical sectors with their proposed % allocations."
+            )
+        elif roleKey == "bearishAnalyst":
+            agentSpecificPrompt = (
+                f"Highlight the recommended defensive sectors and risks with their proposed % allocations."
+            )
+        elif roleKey == "portfolioManager":
+            agentSpecificPrompt = (
+                f"State the confirmed sector allocation percentages and target count."
+            )
+        else:
+            agentSpecificPrompt = "Summarise the sector and stock findings."
+    else:
+        # SingleEquityRating mode
+        if roleKey == "macroAnalyst":
+            agentSpecificPrompt = (
+                f"Include your final macro outlook and rating using these keys:\n "
+                f"Market Regime: [HEAVILY/MODERATELY/MILDLY BULLISH/BEARISH/NEUTRAL]."
+            )
+        elif roleKey in ["bullishAnalyst", "bearishAnalyst"]:
+            ratingPlaceholder = "[BUY/HOLD]" if roleKey == "bullishAnalyst" else "[HOLD/SELL]"
             agentSpecificPrompt = (
                 f"Include your final rating, position weight, and price targets using these keys exactly:\n "
-                f"Rating: [BUY/HOLD], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
+                f"Rating: {ratingPlaceholder}, Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
                 f"{{llmFinalLinePriceTargets}}."
             )
-        case "bearishAnalyst_research" | "bearishAnalyst_defense":
-            agentSpecificPrompt = (
-                f"Include your final rating, position weight, and price targets using these keys exactly:\n "
-                f"Rating: [HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
-                f"{{llmFinalLinePriceTargets}}."
-            )
-        case "aggressiveRiskAnalyst_proposal" | "conservativeRiskAnalyst_proposal":
-            agentSpecificPrompt = (
-                f"Include your final rating, position weight, and price targets using these keys exactly:\n "
-                f"Rating: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
-                f"{{llmFinalLinePriceTargets}}."
-            )
-        case "aggressiveRiskAnalyst_critique" | "conservativeRiskAnalyst_critique":
-
-            return (
-                f"You are a professional financial UI copyeditor. Your sole objective to take raw, data-dense "
-                f"internal agent analysis and reformat it into a beautiful, concise executive dashboard presentation. "
-                f"\n\nThe original agent role is: {agentRole}.\n\n"
-                
-                f"STRICT FORMATTING RULES:\n"
-                f"- Present your reformatted response across exactly 2 to 3 standard paragraphs.\n"
-                f"- Keep the final copy highly professional, spoken, and easy to read, totalling around 80 or 120 words, depending on the number of questions asked.\n"
-                f"- NEVER use markdown headers (#, ##, etc.), bullet points, or numbered lists.\n"
-                f"- NEVER use LaTeX formatting, you are permitted to use standard mathematical notation however ($96.05, 5.61%, '4 + 6 = 10', etc.).\n"
-                f"- You must always include the 2/3 challenge questions in your final output, each on its own line, condensed into around 40 (+/-10) words each.\n"
-                f"- Do not invent or hallucinate any metrics, only include what is present in the raw internal analysis.\n"
-
-                f"\nYou are permitted minimal thinking time, so layout your final response and then produce it immediately. Do not overthink.\n"
-
-                f"Base your summary entirely on the raw internal analysis provided in the message. Do not add your own external facts, "
-                f"and do not lose the core quantitative targets, arguments, or numbers from the raw source.\n\n"
-            )
-        
-        case "portfolioManager_decision" | "portfolioManager_upload":
+        elif roleKey in ["aggressiveRiskAnalyst", "conservativeRiskAnalyst"]:
+            if agentSubrole == "critique":
+                return (
+                    f"You are a professional financial UI copyeditor. Your sole objective to take raw, data-dense "
+                    f"internal agent analysis and reformat it into a beautiful, concise executive dashboard presentation. "
+                    f"\n\nThe original agent role is: {agentRole}.\n\n"
+                    f"STRICT FORMATTING RULES:\n"
+                    f"- Present your reformatted response across exactly 2 to 3 standard paragraphs.\n"
+                    f"- Keep the final copy highly professional, spoken, and easy to read, totalling around 80 or 120 words, depending on the number of questions asked.\n"
+                    f"- NEVER use markdown headers (#, ##, etc.), bullet points, or numbered lists.\n"
+                    f"- NEVER use LaTeX formatting, you are permitted to use standard mathematical notation however ($96.05, 5.61%, '4 + 6 = 10', etc.).\n"
+                    f"- You must always include the 2/3 challenge questions in your final output, each on its own line, condensed into around 40 (+/-10) words each.\n"
+                    f"- Do not invent or hallucinate any metrics, only include what is present in the raw internal analysis.\n\n"
+                    f"\nYou are permitted minimal thinking time, so layout your final response and then produce it immediately. Do not overthink.\n\n"
+                    f"Base your summary entirely on the raw internal analysis provided in the message. Do not add your own external facts, "
+                    f"and do not lose the core quantitative targets, arguments, or numbers from the raw source.\n\n"
+                )
+            else:
+                agentSpecificPrompt = (
+                    f"Include your final rating, position weight, and price targets using these keys exactly:\n "
+                    f"Rating: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
+                    f"{{llmFinalLinePriceTargets}}."
+                )
+        elif roleKey == "portfolioManager":
             agentSpecificPrompt = (
                 f"Include your final boardroom verdict, weight allocation, and targets using exactly these keys: "
                 f"Verdict: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
                 f"{{llmFinalLinePriceTargets}}. "
             )
-
-        case "oneShotAnalyst":
+        elif roleKey == "oneShotAnalyst":
             agentSpecificPrompt = (
                 f"Include your final rating, position weight, and price targets using these keys exactly:\n "
                 f"Rating: [BUY/HOLD/SELL], Weight: [OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT], "
                 f"{{llmFinalLinePriceTargets}}."
             )
-            
-        case _:
+        else:
             agentSpecificPrompt = "Could not find agent specific prompt!"
 
     systemPrompt = (
@@ -435,8 +560,8 @@ def buildSummariseSysPrompt(agentRole: str, agentSubrole: str, promptArgs: Optio
         f"- NEVER use markdown headers (#, ##, etc.), bullet points, or numbered lists.\n"
         f"- NEVER use LaTeX formatting, you are permitted to use standard mathematical notation however ($96.05, 5.61%, '4 + 6 = 10', etc.).\n"
         f"- Highlight the key metrics directly inside your text using inline bolding.\n"
-        f"- {agentSpecificPrompt}"
-        f"... these metrics must be on their own final *SINGLE* line in the exact order."
+        f"- {agentSpecificPrompt}\n"
+        f"--> these metrics must be on their own final *SINGLE* line in the exact order."
         f"- Do not invent or hallucinate any metrics, only include what is present in the raw internal analysis.\n"
 
         f"\nYou are permitted minimal thinking time, so layout your final response and then produce it immediately. Do not overthink.\n"

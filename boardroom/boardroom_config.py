@@ -64,6 +64,11 @@ class BoardroomConfig(ABC):
     temperature: float = 0.5
     thinkingBudget: int = 2048
 
+    @property
+    @abstractmethod
+    def modeName(self) -> str:
+        pass
+
     @abstractmethod
     def getPromptArgs(self) -> Dict[str, str]:
         pass
@@ -75,6 +80,10 @@ class SingleEquityRatingConfig(BoardroomConfig):
     simulatedDateStr: Optional[str]
     timeHorizon: TimeHorizon
     boardroomPace: BoardroomPace
+
+    @property
+    def modeName(self) -> str:
+        return "SingleEquityRating"
 
     def getTimeHorizonInfo(self) -> Dict[str, str]:
         return TIME_HORIZON_INFO.get(self.timeHorizon, TIME_HORIZON_INFO[TimeHorizon.LONG])
@@ -109,5 +118,84 @@ class SingleEquityRatingConfig(BoardroomConfig):
             thinkingBudget=thinkingBudget
         )
 
-    def unpack(self) -> tuple[str, Optional[str], TimeHorizon, BoardroomPace, int, float, bool, int]:
-        return self.ticker, self.simulatedDateStr, self.timeHorizon, self.boardroomPace, self.maxIterations, self.temperature, self.generateSummaries, self.thinkingBudget
+
+
+@dataclass(kw_only=True)
+class PortfolioCreationConfig(BoardroomConfig):
+    initialCapital: float = 100_000.0
+    timeHorizon: TimeHorizon = TimeHorizon.LONG
+    boardroomPace: BoardroomPace = BoardroomPace.COMPLETE
+    simulatedDateStr: Optional[str] = None
+
+    # Configurable portfolio constraints
+    targetSectorCount: Optional[int] = None
+    maxSectorAllocation: float = 40.0
+    maxStockAllocation: float = 20.0
+    targetStockCount: int = 10
+
+    @property
+    def modeName(self) -> str:
+        return "PortfolioCreation"
+
+    def getPromptArgs(self) -> Dict[str, str]:
+        sectorDiversityRule = (
+            f"Select exactly {self.targetSectorCount} distinct GICS sectors."
+            if self.targetSectorCount is not None
+            else "You have full discretion to select the optimal number of sectors (typically 2 to 6 based on market conditions)."
+        )
+        return {
+            "initialCapital": f"${self.initialCapital:,.2f}",
+            "timeHorizon": self.timeHorizon.value,
+            "sectorDiversityRule": sectorDiversityRule,
+            "maxSectorAllocation": f"{min(self.maxSectorAllocation, 90.0):.1f}%",
+            "maxStockAllocation": f"{min(self.maxStockAllocation, 80.0):.1f}%",
+            "targetStockCount": str(self.targetStockCount),
+            "targetSectorCount": str(self.targetSectorCount) if self.targetSectorCount is not None else "Dynamic"
+        }
+
+    @classmethod
+    def fromDict(cls, data: Dict[str, Any]) -> "PortfolioCreationConfig":
+        initialCapital = float(data.get("initialCapital", 100_000.0))
+        simulatedDateStr = data.get("simulatedDate") or data.get("simulatedDateStr") or None
+
+        horizonRaw = data.get("timeHorizon", "long")
+        timeHorizon = TimeHorizon(horizonRaw) if isinstance(horizonRaw, str) else horizonRaw
+
+        boardroomPaceStr = data.get("boardroomPace", "complete")
+        if boardroomPaceStr not in ["complete", "fast"]:
+            boardroomPaceStr = "complete"
+        boardroomPace = BoardroomPace(boardroomPaceStr)
+
+        targetSectorCountRaw = data.get("targetSectorCount")
+        targetSectorCount = int(targetSectorCountRaw) if targetSectorCountRaw is not None and str(targetSectorCountRaw).strip() != "" else None
+        if targetSectorCount is not None:
+            targetSectorCount = max(1, min(11, targetSectorCount))
+
+        maxSectorAllocation = float(data.get("maxSectorAllocation", 40.0))
+        maxSectorAllocation = max(5.0, min(90.0, maxSectorAllocation))
+
+        maxStockAllocation = float(data.get("maxStockAllocation", 20.0))
+        maxStockAllocation = max(1.0, min(80.0, maxStockAllocation))
+
+        targetStockCount = int(data.get("targetStockCount", 10))
+        targetStockCount = max(2, min(50, targetStockCount))
+
+        maxIterations = int(data.get("maxIterations", 10))
+        temperature = float(data.get("temperature", 0.5))
+        generateSummaries = bool(data.get("generateSummaries", True))
+        thinkingBudget = int(data.get("thinkingBudget", 2048))
+
+        return cls(
+            initialCapital=initialCapital,
+            timeHorizon=timeHorizon,
+            boardroomPace=boardroomPace,
+            simulatedDateStr=simulatedDateStr,
+            targetSectorCount=targetSectorCount,
+            maxSectorAllocation=maxSectorAllocation,
+            maxStockAllocation=maxStockAllocation,
+            targetStockCount=targetStockCount,
+            maxIterations=maxIterations,
+            temperature=temperature,
+            generateSummaries=generateSummaries,
+            thinkingBudget=thinkingBudget
+        )

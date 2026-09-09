@@ -292,3 +292,65 @@ def fetchSectorProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp,
     if note:
         result["resolutionNote"] = note
     return cleanData(result)
+
+
+def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, sectorAllocations: Dict[str, float], rationale: str) -> Dict[str, Any]:
+    if not isinstance(sectorAllocations, dict) or not sectorAllocations:
+        return {"error": "sectorAllocations must be a non-empty dictionary mapping sector names to percentage numbers."}
+
+    cleanedAllocations = {}
+    totalAllocated = 0.0
+
+    for rawSector, rawPct in sectorAllocations.items():
+        try:
+            pctVal = round(float(rawPct), 2)
+        except (ValueError, TypeError):
+            return {"error": f"Allocation value for '{rawSector}' must be a valid number, got '{rawPct}'."}
+
+        if pctVal <= 0:
+            continue
+
+        rawLower = str(rawSector).strip().lower()
+        if rawLower in ["cash", "usd"]:
+            cleanedAllocations["CASH"] = {
+                "sector": "Cash",
+                "ticker": "CASH",
+                "allocationPct": pctVal
+            }
+            totalAllocated += pctVal
+            continue
+
+        ticker, resolvedName, note = data.sectors.resolveSector(rawSector)
+        if resolvedName == "Unknown" or not ticker:
+            return {"error": f"Sector '{rawSector}' could not be resolved to a valid GICS sector."}
+
+        cleanedAllocations[ticker] = {
+            "sector": resolvedName,
+            "ticker": ticker,
+            "allocationPct": pctVal
+        }
+        totalAllocated += pctVal
+
+    # Check if total sums to ~100%
+    totalAllocated = round(totalAllocated, 2)
+    if totalAllocated < 95.0 or totalAllocated > 105.0:
+        return {
+            "error": f"Total sector allocations must sum to approximately 100.0%. Current sum: {totalAllocated}%. Please rebalance and retry.",
+            "currentSum": totalAllocated,
+            "currentAllocations": cleanedAllocations
+        }
+
+    decisionRecord = {
+        "sectorAllocations": cleanedAllocations,
+        "totalAllocatedPct": totalAllocated,
+        "sectorCount": len([k for k in cleanedAllocations if k != "CASH"]),
+        "rationale": str(rationale).strip()
+    }
+
+    tool.toolLog.append(decisionRecord)
+    return cleanData({
+        "status": "success",
+        "message": f"Sector allocation confirmed with {len(cleanedAllocations)} sectors totaling {totalAllocated}%.",
+        "confirmedAllocation": decisionRecord
+    })
+
