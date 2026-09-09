@@ -110,16 +110,12 @@ for dbKey, tick in DB_SECTOR_TO_TICKER.items():
 
 
 class SectorDataClient:
-    def __init__(
-        self,
-        startDateStr: str = START_DATE_STR,
-        endDateStr: str = END_DATE_STR,
-        rateLimiterDatabase: Optional[GlobalRateLimiters] = None
-    ):
+    def __init__(self, startDateStr: str = START_DATE_STR, endDateStr: str = END_DATE_STR, rateLimiterDatabase: Optional[GlobalRateLimiters] = None):
         self.startDateStr = startDateStr
         self.endDateStr = endDateStr
         self.rateLimiters = rateLimiterDatabase or GlobalRateLimiters()
         self.yfRateLimiter = self.rateLimiters.yFinanceLimiter
+
 
     def massDownload(self, pbar=None):
         if not os.path.exists(SECTOR_DIRECTORY):

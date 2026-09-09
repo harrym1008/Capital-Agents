@@ -7,7 +7,8 @@ from collectors.news_dl_client import NewsClient
 from collectors.macro_dl_client import MacroDataClient
 from collectors.forex_dl_client import CurrencyDataClient
 from collectors.shortdata_dl_client import ShortDataClient
-# from collectors.news_sentiment_client import NewsSentimentClient
+from collectors.sector_dl_client import SectorDataClient
+
 from collectors.rate_limiter import GlobalRateLimiters
 from collectors.constants import *
 
@@ -50,10 +51,10 @@ def runMassDownloadTool():
             "desc": f"FINRA short interest data from {'Jun 2021' if \
                         START_DATE < pd.Timestamp('2021-06-01', tz=NEW_YORK) else dateStartStr} to {dateEndStr}"
         },
-        # "newssentiment": {
-        #     "confirm": input("Cache news sentiment? (yes/no)    > ").lower() == "yes",
-        #     "desc": f"Precalculate news sentiment scores for all downloaded news articles from {dateStartStr} to {dateEndStr}"
-        # }
+        "sector": {
+            "confirm": input("Download sector data? (yes/no)    > ").lower() == "yes",
+            "desc": f"Sector data from {dateStartStr} to {dateEndStr}"
+        },
     }
 
     if not any(d["confirm"] for d in downloading.values()):
@@ -103,6 +104,8 @@ def runMassDownloadTool():
         pbars["forex"] = tqdm(total=1, desc="[FOREX]", position=4, leave=True, dynamic_ncols=True)
     if downloading["short"]["confirm"]:
         pbars["short"] = tqdm(total=1, desc="[SHORT]", position=5, leave=True, dynamic_ncols=True)
+    if downloading["sector"]["confirm"]:
+        pbars["sector"] = tqdm(total=1, desc="[SECTOR]", position=6, leave=True, dynamic_ncols=True)
     for pbar in pbars.values():
         pbar._external = True
 
@@ -129,6 +132,11 @@ def runMassDownloadTool():
     if downloading["short"]["confirm"]:
         tasks.append(("short", ShortDataClient, (START_DATE.date(), END_DATE.date(), limiters),
                               lambda c: c.massDownload(pbar=pbars["short"])))
+
+    if downloading["sector"]["confirm"]:
+        tasks.append(("sector", SectorDataClient, (START_DATE_STR, END_DATE_STR, limiters),
+                              lambda c: c.massDownload(pbar=pbars["sector"])))
+        
 
     runInParallel = True
     if tasks and runInParallel:
