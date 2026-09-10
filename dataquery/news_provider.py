@@ -1,5 +1,7 @@
 import os
+import time
 import threading
+from typing import Optional, Callable
 import requests
 import duckdb
 import pandas as pd
@@ -21,6 +23,7 @@ class NewsDataProvider:
         self.con = duckdb.connect(database=":memory:")
         self.keyedLocks = KeyedLockManager()
         self.downloadLock = threading.RLock()
+        self.lastAttemptTime = {}
         self.maxLocalDate = self.getMaxLocalDate()
 
     def normaliseTimestamp(self, before: pd.Timestamp) -> pd.Timestamp:
@@ -32,19 +35,37 @@ class NewsDataProvider:
         return ts.tz_localize(None)
 
     def getMaxLocalDate(self) -> pd.Timestamp:
+        maxDate = None
         if os.path.exists(NEWS_PARQUET_PATH):
             try:
-                res = self.con.execute(f"SELECT MAX(date) FROM read_parquet('{NEWS_PARQUET_PATH}')").fetchone()
+                res = self.con.cursor().execute(f"SELECT MAX(date) FROM read_parquet('{NEWS_PARQUET_PATH}')").fetchone()
                 if res and res[0] is not None:
-                    self.maxLocalDate = pd.to_datetime(res[0])
-                    return self.maxLocalDate
+                    maxDate = pd.to_datetime(res[0])
             except Exception:
                 pass
+
+        try:
+            resInc = self.con.cursor().execute("SELECT MAX(date) FROM inc_news_table").fetchone()
+            if resInc and resInc[0] is not None:
+                incMax = pd.to_datetime(resInc[0])
+                if maxDate is None or incMax > maxDate:
+                    maxDate = incMax
+        except Exception:
+            pass
+
+        if maxDate is not None:
+            self.maxLocalDate = maxDate
+            return maxDate
+
         self.maxLocalDate = pd.Timestamp(IPO_BEFORE_START_DATE).tz_localize(None)
         return self.maxLocalDate
 
 
-    def downloadNonLocalNews(self, startDate: pd.Timestamp, endDate: pd.Timestamp, tickers: list[str] = None):
+    def downloadNonLocalNews(self, startDate: pd.Timestamp, endDate: pd.Timestamp, 
+                             tickers: list[str] = None, 
+                             maxPages: Optional[int] = None, 
+                             sort: str = "asc",
+                             onProgressCallback: Optional[Callable[[float], None]] = None):
         apiKeyId = os.getenv("ALPACA_API_KEY_2") or os.getenv("ALPACA_API_KEY")
         apiKeySecret = os.getenv("ALPACA_API_SECRET_2") or os.getenv("ALPACA_API_SECRET")
         if not apiKeyId or not apiKeySecret:
@@ -60,7 +81,7 @@ class NewsDataProvider:
             "start": startDate.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "end": endDate.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "limit": 50,
-            "sort": "asc",
+            "sort": sort,
             "include_content": "true",
             "exclude_contentless": "true",
         }
@@ -70,6 +91,8 @@ class NewsDataProvider:
         url = "https://data.alpaca.markets/v1beta1/news"
         nextPageToken = None
         fetched = []
+        pagesFetched = 0
+        totalSeconds = max(1.0, (endDate - startDate).total_seconds())
 
         while True:
             if nextPageToken:
@@ -101,11 +124,33 @@ class NewsDataProvider:
                         "tickers": symbols
                     })
 
+                pagesFetched += 1
+                if articles and onProgressCallback:
+                    latestArticleDate = fetched[-1]["date"]
+                    if sort == "asc":
+                        elapsed = (latestArticleDate - startDate).total_seconds()
+                    else:
+                        elapsed = (endDate - latestArticleDate).total_seconds()
+                    pct = min(99.0, max(0.0, (elapsed / totalSeconds) * 100.0))
+                    try:
+                        onProgressCallback(pct)
+                    except Exception:
+                        pass
+
+                if maxPages is not None and pagesFetched >= maxPages:
+                    break
+
                 nextPageToken = newsData.get("next_page_token")
                 if not nextPageToken or len(articles) == 0:
                     break
             except Exception:
                 break
+
+        if onProgressCallback:
+            try:
+                onProgressCallback(100.0)
+            except Exception:
+                pass
 
         if fetched:
             dfInc = pd.DataFrame(fetched)
@@ -117,14 +162,71 @@ class NewsDataProvider:
                 self.con.unregister("temp_inc")
 
 
-    def ensureCoverage(self, targetTimestamp: pd.Timestamp, tickers: list[str] = None):
+    def ensureCoverage(self, targetTimestamp: pd.Timestamp, tickers: list[str] = None,
+                       maxPages: Optional[int] = None, sort: str = "asc",
+                       onProgressCallback: Optional[Callable[[float], None]] = None):
         maxLocal = self.getMaxLocalDate()
-        if targetTimestamp > maxLocal:
-            with self.downloadLock:
-                maxLocal = self.getMaxLocalDate()
-                if targetTimestamp > maxLocal:
-                    self.downloadNonLocalNews(maxLocal, targetTimestamp, tickers=tickers)
-                    self.maxLocalDate = targetTimestamp
+        if targetTimestamp <= maxLocal:
+            if onProgressCallback:
+                try:
+                    onProgressCallback(100.0)
+                except Exception:
+                    pass
+            return
+
+        cooldownSeconds = 1800  # 30-minute cooldown
+        tickerKey = tuple(sorted([t.upper() for t in tickers if t])) if tickers else "ALL"
+        checkKey = (tickerKey, targetTimestamp.strftime("%Y-%m-%d"), maxPages)
+
+        lastAttempt = self.lastAttemptTime.get(checkKey, 0)
+        if (time.time() - lastAttempt) < cooldownSeconds:
+            if onProgressCallback:
+                try:
+                    onProgressCallback(100.0)
+                except Exception:
+                    pass
+            return
+
+        if maxPages is not None:
+            fullKey = (tickerKey, targetTimestamp.strftime("%Y-%m-%d"), None)
+            if (time.time() - self.lastAttemptTime.get(fullKey, 0)) < cooldownSeconds:
+                if onProgressCallback:
+                    try:
+                        onProgressCallback(100.0)
+                    except Exception:
+                        pass
+                return
+
+        with self.downloadLock:
+            maxLocal = self.getMaxLocalDate()
+            if targetTimestamp <= maxLocal:
+                if onProgressCallback:
+                    try:
+                        onProgressCallback(100.0)
+                    except Exception:
+                        pass
+                return
+
+            lastAttempt = self.lastAttemptTime.get(checkKey, 0)
+            if (time.time() - lastAttempt) < cooldownSeconds:
+                if onProgressCallback:
+                    try:
+                        onProgressCallback(100.0)
+                    except Exception:
+                        pass
+                return
+            if maxPages is not None:
+                fullKey = (tickerKey, targetTimestamp.strftime("%Y-%m-%d"), None)
+                if (time.time() - self.lastAttemptTime.get(fullKey, 0)) < cooldownSeconds:
+                    if onProgressCallback:
+                        try:
+                            onProgressCallback(100.0)
+                        except Exception:
+                            pass
+                    return
+            self.lastAttemptTime[checkKey] = time.time()
+            self.downloadNonLocalNews(maxLocal, targetTimestamp, tickers=tickers, maxPages=maxPages, sort=sort, onProgressCallback=onProgressCallback)
+            self.maxLocalDate = self.getMaxLocalDate()
 
 
     def getQueryRelationSql(self) -> str:
@@ -184,7 +286,7 @@ class NewsDataProvider:
             if isinstance(cached, pd.DataFrame):
                 return cached
 
-            self.ensureCoverage(beforeNorm, tickers=[ticker])
+            self.ensureCoverage(beforeNorm, tickers=[ticker], maxPages=1, sort="desc")
 
             relationSql = self.getQueryRelationSql()
             if relationSql is None:
@@ -254,7 +356,7 @@ class NewsDataProvider:
             if isinstance(cached, pd.DataFrame):
                 return cached
 
-            self.ensureCoverage(beforeNorm, tickers=tickerSet)
+            self.ensureCoverage(beforeNorm, tickers=tickerSet, maxPages=1, sort="desc")
 
             relationSql = self.getQueryRelationSql()
             if relationSql is None:
@@ -307,7 +409,8 @@ class NewsDataProvider:
     def getNewsForTickerBetweenTimes(self, ticker: str, start: pd.Timestamp, end: pd.Timestamp, 
                                      mustHaveContent: bool = False, 
                                      maxReferencedTickers: int = 5,
-                                     summaryMaxChars: int = 2500) -> pd.DataFrame:
+                                     summaryMaxChars: int = 2500,
+                                     onProgressCallback: Optional[Callable[[float], None]] = None) -> pd.DataFrame:
         ticker = ticker.upper()
         startNorm = self.normaliseTimestamp(start)
         endNorm = self.normaliseTimestamp(end)
@@ -315,14 +418,24 @@ class NewsDataProvider:
 
         cached = self.cache.get(key)
         if isinstance(cached, pd.DataFrame):
+            if onProgressCallback:
+                try:
+                    onProgressCallback(100.0)
+                except Exception:
+                    pass
             return cached
 
         with self.keyedLocks.lockKey(key):
             cached = self.cache.get(key)
             if isinstance(cached, pd.DataFrame):
+                if onProgressCallback:
+                    try:
+                        onProgressCallback(100.0)
+                    except Exception:
+                        pass
                 return cached
 
-            self.ensureCoverage(endNorm, tickers=[ticker])
+            self.ensureCoverage(endNorm, tickers=[ticker], maxPages=None, sort="asc", onProgressCallback=onProgressCallback)
 
             relationSql = self.getQueryRelationSql()
             if relationSql is None:
@@ -368,7 +481,8 @@ class NewsDataProvider:
     def getNewsForTickersBetweenTimes(self, tickers: list[str], start: pd.Timestamp, end: pd.Timestamp, 
                                       mustHaveContent: bool = False, 
                                       maxReferencedTickers: int = 5,
-                                      summaryMaxChars: int = 2500) -> pd.DataFrame:
+                                      summaryMaxChars: int = 2500,
+                                      onProgressCallback: Optional[Callable[[float], None]] = None) -> pd.DataFrame:
         tickerSet = sorted({t.upper() for t in tickers if t})
         if not tickerSet:
             return pd.DataFrame()
@@ -379,14 +493,24 @@ class NewsDataProvider:
 
         cached = self.cache.get(key)
         if isinstance(cached, pd.DataFrame):
+            if onProgressCallback:
+                try:
+                    onProgressCallback(100.0)
+                except Exception:
+                    pass
             return cached
 
         with self.keyedLocks.lockKey(key):
             cached = self.cache.get(key)
             if isinstance(cached, pd.DataFrame):
+                if onProgressCallback:
+                    try:
+                        onProgressCallback(100.0)
+                    except Exception:
+                        pass
                 return cached
 
-            self.ensureCoverage(endNorm, tickers=tickerSet)
+            self.ensureCoverage(endNorm, tickers=tickerSet, maxPages=None, sort="asc", onProgressCallback=onProgressCallback)
 
             relationSql = self.getQueryRelationSql()
             if relationSql is None:

@@ -1,4 +1,5 @@
 import threading
+import re
 
 # Thread-local storage to track the active agent role, color, and stage number in multi-threaded runs
 _local = threading.local()
@@ -102,6 +103,14 @@ def emitEvent(eventType, data=None):
                 formattedProgress = f"{int(clampedProgress)}%" if clampedProgress.is_integer() else f"{clampedProgress:.1f}%"
                 payload["progress"] = formattedProgress
                 payload["numericProgress"] = clampedProgress
+            elif isinstance(rawProgress, str):
+                payload["progress"] = rawProgress
+                match = re.search(r"(\d+(?:\.\d+)?)%", rawProgress)
+                if match:
+                    try:
+                        payload["numericProgress"] = float(match.group(1))
+                    except ValueError:
+                        pass
 
         try:
             eventCallback(payload)

@@ -3,8 +3,10 @@ from dataquery import LRUCache, MacroDataProvider, NewsDataProvider, DailyPriceP
 from collectors.constants import START_DATE, END_DATE
 from collectors.rate_limiter import GlobalRateLimiters
 
+import time
+import re
 from threading import RLock
-from typing import Any, Dict, List, Callable, Optional
+from typing import Any, Dict, List, Callable, Optional, Union
 import pandas as pd
 from ui.ui_hooks import emitEvent, setCurrentCallId, getCurrentCallId
 
@@ -35,15 +37,51 @@ class Tool:
         self.paramSchema = parameterSchema
         self.toolLog = []
         self.progressLock = RLock()
+        self.lastProgressVal: Dict[str, Any] = {}
+        self.lastProgressTime: Dict[str, float] = {}
 
-    def updateProgress(self, progress: float | int, message: Optional[str] = None, callId: Optional[str] = None):
+    def updateProgress(self, progress: Union[float, int, str], message: Optional[str] = None, callId: Optional[str] = None):
         with self.progressLock:
             effectiveCallId = callId or getCurrentCallId()
-            numericProgress = max(0.0, min(100.0, float(progress)))
+            if not effectiveCallId:
+                return
+
+            now = time.time()
+            lastVal = self.lastProgressVal.get(effectiveCallId)
+            lastTime = self.lastProgressTime.get(effectiveCallId, 0.0)
+
+            if isinstance(progress, (int, float)):
+                clamped = max(0.0, min(100.0, float(progress)))
+                isTerminal = (clamped >= 100.0 or clamped <= 0.0)
+                if not isTerminal and lastVal is not None and isinstance(lastVal, (int, float)):
+                    if abs(clamped - lastVal) < 2.0 and (now - lastTime) < 0.1:
+                        return
+                self.lastProgressVal[effectiveCallId] = clamped
+                self.lastProgressTime[effectiveCallId] = now
+                emitProgress = clamped
+            else:
+                strProgress = str(progress).strip()
+                if lastVal == strProgress:
+                    return
+
+                stageMatch = re.match(r"^(Stage \d+/\d+):\s*([\d\.]+)%", strProgress)
+                lastStageMatch = re.match(r"^(Stage \d+/\d+):\s*([\d\.]+)%", str(lastVal)) if lastVal else None
+
+                if stageMatch and lastStageMatch and stageMatch.group(1) == lastStageMatch.group(1):
+                    currentPct = float(stageMatch.group(2))
+                    lastPct = float(lastStageMatch.group(2))
+                    isTerminal = (currentPct >= 100.0 or currentPct <= 0.0)
+                    if not isTerminal and abs(currentPct - lastPct) < 2.0 and (now - lastTime) < 0.1:
+                        return
+
+                self.lastProgressVal[effectiveCallId] = strProgress
+                self.lastProgressTime[effectiveCallId] = now
+                emitProgress = strProgress
+
             emitEvent("toolCallProgress", {
                 "toolName": self.name,
                 "callId": effectiveCallId,
-                "progress": numericProgress,
+                "progress": emitProgress,
                 "message": message,
                 "status": "running"
             })

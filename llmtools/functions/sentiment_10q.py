@@ -128,24 +128,29 @@ def fetchLatest10QSentiment(tool: Tool, data: DataProviders, timestamp: pd.Times
 
     mdaSentences = splitIntoSentences(mdaRaw) if mdaRaw else []
     rfSentences = splitIntoSentences(rfRaw) if rfRaw else []
-    totalSentences = len(mdaSentences) + len(rfSentences)
 
-    completedSentences = 0
-    def onProgressCallback(completedDelta: int = 1):
-        nonlocal completedSentences
-        completedSentences += completedDelta
-        if totalSentences > 0:
-            progressPct = (completedSentences / totalSentences) * 100.0
-            tool.updateProgress(progressPct)
-        else:
-            tool.updateProgress(0.0)
+    mdaTotal = len(mdaSentences)
+    mdaCompleted = 0
+    def onMdaProgress(completedDelta: int = 1):
+        nonlocal mdaCompleted
+        mdaCompleted += completedDelta
+        pct = (mdaCompleted / mdaTotal * 100.0) if mdaTotal > 0 else 0.0
+        tool.updateProgress(f"Stage 1/2: {pct:.1f}%")
+
+    rfTotal = len(rfSentences)
+    rfCompleted = 0
+    def onRfProgress(completedDelta: int = 1):
+        nonlocal rfCompleted
+        rfCompleted += completedDelta
+        pct = (rfCompleted / rfTotal * 100.0) if rfTotal > 0 else 0.0
+        tool.updateProgress(f"Stage 2/2: {pct:.1f}%")
 
     # Distill MD&A and compute operational sentiment
     distilledMda, mdaNetScores = distillSectionSentences(
-        mdaSentences, data=data, confidenceThreshold=confThreshold, maxWords=maxWordsPerBlock, onProgressCallback=onProgressCallback
+        mdaSentences, data=data, confidenceThreshold=confThreshold, maxWords=maxWordsPerBlock, onProgressCallback=onMdaProgress
     )
     distilledRf, rfNetScores = distillSectionSentences(
-        rfSentences, data=data, confidenceThreshold=confThreshold, maxWords=maxWordsPerBlock, onProgressCallback=onProgressCallback
+        rfSentences, data=data, confidenceThreshold=confThreshold, maxWords=maxWordsPerBlock, onProgressCallback=onRfProgress
     )
 
     mdaNetMean = round(float(np.mean(mdaNetScores)), 4) if mdaNetScores else 0.0

@@ -152,7 +152,8 @@ def fetchTickerSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.T
             start=windows["12mo"] - pd.DateOffset(days=1), 
             end=timestamp, 
             mustHaveContent=False, 
-            maxReferencedTickers=5
+            maxReferencedTickers=5,
+            onProgressCallback=lambda pct: tool.updateProgress(f"Stage 1/2: {pct:.1f}%")
         )
 
         if newsDf is None or newsDf.empty:
@@ -172,11 +173,8 @@ def fetchTickerSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.T
         def onProgressCallback(completedDelta: int = 1):
             nonlocal completedTexts
             completedTexts += completedDelta
-            if totalTexts > 0:
-                progressPct = (completedTexts / totalTexts) * 100.0
-                tool.updateProgress(progressPct)
-            else:
-                tool.updateProgress(0.0)
+            pct = (completedTexts / totalTexts * 100.0) if totalTexts > 0 else 0.0
+            tool.updateProgress(f"Stage 2/2: {pct:.1f}%")
 
         rawPredictions = scoreTextsWithCache(classificationDf["text"].tolist(), data=data, onProgressCallback=onProgressCallback)
         if rawPredictions is None:
@@ -313,7 +311,8 @@ def fetchMacroSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.Ti
             start=windows["12mo"] - pd.DateOffset(days=1), 
             end=timestamp, 
             mustHaveContent=True, 
-            maxReferencedTickers=12
+            maxReferencedTickers=12,
+            onProgressCallback=lambda pct: tool.updateProgress(f"Stage 1/2: {pct:.1f}%")
         )
 
         if newsDf is None or newsDf.empty:
@@ -335,11 +334,8 @@ def fetchMacroSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.Ti
         def onProgressCallback(completedDelta: int = 1):
             nonlocal completedTexts
             completedTexts += completedDelta
-            if totalTexts > 0:
-                progressPct = (completedTexts / totalTexts) * 100.0
-                tool.updateProgress(progressPct)
-            else:
-                tool.updateProgress(0.0)
+            pct = (completedTexts / totalTexts * 100.0) if totalTexts > 0 else 0.0
+            tool.updateProgress(f"Stage 2/2: {pct:.1f}%")
 
         rawPredictions = scoreTextsWithCache(classificationDf["text"].tolist(), data=data, onProgressCallback=onProgressCallback)
         if rawPredictions is None:

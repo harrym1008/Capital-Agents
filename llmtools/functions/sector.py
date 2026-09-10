@@ -253,9 +253,13 @@ def fetchAllSectorRankings(tool: Tool, data: DataProviders, timestamp: pd.Timest
                 "rsi14": technicals.get("rsi14")
             }
 
-        with ThreadPoolExecutor(max_workers=min(len(GICS_SECTORS), 8)) as executor:
+        totalSectors = len(GICS_SECTORS)
+        completedSectors = 0
+        with ThreadPoolExecutor(max_workers=min(totalSectors, 8)) as executor:
             futures = [executor.submit(processSector, ticker, info) for ticker, info in GICS_SECTORS.items()]
             for future in as_completed(futures):
+                completedSectors += 1
+                tool.updateProgress((completedSectors / totalSectors) * 100.0)
                 try:
                     item = future.result()
                     if item is not None:

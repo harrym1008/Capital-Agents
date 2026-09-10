@@ -191,19 +191,12 @@ def fetchMacroNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, lim
     limit = min(max(limit, 1), 18)
     jsonResult = []
 
-    progress = 0
-    def onProgressCallback(completedDelta: int = 1):
-        nonlocal progress
-        progress += completedDelta
-        tool.updateProgress(progress / limit * 100.0)
-
     newsWithContent = data.news.getRecentNewsForTickers(
         tickers=["SPY", "QQQ", "DIA", "GLD", "SLV", "VIX", "USO", "TLT"],
         before=timestamp,
         limit=limit,
         mustHaveContent=True,
-        maxReferencedTickers=15,
-        onProgressCallback=lambda x: tool.updateProgress(x)
+        maxReferencedTickers=15
     )
 
     idx = 0
