@@ -10,6 +10,7 @@ from collectors.constants import SECTOR_DIRECTORY, UTC
 from collectors.rate_limiter import GlobalRateLimiters
 from collectors.sector_dl_client import GICS_SECTORS, SECTOR_NAME_TO_TICKER, DB_SECTOR_TO_TICKER
 from dataquery.lru_cache import LRUCache
+from dataquery.keyed_lock import KeyedLockManager
 from dataquery.macro_provider import MacroSeries, MacroDataProvider
 from dataquery.ticker_provider import TickerDataProvider
 
@@ -22,7 +23,8 @@ class SectorDataProvider:
         self.macroProvider = macroProvider
         self.tickerProvider = tickerProvider
         self.sectorDir = SECTOR_DIRECTORY
-        self.lock = threading.RLock()
+        self.keyedLocks = KeyedLockManager()
+        self.downloadLock = threading.RLock()
         self.availableSectors = self.buildSectorIndex()
         self.lastAttemptTime: Dict[str, float] = {}
 
@@ -126,7 +128,11 @@ class SectorDataProvider:
 
     def loadSector(self, ticker: str) -> pd.DataFrame:
         key = f"sector|full_{ticker}"
-        with self.lock:
+        cached = self.cache.get(key)
+        if cached is not None:
+            return cached
+
+        with self.keyedLocks.lockKey(key):
             cached = self.cache.get(key)
             if cached is not None:
                 return cached
@@ -153,20 +159,20 @@ class SectorDataProvider:
         now = time.time()
         cooldownSeconds = 1800  # 30 min cooldown per ticker
 
-        with self.lock:
-            df = self.loadSector(ticker)
-            needsDownload = False
+        df = self.loadSector(ticker)
+        needsDownload = False
 
-            if df.empty:
+        if df.empty:
+            needsDownload = True
+            dlStart = targetNorm - pd.DateOffset(years=10)
+        else:
+            maxDate = df["date"].max()
+            if maxDate < targetNorm:
                 needsDownload = True
-                dlStart = targetNorm - pd.DateOffset(years=10)
-            else:
-                maxDate = df["date"].max()
-                if maxDate < targetNorm:
-                    needsDownload = True
-                    dlStart = maxDate + pd.Timedelta(days=1)
+                dlStart = maxDate + pd.Timedelta(days=1)
 
-            if needsDownload:
+        if needsDownload:
+            with self.downloadLock:
                 lastAttempt = self.lastAttemptTime.get(ticker, 0)
                 if now - lastAttempt > cooldownSeconds:
                     self.lastAttemptTime[ticker] = now

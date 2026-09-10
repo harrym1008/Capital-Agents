@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from typing import Dict, Any, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from collectors.sector_dl_client import GICS_SECTORS, DB_SECTOR_TO_TICKER
 from collectors.constants import UTC
@@ -204,70 +205,85 @@ def fetchAllSectorRankings(tool: Tool, data: DataProviders, timestamp: pd.Timest
     if cached is not None:
         return cached
 
-    lookbackDeltas = {
-        "5d": timestamp - pd.DateOffset(weeks=1),
-        "1mo": timestamp - pd.DateOffset(months=1),
-        "3mo": timestamp - pd.DateOffset(months=3),
-        "6mo": timestamp - pd.DateOffset(months=6),
-        "12mo": timestamp - pd.DateOffset(years=1)
-    }
-    pastDate = lookbackDeltas.get(lookback, timestamp - pd.DateOffset(months=1))
-    benchReturns = calculateBenchmarkReturns(data, timestamp, {lookback: pastDate})
-    spyReturn = benchReturns.get(lookback)
+    with data.sectors.keyedLocks.lockKey(cacheKey):
+        cached = data.cache.get(cacheKey)
+        if cached is not None:
+            return cached
 
-    rankings = []
-    startDate = timestamp - pd.DateOffset(years=2)
-
-    for ticker, info in GICS_SECTORS.items():
-        df = data.sectors.getSectorData(ticker, startDate=startDate, endDate=timestamp)
-        if df.empty:
-            continue
-
-        latestClose = float(df["close"].iloc[-1])
-        pastNorm = pastDate.tz_localize(None) if pastDate.tzinfo is not None else pastDate
-        pastRows = df[df["date"] <= pastNorm]
-
-        if pastRows.empty:
-            continue
-
-        pastClose = float(pastRows["close"].iloc[-1])
-        secReturn = round(((latestClose - pastClose) / pastClose) * 100, 2)
-        alpha = round(secReturn - spyReturn, 2) if spyReturn is not None else None
-
-        technicals = calculateSectorTechnicals(df, latestClose)
-
-        rankings.append({
-            "ticker": ticker,
-            "sector": info.name,
-            "category": info.category,
-            "latestPrice": round(latestClose, 2),
-            f"return_{lookback}": secReturn,
-            "relativeAlphaVsSP500": alpha,
-            "trend": technicals.get("trend"),
-            "rsi14": technicals.get("rsi14")
-        })
-
-    rankings.sort(key=lambda item: item[f"return_{lookback}"], reverse=True)
-
-    for i, item in enumerate(rankings):
-        item["rank"] = i + 1
-
-    topSector = rankings[0] if rankings else None
-    bottomSector = rankings[-1] if rankings else None
-
-    result = {
-        "asOfDate": timestamp.strftime("%Y-%m-%d"),
-        "lookback": lookback,
-        "benchmarkSP500Return": round(spyReturn, 2) if spyReturn is not None else None,
-        "rankings": rankings,
-        "summary": {
-            "leadingSector": f"{topSector['sector']} ({topSector['ticker']}) at {topSector[f'return_{lookback}']}%" if topSector else "N/A",
-            "laggingSector": f"{bottomSector['sector']} ({bottomSector['ticker']}) at {bottomSector[f'return_{lookback}']}%" if bottomSector else "N/A"
+        lookbackDeltas = {
+            "5d": timestamp - pd.DateOffset(weeks=1),
+            "1mo": timestamp - pd.DateOffset(months=1),
+            "3mo": timestamp - pd.DateOffset(months=3),
+            "6mo": timestamp - pd.DateOffset(months=6),
+            "12mo": timestamp - pd.DateOffset(years=1)
         }
-    }
-    cleanedResult = cleanData(result)
-    data.cache.put(cacheKey, cleanedResult)
-    return cleanedResult
+        pastDate = lookbackDeltas.get(lookback, timestamp - pd.DateOffset(months=1))
+        benchReturns = calculateBenchmarkReturns(data, timestamp, {lookback: pastDate})
+        spyReturn = benchReturns.get(lookback)
+
+        rankings = []
+        startDate = timestamp - pd.DateOffset(years=2)
+        pastNorm = pastDate.tz_localize(None) if pastDate.tzinfo is not None else pastDate
+
+        def processSector(ticker, info):
+            df = data.sectors.getSectorData(ticker, startDate=startDate, endDate=timestamp)
+            if df.empty:
+                return None
+
+            latestClose = float(df["close"].iloc[-1])
+            pastRows = df[df["date"] <= pastNorm]
+
+            if pastRows.empty:
+                return None
+
+            pastClose = float(pastRows["close"].iloc[-1])
+            secReturn = round(((latestClose - pastClose) / pastClose) * 100, 2)
+            alpha = round(secReturn - spyReturn, 2) if spyReturn is not None else None
+
+            technicals = calculateSectorTechnicals(df, latestClose)
+
+            return {
+                "ticker": ticker,
+                "sector": info.name,
+                "category": info.category,
+                "latestPrice": round(latestClose, 2),
+                f"return_{lookback}": secReturn,
+                "relativeAlphaVsSP500": alpha,
+                "trend": technicals.get("trend"),
+                "rsi14": technicals.get("rsi14")
+            }
+
+        with ThreadPoolExecutor(max_workers=min(len(GICS_SECTORS), 8)) as executor:
+            futures = [executor.submit(processSector, ticker, info) for ticker, info in GICS_SECTORS.items()]
+            for future in as_completed(futures):
+                try:
+                    item = future.result()
+                    if item is not None:
+                        rankings.append(item)
+                except Exception:
+                    pass
+
+        rankings.sort(key=lambda item: item[f"return_{lookback}"], reverse=True)
+
+        for i, item in enumerate(rankings):
+            item["rank"] = i + 1
+
+        topSector = rankings[0] if rankings else None
+        bottomSector = rankings[-1] if rankings else None
+
+        result = {
+            "asOfDate": timestamp.strftime("%Y-%m-%d"),
+            "lookback": lookback,
+            "benchmarkSP500Return": round(spyReturn, 2) if spyReturn is not None else None,
+            "rankings": rankings,
+            "summary": {
+                "leadingSector": f"{topSector['sector']} ({topSector['ticker']}) at {topSector[f'return_{lookback}']}%" if topSector else "N/A",
+                "laggingSector": f"{bottomSector['sector']} ({bottomSector['ticker']}) at {bottomSector[f'return_{lookback}']}%" if bottomSector else "N/A"
+            }
+        }
+        cleanedResult = cleanData(result)
+        data.cache.put(cacheKey, cleanedResult)
+        return cleanedResult
 
 
 def fetchSectorProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, sectorOrTicker: str) -> Dict[str, Any]:

@@ -71,120 +71,120 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
     if cached is not None:
         return cached
 
-    progress = 0
-    allSeries = data.macro.getAllSeries()
-    total = len(allSeries) * 8    # Once for bulk coverage, again for snapshotting
+    with data.macro.keyedLocks.lockKey(cacheKey):
+        cached = data.cache.get(cacheKey)
+        if cached is not None:
+            return cached
 
-    def onProgressCallback(completedDelta: int = 1):
-        nonlocal progress
-        progress += completedDelta
-        if total > 0:
-            progressPct = (progress / total) * 100.0
-            tool.updateProgress(progressPct)
-        else:
-            tool.updateProgress(0.0)
+        progress = 0
+        allSeries = data.macro.getAllSeries()
+        total = len(allSeries) * 1    # Once for bulk coverage, again for snapshotting
 
-    jsonResult = {}
-    todaySnapshot = data.macro.getSnapshot(allSeries, timestamp, onProgressCallback=onProgressCallback)
+        def onProgressCallback(completedDelta: int = 1):
+            nonlocal progress
+            progress += completedDelta
+            if total > 0:
+                progressPct = (progress / total) * 100.0
+                tool.updateProgress(progressPct)
+            else:
+                tool.updateProgress(0.0)
 
-    # progress = len(allSeries)
-    # tool.updateProgress(progress)
+        jsonResult = {}
+        todaySnapshot = data.macro.getSnapshot(allSeries, timestamp, onProgressCallback=onProgressCallback)
 
-    pastDates = {
-        "5d": timestamp - pd.DateOffset(weeks=1),
-        "1mo": timestamp - pd.DateOffset(months=1),
-        "3mo": timestamp - pd.DateOffset(months=3),
-        "6mo": timestamp - pd.DateOffset(months=6),
-        "12mo": timestamp - pd.DateOffset(years=1),
-        "3y": timestamp - pd.DateOffset(years=3),
-        "5y": timestamp - pd.DateOffset(years=5)
-    }
-    pastSnapshots = {name: data.macro.getSnapshot(allSeries, date, onProgressCallback=onProgressCallback) for name, date in pastDates.items()}
+        pastDates = {
+            "5d": timestamp - pd.DateOffset(weeks=1),
+            "1mo": timestamp - pd.DateOffset(months=1),
+            "3mo": timestamp - pd.DateOffset(months=3),
+            "6mo": timestamp - pd.DateOffset(months=6),
+            "12mo": timestamp - pd.DateOffset(years=1),
+            "3y": timestamp - pd.DateOffset(years=3),
+            "5y": timestamp - pd.DateOffset(years=5)
+        }
+        pastSnapshots = {name: data.macro.getSnapshot(allSeries, date, onProgressCallback=None) for name, date in pastDates.items()}
 
-    for series in allSeries:
-        seriesIdentifier = series.parquetName
-        seriesOrigin = series.source
+        for series in allSeries:
+            seriesIdentifier = series.parquetName
+            seriesOrigin = series.source
 
-        if seriesOrigin == "yfinance":
-            seriesDesc = YFINANCE_MACRO_TICKERS.get(seriesIdentifier, {}).get("desc", seriesIdentifier)
-            numberType = NumberType.STOCK_PRICE if "USD" not in seriesIdentifier \
-                                else (NumberType.EXCHANGE_RATE if "BTC" not in seriesIdentifier else NumberType.STOCK_PRICE)
-        else:
-            seriesDesc = FRED_SERIES_MAP.get(seriesIdentifier, {}).get("desc", seriesIdentifier)
-            numberType = FRED_SERIES_MAP.get(seriesIdentifier, {}).get("numType", NumberType.DECIMAL)
+            if seriesOrigin == "yfinance":
+                seriesDesc = YFINANCE_MACRO_TICKERS.get(seriesIdentifier, {}).get("desc", seriesIdentifier)
+                numberType = NumberType.STOCK_PRICE if "USD" not in seriesIdentifier \
+                                    else (NumberType.EXCHANGE_RATE if "BTC" not in seriesIdentifier else NumberType.STOCK_PRICE)
+            else:
+                seriesDesc = FRED_SERIES_MAP.get(seriesIdentifier, {}).get("desc", seriesIdentifier)
+                numberType = FRED_SERIES_MAP.get(seriesIdentifier, {}).get("numType", NumberType.DECIMAL)
 
-        seriesRows = todaySnapshot.loc[todaySnapshot["series"] == series]
-        if seriesRows.empty:
-            continue
-
-        latestPrice = seriesRows["value"].iloc[0]
-        latestValueStr = cleanNumber(latestPrice, numberType)
-
-        outputsPerPeriod = {}
-        fiftyTwoWeekMin = None
-        fiftyTwoWeekMax = None
-
-        for period, snapshot in pastSnapshots.items():
-            if seriesOrigin == "yfinance" and period == "5y":
-                continue
-            elif seriesOrigin == "fred":
-                if period == "5d":
-                    continue
-                if period == "1mo" and not seriesIdentifier.startswith("TREAS"):
-                    continue
-                elif period == "3mo" and seriesIdentifier in ["CPI", "CORECPI", "GDP"]:
-                    continue
-
-            snapRows = snapshot.loc[snapshot["series"] == series]
-            if snapRows.empty:
+            seriesRows = todaySnapshot.loc[todaySnapshot["series"] == series]
+            if seriesRows.empty:
                 continue
 
-            pastPrice = snapRows["value"].iloc[0]
-            priceChangePct = ((latestPrice - pastPrice) / pastPrice) * 100 if pastPrice != 0 else 0
+            latestPrice = seriesRows["value"].iloc[0]
+            latestValueStr = cleanNumber(latestPrice, numberType)
 
-            if seriesOrigin == "yfinance" and period == "12mo":
-                lowDate, lowVal = data.macro.getLowest(series, pastDates[period], timestamp)
-                highDate, highVal = data.macro.getHighest(series, pastDates[period], timestamp)
-                fiftyTwoWeekMin = cleanNumber(lowVal, numberType) if lowVal is not None else None
-                fiftyTwoWeekMax = cleanNumber(highVal, numberType) if highVal is not None else None
+            outputsPerPeriod = {}
+            fiftyTwoWeekMin = None
+            fiftyTwoWeekMax = None
 
-            startPrice = cleanNumber(pastPrice, numberType)
+            for period, snapshot in pastSnapshots.items():
+                if seriesOrigin == "yfinance" and period == "5y":
+                    continue
+                elif seriesOrigin == "fred":
+                    if period == "5d":
+                        continue
+                    if period == "1mo" and not seriesIdentifier.startswith("TREAS"):
+                        continue
+                    elif period == "3mo" and seriesIdentifier in ["CPI", "CORECPI", "GDP"]:
+                        continue
 
-            if seriesOrigin == "fred" and seriesIdentifier.startswith("TREAS"):
-                bpsChange = (latestPrice - pastPrice) * 100
-                outputsPerPeriod[period] = {
-                    f"price_{period}_ago": startPrice,
-                    f"change_{period}_bps": cleanNumber(bpsChange, NumberType.CHANGE_BP)
+                snapRows = snapshot.loc[snapshot["series"] == series]
+                if snapRows.empty:
+                    continue
+
+                pastPrice = snapRows["value"].iloc[0]
+                priceChangePct = ((latestPrice - pastPrice) / pastPrice) * 100 if pastPrice != 0 else 0
+
+                if seriesOrigin == "yfinance" and period == "12mo":
+                    lowDate, lowVal = data.macro.getLowest(series, pastDates[period], timestamp)
+                    highDate, highVal = data.macro.getHighest(series, pastDates[period], timestamp)
+                    fiftyTwoWeekMin = cleanNumber(lowVal, numberType) if lowVal is not None else None
+                    fiftyTwoWeekMax = cleanNumber(highVal, numberType) if highVal is not None else None
+
+                startPrice = cleanNumber(pastPrice, numberType)
+
+                if seriesOrigin == "fred" and seriesIdentifier.startswith("TREAS"):
+                    bpsChange = (latestPrice - pastPrice) * 100
+                    outputsPerPeriod[period] = {
+                        f"price_{period}_ago": startPrice,
+                        f"change_{period}_bps": cleanNumber(bpsChange, NumberType.CHANGE_BP)
+                    }
+                else:
+                    outputsPerPeriod[period] = {
+                        f"price_{period}_ago": startPrice,
+                        f"change_{period}_pct": cleanNumber(priceChangePct, NumberType.PERCENTAGE_CHANGE),
+                    }
+
+            if seriesOrigin == "yfinance":
+                jsonResult[seriesIdentifier] = {
+                    "description": seriesDesc,
+                    "latestValue": latestValueStr,
+                    "history": outputsPerPeriod,
+                    "52w": {
+                        "52wLow": fiftyTwoWeekMin,
+                        "52wHigh": fiftyTwoWeekMax
+                    }
                 }
             else:
-                outputsPerPeriod[period] = {
-                    f"price_{period}_ago": startPrice,
-                    f"change_{period}_pct": cleanNumber(priceChangePct, NumberType.PERCENTAGE_CHANGE),
+                jsonResult[seriesIdentifier] = {
+                    "description": seriesDesc,
+                    "unit": FRED_SERIES_MAP.get(seriesIdentifier, {}).get("unit", ""),
+                    "latestValue": latestValueStr,
+                    "history": outputsPerPeriod
                 }
 
-        if seriesOrigin == "yfinance":
-            jsonResult[seriesIdentifier] = {
-                "description": seriesDesc,
-                "latestValue": latestValueStr,
-                "history": outputsPerPeriod,
-                "52w": {
-                    "52wLow": fiftyTwoWeekMin,
-                    "52wHigh": fiftyTwoWeekMax
-                }
-            }
-        else:
-            jsonResult[seriesIdentifier] = {
-                "description": seriesDesc,
-                "unit": FRED_SERIES_MAP.get(seriesIdentifier, {}).get("unit", ""),
-                "latestValue": latestValueStr,
-                "history": outputsPerPeriod
-            }
-
-        # onProgressCallback(1)
-
-    jsonOutput = cleanData({"date": timestamp.strftime("%Y-%m-%d"), "macroContext": cleanData(jsonResult)})
-    data.cache.put(cacheKey, jsonOutput)
-    return jsonOutput
+        jsonOutput = cleanData({"date": timestamp.strftime("%Y-%m-%d"), "macroContext": cleanData(jsonResult)})
+        data.cache.put(cacheKey, jsonOutput)
+        return jsonOutput
 
 
 def fetchMacroNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, limit: int = 12):

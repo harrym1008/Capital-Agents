@@ -9,6 +9,7 @@ from collectors.constants import NEWS_PARQUET_PATH, UTC, IPO_BEFORE_START_DATE
 from collectors.rate_limiter import GlobalRateLimiters
 from collectors.news_dl_client import cleanAndFilterArticlesDf
 from dataquery.lru_cache import LRUCache
+from dataquery.keyed_lock import KeyedLockManager
 
 load_dotenv()
 
@@ -18,7 +19,8 @@ class NewsDataProvider:
         self.cache = cache
         self.rateLimiters = rateLimiters
         self.con = duckdb.connect(database=":memory:")
-        self.lock = threading.RLock()
+        self.keyedLocks = KeyedLockManager()
+        self.downloadLock = threading.RLock()
         self.maxLocalDate = self.getMaxLocalDate()
 
     def normaliseTimestamp(self, before: pd.Timestamp) -> pd.Timestamp:
@@ -118,15 +120,18 @@ class NewsDataProvider:
     def ensureCoverage(self, targetTimestamp: pd.Timestamp, tickers: list[str] = None):
         maxLocal = self.getMaxLocalDate()
         if targetTimestamp > maxLocal:
-            with self.lock:
-                self.downloadNonLocalNews(maxLocal, targetTimestamp, tickers=tickers)
-                self.maxLocalDate = targetTimestamp
+            with self.downloadLock:
+                maxLocal = self.getMaxLocalDate()
+                if targetTimestamp > maxLocal:
+                    self.downloadNonLocalNews(maxLocal, targetTimestamp, tickers=tickers)
+                    self.maxLocalDate = targetTimestamp
 
 
     def getQueryRelationSql(self) -> str:
         hasInc = False
         try:
-            res = self.con.execute("SELECT COUNT(*) FROM inc_news_table").fetchone()
+            cursor = self.con.cursor()
+            res = cursor.execute("SELECT COUNT(*) FROM inc_news_table").fetchone()
             if res and res[0] > 0:
                 hasInc = True
         except Exception:
@@ -168,9 +173,13 @@ class NewsDataProvider:
 
         ticker = ticker.upper()
         beforeNorm = self.normaliseTimestamp(before)
+        key = f"news|single_{ticker}_{beforeNorm.strftime('%Y-%m-%dH%H')}_{limit}_{mustHaveContent}_{maxReferencedTickers}_{summaryMaxChars}"
 
-        with self.lock:
-            key = f"news|single_{ticker}_{beforeNorm.strftime('%Y-%m-%dH%H')}_{limit}_{mustHaveContent}_{maxReferencedTickers}_{summaryMaxChars}"
+        cached = self.cache.get(key)
+        if isinstance(cached, pd.DataFrame):
+            return cached
+
+        with self.keyedLocks.lockKey(key):
             cached = self.cache.get(key)
             if isinstance(cached, pd.DataFrame):
                 return cached
@@ -211,7 +220,8 @@ class NewsDataProvider:
                 queryParams.append(int(maxReferencedTickers))
             queryParams.append(int(limit))
             try:
-                df = self.con.execute(sql, queryParams).df()
+                cursor = self.con.cursor()
+                df = cursor.execute(sql, queryParams).df()
             except Exception:
                 df = pd.DataFrame()
 
@@ -233,9 +243,13 @@ class NewsDataProvider:
             return pd.DataFrame()
 
         beforeNorm = self.normaliseTimestamp(before)
+        key = f"news|multi_{','.join(tickerSet)}_{beforeNorm.strftime('%Y-%m-%dH%H')}_{limit}_{mustHaveContent}_{maxReferencedTickers}_{summaryMaxChars}"
 
-        with self.lock:
-            key = f"news|multi_{','.join(tickerSet)}_{beforeNorm.strftime('%Y-%m-%dH%H')}_{limit}_{mustHaveContent}_{maxReferencedTickers}_{summaryMaxChars}"
+        cached = self.cache.get(key)
+        if isinstance(cached, pd.DataFrame):
+            return cached
+
+        with self.keyedLocks.lockKey(key):
             cached = self.cache.get(key)
             if isinstance(cached, pd.DataFrame):
                 return cached
@@ -280,7 +294,8 @@ class NewsDataProvider:
             queryParams.append(int(limit))
 
             try:
-                df = self.con.execute(sql, queryParams).df()
+                cursor = self.con.cursor()
+                df = cursor.execute(sql, queryParams).df()
             except Exception:
                 df = pd.DataFrame()
 
@@ -296,9 +311,13 @@ class NewsDataProvider:
         ticker = ticker.upper()
         startNorm = self.normaliseTimestamp(start)
         endNorm = self.normaliseTimestamp(end)
+        key = f"news|range_{ticker}_{startNorm.strftime('%Y-%m-%dH%H')}_{endNorm.strftime('%Y-%m-%dH%H')}_{mustHaveContent}_{maxReferencedTickers}_{summaryMaxChars}"
 
-        with self.lock:
-            key = f"news|range_{ticker}_{startNorm.strftime('%Y-%m-%dH%H')}_{endNorm.strftime('%Y-%m-%dH%H')}_{mustHaveContent}_{maxReferencedTickers}_{summaryMaxChars}"
+        cached = self.cache.get(key)
+        if isinstance(cached, pd.DataFrame):
+            return cached
+
+        with self.keyedLocks.lockKey(key):
             cached = self.cache.get(key)
             if isinstance(cached, pd.DataFrame):
                 return cached
@@ -337,7 +356,8 @@ class NewsDataProvider:
             if maxReferencedTickers is not None:
                 queryParams.append(int(maxReferencedTickers))
             try:
-                df = self.con.execute(sql, queryParams).df()
+                cursor = self.con.cursor()
+                df = cursor.execute(sql, queryParams).df()
             except Exception:
                 df = pd.DataFrame()
 
@@ -355,9 +375,13 @@ class NewsDataProvider:
 
         startNorm = self.normaliseTimestamp(start)
         endNorm = self.normaliseTimestamp(end)
+        key = f"news|multirange_{','.join(tickerSet)}_{startNorm.strftime('%Y-%m-%dH%H')}_{endNorm.strftime('%Y-%m-%dH%H')}_{mustHaveContent}_{maxReferencedTickers}_{summaryMaxChars}"
 
-        with self.lock:
-            key = f"news|multirange_{','.join(tickerSet)}_{startNorm.strftime('%Y-%m-%dH%H')}_{endNorm.strftime('%Y-%m-%dH%H')}_{mustHaveContent}_{maxReferencedTickers}_{summaryMaxChars}"
+        cached = self.cache.get(key)
+        if isinstance(cached, pd.DataFrame):
+            return cached
+
+        with self.keyedLocks.lockKey(key):
             cached = self.cache.get(key)
             if isinstance(cached, pd.DataFrame):
                 return cached
@@ -395,12 +419,13 @@ class NewsDataProvider:
             queryParams = [startNorm.to_pydatetime(), endNorm.to_pydatetime(), tickerSet] + contentParams
             if maxReferencedTickers is not None:
                 queryParams.append(int(maxReferencedTickers))
+
             try:
-                df = self.con.execute(sql, queryParams).df()
+                cursor = self.con.cursor()
+                df = cursor.execute(sql, queryParams).df()
             except Exception:
                 df = pd.DataFrame()
 
             df = self.truncateDfContent(df, summaryMaxChars)
             self.cache.put(key, df)
             return df
-

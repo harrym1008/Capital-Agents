@@ -17,7 +17,7 @@ from llm.llm_client import BaseLLMClient
 from llm.token_cost_tracker import TokenCostTracker
 from llmtools.tool_registry import ToolRegistry
 
-from finbert.finbert_engines import preloadSentimentModelAsync, unloadSentimentEngine
+from finbert.finbert_engines import getSentimentEngine, unloadSentimentEngine
 from ui.ui_hooks import emitEvent
 
 
@@ -117,6 +117,7 @@ class ServerManager:
         self.sharedToolRegistry: Optional[Any] = None
         self.costTracker = TokenCostTracker()
         self.serverLock = threading.Lock()
+        self.sentimentPreloadThread: Optional[threading.Thread] = None
 
     @property
     def boardroomClient(self) -> Optional[BaseLLMClient]:
@@ -137,6 +138,26 @@ class ServerManager:
     @property
     def openaiCompatibleRunning(self) -> bool:
         return self.loadedModelType == LoadedModelType.OPENAI_COMPATIBLE
+
+    def startSentimentEnginePreload(self) -> threading.Thread:
+        self.recordLog("Pre-loading AutoTokeniser and FinBERT sentiment engine...")
+        thread = threading.Thread(target=getSentimentEngine, daemon=True, name="SentimentModelPreloader")
+        self.sentimentPreloadThread = thread
+        thread.start()
+        return thread
+
+    def ensureSentimentEngineReady(self, timeout: float = 40.0) -> bool:
+        if self.sentimentPreloadThread and self.sentimentPreloadThread.is_alive():
+            self.recordLog("Waiting for FinBERT sentiment engine to complete initialisation...")
+            self.sentimentPreloadThread.join(timeout=timeout)
+
+        engine = getSentimentEngine()
+        if engine is not None:
+            self.recordLog(f"Sentiment engine ready and verified: {type(engine).__name__} (Batch Size: {engine.optimalBatchSize})")
+            return True
+        else:
+            self.recordLog("Warning: Sentiment engine could not be loaded.")
+            return False
 
     def recordLog(self, logLine: str):
         self.startupLogs.append(logLine)
@@ -195,7 +216,7 @@ class ServerManager:
 
                         cleanApiKey = (apiKey or "").strip()
                         cleanModel = modelName.strip() if modelName else "default"
-                        self.recordLog(f"Initializing OpenAI Compatible test for model '{cleanModel}' at '{cleanBaseUrl}'...")
+                        self.recordLog(f"Initialising OpenAI Compatible test for model '{cleanModel}' at '{cleanBaseUrl}'...")
 
                         client = OpenAICompatibleClient(baseUrl=cleanBaseUrl, apiKey=cleanApiKey, model=cleanModel)
                         success, result = testLlmClient(client, cleanModel)
@@ -207,9 +228,9 @@ class ServerManager:
                         self.loadedModelType = LoadedModelType.OPENAI_COMPATIBLE
                         self.loadedModelName = cleanModel
 
-                        # Initialise the sentiment engine when using OpenAI Compatible
-                        self.recordLog("Loading sentiment model asynchronously...")
-                        preloadSentimentModelAsync()
+                        # Preload AutoTokeniser and initialise FinBERT sentiment engine for OpenAI Compatible
+                        self.startSentimentEnginePreload()
+                        self.ensureSentimentEngineReady(timeout=35.0)
 
                         return True, f"OpenAI Compatible server active and verified (Response: '{result}')."
 
@@ -222,7 +243,7 @@ class ServerManager:
                     try:
                         apiKey = os.getenv("OPENROUTER_API_KEY", "")
                         routerMsg = f" ({providerRouter})" if providerRouter else ""
-                        self.recordLog(f"Initializing OpenRouter test for model '{modelName}'{routerMsg}...")
+                        self.recordLog(f"Initialising OpenRouter test for model '{modelName}'{routerMsg}...")
 
                         client = OpenRouterClient(apiKey=apiKey, model=modelName, providerRouter=providerRouter)
                         success, result = testLlmClient(client, modelName)
@@ -234,9 +255,9 @@ class ServerManager:
                         self.loadedModelType = LoadedModelType.OPENROUTER
                         self.loadedModelName = modelName
 
-                        # Initialise the sentiment engine when using OpenRouter
-                        self.recordLog("Loading sentiment model asynchronously...")
-                        preloadSentimentModelAsync()
+                        # Preload AutoTokeniser and initialise FinBERT sentiment engine for OpenRouter
+                        self.startSentimentEnginePreload()
+                        self.ensureSentimentEngineReady(timeout=35.0)
 
                         return True, f"OpenRouter server active and verified (Response: '{result}')."
 
@@ -259,8 +280,8 @@ class ServerManager:
                         else:
                             pass
 
-                        self.recordLog("Loading sentiment model asynchronously...")
-                        preloadSentimentModelAsync()       # Do this after vram clearing since the model needs to be in vram
+                        # Start loading FinBERT concurrently with Llama.cpp process startup
+                        self.startSentimentEnginePreload()
 
                         self.recordLog(f"Starting Llama.cpp boardroom server with model '{cleanModelName}'...")
                         serverProcess = LlamaCppProcessInitiator(
@@ -314,6 +335,9 @@ class ServerManager:
                         except Exception:
                             pass
 
+                        # Ensure FinBERT preloading has finished and is verified in VRAM
+                        self.ensureSentimentEngineReady(timeout=35.0)
+
                         # Start background metrics polling loop for Llama.cpp
                         self._startMetricsPolling()
 
@@ -345,6 +369,10 @@ class ServerManager:
             case _:
                 pass
 
+        if self.sentimentPreloadThread and self.sentimentPreloadThread.is_alive():
+            self.sentimentPreloadThread.join(timeout=3.0)
+        self.sentimentPreloadThread = None
+
         self.llmClient = None
         prevType = self.loadedModelType.value
         self.loadedModelType = LoadedModelType.NONE
@@ -353,6 +381,7 @@ class ServerManager:
 
         # Force unload sentiment engine when server is closed to free up VRAM
         try:
+            self.recordLog("Unloading FinBERT sentiment engine and clearing VRAM...")
             unloadSentimentEngine()
         except Exception as e:
             print(f"Error unloading sentiment engine: {e}")

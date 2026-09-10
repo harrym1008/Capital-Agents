@@ -12,6 +12,7 @@ from collectors.constants import MACRO_DIRECTORY, UTC, END_DATE
 from collectors.macro_dl_client import YFINANCE_MACRO_TICKERS
 from collectors.rate_limiter import GlobalRateLimiters
 from dataquery.lru_cache import LRUCache
+from dataquery.keyed_lock import KeyedLockManager
 
 load_dotenv()
 
@@ -66,7 +67,8 @@ class MacroDataProvider:
         self.rateLimiters = rateLimiters
         self.macroDir = MACRO_DIRECTORY
         self.availableSeries = self.buildMacroIndex()
-        self.lock = threading.RLock()
+        self.keyedLocks = KeyedLockManager()
+        self.downloadLock = threading.RLock()
         self.fredClient = Fred(api_key=os.getenv("FRED_API_KEY")) if os.getenv("FRED_API_KEY") else None
         self.lastAttemptTime = {}
 
@@ -216,7 +218,11 @@ class MacroDataProvider:
 
     def loadSeries(self, name: MacroSeries) -> pd.DataFrame:
         key = f"macro|full_{name.parquetName}"
-        with self.lock:
+        cached = self.cache.get(key)
+        if cached is not None:
+            return cached
+
+        with self.keyedLocks.lockKey(key):
             cached = self.cache.get(key)
             if cached is not None:
                 return cached
@@ -245,41 +251,44 @@ class MacroDataProvider:
         now = time.time()
         cooldownSeconds = 3600  # 1 hour cooldown per series/target date
 
-        with self.lock:
-            missingYf = []
-            missingFred = []
-            minMaxDates = {}
+        missingYf = []
+        missingFred = []
+        minMaxDates = {}
 
-            for name in names:
-                df = self.loadSeries(name)
-                if df.empty:
-                    maxDate = pd.Timestamp(END_DATE).tz_localize(None) - pd.DateOffset(years=5)
-                else:
-                    maxDate = df["date"].max()
+        for name in names:
+            df = self.loadSeries(name)
+            if df.empty:
+                maxDate = pd.Timestamp(END_DATE).tz_localize(None) - pd.DateOffset(years=5)
+            else:
+                maxDate = df["date"].max()
 
-                # Calculate frequency-aware staleness threshold in days
-                daysDiff = (targetNorm - maxDate).days
+            # Calculate frequency-aware staleness threshold in days
+            daysDiff = (targetNorm - maxDate).days
 
-                if name.parquetName == "GDP":
-                    staleThreshold = 90  # Quarterly series
-                elif name.parquetName in ["CPI", "CORECPI", "UNEMPLOYMENT", "FEDFUNDS"]:
-                    staleThreshold = 32  # Monthly series
-                elif targetNorm.weekday() in [5, 6]:
-                    staleThreshold = 3  # Weekend gap for daily series
-                else:
-                    staleThreshold = 1  # Daily series
+            if name.parquetName == "GDP":
+                staleThreshold = 90  # Quarterly series
+            elif name.parquetName in ["CPI", "CORECPI", "UNEMPLOYMENT", "FEDFUNDS"]:
+                staleThreshold = 32  # Monthly series
+            elif targetNorm.weekday() in [5, 6]:
+                staleThreshold = 3  # Weekend gap for daily series
+            else:
+                staleThreshold = 1  # Daily series
 
-                if daysDiff > staleThreshold:
-                    checkKey = (name.parquetName, targetNorm.strftime("%Y-%m-%d"))
-                    lastAttempt = self.lastAttemptTime.get(checkKey, 0)
-                    if (now - lastAttempt) > cooldownSeconds:
-                        minMaxDates[name] = maxDate
-                        self.lastAttemptTime[checkKey] = now
-                        if name.source == "yfinance":
-                            missingYf.append(name)
-                        elif name.source == "fred":
-                            missingFred.append(name)
+            if daysDiff > staleThreshold:
+                checkKey = (name.parquetName, targetNorm.strftime("%Y-%m-%d"))
+                lastAttempt = self.lastAttemptTime.get(checkKey, 0)
+                if (now - lastAttempt) > cooldownSeconds:
+                    minMaxDates[name] = maxDate
+                    self.lastAttemptTime[checkKey] = now
+                    if name.source == "yfinance":
+                        missingYf.append(name)
+                    elif name.source == "fred":
+                        missingFred.append(name)
 
+        if not missingYf and not missingFred:
+            return
+
+        with self.downloadLock:
             if missingYf:
                 earliestStart = min([minMaxDates[s] for s in missingYf])
                 yfResults = self.downloadBatchYfinance(missingYf, earliestStart, targetNorm, onProgressCallback=onProgressCallback)
@@ -330,20 +339,19 @@ class MacroDataProvider:
                   name: MacroSeries, 
                   startDate: pd.Timestamp,
                   endDate: pd.Timestamp) -> pd.DataFrame:
-        with self.lock:
-            df = self.ensureCoverage(name, endDate)
+        df = self.ensureCoverage(name, endDate)
 
-            if df.empty:
-                return pd.DataFrame()
+        if df.empty:
+            return pd.DataFrame()
 
-            if startDate is not None:
-                startNorm = self.normaliseTimestamp(startDate)
-                df = df[df["date"] >= startNorm]
-            if endDate is not None:
-                endNorm = self.normaliseTimestamp(endDate)
-                df = df[df["date"] <= endNorm]
+        if startDate is not None:
+            startNorm = self.normaliseTimestamp(startDate)
+            df = df[df["date"] >= startNorm]
+        if endDate is not None:
+            endNorm = self.normaliseTimestamp(endDate)
+            df = df[df["date"] <= endNorm]
 
-            return df.reset_index(drop=True)
+        return df.reset_index(drop=True)
 
     def getLatestValue(self, 
                        name: MacroSeries, 
@@ -366,7 +374,8 @@ class MacroDataProvider:
         rows = []
         for name in names:
             df = self.loadSeries(name)
-            onProgressCallback(1)
+            if onProgressCallback:
+                onProgressCallback(1)
 
             if df.empty:
                 continue

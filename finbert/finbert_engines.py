@@ -330,6 +330,15 @@ engineLoadAttempted = False
 def getSentimentEngine() -> Optional[BaseInferenceEngine]:
     global sentimentEngine, engineLoadAttempted
 
+    if sentimentEngine is not None:
+        return sentimentEngine
+
+    # Pre-import AutoTokenizer outside engineLoadLock so that module resolution does not block other threads
+    try:
+        from transformers import AutoTokenizer
+    except Exception:
+        pass
+
     with engineLoadLock:
         if not engineLoadAttempted:
             engineLoadAttempted = True
@@ -345,7 +354,14 @@ def getSentimentEngine() -> Optional[BaseInferenceEngine]:
 
 
 def preloadSentimentModelAsync() -> threading.Thread:
-    thread = threading.Thread(target=getSentimentEngine, daemon=True, name="SentimentModelPreloader")
+    def loaderTarget():
+        try:
+            from transformers import AutoTokenizer
+        except Exception:
+            pass
+        getSentimentEngine()
+
+    thread = threading.Thread(target=loaderTarget, daemon=True, name="SentimentModelPreloader")
     thread.start()
     return thread
 

@@ -137,8 +137,12 @@ def fetchTickerSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.T
         "12mo": baseTs - pd.DateOffset(months=12)
     }
 
-    with data.sentimentLock:
-        cacheKey = f"sentiment|history_{ticker}_{baseTs.strftime('%Y-%m-%dH%H')}"
+    cacheKey = f"sentiment|history_{ticker}_{baseTs.strftime('%Y-%m-%dH%H')}"
+    cachedResult = data.cache.get(cacheKey)
+    if cachedResult is not None:
+        return cachedResult
+
+    with data.news.keyedLocks.lockKey(cacheKey):
         cachedResult = data.cache.get(cacheKey)
         if cachedResult is not None:
             return cachedResult
@@ -299,100 +303,105 @@ def fetchMacroSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.Ti
     if cachedResult is not None:
         return cachedResult
 
-    newsDf = data.news.getNewsForTickersBetweenTimes(
-        ["SPY", "QQQ", "DIA", "GLD", "SLV", "VIX", "USO", "TLT"], 
-        start=windows["12mo"] - pd.DateOffset(days=1), 
-        end=timestamp, 
-        mustHaveContent=True, 
-        maxReferencedTickers=12
-    )
+    with data.news.keyedLocks.lockKey(cacheKey):
+        cachedResult = data.cache.get(cacheKey)
+        if cachedResult is not None:
+            return cachedResult
 
-    if newsDf is None or newsDf.empty:
-        return f"No macro news data available for the last 2 years."
+        newsDf = data.news.getNewsForTickersBetweenTimes(
+            ["SPY", "QQQ", "DIA", "GLD", "SLV", "VIX", "USO", "TLT"], 
+            start=windows["12mo"] - pd.DateOffset(days=1), 
+            end=timestamp, 
+            mustHaveContent=True, 
+            maxReferencedTickers=12
+        )
 
-    # Ensure newsDf["date"] is tz-naive for consistent comparisons
-    if newsDf["date"].dt.tz is not None:
-        newsDf["date"] = newsDf["date"].dt.tz_convert("UTC").dt.tz_localize(None)
+        if newsDf is None or newsDf.empty:
+            return f"No macro news data available for the last 2 years."
 
-    # Stratified monthly sampling based on chosen inference engine
-    newsDf = sampleMonthlyArticles(newsDf)
+        # Ensure newsDf["date"] is tz-naive for consistent comparisons
+        if newsDf["date"].dt.tz is not None:
+            newsDf["date"] = newsDf["date"].dt.tz_convert("UTC").dt.tz_localize(None)
 
-    classificationDf = getClassificationDf(newsDf, bestMinTickers=8, contentTruncate=1024)
-    classificationDf["weight"] = 1.0
+        # Stratified monthly sampling based on chosen inference engine
+        newsDf = sampleMonthlyArticles(newsDf)
 
-    totalTexts = len(classificationDf)
-    completedTexts = 0
+        classificationDf = getClassificationDf(newsDf, bestMinTickers=8, contentTruncate=1024)
+        classificationDf["weight"] = 1.0
 
-    def onProgressCallback(completedDelta: int = 1):
-        nonlocal completedTexts
-        completedTexts += completedDelta
-        if totalTexts > 0:
-            progressPct = (completedTexts / totalTexts) * 100.0
-            tool.updateProgress(progressPct)
-        else:
-            tool.updateProgress(0.0)
+        totalTexts = len(classificationDf)
+        completedTexts = 0
 
-    rawPredictions = scoreTextsWithCache(classificationDf["text"].tolist(), data=data, onProgressCallback=onProgressCallback)
-    if rawPredictions is None:
-        return f"Not available because sentiment classification models could not be loaded."
+        def onProgressCallback(completedDelta: int = 1):
+            nonlocal completedTexts
+            completedTexts += completedDelta
+            if totalTexts > 0:
+                progressPct = (completedTexts / totalTexts) * 100.0
+                tool.updateProgress(progressPct)
+            else:
+                tool.updateProgress(0.0)
 
-    classificationDf["sentimentLabel"] = [pred["label"].lower() for pred in rawPredictions]
-    classificationDf["sentimentScore"] = [pred["score"] for pred in rawPredictions]
+        rawPredictions = scoreTextsWithCache(classificationDf["text"].tolist(), data=data, onProgressCallback=onProgressCallback)
+        if rawPredictions is None:
+            return f"Not available because sentiment classification models could not be loaded."
 
-    classificationDf["netScore"] = classificationDf["sentimentScore"] * \
-                                    classificationDf["sentimentLabel"].map({"bullish": 1, "bearish": -1, "neutral": 0})
+        classificationDf["sentimentLabel"] = [pred["label"].lower() for pred in rawPredictions]
+        classificationDf["sentimentScore"] = [pred["score"] for pred in rawPredictions]
 
-    netSentimentScores = {}
-    breakdowns = {}
+        classificationDf["netScore"] = classificationDf["sentimentScore"] * \
+                                        classificationDf["sentimentLabel"].map({"bullish": 1, "bearish": -1, "neutral": 0})
 
-    endDate = baseTs
-    for windowName, startDate in windows.items():
-        windowDf = classificationDf[(classificationDf["date"] >= startDate) & (classificationDf["date"] <= endDate)]
+        netSentimentScores = {}
+        breakdowns = {}
 
-        posCount = (windowDf["sentimentLabel"] == "bullish").sum()
-        negCount = (windowDf["sentimentLabel"] == "bearish").sum()
-        neuCount = (windowDf["sentimentLabel"] == "neutral").sum()
+        endDate = baseTs
+        for windowName, startDate in windows.items():
+            windowDf = classificationDf[(classificationDf["date"] >= startDate) & (classificationDf["date"] <= endDate)]
 
-        totalWeight = windowDf["weight"].sum()
-        if windowDf.empty or totalWeight == 0:
-            weightedMean = 0.0
-        else:
-            neutralTotalWeight = windowDf.loc[windowDf["sentimentLabel"] == "neutral", "weight"].sum()
-            nonNeutralWeight = totalWeight - neutralTotalWeight
-            if nonNeutralWeight == 0:
+            posCount = (windowDf["sentimentLabel"] == "bullish").sum()
+            negCount = (windowDf["sentimentLabel"] == "bearish").sum()
+            neuCount = (windowDf["sentimentLabel"] == "neutral").sum()
+
+            totalWeight = windowDf["weight"].sum()
+            if windowDf.empty or totalWeight == 0:
                 weightedMean = 0.0
             else:
-                weightedMean = (windowDf["netScore"] * windowDf["weight"]).sum() / nonNeutralWeight
+                neutralTotalWeight = windowDf.loc[windowDf["sentimentLabel"] == "neutral", "weight"].sum()
+                nonNeutralWeight = totalWeight - neutralTotalWeight
+                if nonNeutralWeight == 0:
+                    weightedMean = 0.0
+                else:
+                    weightedMean = (windowDf["netScore"] * windowDf["weight"]).sum() / nonNeutralWeight
 
-        netSentimentScores[windowName] = round(float(weightedMean), 4)
-        breakdowns[windowName] = {"bullish": int(posCount), "bearish": int(negCount), "neutral": int(neuCount)}
+            netSentimentScores[windowName] = round(float(weightedMean), 4)
+            breakdowns[windowName] = {"bullish": int(posCount), "bearish": int(negCount), "neutral": int(neuCount)}
 
 
-    momentum = round(netSentimentScores["1mo"] - netSentimentScores["6mo"], 3)
-    if momentum > 0.24:
-        momentumLabel = "Heavily optimistic"
-    elif momentum > 0.16:
-        momentumLabel = "Moderately optimistic"
-    elif momentum > 0.08:
-        momentumLabel = "Slightly optimistic"
-    elif momentum < -0.24:
-        momentumLabel = "Heavily pessimistic"
-    elif momentum < -0.16:
-        momentumLabel = "Moderately pessimistic"
-    elif momentum < -0.08:
-        momentumLabel = "Slightly pessimistic"
-    else:
-        momentumLabel = "Stable neutral sentiment"
+        momentum = round(netSentimentScores["1mo"] - netSentimentScores["6mo"], 3)
+        if momentum > 0.24:
+            momentumLabel = "Heavily optimistic"
+        elif momentum > 0.16:
+            momentumLabel = "Moderately optimistic"
+        elif momentum > 0.08:
+            momentumLabel = "Slightly optimistic"
+        elif momentum < -0.24:
+            momentumLabel = "Heavily pessimistic"
+        elif momentum < -0.16:
+            momentumLabel = "Moderately pessimistic"
+        elif momentum < -0.08:
+            momentumLabel = "Slightly pessimistic"
+        else:
+            momentumLabel = "Stable neutral sentiment"
 
-    result = {
-        "timestamp": baseTs.strftime("%Y-%m-%d %H:%M:%S"),
-        "netSentimentScores": netSentimentScores,
-        "sentimentMomentum": {
-            "value": momentum,
-            "label": momentumLabel
-        },
-        "articleCountsPerWindow": breakdowns,
-    }
+        result = {
+            "timestamp": baseTs.strftime("%Y-%m-%d %H:%M:%S"),
+            "netSentimentScores": netSentimentScores,
+            "sentimentMomentum": {
+                "value": momentum,
+                "label": momentumLabel
+            },
+            "articleCountsPerWindow": breakdowns,
+        }
 
-    data.cache.put(cacheKey, result)
-    return cleanData(result)
+        data.cache.put(cacheKey, result)
+        return cleanData(result)

@@ -78,8 +78,8 @@ def precacheTickerSpecificToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Ti
         CachedToolCall("fetchCompanyValuationMetrics", timestamp, {"ticker": ticker}),
         CachedToolCall("fetchIncomeStatement", timestamp, {"ticker": ticker, "periodType": "annual"}),
         CachedToolCall("fetchBalanceSheet", timestamp, {"ticker": ticker, "periodType": "quarterly"}),
-        # CachedToolCall("fetchCashFlowStatement", timestamp, {"ticker": ticker, "periodType": "annual"}),
-        CachedToolCall("fetchLatest10QSentiment", timestamp, {"ticker": ticker}),
+        CachedToolCall("fetchCashFlowStatement", timestamp, {"ticker": ticker, "periodType": "annual"}),
+        # CachedToolCall("fetchLatest10QSentiment", timestamp, {"ticker": ticker}),
     ]
 
     with ThreadPoolExecutor(max_workers=len(toolCalls)) as executor:
