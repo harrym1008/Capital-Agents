@@ -1,0 +1,301 @@
+{% extends "boardroom_base.html" %}
+
+{% block title %}CapitalAgents - Portfolio Creation Boardroom{% endblock %}
+
+{% block config_inputs %}
+    <div class="config-group">
+        <label for="initialCapitalInput">Initial Capital:</label>
+        <input type="text" id="initialCapitalInput" value="$100,000" style="width: 110px; font-weight: 700;">
+    </div>
+
+    <div class="config-group">
+        <label for="maxSectorAllocationSelect">Max Sector %:</label>
+        <select id="maxSectorAllocationSelect">
+            <option value="25">25% Max</option>
+            <option value="30">30% Max</option>
+            <option value="40" selected>40% Max</option>
+            <option value="50">50% Max</option>
+        </select>
+    </div>
+
+    <div class="config-group">
+        <label for="targetSectorCountSelect">Sectors:</label>
+        <select id="targetSectorCountSelect">
+            <option value="" selected>Dynamic (2-6)</option>
+            <option value="3">3 Sectors</option>
+            <option value="4">4 Sectors</option>
+            <option value="5">5 Sectors</option>
+            <option value="6">6 Sectors</option>
+        </select>
+    </div>
+
+    <div class="config-group">
+        <label for="modeSelect">Mode:</label>
+        <select id="modeSelect">
+            <option value="fast">Fast Evaluation</option>
+            <option value="complete" selected>Complete Evaluation</option>
+        </select>
+    </div>
+
+    <div class="config-group">
+        <label for="horizonSelect">Horizon:</label>
+        <select id="horizonSelect">
+            <option value="immediate">Immediate (3d & 2wk)</option>
+            <option value="short">Short (1mo & 3mo)</option>
+            <option value="medium">Medium (3mo & 12mo)</option>
+            <option value="long" selected>Long (12mo & 3y)</option>
+            <option value="distant">Distant (3y & 10y)</option>
+        </select>
+    </div>
+
+    <div class="config-group">
+        <label for="simulatedDateCheckbox">Use Sim Date:</label>
+        <input type="checkbox" id="simulatedDateCheckbox">
+    </div>
+    <div class="config-group" id="simulatedDateContainer" style="display: none;">
+        <input type="date" id="simulatedDateInput" min="2016-01-01" max="" style="width: 150px;">
+        <script>
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const formattedDate = yesterday.toISOString().split('T')[0];
+            document.getElementById("simulatedDateInput").setAttribute("max", formattedDate);
+        </script>
+    </div>
+{% endblock %}
+
+{% block page_scripts %}
+<script>
+    let currentSimulatedDate = null;
+    let sectorChartInstance = null;
+    let confirmedAllocationData = null;
+
+    const portfolioCreationStages = {
+        "fast": [
+            { num: 1, name: "Macro Environment Analysis" },
+            { num: 2, name: "Sector Allocation Decision" }
+        ],
+        "complete": [
+            { num: 1, name: "Macro Environment Analysis" },
+            { num: 2, name: "Sector Allocation Analysis" },
+            { num: 3, name: "Sector Allocation Decision" }
+        ]
+    };
+
+    // Toggle Simulated Date input
+    document.getElementById("simulatedDateCheckbox")?.addEventListener("change", function () {
+        const container = document.getElementById("simulatedDateContainer");
+        if (container) {
+            container.style.display = this.checked ? "flex" : "none";
+        }
+    });
+
+    // Re-init stages bar when evaluation mode changes
+    document.getElementById("modeSelect")?.addEventListener("change", function () {
+        BoardroomCore.initStagesBar(this.value, portfolioCreationStages);
+    });
+
+    // Custom Stage Layout: Inject Sector Allocation Report Card on Decision Stage
+    BoardroomCore.setCustomStageLayoutHandler(({ stageNum, stageName, agents, workspace }) => {
+        if (stageName.includes("Sector Allocation Decision")) {
+            workspace.innerHTML = `
+                <div class="upload-receipt-container" style="max-width: 480px;">
+                    <h2 style="font-size: 18px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 16px; text-align: center;">CONFIRMED SECTOR ALLOCATION</h2>
+
+                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 10px; font-size: 14px; margin-bottom: 14px;">
+                        <div style="font-weight: 700; color: #475569;">Target Capital:</div>
+                        <div id="allocation-capital" style="font-weight: 800;">--</div>
+
+                        <div style="font-weight: 700; color: #475569;">Analysis Date:</div>
+                        <div id="allocation-date" style="font-weight: bold;">${BoardroomCore.formatOrdinalDate(currentSimulatedDate)}</div>
+
+                        <div style="font-weight: 700; color: #475569;">Decision Status:</div>
+                        <div><span id="allocation-status" class="tool-status-badge status-running">PENDING DECISION</span></div>
+                    </div>
+
+                    <div id="sectorChartWrapper" style="width: 100%; height: 220px; position: relative; margin: 12px 0;">
+                        <canvas id="sectorAllocationChartCanvas" style="display: block; width: 100%; height: 100%;"></canvas>
+                    </div>
+
+                    <div id="sectorTableContainer" style="margin-top: 14px; border-top: 1px solid #e2e8f0; padding-top: 10px;">
+                        <div style="font-size: 12px; color: #64748b; text-align: center;">Waiting for Portfolio Manager execution...</div>
+                    </div>
+
+                    <div id="finalTimeReportRow" style="margin-top: 15px; padding-top: 12px; border-top: 1px dashed #cbd5e1; display: none; text-align: center;">
+                        <div style="font-size: 15px; font-weight: 700; color: #10b981; margin-bottom: 5px;">✓ Portfolio Created Successfully</div>
+                        <div id="finalTimeReportValue" style="font-size: 13px; font-weight: 600; color: #475569;">Time Taken: Running...</div>
+                    </div>
+                </div>
+            `;
+
+            if (agents && agents.length > 0) {
+                agents.forEach(agent => {
+                    BoardroomCore.createAgentPane(stageNum, agent.role, agent.color, agent.name);
+                });
+            } else {
+                BoardroomCore.createAgentPane(stageNum, "Impartial Portfolio Manager", "magenta", "Portfolio Manager");
+            }
+
+            if (confirmedAllocationData) {
+                renderSectorAllocationVisuals(confirmedAllocationData);
+            }
+            return true;
+        }
+        return false;
+    });
+
+    // Render Sector Allocation Donut Chart and Breakdown Table
+    function renderSectorAllocationVisuals(allocationData) {
+        confirmedAllocationData = allocationData;
+        const capitalInputVal = document.getElementById("initialCapitalInput")?.value || "$100,000";
+        const cleanCapital = parseFloat(capitalInputVal.replace(/[^0-9.]/g, "")) || 100000;
+
+        const capitalEl = document.getElementById("allocation-capital");
+        const statusEl = document.getElementById("allocation-status");
+        if (capitalEl) capitalEl.innerText = `$${cleanCapital.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+        if (statusEl) {
+            statusEl.innerText = "CONFIRMED";
+            statusEl.className = "tool-status-badge status-success";
+        }
+
+        let weightsMap = {};
+        if (allocationData && allocationData.allocations) {
+            weightsMap = allocationData.allocations;
+        } else if (typeof allocationData === "object") {
+            weightsMap = allocationData;
+        }
+
+        const labels = Object.keys(weightsMap);
+        const values = labels.map(k => parseFloat(weightsMap[k]) || 0);
+
+        // Render Table
+        const tableContainer = document.getElementById("sectorTableContainer");
+        if (tableContainer && labels.length > 0) {
+            let tableHtml = `
+                <table style="width: 100%; border-collapse: collapse; font-size: 12.5px;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid #cbd5e1; background: #f8fafc;">
+                            <th style="text-align: left; padding: 6px 8px;">Sector</th>
+                            <th style="text-align: right; padding: 6px 8px;">Weight</th>
+                            <th style="text-align: right; padding: 6px 8px;">Allocation</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            labels.forEach((sector, idx) => {
+                const pct = values[idx];
+                const amt = (cleanCapital * (pct / 100)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                tableHtml += `
+                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                        <td style="padding: 5px 8px; font-weight: 600; color: #0f172a;">${sector}</td>
+                        <td style="padding: 5px 8px; text-align: right; font-weight: 700; color: #2563eb;">${pct.toFixed(1)}%</td>
+                        <td style="padding: 5px 8px; text-align: right; color: #334155;">$${amt}</td>
+                    </tr>
+                `;
+            });
+            tableHtml += `</tbody></table>`;
+            tableContainer.innerHTML = tableHtml;
+        }
+
+        // Render Donut Chart
+        const canvas = document.getElementById("sectorAllocationChartCanvas");
+        if (!canvas || labels.length === 0) return;
+
+        if (sectorChartInstance) {
+            sectorChartInstance.destroy();
+            sectorChartInstance = null;
+        }
+
+        const colors = [
+            "#2563eb", "#10b981", "#f59e0b", "#8b5cf6",
+            "#06b6d4", "#ec4899", "#64748b", "#14b8a6"
+        ];
+
+        sectorChartInstance = new Chart(canvas.getContext("2d"), {
+            type: "doughnut",
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: colors.slice(0, labels.length),
+                    borderWidth: 2,
+                    borderColor: "#ffffff"
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: "bottom",
+                        labels: {
+                            boxWidth: 12,
+                            font: { size: 11, weight: "600" }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => `${ctx.label}: ${ctx.parsed}% ($${(cleanCapital * ctx.parsed / 100).toLocaleString()})`
+                        }
+                    }
+                },
+                cutout: "60%"
+            }
+        });
+    }
+
+    // Custom Event Listener for Portfolio Creation
+    BoardroomCore.on("sectorAllocationConfirmed", (payload) => {
+        if (payload && payload.confirmedAllocation) {
+            renderSectorAllocationVisuals(payload.confirmedAllocation);
+        }
+    });
+
+    BoardroomCore.on("simComplete", (payload) => {
+        const finalTimeRow = document.getElementById("finalTimeReportRow");
+        if (finalTimeRow) {
+            finalTimeRow.style.display = "block";
+            const finalTimeVal = document.getElementById("finalTimeReportValue");
+            if (finalTimeVal && payload.totalTime) {
+                finalTimeVal.innerText = "Time Taken: " + payload.totalTime;
+            }
+        }
+    });
+
+    // Initialize Core Engine
+    BoardroomCore.init({
+        defaultStages: portfolioCreationStages,
+        initialMode: document.getElementById("modeSelect")?.value || "complete",
+        getPayload: () => {
+            const capitalRaw = document.getElementById("initialCapitalInput").value.replace(/[^0-9.]/g, "");
+            const capital = parseFloat(capitalRaw) || 100000;
+            const maxSector = parseFloat(document.getElementById("maxSectorAllocationSelect").value) || 40;
+            const targetSectors = document.getElementById("targetSectorCountSelect").value || null;
+            const mode = document.getElementById("modeSelect").value;
+            const horizon = document.getElementById("horizonSelect").value;
+
+            let simDate = null;
+            const simCheckbox = document.getElementById("simulatedDateCheckbox");
+            if (simCheckbox && simCheckbox.checked) {
+                simDate = document.getElementById("simulatedDateInput").value;
+                if (!simDate) {
+                    alert("Please select a valid simulated evaluation date.");
+                    return null;
+                }
+            }
+            currentSimulatedDate = simDate;
+
+            return {
+                action: "start",
+                engineType: "portfolio_creation",
+                initialCapital: capital,
+                maxSectorAllocation: maxSector,
+                targetSectorCount: targetSectors,
+                boardroomPace: mode,
+                timeHorizon: horizon,
+                simulatedDate: simDate,
+                ...BoardroomCore.getGenerationSettings()
+            };
+        }
+    });
+</script>
+{% endblock %}

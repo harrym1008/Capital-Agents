@@ -9,6 +9,7 @@ except AttributeError:
     pass
 
 import json
+import logging
 import asyncio
 import threading
 from flask import Flask, render_template, redirect, jsonify
@@ -23,10 +24,12 @@ WS_PORT = 9092
 from llm.server_manager import serverManager, LoadedModelType
 
 from ui.ui_hooks import setEventCallback, emitEvent, requestStop, resetStop, isStopRequested, SimulationStoppedException
-import logging
-
 from ui.ws_api import registerApiRoutes, registerWsAction, handleWsMessage
 from simulation.simulation_api import registerSimulationWsRoutes
+
+from boardroom.boardroom_config import SingleEquityRatingConfig, PortfolioCreationConfig
+from boardroom.boardroom_mgr import boardroomManager
+
 
 class MetricsFilter(logging.Filter):
     def filter(self, record):
@@ -72,14 +75,18 @@ def singleEquityRatingPage():
     # serverManager.getToolRegistry()       
     return render_template("ticker_rate.html")
 
+@app.route("/portfolio-creation")
+def portfolioCreationPage():
+    if serverManager.loadedModelType == LoadedModelType.NONE:
+        return redirect("/")
+
+    return render_template("portfolio_creation.html")
+
 
 # Track connected websockets and the asyncio event loop
 connectedWebsockets = set()
 connectedWebsocketsLock = threading.Lock()
 eventLoop = None
-
-from boardroom.boardroom_config import SingleEquityRatingConfig
-from boardroom.boardroom_mgr import boardroomManager
 
 def broadcastEvent(eventData):
     global connectedWebsockets, eventLoop
@@ -108,7 +115,11 @@ def apiBoardroomStop():
 
 
 def handleBoardroomStart(data, websocket, eventLoop):
-    config = SingleEquityRatingConfig.fromDict(data)
+    engineType = data.get("engineType") or ("portfolio_creation" if "initialCapital" in data else "single_equity")
+    if engineType == "portfolio_creation":
+        config = PortfolioCreationConfig.fromDict(data)
+    else:
+        config = SingleEquityRatingConfig.fromDict(data)
     ok, msg = boardroomManager.startBoardroom(config)
     return {"ok": ok, "message": msg}
 
