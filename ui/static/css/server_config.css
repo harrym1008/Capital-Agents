@@ -74,11 +74,11 @@ button.btn-danger:hover {
     background-color: #dc2626;
 }
 
-button.btn-secondary {
+button.btn-secondary, .aref-button.btn-secondary {
     background-color: #64748b;
 }
 
-button.btn-secondary:hover {
+button.btn-secondary:hover, .aref-button.btn-secondary:hover {
     background-color: #475569;
 }
 

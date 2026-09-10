@@ -55,6 +55,11 @@ def serverSetupPage():
 def llamacppSetupPage():
     return render_template("llamacpp_setup.html")
 
+@app.route("/llamacpp-logs")
+@app.route("/server-logs")
+def llamacppLogsPage():
+    return render_template("llamacpp_logs.html")
+
 @app.route("/market-sim")
 def marketSimPage():
     return render_template("market_sim.html")

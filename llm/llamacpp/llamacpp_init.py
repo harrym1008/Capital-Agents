@@ -252,14 +252,15 @@ class LlamaCppProcessInitiator:
     def readStream(self, stream, tag):
         try:
             for line in iter(stream.readline, ''):
+                cleanLine = line.rstrip()
                 if self.getState() == ServerState.STARTING:
-                    self.printToTerminal(line.rstrip())
-                    try:
-                        from llm.server_manager import serverManager
-                        serverManager.recordLog(line.rstrip())
-                    except Exception:
-                        emitEvent("llamaCppStartupLog", {"log": line.rstrip()})
-                self.logs.append(f"[{tag}] {line}")
+                    self.printToTerminal(cleanLine)
+                try:
+                    from llm.server_manager import serverManager
+                    serverManager.recordLog(cleanLine)
+                except Exception:
+                    emitEvent("llamaCppLog", {"log": cleanLine})
+                self.logs.append(cleanLine)
         finally:
             stream.close()
 

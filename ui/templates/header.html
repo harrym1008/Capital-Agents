@@ -11,11 +11,13 @@
     <div style="margin-left: auto; display: flex; align-items: center; gap: 24px;">
         <div id="connectionStatusReadout" style="display: flex; flex-direction: column; align-items: flex-end; font-size: 13px; line-height: 1.25; font-weight: 700; color: #ffffff; user-select: none;">
             <div style="display: flex; gap: 12px; justify-content: space-between; width: 100%;">
-                <span style="color: #cbd5e1; font-weight: 600; flex: 1; text-align: right;">Websocket:</span>
+                <span style="color: #cbd5e1; font-weight: 600; flex: 1; text-align: right;">WebSocket:</span>
                 <span id="wsStatusCell" style="min-width: 95px; text-align: left; color: #ef4444;">Disconnected</span>
             </div>
             <div style="display: flex; gap: 12px; justify-content: space-between; width: 100%;">
-                <span id="serverStatusLabel" style="color: #cbd5e1; font-weight: 600; flex: 1; text-align: right;">Server:</span>
+                <a href="/server-config" style="text-decoration: none; display: contents;">
+                    <span id="serverStatusLabel" style="color: #cbd5e1; font-weight: 600; flex: 1; text-align: right; cursor: pointer;">Server:</span>
+                </a>
                 <span id="serverStatusCell" style="min-width: 95px; text-align: left; color: #ef4444;">Disconnected</span>
             </div>
         </div>

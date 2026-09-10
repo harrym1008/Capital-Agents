@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CapitalAgents - Llama.cpp Server Logs</title>
+
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/server_config.css">
+</head>
+<body>
+
+    {% include 'header.html' %}
+
+    <div class="main-layout" style="display: flex; flex: 1; overflow: hidden; position: relative;">
+
+        <div class="splash-container">
+
+            <div class="splash-load-model-window" style="width: min(92vw, 850px); max-width: 850px;">
+                <h1 id="pageTitle">Llama.cpp Server Logs</h1>
+
+                <div class="llama-loading-log-window">
+                    <pre id="terminalLogs" class="llama-loading-logs" style="max-height: 480px; height: 480px; font-size: 11px;"></pre>
+                </div>
+
+                <div style="display: flex; justify-content: center; width: 100%; margin-top: 4px;">
+                    <a href="/server-config" class="aref-button btn-secondary" style="font-size: 14px;">Back to Server Configuration</a>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        function appendLog(line) {
+            const logsPre = document.getElementById("terminalLogs");
+            logsPre.textContent += line + "\n";
+            logsPre.scrollTop = logsPre.scrollHeight;
+        }
+
+        function handleSimulationEvent(payload) {
+            if (payload.type === "llamaCppStartupLog" || payload.type === "llamaCppLog") {
+                appendLog(payload.log);
+            }
+        }
+
+        async function loadExistingLogs() {
+            try {
+                const res = await fetch('/api/llamacpp/logs');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.logs && Array.isArray(data.logs) && data.logs.length > 0) {
+                        const logsPre = document.getElementById("terminalLogs");
+                        logsPre.textContent = data.logs.join("\n") + "\n";
+                        logsPre.scrollTop = logsPre.scrollHeight;
+                    }
+                }
+            } catch (e) {
+                console.warn("Could not load existing logs:", e);
+            }
+        }
+
+        connectWebsocket();
+        loadExistingLogs();
+    </script>
+
+</body>
+</html>

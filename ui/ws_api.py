@@ -168,6 +168,19 @@ def registerApiRoutes(app):
     def apiServerStatus():
         return jsonify(serverManager.getStatus())
 
+    @app.route("/api/llamacpp/logs")
+    @app.route("/api/server/logs")
+    def apiLlamaCppLogs():
+        currentLogs = serverManager.getLogs()
+        serverRunning = serverManager.llamacppRunning
+        modelName = serverManager.loadedModelName
+        return jsonify({
+            "ok": True,
+            "running": serverRunning,
+            "modelName": modelName,
+            "logs": currentLogs
+        })
+
     @app.route("/api/ohlcv")
     def getOhlcvChart():
         ticker = request.args.get("ticker", "NVDA").strip()

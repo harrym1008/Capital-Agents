@@ -3,6 +3,7 @@ import threading
 import time
 import socket
 import urllib.request
+import collections
 from enum import Enum
 from typing import Tuple, Optional, List, Any
 
@@ -113,6 +114,7 @@ class ServerManager:
         self.boardroomProcess = None
         self.llmClient: Optional[BaseLLMClient] = None
         self.startupLogs: List[str] = []
+        self.serverLogs = collections.deque(maxlen=10000)
         self.metricsThread: Optional[threading.Thread] = None
         self.sharedToolRegistry: Optional[Any] = None
         self.costTracker = TokenCostTracker()
@@ -161,7 +163,12 @@ class ServerManager:
 
     def recordLog(self, logLine: str):
         self.startupLogs.append(logLine)
-        emitEvent("llamaCppStartupLog", {"log": logLine})
+        self.serverLogs.append(logLine)
+        emitEvent("llamaCppLog", {"log": logLine})
+
+    def getLogs(self) -> List[str]:
+        with self.serverLock:
+            return list(self.serverLogs)
 
     def getToolRegistry(self) -> ToolRegistry:
         with self.serverLock:
@@ -204,6 +211,7 @@ class ServerManager:
                 self.stopServerInternal()
 
             self.startupLogs.clear()
+            self.serverLogs.clear()
             self.costTracker.reset()
             providerClean = provider.strip().lower().replace("_", "").replace("-", "")
 

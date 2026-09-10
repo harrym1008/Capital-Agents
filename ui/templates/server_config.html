@@ -149,6 +149,10 @@
                         <pre id="llamaLoadingLogs" class="llama-loading-logs"></pre>
                     </div>
 
+                    <div id="viewLogsRow" class="hidden" style="display: flex; justify-content: flex-end; width: 100%; margin-top: 4px;">
+                        <a id="viewLogsBtn" href="/llamacpp-logs" class="aref-button btn-secondary">View Logs</a>
+                    </div>
+
                     <div style="display: flex; gap: 12px; justify-content: center; width: 100%; margin-top: 4px;">
                         <button id="stopModelBtn" class="btn-danger" style="flex: 1; max-width: 220px; font-size: 110%;">Stop Server</button>
                         <button id="reconfigureBtn" class="btn-secondary hidden" style="flex: 1; max-width: 220px; font-size: 110%;">Back to Setup</button>
@@ -200,6 +204,7 @@
 
         function handleSimulationEvent(payload) {
             switch (payload.type) {
+                case "llamaCppLog":
                 case "llamaCppStartupLog":
                     appendLlamaLog(payload.log);
                     if (isServerLoading && (payload.log.includes("exiting due to model loading error") || payload.log.includes("failed to load model"))) {
@@ -690,6 +695,15 @@
                         
                         document.getElementById("setupForm").classList.add("hidden");
                         document.getElementById("serverStatusPanel").classList.remove("hidden");
+
+                        const viewLogsRow = document.getElementById("viewLogsRow");
+                        if (viewLogsRow) {
+                            if (data.provider === "llamacpp" || data.llamacppRunning) {
+                                viewLogsRow.classList.remove("hidden");
+                            } else {
+                                viewLogsRow.classList.add("hidden");
+                            }
+                        }
                         
                         if (data.startupLogs && Array.isArray(data.startupLogs) && data.startupLogs.length > 0) {
                             const container = document.getElementById("llamaLoadingContainer");
@@ -775,6 +789,15 @@
             document.getElementById("stopModelBtn").classList.remove("hidden");
             document.getElementById("stopModelBtn").disabled = false;
 
+            const viewLogsRow = document.getElementById("viewLogsRow");
+            if (viewLogsRow) {
+                if (provider === "llamacpp") {
+                    viewLogsRow.classList.remove("hidden");
+                } else {
+                    viewLogsRow.classList.add("hidden");
+                }
+            }
+
             clearLlamaLogs();
             setStatusState("loading", "Loading Server...");
             isServerLoading = true;
@@ -824,6 +847,9 @@
             setStatusState("stopped", "Stopped");
             btn.disabled = false;
 
+            const viewLogsRow = document.getElementById("viewLogsRow");
+            if (viewLogsRow) viewLogsRow.classList.add("hidden");
+
             // Return to setup form
             document.getElementById("serverStatusPanel").classList.add("hidden");
             document.getElementById("setupForm").classList.remove("hidden");
@@ -832,6 +858,8 @@
         // "Back to Setup" button listener
         document.getElementById("reconfigureBtn").addEventListener("click", () => {
             isServerLoading = false;
+            const viewLogsRow = document.getElementById("viewLogsRow");
+            if (viewLogsRow) viewLogsRow.classList.add("hidden");
             document.getElementById("serverStatusPanel").classList.add("hidden");
             document.getElementById("setupForm").classList.remove("hidden");
             document.getElementById("stopModelBtn").classList.remove("hidden");
