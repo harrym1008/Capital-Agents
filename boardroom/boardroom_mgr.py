@@ -153,9 +153,9 @@ class BoardroomManager:
             thread.join(timeout=timeout)
         return not self.isBoardroomActive()
 
-    def processQnAQuery(self, query: str) -> None:
+    def processQnAQuery(self, query: str, targetAgent: Optional[str] = None) -> None:
         if self.activeBoardroom and hasattr(self.activeBoardroom, "processQnAQuery"):
-            self.activeBoardroom.processQnAQuery(query)
+            self.activeBoardroom.processQnAQuery(query, targetAgent=targetAgent)
 
     def deleteQnATurn(self, turnIndex: int) -> bool:
         with self.stateLock:

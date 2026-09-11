@@ -138,9 +138,11 @@ def handleQaQuery(data, websocket, eventLoop):
     if not boardroomManager.activeBoardroom:
         return {"ok": False, "error": "No boardroom evaluation found. Please run a boardroom analysis first."}
 
+    targetAgent = data.get("targetAgent", "auto")
+
     qaThread = threading.Thread(
         target=boardroomManager.processQnAQuery,
-        args=(query,),
+        args=(query, targetAgent),
         daemon=True
     )
     qaThread.start()

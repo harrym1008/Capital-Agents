@@ -199,6 +199,6 @@ exec/tests/output/
 newtooltest.py
 *.engine
 *.onnx
-llm/llamacpp/llamacpp_args.py
 
 llm/llamacpp/llamacpp_config.json
+_cache/persist_lru_cache.bin

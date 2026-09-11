@@ -162,69 +162,6 @@ def executePythonCalculation(tool: Tool, data: DataProviders, timestamp: pd.Time
 
 
 
-def confirmBoardroomDecisionBase(
-    tool: Tool, 
-    ticker: str, 
-    rating: str, 
-    weighting: str, 
-    targetKey1: str, 
-    targetVal1: float, 
-    targetKey2: str, 
-    targetVal2: float
-) -> Dict[str, Any]:
-    try:
-        rating = rating.upper()
-        weighting = weighting.upper()
-
-        if rating not in ["STRONG BUY", "BUY", "HOLD", "SELL", "STRONG SELL"]:
-            return f"Invalid rating value: {rating}. Must be one of STRONG BUY, BUY, HOLD, SELL, STRONG SELL."
-        if weighting not in ["UNDERWEIGHT", "EQUAL-WEIGHT", "OVERWEIGHT"]:
-            return f"Invalid weighting value: {weighting}. Must be one of UNDERWEIGHT, EQUAL-WEIGHT, OVERWEIGHT."
-
-        cleanedVal1 = cleanNumber(targetVal1, NumberType.STOCK_PRICE)[1:]
-        cleanedVal2 = cleanNumber(targetVal2, NumberType.STOCK_PRICE)[1:]
-
-        summaryLogStr = f"Boardroom decision confirmed for {ticker}: Rating: {rating}, Weighting: {weighting}, {targetKey1}: ${cleanedVal1}, {targetKey2}: ${cleanedVal2}."
-
-        result = {
-            "ticker": ticker,
-            "rating": rating,
-            "weighting": weighting,
-            targetKey1: cleanedVal1,
-            targetKey2: cleanedVal2
-        }
-        tool.toolLog.append(result | {"summary": summaryLogStr, "targets": [targetVal1, targetVal2]})
-        tool.toolLog.append(summaryLogStr)
-
-        return cleanData(result)
-    except Exception as e:
-        return f"An error occurred while confirming boardroom decision: {str(e)}"
-
-def confirmBoardroomDecisionImmediateTerm(tool: Tool, data: DataProviders, timestamp: pd.Timestamp,
-                                      ticker: str, rating: str, weighting: str, threeDayTarget: float, twoWeekTarget: float) -> Dict[str, Any]:
-    return confirmBoardroomDecisionBase(tool, ticker, rating, weighting, "threeDayTarget", threeDayTarget, "twoWeekTarget", twoWeekTarget)
-
-
-def confirmBoardroomDecisionShortTerm(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, 
-                                      ticker: str, rating: str, weighting: str, oneMonthTarget: float, threeMonthTarget: float) -> Dict[str, Any]:
-    return confirmBoardroomDecisionBase(tool, ticker, rating, weighting, "oneMonthTarget", oneMonthTarget, "threeMonthTarget", threeMonthTarget)
-
-
-def confirmBoardroomDecisionMediumTerm(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, 
-                                       ticker: str, rating: str, weighting: str, threeMonthTarget: float, twelveMonthTarget: float) -> Dict[str, Any]:
-    return confirmBoardroomDecisionBase(tool, ticker, rating, weighting, "threeMonthTarget", threeMonthTarget, "twelveMonthTarget", twelveMonthTarget)
-
-
-def confirmBoardroomDecisionLongTerm(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, 
-                                     ticker: str, rating: str, weighting: str, twelveMonthTarget: float, threeYearTarget: float) -> Dict[str, Any]:
-    return confirmBoardroomDecisionBase(tool, ticker, rating, weighting, "twelveMonthTarget", twelveMonthTarget, "threeYearTarget", threeYearTarget)
-
-
-def confirmBoardroomDecisionDistantTerm(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, 
-                                        ticker: str, rating: str, weighting: str, threeYearTarget: float, tenYearTarget: float) -> Dict[str, Any]:
-    return confirmBoardroomDecisionBase(tool, ticker, rating, weighting, "threeYearTarget", threeYearTarget, "tenYearTarget", tenYearTarget)
-
-
 def transferToAgent(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, 
                     agentRole: str, transferMessage: str) -> Dict[str, Any]:
     toolLogEntry = {

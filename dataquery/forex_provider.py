@@ -92,7 +92,8 @@ class ForexDataProvider:
             })
             return df
 
-        key = f"forex|full_{currencyCode}_USD"
+        now = pd.Timestamp.now(tz="UTC")
+        key = f"forex|full_{currencyCode}->USD_{now.strftime('%Y-%m-%dH%H')}"
         with self.lock:
             cached = self.cache.get(key)
             if cached is not None:

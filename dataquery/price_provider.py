@@ -162,7 +162,7 @@ class DailyPriceProvider:
             return None
 
         dateNy = self.timestampToNyDay(date)
-        key = f"ohlcv|single_{ticker}_{dateNy.strftime('%Y-%m-%d')}"
+        key = f"ohlcv|single_{ticker}_{dateNy.strftime('%Y-%m-%dH%H')}"
         with self.lock:
             cached = self.cache.get(key)
             result = None
@@ -225,7 +225,7 @@ class DailyPriceProvider:
         if startNy > endNy:
             startNy, endNy = endNy, startNy
 
-        key = f"ohlcv|period_{ticker}_{startNy.strftime('%Y-%m-%d')}_{endNy.strftime('%Y-%m-%d')}"
+        key = f"ohlcv|period_{ticker}_{startNy.strftime('%Y-%m-%d%H')}_{endNy.strftime('%Y-%m-%d%H')}"
         with self.lock:
             cached = self.cache.get(key)
             if isinstance(cached, pd.DataFrame):
@@ -258,6 +258,10 @@ class DailyPriceProvider:
 
     def getYear(self, ticker: str, year: int):
         key = f"ohlcv|{ticker}_{year}"
+        now = pd.Timestamp.now(tz="UTC")
+        if year == now.year:
+            key += f"_{now.strftime('%Y-%m-%dH%H')}"
+
         with self.lock:
             cached = self.cache.get(key)
             if cached is not None:
@@ -303,6 +307,10 @@ class DailyPriceProvider:
 
     def getYearCorporateActions(self, year: int):
         key = f"corpActions|{year}"
+        now = pd.Timestamp.now(tz="UTC")
+        if year == now.year:
+            key += f"_{now.strftime('%Y-%m-%dH%H')}"
+            
         with self.lock:
             cached = self.cache.get(key)
             if cached is not None:

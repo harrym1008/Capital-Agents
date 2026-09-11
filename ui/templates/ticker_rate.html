@@ -77,9 +77,54 @@
         }
     });
 
-    // Re-init stages bar when evaluation mode changes
+    function updateQaTargetAgents() {
+        const targetSelect = document.getElementById("qaTargetSelect");
+        if (!targetSelect) return;
+
+        const mode = document.getElementById("modeSelect")?.value || "fast";
+        const currentValue = targetSelect.value;
+
+        let specialists = [];
+        if (mode === "one_shot") {
+            specialists = [
+                { role: "One-Shot Analyst", label: "Ask One-Shot Analyst" }
+            ];
+        } else if (mode === "fast") {
+            specialists = [
+                { role: "Macro Analyst", label: "Ask Macro Analyst" },
+                { role: "Bullish Value Analyst", label: "Ask Bullish Value Analyst" },
+                { role: "Bearish Risk Analyst", label: "Ask Bearish Risk Analyst" },
+                { role: "Impartial Portfolio Manager", label: "Ask Impartial Portfolio Manager" }
+            ];
+        } else {
+            specialists = [
+                { role: "Macro Analyst", label: "Ask Macro Analyst" },
+                { role: "Bullish Value Analyst", label: "Ask Bullish Value Analyst" },
+                { role: "Bearish Risk Analyst", label: "Ask Bearish Risk Analyst" },
+                { role: "Aggressive Risk Analyst", label: "Ask Aggressive Risk Analyst" },
+                { role: "Conservative Risk Analyst", label: "Ask Conservative Risk Analyst" },
+                { role: "Impartial Portfolio Manager", label: "Ask Impartial Portfolio Manager" }
+            ];
+        }
+
+        let optionsHtml = '<option value="auto">Auto Delegate</option>';
+        for (const s of specialists) {
+            optionsHtml += `<option value="${s.role}">${s.label}</option>`;
+        }
+        targetSelect.innerHTML = optionsHtml;
+
+        // Restore previous selection if valid for new mode
+        if (currentValue && targetSelect.querySelector(`option[value="${currentValue}"]`)) {
+            targetSelect.value = currentValue;
+        } else {
+            targetSelect.value = "auto";
+        }
+    }
+
+    // Re-init stages bar and target agents when evaluation mode changes
     document.getElementById("modeSelect")?.addEventListener("change", function () {
         BoardroomCore.initStagesBar(this.value, singleEquityStages);
+        updateQaTargetAgents();
     });
 
     // Hook to append Q&A Tab into Stages Bar
@@ -122,9 +167,12 @@
                     </div>
                 </div>
 
-                <div style="flex: none; width: 100%; max-width: 1000px; margin: 0 auto; display: flex; gap: 10px; align-items: center; padding-right: 10px;">
-                    <input type="text" id="qaInput" placeholder="Ask a question..." style="flex: 1; padding: 12px 16px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 16px; outline: none; background: #ffffff; color: #0f172a;">
-                    <button id="qaSendBtn" class="run-btn" style="padding: 12px 24px; border-radius: 8px; font-weight: bold; font-size: 16px;">Send</button>
+                <div style="flex: none; width: 100%; max-width: 1000px; margin: 0 auto; display: flex; gap: 10px; align-items: flex-end; padding-right: 10px; padding-top: 10px;">
+                    <textarea id="qaInput" rows="1" placeholder="Ask a question... (Enter to send, Shift+Enter for newline)" style="flex: 1; padding: 12px 16px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 16px; outline: none; background: #ffffff; color: #0f172a; resize: none; overflow-y: hidden; min-height: 48px; max-height: 220px; box-sizing: border-box; line-height: 1.5; font-family: inherit;"></textarea>
+                    <select id="qaTargetSelect" style="flex: none; height: 48px; padding: 0 14px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 14px; font-weight: 600; outline: none; background: #ffffff; color: #1e293b; cursor: pointer; box-sizing: border-box;">
+                        <option value="auto">Auto Delegate</option>
+                    </select>
+                    <button id="qaSendBtn" class="run-btn" style="flex: none; height: 48px; padding: 0 24px; border-radius: 8px; font-weight: bold; font-size: 16px; box-sizing: border-box;">Send</button>
                 </div>
             `;
             panesContainer.appendChild(qaWorkspace);
@@ -134,8 +182,26 @@
                 if (qaChatHistory) BoardroomCore.setupAutoScroll(qaChatHistory);
 
                 const qaInput = document.getElementById("qaInput");
+                const targetSelect = document.getElementById("qaTargetSelect");
                 const sendBtn = document.getElementById("qaSendBtn");
-                if (qaInput && sendBtn) {
+
+                // Populate target specialist options based on current evaluation mode
+                updateQaTargetAgents();
+
+                if (qaInput) {
+                    const adjustTextareaHeight = () => {
+                        qaInput.style.height = "auto";
+                        const newHeight = Math.min(qaInput.scrollHeight, 220);
+                        qaInput.style.height = newHeight + "px";
+                        if (qaInput.scrollHeight > 220) {
+                            qaInput.style.overflowY = "auto";
+                        } else {
+                            qaInput.style.overflowY = "hidden";
+                        }
+                    };
+
+                    qaInput.addEventListener("input", adjustTextareaHeight);
+
                     const sendMsg = () => {
                         const val = qaInput.value.trim();
                         if (val) {
@@ -147,6 +213,13 @@
 
                             const chatLog = document.getElementById("qaChatHistory");
                             const turnIndex = qaTurnCounter++;
+                            const chosenTarget = targetSelect ? targetSelect.value : "auto";
+                            const chosenTargetText = (targetSelect && chosenTarget !== "auto") ? targetSelect.options[targetSelect.selectedIndex].text : "";
+
+                            const targetBadgeHtml = chosenTarget !== "auto"
+                                ? `<span style="font-size: 12px; font-weight: 700; color: #2563eb; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 4px; padding: 2px 8px; margin-left: 8px;">To: ${chosenTargetText.replace(/^Ask\s+/, '')}</span>`
+                                : "";
+
                             const userMsg = document.createElement("div");
                             userMsg.className = "agent-pane qa-user-pane";
                             userMsg.setAttribute("data-turn-index", turnIndex);
@@ -154,38 +227,45 @@
                             userMsg.innerHTML = `
                                 <div class="agent-header">
                                     <div class="agent-avatar" style="border: 3px solid #f97316; color: #f97316; background-color: #f1f5f9;">U</div>
-                                    <div class="agent-role-name">You</div>
+                                    <div class="agent-role-name">You ${targetBadgeHtml}</div>
                                     <button type="button" class="qa-delete-btn" onclick="deleteQaTurn(${turnIndex}, this)">Delete Message</button>
                                 </div>
-                                <div class="agent-feed" style="font-size: 16px; overflow-y: visible;">
+                                <div class="agent-feed" style="font-size: 16px; overflow-y: visible; white-space: pre-wrap; word-break: break-word;">
                                     ${val}
                                 </div>
                             `;
                             chatLog.appendChild(userMsg);
-                            chatLog._userScrolledAway = false;
-                            BoardroomCore.autoScroll(chatLog);
+                            BoardroomCore.scrollFeedToBottom(chatLog);
 
                             qaInput.value = "";
+                            qaInput.style.height = "auto";
+                            qaInput.style.overflowY = "hidden";
                             qaInput.disabled = true;
+                            if (targetSelect) targetSelect.disabled = true;
                             sendBtn.disabled = true;
                             sendBtn.innerText = "Thinking...";
 
                             setTimeout(() => {
-                                BoardroomCore.autoScroll(chatLog);
+                                BoardroomCore.scrollFeedToBottom(chatLog);
                             }, 50);
 
                             window.sendWsMessage({
                                 action: "qa_query",
                                 query: val,
+                                targetAgent: chosenTarget,
                                 ticker: currentTicker,
                                 simulatedDate: currentSimulatedDate
                             });
                         }
                     };
 
-                    sendBtn.onclick = sendMsg;
-                    qaInput.addEventListener("keypress", (e) => {
-                        if (e.key === "Enter") sendMsg();
+                    if (sendBtn) sendBtn.onclick = sendMsg;
+
+                    qaInput.addEventListener("keydown", (e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            sendMsg();
+                        }
                     });
                 }
             }, 100);
@@ -636,11 +716,14 @@
     BoardroomCore.on("qaComplete", () => {
         const qSendBtn = document.getElementById("qaSendBtn");
         const qInput = document.getElementById("qaInput");
+        const qTargetSelect = document.getElementById("qaTargetSelect");
         if (qSendBtn) { qSendBtn.disabled = false; qSendBtn.innerText = "Send"; }
         if (qInput) { qInput.disabled = false; qInput.focus(); }
+        if (qTargetSelect) qTargetSelect.disabled = false;
     });
 
     BoardroomCore.on("simComplete", (payload) => {
+        updateQaTargetAgents();
         const finalTimeRow = document.getElementById("finalTimeReportRow");
         if (finalTimeRow) {
             finalTimeRow.style.display = "block";
@@ -654,15 +737,19 @@
     BoardroomCore.on("simStopped", () => {
         const qStopBtn = document.getElementById("qaSendBtn");
         const qStopInp = document.getElementById("qaInput");
+        const qTargetSelect = document.getElementById("qaTargetSelect");
         if (qStopBtn) { qStopBtn.disabled = false; qStopBtn.innerText = "Send"; }
         if (qStopInp) qStopInp.disabled = false;
+        if (qTargetSelect) qTargetSelect.disabled = false;
     });
 
     BoardroomCore.on("error", () => {
         const qErrBtn = document.getElementById("qaSendBtn");
         const qErrInp = document.getElementById("qaInput");
+        const qTargetSelect = document.getElementById("qaTargetSelect");
         if (qErrBtn) { qErrBtn.disabled = false; qErrBtn.innerText = "Send"; }
         if (qErrInp) qErrInp.disabled = false;
+        if (qTargetSelect) qTargetSelect.disabled = false;
     });
 
     // Initialize Core Engine

@@ -131,7 +131,7 @@ class PortfolioCreationConfig(BoardroomConfig):
     targetSectorCount: Optional[int] = None
     maxSectorAllocation: float = 40.0
     maxStockAllocation: float = 20.0
-    targetStockCount: int = 10
+    targetStockCount: Optional[int] = None
 
     @property
     def modeName(self) -> str:
@@ -143,13 +143,18 @@ class PortfolioCreationConfig(BoardroomConfig):
             if self.targetSectorCount is not None
             else "You have full discretion to select the optimal number of sectors (typically 2 to 6 based on market conditions)."
         )
+        stockCountRule = (
+            f"~{self.targetStockCount} stocks"
+            if self.targetStockCount is not None
+            else "optimal discretion (typically 6 to 18 stocks balanced across confirmed sectors)"
+        )
         return {
             "initialCapital": f"${self.initialCapital:,.2f}",
             "timeHorizon": self.timeHorizon.value,
             "sectorDiversityRule": sectorDiversityRule,
-            "maxSectorAllocation": f"{min(self.maxSectorAllocation, 90.0):.1f}%",
-            "maxStockAllocation": f"{min(self.maxStockAllocation, 80.0):.1f}%",
-            "targetStockCount": str(self.targetStockCount),
+            "maxSectorAllocation": f"{min(max(self.maxSectorAllocation, 20.0), 80.0):.1f}%",
+            "maxStockAllocation": f"{min(max(self.maxStockAllocation, 10.0), 60.0):.1f}%",
+            "targetStockCount": stockCountRule,
             "targetSectorCount": str(self.targetSectorCount) if self.targetSectorCount is not None else "Dynamic"
         }
 
@@ -172,13 +177,15 @@ class PortfolioCreationConfig(BoardroomConfig):
             targetSectorCount = max(1, min(11, targetSectorCount))
 
         maxSectorAllocation = float(data.get("maxSectorAllocation", 40.0))
-        maxSectorAllocation = max(5.0, min(90.0, maxSectorAllocation))
+        maxSectorAllocation = max(20.0, min(80.0, maxSectorAllocation))
+
+        targetStockCountRaw = data.get("targetStockCount")
+        targetStockCount = int(targetStockCountRaw) if targetStockCountRaw is not None and str(targetStockCountRaw).strip() != "" else None
+        if targetStockCount is not None:
+            targetStockCount = max(1, min(30, targetStockCount))
 
         maxStockAllocation = float(data.get("maxStockAllocation", 20.0))
-        maxStockAllocation = max(1.0, min(80.0, maxStockAllocation))
-
-        targetStockCount = int(data.get("targetStockCount", 10))
-        targetStockCount = max(2, min(50, targetStockCount))
+        maxStockAllocation = max(10.0, min(60.0, maxStockAllocation))
 
         maxIterations = int(data.get("maxIterations", 10))
         temperature = float(data.get("temperature", 0.5))

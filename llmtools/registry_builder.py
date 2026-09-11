@@ -7,7 +7,9 @@ from llmtools.functions.company import (
     fetchCompanyProfile, 
     fetchCompanyRecentNews, 
     fetchStockPricePerformance, 
-    calculateDistFromCurrPrice
+    calculateDistFromCurrPrice,
+    fetchFinnhubCompanyFundamentals,
+    fetchBatchFinnhubMetrics
 )
 from llmtools.functions.edgar import (
     fetchCompanyValuationMetrics, 
@@ -27,17 +29,21 @@ from llmtools.functions.sector import (
     fetchSectorPerformance, 
     fetchAllSectorRankings, 
     fetchSectorProfile, 
-    confirmSectorAllocation,
+    fetchStocksInSector,
     DB_SECTOR_TO_TICKER
 )
 from llmtools.functions.other import (
     executePythonCalculation, 
+    transferToAgent
+)
+from llmtools.functions.confirmation import (
     confirmBoardroomDecisionImmediateTerm,
     confirmBoardroomDecisionShortTerm, 
     confirmBoardroomDecisionMediumTerm, 
     confirmBoardroomDecisionLongTerm, 
     confirmBoardroomDecisionDistantTerm,
-    transferToAgent
+    confirmSectorAllocation,
+    confirmPortfolioAllocation
 )
 
 from llmtools.lru_cacher import startPrecacheThread
@@ -61,6 +67,63 @@ SCHEMAS = {
             }
         },
         "required": ["sectorAllocations", "rationale"]
+    },
+
+    "confirmPortfolioAllocation": {
+        "type": "object",
+        "properties": {
+            "positions": {
+                "type": "array",
+                "description": "List of individual stock allocations for the portfolio.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "ticker": {"type": "string", "description": "Stock ticker symbol (e.g. 'NVDA', 'AAPL')."},
+                        "sector": {"type": "string", "description": "GICS sector of the stock."},
+                        "weightPct": {"type": "number", "description": "Percentage allocation weight in the portfolio (e.g. 12.5)."},
+                        "investmentRole": {
+                            "type": "string",
+                            "enum": ["CORE_GROWTH", "HIGH_BETA_UPSIDE", "DEFENSIVE_VALUE", "DIVIDEND_STABILITY", "CASH_BUFFER"],
+                            "description": "Strategic portfolio role."
+                        },
+                        "rationale": {"type": "string", "description": "Concise rationale for including this stock."}
+                    },
+                    "required": ["ticker", "sector", "weightPct", "investmentRole"]
+                }
+            },
+            "portfolioRationale": {
+                "type": "string",
+                "description": "Clear executive rationale explaining portfolio construction, risk management, and sector alignment."
+            },
+            "cashWeightPct": {
+                "type": "number",
+                "description": "Unallocated percentage held in cash (e.g. 5.0). Defaults to 0.0.",
+                "default": 0.0
+            }
+        },
+        "required": ["positions", "portfolioRationale"]
+    },
+
+    "fetchStocksInSector": {
+        "type": "object",
+        "properties": {
+            "sector": {
+                "type": "string",
+                "description": "The GICS sector name or ETF ticker (e.g. 'information_technology', 'XLK', 'health_care', 'XLV'), selectable from: " + ALL_SECTORS_STRING + "."
+            },
+            "style": {
+                "type": "string",
+                "enum": ["growth", "value", "defensive", "all"],
+                "description": "The investment style bias for screening candidates (growth, value, defensive, or all). Defaults to all.",
+                "default": "all"
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Maximum number of candidate stocks to return (4 to 20). Defaults to 12.",
+                "default": 12
+            }
+        },
+        "required": ["sector"]
     },
 
     "sectorQuery": {
@@ -109,6 +172,18 @@ SCHEMAS = {
             }
         },
         "required": ["ticker"]
+    },
+
+    "batchTickers": {
+        "type": "object",
+        "properties": {
+            "tickers": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "List of stock ticker symbols to query (e.g. ['AAPL', 'MSFT', 'NVDA']). Maximum 15 tickers."
+            }
+        },
+        "required": ["tickers"]
     },
 
     "tickerNews": {
@@ -346,6 +421,13 @@ def buildToolRegistry(initMacroThread=False):
         parameterSchema=SCHEMAS["confirmSectorAllocation"]
     ))
 
+    toolReg.registerTool(Tool(
+        toolFunction=fetchStocksInSector,
+        toolName="fetchStocksInSector",
+        toolDescription="Screens and returns curated equity candidates (10-15 stocks) within a specified GICS sector or sector ETF, with key performance metrics, market cap, and style indicators (growth, value, defensive, all).",
+        parameterSchema=SCHEMAS["fetchStocksInSector"]
+    ))
+
 
     # company.py
     toolReg.registerTool(Tool(
@@ -374,6 +456,20 @@ def buildToolRegistry(initMacroThread=False):
         toolName="calculateDistFromCurrPrice",
         toolDescription="Calculates the percentage distance of a target price from the current stock price.",
         parameterSchema=SCHEMAS["stockPriceChange"]
+    ))
+
+    toolReg.registerTool(Tool(
+        toolFunction=fetchFinnhubCompanyFundamentals,
+        toolName="fetchFinnhubCompanyFundamentals",
+        toolDescription="Fast point-in-time financial metrics for an individual stock (P/E, P/B, margins, ROE, debt-to-equity, EPS, EBITDA) via Finnhub with local caching. Ideal for stock scouting without EDGAR filing overhead.",
+        parameterSchema=SCHEMAS["justTicker"]
+    ))
+
+    toolReg.registerTool(Tool(
+        toolFunction=fetchBatchFinnhubMetrics,
+        toolName="fetchBatchFinnhubMetrics",
+        toolDescription="Fast point-in-time valuation and profitability metrics for multiple candidate stocks in a single call (up to 15 tickers). Returns P/E, P/B, margins, ROE, and leverage for quick cross-stock comparison.",
+        parameterSchema=SCHEMAS["batchTickers"]
     ))
 
 
@@ -504,6 +600,13 @@ def buildToolRegistry(initMacroThread=False):
         toolDescription="Confirms the final stock rating, weighting, and 3-year & 10-year target prices for a stock "
                         "after the boardroom has produced its final consensus for a distant-term horizon.",
         parameterSchema=SCHEMAS["confirmDecisionDistantTerm"]
+    ))
+
+    toolReg.registerTool(Tool(
+        toolFunction=confirmPortfolioAllocation,
+        toolName="confirmPortfolioAllocation",
+        toolDescription="Confirms and records the executive portfolio creation verdict with individual stock positions, % weightings, dollar amounts, and cash buffer.",
+        parameterSchema=SCHEMAS["confirmPortfolioAllocation"]
     ))
 
     toolReg.registerTool(Tool(

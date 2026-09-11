@@ -2,31 +2,49 @@
 
 {% block title %}CapitalAgents - Portfolio Creation Boardroom{% endblock %}
 
+{% block extra_css %}
+<style>
+    /* Remove up/down arrows (spinners) from number inputs */
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    input[type=number] {
+        -moz-appearance: textfield;
+    }
+    .portfolio-num-input {
+        width: 50px !important;
+        text-align: center;
+        padding: 5px 6px !important;
+    }
+</style>
+{% endblock %}
+
 {% block config_inputs %}
     <div class="config-group">
-        <label for="initialCapitalInput">Initial Capital:</label>
-        <input type="text" id="initialCapitalInput" value="$100,000" style="width: 110px; font-weight: 700;">
+        <label for="initialCapitalInput">Initial Capital ($):</label>
+        <input type="number" id="initialCapitalInput" min="1000" step="5000" value="100000" style="width: 85px;">
     </div>
 
     <div class="config-group">
-        <label for="maxSectorAllocationSelect">Max Sector %:</label>
-        <select id="maxSectorAllocationSelect">
-            <option value="25">25% Max</option>
-            <option value="30">30% Max</option>
-            <option value="40" selected>40% Max</option>
-            <option value="50">50% Max</option>
-        </select>
+        <label for="targetSectorCountInput">Sectors:</label>
+        <input type="number" id="targetSectorCountInput" class="portfolio-num-input" min="1" max="11" step="1" placeholder="Auto" title="Target sector count (1 to 11, leave empty for dynamic selection)">
     </div>
 
     <div class="config-group">
-        <label for="targetSectorCountSelect">Sectors:</label>
-        <select id="targetSectorCountSelect">
-            <option value="" selected>Dynamic (2-6)</option>
-            <option value="3">3 Sectors</option>
-            <option value="4">4 Sectors</option>
-            <option value="5">5 Sectors</option>
-            <option value="6">6 Sectors</option>
-        </select>
+        <label for="maxSectorAllocationInput">Max Sector %:</label>
+        <input type="number" id="maxSectorAllocationInput" class="portfolio-num-input" min="20" max="80" step="1" value="40" title="Max single sector allocation (20% to 80%)">
+    </div>
+
+    <div class="config-group">
+        <label for="targetStockCountInput">Stocks:</label>
+        <input type="number" id="targetStockCountInput" class="portfolio-num-input" min="1" max="30" step="1" placeholder="Auto" title="Target stock count (1 to 30, leave empty for dynamic selection)">
+    </div>
+
+    <div class="config-group">
+        <label for="maxStockAllocationInput">Max Stock %:</label>
+        <input type="number" id="maxStockAllocationInput" class="portfolio-num-input" min="10" max="60" step="1" value="20" title="Max single stock allocation (10% to 60%)">
     </div>
 
     <div class="config-group">
@@ -53,7 +71,7 @@
         <input type="checkbox" id="simulatedDateCheckbox">
     </div>
     <div class="config-group" id="simulatedDateContainer" style="display: none;">
-        <input type="date" id="simulatedDateInput" min="2016-01-01" max="" style="width: 150px;">
+        <input type="date" id="simulatedDateInput" min="2016-01-01" max="" style="width: 140px;">
         <script>
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
@@ -67,17 +85,31 @@
 <script>
     let currentSimulatedDate = null;
     let sectorChartInstance = null;
-    let confirmedAllocationData = null;
+    let portfolioSectorChartInstance = null;
+    let confirmedSectorData = null;
+    let confirmedPortfolioData = null;
+
+    // Register custom agent roles for portfolio creation
+    BoardroomCore.registerRole("Growth Stock Hunter", { class: "green", initials: "GH", name: "Growth Hunter" });
+    BoardroomCore.registerRole("Value/Defensive Stock Hunter", { class: "blue", initials: "VH", name: "Value Hunter" });
+    BoardroomCore.registerRole("Aggressive Risk Analyst", { class: "yellow", initials: "AR", name: "Aggressive Risk" });
+    BoardroomCore.registerRole("Conservative Risk Analyst", { class: "blue", initials: "CR", name: "Conservative Risk" });
+    BoardroomCore.registerRole("Macro Analyst", { class: "cyan", initials: "MS", name: "Macro Strategist" });
 
     const portfolioCreationStages = {
         "fast": [
             { num: 1, name: "Macro Environment Analysis" },
-            { num: 2, name: "Sector Allocation Decision" }
+            { num: 3, name: "Sector Allocation Decision" },
+            { num: 4, name: "Stock Scouting" },
+            { num: 6, name: "Final Executive Decision" }
         ],
         "complete": [
             { num: 1, name: "Macro Environment Analysis" },
             { num: 2, name: "Sector Allocation Analysis" },
-            { num: 3, name: "Sector Allocation Decision" }
+            { num: 3, name: "Sector Allocation Decision" },
+            { num: 4, name: "Stock Scouting" },
+            { num: 5, name: "Stock Allocation Proposals" },
+            { num: 6, name: "Final Executive Decision" }
         ]
     };
 
@@ -94,16 +126,23 @@
         BoardroomCore.initStagesBar(this.value, portfolioCreationStages);
     });
 
-    // Custom Stage Layout: Inject Sector Allocation Report Card on Decision Stage
-    BoardroomCore.setCustomStageLayoutHandler(({ stageNum, stageName, agents, workspace }) => {
-        if (stageName.includes("Sector Allocation Decision")) {
-            workspace.innerHTML = `
-                <div class="upload-receipt-container" style="max-width: 480px;">
-                    <h2 style="font-size: 18px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 16px; text-align: center;">CONFIRMED SECTOR ALLOCATION</h2>
+    function getCleanInitialCapital() {
+        const val = document.getElementById("initialCapitalInput")?.value;
+        const num = parseFloat(String(val).replace(/[^0-9.]/g, ""));
+        return isNaN(num) || num <= 0 ? 100000 : num;
+    }
 
-                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 10px; font-size: 14px; margin-bottom: 14px;">
+    // Custom Stage Layout Handler: Stage 3 (Sector Allocation) and Stage 6 (Final Portfolio)
+    BoardroomCore.setCustomStageLayoutHandler(({ stageNum, stageName, agents, workspace }) => {
+        // Stage 3: Confirmed Sector Allocation
+        if (stageNum === 3 || stageName.includes("Sector Allocation Decision")) {
+            workspace.innerHTML = `
+                <div class="upload-receipt-container" style="flex: 1; max-width: 460px; min-width: 320px; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 22px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); align-self: stretch; height: 100%; min-height: 0; overflow-y: auto; box-sizing: border-box;">
+                    <h2 style="font-size: 18px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 14px; text-align: center;">CONFIRMED SECTOR ALLOCATION</h2>
+
+                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; font-size: 13.5px; margin-bottom: 12px; line-height: 1.3;">
                         <div style="font-weight: 700; color: #475569;">Target Capital:</div>
-                        <div id="allocation-capital" style="font-weight: 800;">--</div>
+                        <div id="allocation-capital" style="font-weight: 800;">$${getCleanInitialCapital().toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
 
                         <div style="font-weight: 700; color: #475569;">Analysis Date:</div>
                         <div id="allocation-date" style="font-weight: bold;">${BoardroomCore.formatOrdinalDate(currentSimulatedDate)}</div>
@@ -112,11 +151,55 @@
                         <div><span id="allocation-status" class="tool-status-badge status-running">PENDING DECISION</span></div>
                     </div>
 
-                    <div id="sectorChartWrapper" style="width: 100%; height: 220px; position: relative; margin: 12px 0;">
+                    <div id="sectorChartWrapper" style="width: 100%; height: 210px; position: relative; margin: 10px 0;">
                         <canvas id="sectorAllocationChartCanvas" style="display: block; width: 100%; height: 100%;"></canvas>
                     </div>
 
-                    <div id="sectorTableContainer" style="margin-top: 14px; border-top: 1px solid #e2e8f0; padding-top: 10px;">
+                    <div id="sectorTableContainer" style="margin-top: 12px; border-top: 1px solid #e2e8f0; padding-top: 10px;">
+                        <div style="font-size: 12px; color: #64748b; text-align: center;">Waiting for Portfolio Manager sector decision...</div>
+                    </div>
+                </div>
+            `;
+
+            if (agents && agents.length > 0) {
+                agents.forEach(agent => {
+                    BoardroomCore.createAgentPane(stageNum, agent.role, agent.color, agent.name);
+                });
+            } else {
+                BoardroomCore.createAgentPane(stageNum, "Impartial Portfolio Manager", "magenta", "Portfolio Manager");
+            }
+
+            if (confirmedSectorData) {
+                renderSectorAllocationVisuals(confirmedSectorData);
+            }
+            return true;
+        }
+
+        // Stage 6: Final Executive Portfolio Decision Receipt
+        if (stageNum === 6 || stageName.includes("Final Executive Decision")) {
+            workspace.innerHTML = `
+                <div class="upload-receipt-container" style="flex: 1.1; max-width: 520px; min-width: 340px; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 22px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); align-self: stretch; height: 100%; min-height: 0; overflow-y: auto; box-sizing: border-box;">
+                    <h2 style="font-size: 18px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 14px; text-align: center;">PORTFOLIO CONSTRUCTION REPORT</h2>
+
+                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; font-size: 13.5px; margin-bottom: 12px; line-height: 1.3;">
+                        <div style="font-weight: 700; color: #475569;">Total Capital:</div>
+                        <div id="portfolio-capital" style="font-weight: 800;">$${getCleanInitialCapital().toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+
+                        <div style="font-weight: 700; color: #475569;">Analysis Date:</div>
+                        <div id="portfolio-date" style="font-weight: bold;">${BoardroomCore.formatOrdinalDate(currentSimulatedDate)}</div>
+
+                        <div style="font-weight: 700; color: #475569;">Holdings Count:</div>
+                        <div id="portfolio-stock-count" style="font-weight: bold;">--</div>
+
+                        <div style="font-weight: 700; color: #475569;">Portfolio Status:</div>
+                        <div><span id="portfolio-status" class="tool-status-badge status-running">PENDING CONSTRUCTION</span></div>
+                    </div>
+
+                    <div id="portfolioChartWrapper" style="width: 100%; height: 200px; position: relative; margin: 10px 0;">
+                        <canvas id="portfolioSectorChartCanvas" style="display: block; width: 100%; height: 100%;"></canvas>
+                    </div>
+
+                    <div id="portfolioHoldingsContainer" style="margin-top: 12px; border-top: 1px solid #e2e8f0; padding-top: 10px;">
                         <div style="font-size: 12px; color: #64748b; text-align: center;">Waiting for Portfolio Manager execution...</div>
                     </div>
 
@@ -135,37 +218,60 @@
                 BoardroomCore.createAgentPane(stageNum, "Impartial Portfolio Manager", "magenta", "Portfolio Manager");
             }
 
-            if (confirmedAllocationData) {
-                renderSectorAllocationVisuals(confirmedAllocationData);
+            if (confirmedPortfolioData) {
+                renderPortfolioVisuals(confirmedPortfolioData);
             }
             return true;
         }
+
         return false;
     });
 
-    // Render Sector Allocation Donut Chart and Breakdown Table
+    // Render Sector Allocation Donut Chart and Breakdown Table (Stage 3)
     function renderSectorAllocationVisuals(allocationData) {
-        confirmedAllocationData = allocationData;
-        const capitalInputVal = document.getElementById("initialCapitalInput")?.value || "$100,000";
-        const cleanCapital = parseFloat(capitalInputVal.replace(/[^0-9.]/g, "")) || 100000;
+        confirmedSectorData = allocationData;
+        const cleanCapital = getCleanInitialCapital();
 
         const capitalEl = document.getElementById("allocation-capital");
+        const dateEl = document.getElementById("allocation-date");
         const statusEl = document.getElementById("allocation-status");
         if (capitalEl) capitalEl.innerText = `$${cleanCapital.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+        if (dateEl) dateEl.innerText = BoardroomCore.formatOrdinalDate(currentSimulatedDate);
         if (statusEl) {
             statusEl.innerText = "CONFIRMED";
             statusEl.className = "tool-status-badge status-success";
         }
 
-        let weightsMap = {};
-        if (allocationData && allocationData.allocations) {
-            weightsMap = allocationData.allocations;
-        } else if (typeof allocationData === "object") {
-            weightsMap = allocationData;
+        let payloadRecord = allocationData;
+        if (allocationData && allocationData.confirmedAllocation) {
+            payloadRecord = allocationData.confirmedAllocation;
         }
 
-        const labels = Object.keys(weightsMap);
-        const values = labels.map(k => parseFloat(weightsMap[k]) || 0);
+        let labels = [];
+        let values = [];
+
+        if (payloadRecord && payloadRecord.sectorAllocations) {
+            const secDict = payloadRecord.sectorAllocations;
+            for (const [secKey, secObj] of Object.entries(secDict)) {
+                const name = (typeof secObj === "object" && secObj.sector) ? secObj.sector : secKey;
+                const pct = (typeof secObj === "object" && secObj.allocationPct !== undefined) ? parseFloat(secObj.allocationPct) : parseFloat(secObj);
+                labels.push(name);
+                values.push(pct || 0);
+            }
+        } else if (payloadRecord && payloadRecord.allocations) {
+            const secDict = payloadRecord.allocations;
+            for (const [secKey, pctVal] of Object.entries(secDict)) {
+                labels.push(secKey);
+                values.push(parseFloat(pctVal) || 0);
+            }
+        } else if (typeof payloadRecord === "object" && payloadRecord !== null) {
+            for (const [k, v] of Object.entries(payloadRecord)) {
+                if (k !== "status" && k !== "message" && k !== "rationale" && k !== "totalAllocatedPct" && k !== "sectorCount") {
+                    labels.push(k);
+                    values.push(parseFloat(v) || 0);
+                }
+            }
+        }
 
         // Render Table
         const tableContainer = document.getElementById("sectorTableContainer");
@@ -207,7 +313,8 @@
 
         const colors = [
             "#2563eb", "#10b981", "#f59e0b", "#8b5cf6",
-            "#06b6d4", "#ec4899", "#64748b", "#14b8a6"
+            "#06b6d4", "#ec4899", "#64748b", "#14b8a6",
+            "#f97316", "#a855f7", "#3b82f6"
         ];
 
         sectorChartInstance = new Chart(canvas.getContext("2d"), {
@@ -238,15 +345,184 @@
                         }
                     }
                 },
-                cutout: "60%"
+                cutout: "58%"
             }
         });
     }
 
-    // Custom Event Listener for Portfolio Creation
+    // Render Final Portfolio Construction Report Card (Stage 6)
+    function renderPortfolioVisuals(portfolioData) {
+        confirmedPortfolioData = portfolioData;
+        let data = portfolioData;
+        if (portfolioData && portfolioData.confirmedPortfolio) {
+            data = portfolioData.confirmedPortfolio;
+        }
+
+        const cleanCapital = (data && data.initialCapital) ? parseFloat(data.initialCapital) : getCleanInitialCapital();
+        const positions = (data && data.positions) ? data.positions : [];
+        const cashPos = (data && data.cashPosition) ? data.cashPosition : { weightPct: 0, dollarAllocation: 0 };
+        const sectorBreakdown = (data && data.sectorBreakdown) ? data.sectorBreakdown : {};
+
+        const capitalEl = document.getElementById("portfolio-capital");
+        const dateEl = document.getElementById("portfolio-date");
+        const countEl = document.getElementById("portfolio-stock-count");
+        const statusEl = document.getElementById("portfolio-status");
+
+        if (capitalEl) capitalEl.innerText = `$${cleanCapital.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+        if (dateEl) dateEl.innerText = BoardroomCore.formatOrdinalDate(currentSimulatedDate || (data && data.asOfDate));
+        if (countEl) countEl.innerText = `${positions.length} Equities ${cashPos.weightPct > 0 ? '+ Cash' : ''}`;
+        if (statusEl) {
+            statusEl.innerText = "CONFIRMED";
+            statusEl.className = "tool-status-badge status-success";
+        }
+
+        // Render Holdings Table
+        const holdingsContainer = document.getElementById("portfolioHoldingsContainer");
+        if (holdingsContainer) {
+            let tableHtml = `
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 12px;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid #cbd5e1; background: #f8fafc;">
+                            <th style="text-align: left; padding: 5px 6px;">Ticker</th>
+                            <th style="text-align: left; padding: 5px 6px;">Sector</th>
+                            <th style="text-align: right; padding: 5px 6px;">Weight</th>
+                            <th style="text-align: right; padding: 5px 6px;">Allocation</th>
+                            <th style="text-align: right; padding: 5px 6px;">Shares</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            positions.forEach(pos => {
+                const dollarAmt = pos.dollarAllocation !== undefined ? Number(pos.dollarAllocation).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (cleanCapital * (pos.weightPct / 100)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                const sharesStr = (pos.estimatedShares !== undefined && pos.estimatedShares !== null) ? `${pos.estimatedShares.toLocaleString()} shs` : "--";
+                const roleBadge = pos.investmentRole ? `<span style="font-size: 9.5px; color: #64748b; margin-left: 4px;">(${pos.investmentRole})</span>` : "";
+
+                tableHtml += `
+                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                        <td style="padding: 5px 6px; font-weight: 700; color: #0f172a;">${pos.ticker}${roleBadge}</td>
+                        <td style="padding: 5px 6px; color: #475569; font-size: 11px;">${pos.sector || '--'}</td>
+                        <td style="padding: 5px 6px; text-align: right; font-weight: 700; color: #2563eb;">${Number(pos.weightPct).toFixed(1)}%</td>
+                        <td style="padding: 5px 6px; text-align: right; color: #334155;">$${dollarAmt}</td>
+                        <td style="padding: 5px 6px; text-align: right; color: #64748b; font-size: 11px;">${sharesStr}</td>
+                    </tr>
+                `;
+            });
+
+            if (cashPos.weightPct > 0) {
+                const cashAmt = cashPos.dollarAllocation !== undefined ? Number(cashPos.dollarAllocation).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (cleanCapital * (cashPos.weightPct / 100)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                const etfSub = cashPos.etfSubstitute ? ` <span style="font-size: 9.5px; color: #059669; font-weight: 600;">(SPY ETF Proxy)</span>` : "";
+                const etfSharesStr = (cashPos.estimatedEtfShares !== undefined && cashPos.estimatedEtfShares !== null) ? `${cashPos.estimatedEtfShares.toLocaleString()} shs` : "--";
+                tableHtml += `
+                    <tr style="border-bottom: 1px solid #cbd5e1; background: #fdfefe;">
+                        <td style="padding: 5px 6px; font-weight: 700; color: #059669;">USD CASH${etfSub}</td>
+                        <td style="padding: 5px 6px; color: #059669; font-size: 11px;">Index Proxy / Liquidity</td>
+                        <td style="padding: 5px 6px; text-align: right; font-weight: 700; color: #059669;">${Number(cashPos.weightPct).toFixed(1)}%</td>
+                        <td style="padding: 5px 6px; text-align: right; font-weight: 600; color: #059669;">$${cashAmt}</td>
+                        <td style="padding: 5px 6px; text-align: right; color: #059669; font-size: 11px;">${etfSharesStr}</td>
+                    </tr>
+                `;
+            }
+
+            tableHtml += `</tbody></table>`;
+            holdingsContainer.innerHTML = tableHtml;
+        }
+
+        // Render Portfolio Sector Breakdown Donut Chart
+        const canvas = document.getElementById("portfolioSectorChartCanvas");
+        if (!canvas) return;
+
+        const secLabels = Object.keys(sectorBreakdown);
+        const secValues = secLabels.map(k => parseFloat(sectorBreakdown[k]) || 0);
+
+        if (cashPos.weightPct > 0) {
+            secLabels.push("Cash Buffer");
+            secValues.push(parseFloat(cashPos.weightPct));
+        }
+
+        if (secLabels.length === 0) return;
+
+        if (portfolioSectorChartInstance) {
+            portfolioSectorChartInstance.destroy();
+            portfolioSectorChartInstance = null;
+        }
+
+        const colors = [
+            "#2563eb", "#10b981", "#f59e0b", "#8b5cf6",
+            "#06b6d4", "#ec4899", "#64748b", "#14b8a6",
+            "#f97316", "#a855f7", "#3b82f6"
+        ];
+
+        portfolioSectorChartInstance = new Chart(canvas.getContext("2d"), {
+            type: "doughnut",
+            data: {
+                labels: secLabels,
+                datasets: [{
+                    data: secValues,
+                    backgroundColor: colors.slice(0, secLabels.length),
+                    borderWidth: 2,
+                    borderColor: "#ffffff"
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: "bottom",
+                        labels: {
+                            boxWidth: 12,
+                            font: { size: 11, weight: "600" }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => `${ctx.label}: ${ctx.parsed}% ($${(cleanCapital * ctx.parsed / 100).toLocaleString()})`
+                        }
+                    }
+                },
+                cutout: "58%"
+            }
+        });
+    }
+
+    // Lifecycle Listeners
+    BoardroomCore.on("simulationStarted", () => {
+        confirmedSectorData = null;
+        confirmedPortfolioData = null;
+        const finalTimeRow = document.getElementById("finalTimeReportRow");
+        if (finalTimeRow) finalTimeRow.style.display = "none";
+    });
+
     BoardroomCore.on("sectorAllocationConfirmed", (payload) => {
         if (payload && payload.confirmedAllocation) {
             renderSectorAllocationVisuals(payload.confirmedAllocation);
+        }
+    });
+
+    BoardroomCore.on("portfolioCreated", (payload) => {
+        if (payload && payload.confirmedPortfolio) {
+            renderPortfolioVisuals(payload.confirmedPortfolio);
+        }
+    });
+
+    // Also catch tool confirmation events directly if tool finishes
+    BoardroomCore.on("toolCallEnd", (payload) => {
+        if (payload.toolName === "confirmSectorAllocation" && payload.status === "success") {
+            try {
+                const res = (typeof payload.result === "string") ? JSON.parse(payload.result) : payload.result;
+                if (res) renderSectorAllocationVisuals(res);
+            } catch (e) {
+                console.error("Error parsing sector toolCallEnd result", e);
+            }
+        }
+        if (payload.toolName === "confirmPortfolioAllocation" && payload.status === "success") {
+            try {
+                const res = (typeof payload.result === "string") ? JSON.parse(payload.result) : payload.result;
+                if (res) renderPortfolioVisuals(res);
+            } catch (e) {
+                console.error("Error parsing portfolio toolCallEnd result", e);
+            }
         }
     });
 
@@ -261,15 +537,52 @@
         }
     });
 
+    // Enforce bounds on blur and input for numerical constraints
+    function clampInput(inputEl, minVal, maxVal, allowEmpty = false) {
+        if (!inputEl) return;
+        inputEl.addEventListener("change", function () {
+            const valStr = this.value.trim();
+            if (allowEmpty && valStr === "") return;
+            let num = parseFloat(valStr);
+            if (isNaN(num)) {
+                this.value = allowEmpty ? "" : minVal;
+                return;
+            }
+            if (num < minVal) num = minVal;
+            if (num > maxVal) num = maxVal;
+            this.value = num;
+        });
+    }
+
+    clampInput(document.getElementById("initialCapitalInput"), 1000, 100000000);
+    clampInput(document.getElementById("targetSectorCountInput"), 1, 11, true);
+    clampInput(document.getElementById("maxSectorAllocationInput"), 20, 80);
+    clampInput(document.getElementById("targetStockCountInput"), 1, 30, true);
+    clampInput(document.getElementById("maxStockAllocationInput"), 10, 60);
+
     // Initialize Core Engine
     BoardroomCore.init({
         defaultStages: portfolioCreationStages,
         initialMode: document.getElementById("modeSelect")?.value || "complete",
         getPayload: () => {
-            const capitalRaw = document.getElementById("initialCapitalInput").value.replace(/[^0-9.]/g, "");
-            const capital = parseFloat(capitalRaw) || 100000;
-            const maxSector = parseFloat(document.getElementById("maxSectorAllocationSelect").value) || 40;
-            const targetSectors = document.getElementById("targetSectorCountSelect").value || null;
+            const capitalVal = getCleanInitialCapital();
+
+            let maxSector = parseFloat(document.getElementById("maxSectorAllocationInput")?.value);
+            if (isNaN(maxSector)) maxSector = 40;
+            maxSector = Math.max(20, Math.min(80, maxSector));
+
+            const targetSectorsRaw = document.getElementById("targetSectorCountInput")?.value?.trim();
+            let targetSectors = (targetSectorsRaw && targetSectorsRaw !== "") ? parseInt(targetSectorsRaw, 10) : null;
+            if (targetSectors !== null) targetSectors = Math.max(1, Math.min(11, targetSectors));
+
+            let maxStock = parseFloat(document.getElementById("maxStockAllocationInput")?.value);
+            if (isNaN(maxStock)) maxStock = 20;
+            maxStock = Math.max(10, Math.min(60, maxStock));
+
+            const targetStocksRaw = document.getElementById("targetStockCountInput")?.value?.trim();
+            let targetStocks = (targetStocksRaw && targetStocksRaw !== "") ? parseInt(targetStocksRaw, 10) : null;
+            if (targetStocks !== null) targetStocks = Math.max(1, Math.min(30, targetStocks));
+
             const mode = document.getElementById("modeSelect").value;
             const horizon = document.getElementById("horizonSelect").value;
 
@@ -287,9 +600,11 @@
             return {
                 action: "start",
                 engineType: "portfolio_creation",
-                initialCapital: capital,
+                initialCapital: capitalVal,
                 maxSectorAllocation: maxSector,
                 targetSectorCount: targetSectors,
+                maxStockAllocation: maxStock,
+                targetStockCount: targetStocks,
                 boardroomPace: mode,
                 timeHorizon: horizon,
                 simulatedDate: simDate,
@@ -299,3 +614,4 @@
     });
 </script>
 {% endblock %}
+

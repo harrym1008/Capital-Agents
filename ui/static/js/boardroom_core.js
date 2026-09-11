@@ -409,39 +409,83 @@ const BoardroomCore = (function () {
         emit("stageLayoutReady", { stageNum, stageName, agents, workspace: stageWorkspace });
     }
 
-    function setupAutoScroll(el) {
+    function setupAutoScroll(el, threshold = 70) {
         if (!el || el._autoScrollReady) return;
         el._autoScrollReady = true;
         el._userScrolledAway = false;
+        el._isProgrammaticScroll = false;
+        el._lastScrollTop = el.scrollTop;
 
+        // Native scroll listener catches scrollbar thumb dragging, touch swipe, keyboard nav, and trackpads
+        el.addEventListener('scroll', () => {
+            const currentScrollTop = el.scrollTop;
+            const scrollDelta = currentScrollTop - (el._lastScrollTop !== undefined ? el._lastScrollTop : currentScrollTop);
+            el._lastScrollTop = currentScrollTop;
+
+            if (el._isProgrammaticScroll) {
+                el._isProgrammaticScroll = false;
+                return;
+            }
+
+            const gap = el.scrollHeight - el.clientHeight - currentScrollTop;
+            if (gap <= threshold) {
+                // User has scrolled near/to the bottom: re-anchor
+                el._userScrolledAway = false;
+            } else if (scrollDelta < -1) {
+                // User intentionally scrolled upward away from bottom: latch detached state
+                el._userScrolledAway = true;
+            }
+        }, { passive: true });
+
+        // Immediate intent latch on wheel:
         el.addEventListener('wheel', (e) => {
             if (e.deltaY < 0) {
-                el._userScrolledAway = true;
+                const gap = el.scrollHeight - el.clientHeight - el.scrollTop;
+                if (gap > 10) {
+                    el._userScrolledAway = true;
+                }
             } else if (e.deltaY > 0) {
-                requestAnimationFrame(() => {
-                    const gap = el.scrollHeight - el.clientHeight - el.scrollTop;
-                    if (gap < 30) {
-                        el._userScrolledAway = false;
-                    }
-                });
+                const gap = el.scrollHeight - el.clientHeight - el.scrollTop;
+                if (gap <= threshold) {
+                    el._userScrolledAway = false;
+                }
             }
         }, { passive: true });
 
         el.addEventListener('touchmove', () => {
             const gap = el.scrollHeight - el.clientHeight - el.scrollTop;
-            el._userScrolledAway = (gap >= 30);
+            if (gap <= threshold) {
+                el._userScrolledAway = false;
+            }
         }, { passive: true });
     }
 
     function autoScroll(el) {
         if (!el || el._userScrolledAway) return;
+        el._isProgrammaticScroll = true;
         el.scrollTop = el.scrollHeight;
+        el._lastScrollTop = el.scrollTop;
     }
 
     function scrollFeedToBottom(feed) {
         if (!feed) return;
         feed._userScrolledAway = false;
+        feed._isProgrammaticScroll = true;
         feed.scrollTop = feed.scrollHeight;
+        feed._lastScrollTop = feed.scrollTop;
+    }
+
+    function autoScrollFeedOrWorkspace(stageNum, agentRole) {
+        if (stageNum === "qa") {
+            const chatLog = document.getElementById("qaChatHistory");
+            if (chatLog) autoScroll(chatLog);
+        } else {
+            const compoundKey = `${stageNum}_${agentRole}`;
+            const paneObj = activeAgentPanes[compoundKey];
+            if (paneObj && paneObj.feed) {
+                autoScroll(paneObj.feed);
+            }
+        }
     }
 
     function createAgentPane(stageNum, agentRole, agentColor, displayName) {
@@ -500,9 +544,9 @@ const BoardroomCore = (function () {
         if (stageNum === "qa") {
             const chatLog = document.getElementById("qaChatHistory");
             if (chatLog) {
-                setTimeout(() => {
-                    chatLog.scrollTop = chatLog.scrollHeight;
-                }, 30);
+                setupAutoScroll(chatLog, 70);
+                autoScroll(chatLog);
+                requestAnimationFrame(() => autoScroll(chatLog));
             }
         }
 
@@ -547,30 +591,19 @@ const BoardroomCore = (function () {
 
         const content = document.createElement("div");
         content.className = "collapsible-content";
-
-        let thinkingScrolledAway = false;
-        content.addEventListener('wheel', (e) => {
-            if (e.deltaY < 0) {
-                thinkingScrolledAway = true;
-            } else if (e.deltaY > 0) {
-                requestAnimationFrame(() => {
-                    const gap = content.scrollHeight - content.clientHeight - content.scrollTop;
-                    if (gap < 30) thinkingScrolledAway = false;
-                });
-            }
-        }, { passive: true });
+        setupAutoScroll(content, 35);
 
         block.appendChild(header);
         block.appendChild(content);
         paneObj.feed.appendChild(block);
 
-        scrollFeedToBottom(paneObj.feed);
+        autoScrollFeedOrWorkspace(stageNum, agentRole);
         activeBlocks[compoundKey] = {
             type: 'thinking',
             element: content,
             block: block,
             rawText: "",
-            isScrolledAway: () => thinkingScrolledAway
+            isScrolledAway: () => content._userScrolledAway
         };
     }
 
@@ -586,20 +619,18 @@ const BoardroomCore = (function () {
 
             const el = active.element;
             const savedTop = el.scrollTop;
-            const scrolledAway = active.isScrolledAway();
+            const scrolledAway = el._userScrolledAway;
 
             el.innerHTML = parseMarkdown(active.rawText);
 
             if (scrolledAway) {
+                el._isProgrammaticScroll = true;
                 el.scrollTop = savedTop;
             } else {
-                el.scrollTop = el.scrollHeight;
+                autoScroll(el);
             }
 
-            const paneObj = activeAgentPanes[compoundKey];
-            if (paneObj && paneObj.feed) {
-                scrollFeedToBottom(paneObj.feed);
-            }
+            autoScrollFeedOrWorkspace(stageNum, agentRole);
         }
     }
 
@@ -626,7 +657,7 @@ const BoardroomCore = (function () {
             summaryBox.appendChild(content);
             paneObj.feed.appendChild(summaryBox);
 
-            scrollFeedToBottom(paneObj.feed);
+            autoScrollFeedOrWorkspace(stageNum, agentRole);
             activeBlocks[compoundKey] = { type: 'summary', element: content, block: summaryBox, rawText: "" };
 
             createSidebarSummary(stageNum, agentRole, config);
@@ -635,7 +666,7 @@ const BoardroomCore = (function () {
             div.className = "raw-output-area";
             paneObj.feed.appendChild(div);
 
-            scrollFeedToBottom(paneObj.feed);
+            autoScrollFeedOrWorkspace(stageNum, agentRole);
             activeBlocks[compoundKey] = { type: 'content', element: div, block: div, rawText: "" };
         }
     }
@@ -651,10 +682,7 @@ const BoardroomCore = (function () {
             active.rawText = (active.rawText || "") + token;
             active.element.innerHTML = parseMarkdown(active.rawText);
 
-            const paneObj = activeAgentPanes[compoundKey];
-            if (paneObj && paneObj.feed) {
-                scrollFeedToBottom(paneObj.feed);
-            }
+            autoScrollFeedOrWorkspace(stageNum, agentRole);
 
             if (active.type === 'summary') {
                 const sidebarSumContent = document.getElementById(`sidebarSumContent-${stageNum}-${agentRole.replace(/\s+/g, '')}`);
@@ -803,7 +831,7 @@ const BoardroomCore = (function () {
             toolBlock.appendChild(content);
             paneObj.feed.appendChild(toolBlock);
 
-            scrollFeedToBottom(paneObj.feed);
+            autoScrollFeedOrWorkspace(stageNum, agentRole);
             activeBlocks[compoundKey] = { type: 'tool', element: content, block: toolBlock };
         } else {
             const label = toolBlock.querySelector(".tool-call-name");
@@ -841,11 +869,7 @@ const BoardroomCore = (function () {
                 }
             }
 
-            const compoundKey = `${stageNum}_${agentRole}`;
-            if (activeAgentPanes[compoundKey]) {
-                const feed = activeAgentPanes[compoundKey].feed;
-                scrollFeedToBottom(feed);
-            }
+            autoScrollFeedOrWorkspace(stageNum, agentRole);
         }
     }
 
@@ -925,7 +949,7 @@ const BoardroomCore = (function () {
         toolBlock.appendChild(header);
         toolBlock.appendChild(content);
 
-        scrollFeedToBottom(paneObj.feed);
+        autoScrollFeedOrWorkspace(stageNum, agentRole);
         activeBlocks[compoundKey] = { type: 'tool', element: content, block: toolBlock };
     }
 
@@ -996,11 +1020,7 @@ const BoardroomCore = (function () {
             const key = `${stageNum}_${toolIndex}`;
             delete streamingArgs[key];
 
-            const compoundKey = `${stageNum}_${agentRole}`;
-            if (activeAgentPanes[compoundKey]) {
-                const feed = activeAgentPanes[compoundKey].feed;
-                scrollFeedToBottom(feed);
-            }
+            autoScrollFeedOrWorkspace(stageNum, agentRole);
         }
     }
 
@@ -1507,6 +1527,7 @@ const BoardroomCore = (function () {
         updateSummariesBtnState,
         setupAutoScroll,
         autoScroll,
+        autoScrollFeedOrWorkspace,
         scrollFeedToBottom,
         parseMarkdown,
         formatOrdinalDate,

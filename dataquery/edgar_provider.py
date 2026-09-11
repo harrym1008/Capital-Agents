@@ -69,8 +69,9 @@ class EdgarDataProvider:
     def loadFilingRefsForCompany(self, companyRef: CompanyRef, formType: FormType|List[FormType] = None) -> List[Filing]:
         companyRef.loadCik(self.tickerProvider)
         formCodes = [formType.formCode] if isinstance(formType, FormType) else [f.formCode for f in formType]
-        
-        key = f"edgar|rawFilings_{companyRef}_{'&'.join(formCodes)}"
+
+        now = pd.Timestamp.now(tz=UTC)
+        key = f"edgar|rawFilings_{companyRef}_{'&'.join(formCodes)}_{now.strftime('%Y-%m-%d')}"
         cached = self.cache.get(key)
         if cached is not None:
             return cached

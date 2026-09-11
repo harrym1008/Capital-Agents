@@ -1,3 +1,5 @@
+import os
+import re
 import numpy as np
 import pandas as pd
 from typing import Dict, Any, Optional
@@ -314,63 +316,230 @@ def fetchSectorProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp,
     return cleanData(result)
 
 
-def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, sectorAllocations: Dict[str, float], rationale: str) -> Dict[str, Any]:
-    if not isinstance(sectorAllocations, dict) or not sectorAllocations:
-        return {"error": "sectorAllocations must be a non-empty dictionary mapping sector names to percentage numbers."}
+from llmtools.functions.confirmation import confirmSectorAllocation
 
-    cleanedAllocations = {}
-    totalAllocated = 0.0
 
-    for rawSector, rawPct in sectorAllocations.items():
-        try:
-            pctVal = round(float(rawPct), 2)
-        except (ValueError, TypeError):
-            return {"error": f"Allocation value for '{rawSector}' must be a valid number, got '{rawPct}'."}
+def parseMarketCapValue(val: Any) -> float:
+    if not val or pd.isna(val):
+        return 0.0
+    s = str(val).strip().lower()
+    m = re.match(r"([0-9.]+)\s*([a-z]+)?", s)
+    if not m:
+        return 0.0
+    num = float(m.group(1))
+    unit = m.group(2) or ""
+    if "t" in unit:
+        return num * 1e12
+    if "b" in unit:
+        return num * 1e9
+    if "m" in unit:
+        return num * 1e6
+    if "k" in unit:
+        return num * 1e3
+    return num
 
-        if pctVal <= 0:
-            continue
 
-        rawLower = str(rawSector).strip().lower()
-        if rawLower in ["cash", "usd"]:
-            cleanedAllocations["CASH"] = {
-                "sector": "Cash",
-                "ticker": "CASH",
-                "allocationPct": pctVal
-            }
-            totalAllocated += pctVal
-            continue
+def fetchStocksInSector(
+    tool: Tool,
+    data: DataProviders,
+    timestamp: pd.Timestamp,
+    sector: str,
+    style: str = "all",
+    limit: int = 12
+) -> Dict[str, Any]:
+    limit = max(4, min(int(limit) if limit else 12, 20))
+    style = str(style).strip().lower() if style else "all"
+    if style not in ["growth", "value", "defensive", "all"]:
+        style = "all"
 
-        ticker, resolvedName, note = data.sectors.resolveSector(rawSector)
-        if resolvedName == "Unknown" or not ticker:
-            return {"error": f"Sector '{rawSector}' could not be resolved to a valid GICS sector."}
+    ticker, resolvedName, note = data.sectors.resolveSector(sector)
+    if resolvedName == "Unknown" or not ticker or ticker not in GICS_SECTORS:
+        return cleanData({"error": note or f"Sector '{sector}' not recognised among the 11 GICS sectors."})
 
-        cleanedAllocations[ticker] = {
+    dbKey = next((k for k, v in DB_SECTOR_TO_TICKER.items() if v == ticker), None)
+    if not dbKey:
+        return cleanData({"error": f"Could not map sector ETF '{ticker}' to internal database category."})
+
+    cacheKey = f"sector|stocks_{ticker}_{style}_{limit}_{timestamp.strftime('%Y-%m-%dH%H')}"
+    cached = data.cache.get(cacheKey)
+    if cached is not None:
+        return cached
+
+    candidateProfiles = [
+        p for p in data.tickers.tickerIndex.values()
+        if p.sector == dbKey and not p.isAdrc and data.tickers.isTickerListed(p.ticker, timestamp)
+    ]
+
+    if not candidateProfiles:
+        return cleanData({
+            "status": "no_candidates",
             "sector": resolvedName,
-            "ticker": ticker,
-            "allocationPct": pctVal
-        }
-        totalAllocated += pctVal
+            "sectorEtf": ticker,
+            "message": f"No listed common stock equities found for sector '{resolvedName}' as of {timestamp.strftime('%Y-%m-%d')}."
+        })
 
-    # Check if total sums to ~100%
-    totalAllocated = round(totalAllocated, 2)
-    if totalAllocated < 95.0 or totalAllocated > 105.0:
-        return {
-            "error": f"Total sector allocations must sum to approximately 100.0%. Current sum: {totalAllocated}%. Please rebalance and retry.",
-            "currentSum": totalAllocated,
-            "currentAllocations": cleanedAllocations
-        }
+    validProfiles = [p for p in candidateProfiles if p.ticker in data.ohlcv.tickersPaths]
+    if not validProfiles:
+        validProfiles = candidateProfiles[:30]
 
-    decisionRecord = {
-        "sectorAllocations": cleanedAllocations,
-        "totalAllocatedPct": totalAllocated,
-        "sectorCount": len([k for k in cleanedAllocations if k != "CASH"]),
-        "rationale": str(rationale).strip()
+    normTs = timestamp.tz_localize(None) if timestamp.tzinfo is not None else timestamp
+    oneYearAgo = normTs - pd.DateOffset(years=1)
+    threeMonthsAgo = normTs - pd.DateOffset(months=3)
+
+    evaluatedList = []
+
+    def processStock(profile):
+        t = profile.ticker
+        path = data.ohlcv.tickersPaths.get(t)
+        if not path or not os.path.exists(path):
+            return None
+        try:
+            df = pd.read_parquet(path)
+            if df.empty or "close" not in df.columns or "date" not in df.columns:
+                return None
+
+            dateCol = pd.to_datetime(df["date"])
+            if dateCol.dt.tz is not None:
+                dateCol = dateCol.dt.tz_convert(UTC).dt.tz_localize(None)
+            df["normDate"] = dateCol
+
+            validDf = df[df["normDate"] <= normTs]
+            if len(validDf) < 20:
+                return None
+
+            lastRow = validDf.iloc[-1]
+            latestClose = float(lastRow["close"])
+            if latestClose <= 0:
+                return None
+
+            capStr = str(lastRow.get("marketCap", "N/A"))
+            capNum = parseMarketCapValue(capStr)
+
+            # 3-Month Return
+            df3m = validDf[validDf["normDate"] <= threeMonthsAgo]
+            if not df3m.empty:
+                c3m = float(df3m["close"].iloc[-1])
+                return3m = round(((latestClose - c3m) / c3m) * 100, 1)
+            else:
+                return3m = 0.0
+
+            # 12-Month Return
+            df12m = validDf[validDf["normDate"] <= oneYearAgo]
+            if not df12m.empty:
+                c12m = float(df12m["close"].iloc[-1])
+                return12m = round(((latestClose - c12m) / c12m) * 100, 1)
+            else:
+                return12m = return3m
+
+            # 52-Week High and Drawdown
+            pastYearDf = validDf[validDf["normDate"] >= oneYearAgo]
+            high52 = float(pastYearDf["high"].max() if "high" in pastYearDf.columns else pastYearDf["close"].max()) if not pastYearDf.empty else latestClose
+            drawdown52w = round(((latestClose - high52) / high52) * 100, 1) if high52 > 0 else 0.0
+
+            # RSI 14
+            rsi14 = round(calculateRsi(validDf["close"].tail(50), period=14), 1)
+
+            # Annualized 90-day volatility
+            recentCloses = validDf["close"].tail(min(90, len(validDf)))
+            dailyReturns = recentCloses.pct_change().dropna()
+            vol90d = round(float(dailyReturns.std() * np.sqrt(252) * 100), 1) if len(dailyReturns) > 1 else 25.0
+
+            tags = []
+            if capNum >= 1e12:
+                tags.append("Mega-Cap Anchor")
+            elif capNum >= 5e10:
+                tags.append("Large-Cap Core")
+            elif capNum >= 1e10:
+                tags.append("Mid/Large-Cap")
+            else:
+                tags.append("Small/Mid-Cap")
+
+            if return3m >= 15.0 and rsi14 >= 55.0:
+                tags.append("High Momentum Growth")
+            elif return3m <= -10.0 and rsi14 <= 40.0:
+                tags.append("Oversold Rebound Potential")
+
+            if vol90d <= 22.0 and drawdown52w >= -12.0:
+                tags.append("Low Volatility Defensive")
+
+            return {
+                "ticker": t,
+                "name": profile.name,
+                "industry": profile.industry,
+                "marketCap": capStr,
+                "marketCapNum": capNum,
+                "latestPrice": round(latestClose, 2),
+                "trailingReturn3mo": f"{return3m:+0.1f}%",
+                "trailingReturn12mo": f"{return12m:+0.1f}%",
+                "rsi14": rsi14,
+                "distFrom52wHigh": f"{drawdown52w:+0.1f}%",
+                "volatility90d": f"{vol90d:.1f}%",
+                "styleTags": tags,
+                "_rawRet3m": return3m,
+                "_rawRet12m": return12m,
+                "_rawVol": vol90d,
+                "_rawDrawdown": drawdown52w
+            }
+        except Exception:
+            return None
+
+    industryGroups: Dict[str, List[Any]] = {}
+    for p in validProfiles:
+        ind = p.industry or "general"
+        industryGroups.setdefault(ind, []).append(p)
+
+    def getProfileFileSize(p):
+        path = data.ohlcv.tickersPaths.get(p.ticker)
+        return os.path.getsize(path) if path and os.path.exists(path) else 0
+
+    samplePool = []
+    for ind, group in industryGroups.items():
+        sortedGroup = sorted(group, key=getProfileFileSize, reverse=True)
+        samplePool.extend(sortedGroup[:7])
+
+    if len(samplePool) < 25:
+        remaining = [p for p in validProfiles if p not in samplePool]
+        remainingSorted = sorted(remaining, key=getProfileFileSize, reverse=True)
+        samplePool.extend(remainingSorted[:max(0, 35 - len(samplePool))])
+
+    with ThreadPoolExecutor(max_workers=min(len(samplePool), 12)) as executor:
+        futures = [executor.submit(processStock, p) for p in samplePool]
+        for f in as_completed(futures):
+            res = f.result()
+            if res:
+                evaluatedList.append(res)
+
+    if not evaluatedList:
+        return cleanData({"error": f"Unable to retrieve validated price metrics for sector '{resolvedName}'."})
+
+    if style == "growth":
+        evaluatedList.sort(key=lambda x: (x["_rawRet3m"] * 0.7 + x["_rawRet12m"] * 0.3), reverse=True)
+    elif style in ["value", "defensive"]:
+        evaluatedList.sort(key=lambda x: (x["_rawVol"] - x["_rawDrawdown"]))
+    else:
+        evaluatedList.sort(key=lambda x: x["marketCapNum"], reverse=True)
+
+    finalCandidates = evaluatedList[:limit]
+    for c in finalCandidates:
+        c.pop("_rawRet3m", None)
+        c.pop("_rawRet12m", None)
+        c.pop("_rawVol", None)
+        c.pop("_rawDrawdown", None)
+        c.pop("marketCapNum", None)
+
+    result = {
+        "sector": resolvedName,
+        "sectorEtf": ticker,
+        "asOfDate": timestamp.strftime("%Y-%m-%d"),
+        "styleFilter": style,
+        "candidateCount": len(finalCandidates),
+        "candidates": finalCandidates,
+        "scoutingGuidance": f"Found {len(finalCandidates)} qualified {style.upper()} candidates in {resolvedName}. Select top 2-3 for in-depth analysis."
     }
 
-    tool.toolLog.append(decisionRecord)
-    return cleanData({
-        "status": "success",
-        "message": f"Sector allocation confirmed with {len(cleanedAllocations)} sectors totaling {totalAllocated}%.",
-        "confirmedAllocation": decisionRecord
-    })
+    cleaned = cleanData(result)
+    data.cache.put(cacheKey, cleaned)
+    return cleaned
+
+
 

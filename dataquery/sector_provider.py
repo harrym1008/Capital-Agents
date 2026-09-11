@@ -76,7 +76,8 @@ class SectorDataProvider:
                 return etfTicker, GICS_SECTORS[etfTicker].name, f"Resolved from company ticker '{upper}' (sector: '{compSector}')."
 
         # Give up!
-        return None, None, f"Sector or ticker '{sectorOrTicker}' not recognised."
+        return None, None, f"Sector or ticker '{sectorOrTicker}' not recognised. Please choose from the following list: {
+            ', '.join(sorted(SECTOR_NAME_TO_TICKER.keys()))}."
 
     def resolveTicker(self, sectorOrTicker: str) -> Optional[str]:
         ticker, _, _ = self.resolveSector(sectorOrTicker)
@@ -127,7 +128,8 @@ class SectorDataProvider:
 
 
     def loadSector(self, ticker: str) -> pd.DataFrame:
-        key = f"sector|full_{ticker}"
+        now = pd.Timestamp.now(tz="UTC")
+        key = f"sector|full_{ticker}_{now.strftime('%Y-%m-%dH%H')}"
         cached = self.cache.get(key)
         if cached is not None:
             return cached
@@ -171,6 +173,7 @@ class SectorDataProvider:
                 needsDownload = True
                 dlStart = maxDate + pd.Timedelta(days=1)
 
+        now = pd.Timestamp.now(tz="UTC")
         if needsDownload:
             with self.downloadLock:
                 lastAttempt = self.lastAttemptTime.get(ticker, 0)
@@ -180,7 +183,8 @@ class SectorDataProvider:
                     if not newDf.empty:
                         combinedDf = pd.concat([df, newDf], ignore_index=True)
                         combinedDf = combinedDf.drop_duplicates(subset=["date"]).sort_values("date").reset_index(drop=True)
-                        key = f"sector|full_{ticker}"
+                        
+                        key = f"sector|full_{ticker}_{now.strftime('%Y-%m-%dH%H')}"
                         self.cache.put(key, combinedDf)
 
 

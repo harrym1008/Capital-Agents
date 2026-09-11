@@ -25,6 +25,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
 
         self.lastConfig: Optional[SingleEquityRatingConfig] = None
         self.fullConvSummary: str = ""
+        self.portManagerFinalOutput: Optional[str] = None
         self.qnaHistory: list = []
         self.qnaTurns: list = []
 
@@ -372,6 +373,10 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
 
         self.lastConfig = config
         self.fullConvSummary = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', convSummary)
+        if formattedExecutiveDecision and formattedExecutiveDecision != "Decision not found.":
+            self.portManagerFinalOutput = f"{oneShotRaw}\n\n{formattedExecutiveDecision}"
+        else:
+            self.portManagerFinalOutput = oneShotRaw
 
 
 
@@ -501,6 +506,10 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         
         self.lastConfig = config
         self.fullConvSummary = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', fullConvSummary)
+        if formattedExecutiveDecision and formattedExecutiveDecision != "Decision not found.":
+            self.portManagerFinalOutput = f"{finalDecisionRaw}\n\n{formattedExecutiveDecision}"
+        else:
+            self.portManagerFinalOutput = finalDecisionRaw
 
 
 
@@ -728,6 +737,10 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
 
         self.lastConfig = config
         self.fullConvSummary = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', fullConvSummary)
+        if formattedExecutiveDecision and formattedExecutiveDecision != "Decision not found.":
+            self.portManagerFinalOutput = f"{finalDecisionRaw}\n\n{formattedExecutiveDecision}"
+        else:
+            self.portManagerFinalOutput = finalDecisionRaw
         
 
 
@@ -748,6 +761,27 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
 
 
 
+    def getPortfolioManagerFinalOutput(self) -> Optional[str]:
+        if self.portManagerFinalOutput:
+            return self.portManagerFinalOutput
+
+        # Fallback 1: Extract from portManager's message history if available
+        if self.portManager and self.portManager.messageHistory:
+            assistantMessages = [
+                msg["content"] for msg in self.portManager.messageHistory 
+                if msg.get("role") == "assistant" and msg.get("content")
+            ]
+            if assistantMessages:
+                return "\n\n".join(assistantMessages)
+
+        # Fallback 2: Extract from fullConvSummary
+        if self.fullConvSummary:
+            match = re.search(r"Final Executive Decision:\s*(.*?)(?=\nTime taken|\Z)", self.fullConvSummary, re.DOTALL)
+            if match:
+                return match.group(1).strip()
+
+        return None
+
     def executeSpecialistTransfer(self, agentRole: str, transferMessage: str, config: SingleEquityRatingConfig) -> Dict[str, Any]:
         specialist = self.specialistMap.get(agentRole)
         if not specialist:
@@ -766,11 +800,31 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
             promptArgs=config.getPromptArgs() if config else None
         )
 
+        pmOutput = self.getPortfolioManagerFinalOutput()
+        isPortManager = (specialist is self.portManager) or (agentRole in ["Impartial Portfolio Manager", "One-Shot Analyst"])
+
+        if not isPortManager and pmOutput:
+            pmContext = (
+                f"Portfolio Manager's Final Executive Decision:\n"
+                f"{pmOutput}\n\n"
+            )
+            taskGuidance = (
+                f"Task: Answer the user's question directly from your role as {agentRole}. "
+                f"Rely on your previous thinking steps, tool outputs, message history from earlier stages, "
+                f"and the Portfolio Manager's final executive decision provided above."
+            )
+        else:
+            pmContext = ""
+            taskGuidance = (
+                f"Task: Answer the user's question directly from your role as {agentRole}. "
+                f"Rely on your previous thinking steps, tool outputs, and message history from earlier stages."
+            )
+
         incomingPrompt = (
             f"The Boardroom Spokesperson has transferred the following user question to you:\n\n"
+            f"{pmContext}"
             f"Transfer Request: {transferMessage}\n\n"
-            f"Task: Answer the user's question directly from your role as {agentRole}. "
-            f"Rely on your previous thinking steps, tool outputs, and message history from earlier stages."
+            f"{taskGuidance}"
         )
 
         try:
@@ -807,7 +861,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
             setAgentPhase("raw")
 
 
-    def processQnAQuery(self, query: str, config: Optional[SingleEquityRatingConfig] = None):
+    def processQnAQuery(self, query: str, config: Optional[SingleEquityRatingConfig] = None, targetAgent: Optional[str] = None):
         if config is None:
             config = self.lastConfig
 
@@ -822,12 +876,47 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         activeRoles = self.getActiveSpecialistRoles(config.boardroomPace)
         self.configureTransferToolSchema(config.boardroomPace)
 
+        setCurrentStage("qa")
+
+        turnRecord = {
+            "turnIndex": len(self.qnaTurns),
+            "userQuery": query,
+            "targetAgent": targetAgent,
+            "spokespersonHistoryLen": len(self.spokesperson.messageHistory) if self.spokesperson else 0,
+            "specialistHistoryLens": {
+                role: len(agent.messageHistory)
+                for role, agent in self.specialistMap.items()
+                if agent is not None
+            }
+        }
+        self.qnaTurns.append(turnRecord)
+        self.qnaHistory.append({"role": "user", "content": query, "targetAgent": targetAgent})
+
+        # Check if direct delegation was requested to a specific active specialist
+        isDirectTarget = bool(targetAgent and targetAgent != "auto" and targetAgent in self.specialistMap and targetAgent in activeRoles)
+
+        if isDirectTarget:
+            try:
+                res = self.executeSpecialistTransfer(targetAgent, query, config)
+                if res and "response" in res:
+                    self.qnaHistory.append({"role": "assistant", "agentRole": targetAgent, "content": res["response"]})
+            except SimulationStoppedException:
+                emitEvent("simStopped", {"message": "Q&A stopped by user."})
+            except Exception as e:
+                if isStopRequested():
+                    emitEvent("simStopped", {"message": "Q&A stopped by user."})
+                else:
+                    traceback.print_exc()
+                    emitEvent("error", {"message": f"Q&A Error: {str(e)}"})
+            finally:
+                emitEvent("qaComplete", {"stageNum": "qa"})
+            return
+
+        # Default Auto-Delegate flow through Spokesperson
         transferTool = self.toolRegistry.getTool("transferToAgent") if self.toolRegistry else None
         self.spokesperson.tools = [transferTool] if transferTool else []
         if transferTool:
             transferTool.toolLog.clear()
-
-        setCurrentStage("qa")
 
         contextStr = self.fullConvSummary or "No context found!"
         dateStr = config.simulatedDateStr if config.simulatedDateStr else self.timestamp.strftime("%Y-%m-%d")
@@ -840,19 +929,6 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         )
 
         try:
-            turnRecord = {
-                "turnIndex": len(self.qnaTurns),
-                "userQuery": query,
-                "spokespersonHistoryLen": len(self.spokesperson.messageHistory) if self.spokesperson else 0,
-                "specialistHistoryLens": {
-                    role: len(agent.messageHistory)
-                    for role, agent in self.specialistMap.items()
-                    if agent is not None
-                }
-            }
-            self.qnaTurns.append(turnRecord)
-            self.qnaHistory.append({"role": "user", "content": query})
-
             spokespersonPrompt = (
                 f"User Question: {query}\n\n"
                 f"Task: Review the question against the completed boardroom discussion context.\n"

@@ -30,7 +30,7 @@ from simulation.orders import MarketOrder, LimitOrder, StopOrder, StopLimitOrder
 
 class SimulationManager:
     def __init__(self, cacheSizeBytes=256 * 1024 ** 2):
-        self.simCache = LRUCache(cacheSizeBytes)
+        self.simCache = LRUCache(cacheSizeBytes, main=False)  # 256 MB max size of cache in RAM
         self.tickerProvider = TickerDataProvider()
         self.rateLimiters = GlobalRateLimiters()
         self.priceProvider = DailyPriceProvider(self.tickerProvider, self.simCache, self.rateLimiters)

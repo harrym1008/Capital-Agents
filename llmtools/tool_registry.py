@@ -1,5 +1,5 @@
 from dataquery import LRUCache, MacroDataProvider, NewsDataProvider, DailyPriceProvider, \
-                      TickerDataProvider, ShortDataProvider, EdgarDataProvider, ForexDataProvider, SectorDataProvider
+                      TickerDataProvider, ShortDataProvider, EdgarDataProvider, ForexDataProvider, SectorDataProvider, FinnhubDataProvider
 from collectors.constants import START_DATE, END_DATE
 from collectors.rate_limiter import GlobalRateLimiters
 
@@ -13,7 +13,7 @@ from ui.ui_hooks import emitEvent, setCurrentCallId, getCurrentCallId
 
 class DataProviders:
     def __init__(self, allowOnlineDownloads: bool = True):
-        self.cache = LRUCache(512 * 1024 ** 2)  # 512 MB max size of cache in RAM
+        self.cache = LRUCache(512 * 1024 ** 2, main=True)  # 512 MB max size of cache in RAM
         self.rateLimiters = GlobalRateLimiters()
 
         self.tickers = TickerDataProvider()
@@ -24,8 +24,9 @@ class DataProviders:
         self.edgar = EdgarDataProvider(self.tickers, self.cache, self.rateLimiters.edgarLimiter)
         self.forex = ForexDataProvider(START_DATE, END_DATE, self.cache, self.rateLimiters)
         self.sectors = SectorDataProvider(self.cache, self.rateLimiters, self.macro, self.tickers)
+        self.finnhub = FinnhubDataProvider(self.cache, self.rateLimiters.finnhubLimiter)
 
-        self.sentimentCache = LRUCache(8 * 1024 ** 2)  # 8 MB max size
+        self.sentimentCache = LRUCache(8 * 1024 ** 2, main=False)  # 8 MB max size
         self.sentimentLock = RLock()
 
 
