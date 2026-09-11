@@ -5,7 +5,7 @@
 {% block config_inputs %}
     <div class="config-group">
         <label for="tickerInput">Ticker:</label>
-        <input type="text" id="tickerInput" value="NVDA" style="width: 80px; text-transform: uppercase;">
+        <input type="text" id="tickerInput" placeholder="TCKR" style="width: 80px; text-transform: uppercase;">
     </div>
     <div class="config-group">
         <label for="modeSelect">Mode:</label>
@@ -214,26 +214,25 @@
                             const chatLog = document.getElementById("qaChatHistory");
                             const turnIndex = qaTurnCounter++;
                             const chosenTarget = targetSelect ? targetSelect.value : "auto";
-                            const chosenTargetText = (targetSelect && chosenTarget !== "auto") ? targetSelect.options[targetSelect.selectedIndex].text : "";
-
-                            const targetBadgeHtml = chosenTarget !== "auto"
-                                ? `<span style="font-size: 12px; font-weight: 700; color: #2563eb; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 4px; padding: 2px 8px; margin-left: 8px;">To: ${chosenTargetText.replace(/^Ask\s+/, '')}</span>`
-                                : "";
 
                             const userMsg = document.createElement("div");
                             userMsg.className = "agent-pane qa-user-pane";
                             userMsg.setAttribute("data-turn-index", turnIndex);
-                            userMsg.style.cssText = "flex: none; height: auto;";
-                            userMsg.innerHTML = `
-                                <div class="agent-header">
-                                    <div class="agent-avatar" style="border: 3px solid #f97316; color: #f97316; background-color: #f1f5f9;">U</div>
-                                    <div class="agent-role-name">You ${targetBadgeHtml}</div>
-                                    <button type="button" class="qa-delete-btn" onclick="deleteQaTurn(${turnIndex}, this)">Delete Message</button>
-                                </div>
-                                <div class="agent-feed" style="font-size: 16px; overflow-y: visible; white-space: pre-wrap; word-break: break-word;">
-                                    ${val}
-                                </div>
-                            `;
+                            userMsg.style.cssText = "flex: none; height: auto; background-color: #3949bb; color: white; font-weight: 500; border: none; position: relative;";
+
+                            const delBtn = document.createElement("button");
+                            delBtn.type = "button";
+                            delBtn.className = "qa-delete-btn";
+                            delBtn.innerText = "Delete Message";
+                            delBtn.onclick = function () { deleteQaTurn(turnIndex, this); };
+
+                            const feedDiv = document.createElement("div");
+                            feedDiv.className = "agent-feed";
+                            feedDiv.style.cssText = "font-size: 16px; color: white; font-weight: 500; overflow-y: visible; white-space: pre-wrap; word-break: break-word;";
+                            feedDiv.textContent = val;
+
+                            userMsg.appendChild(delBtn);
+                            userMsg.appendChild(feedDiv);
                             chatLog.appendChild(userMsg);
                             BoardroomCore.scrollFeedToBottom(chatLog);
 

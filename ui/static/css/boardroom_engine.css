@@ -243,16 +243,23 @@
 }
 
 .qa-user-pane {
+    position: relative;
     height: auto;
     max-height: none;
     flex: none;
     max-width: 100%;
     margin-left: min(128px, 10vw);
     margin-right: 0;
+    background-color: #3949bb;
+    color: white;
+    font-weight: 500;
+    border: none;
 }
 
 .qa-delete-btn {
-    margin-left: auto;
+    position: absolute;
+    top: 10px;
+    right: 10px;
     background-color: #ef4444;
     color: #ffffff;
     font-weight: 700;
@@ -265,6 +272,7 @@
     pointer-events: none;
     transition: opacity 0.15s ease-in-out, background-color 0.15s;
     user-select: none;
+    z-index: 2;
 }
 
 .qa-user-pane:hover .qa-delete-btn {

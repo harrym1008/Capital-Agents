@@ -232,34 +232,69 @@ const BoardroomCore = (function () {
         }
     }
 
+    let simulationIsRunning = false;
+
     function setServerConnectedState(isConnected) {
         serverIsLoaded = isConnected;
         window.serverIsLoaded = isConnected;
         const runBtn = document.getElementById("runBtn");
         if (runBtn) {
             if (isConnected) {
-                runBtn.disabled = false;
-                runBtn.classList.remove("disabled");
+                runBtn.disabled = simulationIsRunning;
+                if (simulationIsRunning) {
+                    runBtn.classList.add("disabled");
+                    runBtn.style.display = "none";
+                } else {
+                    runBtn.classList.remove("disabled");
+                    runBtn.style.display = "inline-block";
+                }
                 runBtn.title = "";
             } else {
                 runBtn.disabled = true;
                 runBtn.classList.add("disabled");
+                runBtn.style.display = simulationIsRunning ? "none" : "inline-block";
                 runBtn.title = "Please start and load an LLM model before running.";
             }
         }
     }
 
     function setControlsRunningState(isRunning) {
+        simulationIsRunning = isRunning;
         const tickerInp = document.getElementById("tickerInput");
         if (tickerInp) tickerInp.disabled = isRunning;
         const modeSel = document.getElementById("modeSelect");
         if (modeSel) modeSel.disabled = isRunning;
+        const horizonSel = document.getElementById("horizonSelect");
+        if (horizonSel) horizonSel.disabled = isRunning;
         const simDateCheck = document.getElementById("simulatedDateCheckbox");
         if (simDateCheck) simDateCheck.disabled = isRunning;
         const simDateInp = document.getElementById("simulatedDateInput");
         if (simDateInp) simDateInp.disabled = isRunning;
+        const openSettingsBtn = document.getElementById("openSettingsBtn");
+        if (openSettingsBtn) openSettingsBtn.disabled = isRunning;
+
+        // Portfolio Creation specific inputs if present
+        const initCapInp = document.getElementById("initialCapitalInput");
+        if (initCapInp) initCapInp.disabled = isRunning;
+        const secCountInp = document.getElementById("targetSectorCountInput");
+        if (secCountInp) secCountInp.disabled = isRunning;
+        const secAllocInp = document.getElementById("maxSectorAllocationInput");
+        if (secAllocInp) secAllocInp.disabled = isRunning;
+        const stockCountInp = document.getElementById("targetStockCountInput");
+        if (stockCountInp) stockCountInp.disabled = isRunning;
+        const stockAllocInp = document.getElementById("maxStockAllocationInput");
+        if (stockAllocInp) stockAllocInp.disabled = isRunning;
+
         const runBtn = document.getElementById("runBtn");
-        if (runBtn) runBtn.disabled = isRunning;
+        if (runBtn) {
+            runBtn.disabled = isRunning || !serverIsLoaded;
+            if (runBtn.disabled) {
+                runBtn.classList.add("disabled");
+            } else {
+                runBtn.classList.remove("disabled");
+            }
+            runBtn.style.display = isRunning ? "none" : "inline-block";
+        }
 
         const stopBtn = document.getElementById("stopBtn");
         if (stopBtn) {
@@ -409,11 +444,10 @@ const BoardroomCore = (function () {
         emit("stageLayoutReady", { stageNum, stageName, agents, workspace: stageWorkspace });
     }
 
-    function setupAutoScroll(el, threshold = 70) {
+    function setupAutoScroll(el, threshold = 30) {
         if (!el || el._autoScrollReady) return;
         el._autoScrollReady = true;
         el._userScrolledAway = false;
-        el._isProgrammaticScroll = false;
         el._lastScrollTop = el.scrollTop;
 
         // Native scroll listener catches scrollbar thumb dragging, touch swipe, keyboard nav, and trackpads
@@ -422,28 +456,25 @@ const BoardroomCore = (function () {
             const scrollDelta = currentScrollTop - (el._lastScrollTop !== undefined ? el._lastScrollTop : currentScrollTop);
             el._lastScrollTop = currentScrollTop;
 
-            if (el._isProgrammaticScroll) {
-                el._isProgrammaticScroll = false;
-                return;
-            }
-
             const gap = el.scrollHeight - el.clientHeight - currentScrollTop;
-            if (gap <= threshold) {
-                // User has scrolled near/to the bottom: re-anchor
-                el._userScrolledAway = false;
-            } else if (scrollDelta < -1) {
-                // User intentionally scrolled upward away from bottom: latch detached state
+
+            if (scrollDelta < -1) {
+                // User intentionally scrolled upward away from bottom: latch detached state immediately
                 el._userScrolledAway = true;
+            } else if (gap <= threshold && scrollDelta > 1) {
+                // User intentionally scrolled downward and reached near bottom: re-anchor
+                el._userScrolledAway = false;
+            } else if (gap <= 5) {
+                // Directly at bottom: re-anchor
+                el._userScrolledAway = false;
             }
         }, { passive: true });
 
         // Immediate intent latch on wheel:
         el.addEventListener('wheel', (e) => {
             if (e.deltaY < 0) {
-                const gap = el.scrollHeight - el.clientHeight - el.scrollTop;
-                if (gap > 10) {
-                    el._userScrolledAway = true;
-                }
+                // User rolled wheel up: latch detached immediately
+                el._userScrolledAway = true;
             } else if (e.deltaY > 0) {
                 const gap = el.scrollHeight - el.clientHeight - el.scrollTop;
                 if (gap <= threshold) {
@@ -462,7 +493,6 @@ const BoardroomCore = (function () {
 
     function autoScroll(el) {
         if (!el || el._userScrolledAway) return;
-        el._isProgrammaticScroll = true;
         el.scrollTop = el.scrollHeight;
         el._lastScrollTop = el.scrollTop;
     }
@@ -470,7 +500,6 @@ const BoardroomCore = (function () {
     function scrollFeedToBottom(feed) {
         if (!feed) return;
         feed._userScrolledAway = false;
-        feed._isProgrammaticScroll = true;
         feed.scrollTop = feed.scrollHeight;
         feed._lastScrollTop = feed.scrollTop;
     }
@@ -624,8 +653,8 @@ const BoardroomCore = (function () {
             el.innerHTML = parseMarkdown(active.rawText);
 
             if (scrolledAway) {
-                el._isProgrammaticScroll = true;
                 el.scrollTop = savedTop;
+                el._lastScrollTop = savedTop;
             } else {
                 autoScroll(el);
             }
