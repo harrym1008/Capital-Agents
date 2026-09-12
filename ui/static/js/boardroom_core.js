@@ -1793,6 +1793,7 @@ const BoardroomCore = (function () {
                 // Mark all stages as completed in the stages bar
                 const items = document.querySelectorAll(".stage-item");
                 items.forEach(item => {
+                    item.classList.remove("active");
                     item.classList.add("completed");
                 });
 
@@ -1803,6 +1804,7 @@ const BoardroomCore = (function () {
                 hideActiveBoardroomModal();
                 setControlsRunningState(false);
                 stopSimulationTimer();
+                document.querySelectorAll(".stage-item").forEach(item => item.classList.remove("active"));
                 emit("simStopped", payload);
                 break;
 
@@ -1811,6 +1813,7 @@ const BoardroomCore = (function () {
                 alert("Simulation Error: " + payload.message);
                 setControlsRunningState(false);
                 stopSimulationTimer();
+                document.querySelectorAll(".stage-item").forEach(item => item.classList.remove("active"));
                 emit("error", payload);
                 break;
         }

@@ -179,8 +179,14 @@
             if (container.classList.contains("hidden")) {
                 container.classList.remove("hidden");
             }
+            const threshold = 40;
+            const isAtBottom = (logsPre.scrollHeight - logsPre.scrollTop - logsPre.clientHeight) <= threshold;
+
             logsPre.textContent += logLine + "\n";
-            logsPre.scrollTop = logsPre.scrollHeight;
+
+            if (isAtBottom) {
+                logsPre.scrollTop = logsPre.scrollHeight;
+            }
         }
 
         function clearLlamaLogs() {

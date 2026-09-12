@@ -271,6 +271,24 @@
         }
     });
 
+    function initQaChatHistory() {
+        const chatLog = document.getElementById("qaChatHistory");
+        if (!chatLog) return;
+        chatLog.innerHTML = `
+            <div class="agent-pane qa-agent-pane qa-welcome-pane">
+                <div class="agent-header">
+                    <div class="agent-avatar agent-cyan">SP</div>
+                    <div class="agent-role-name">Boardroom Spokesperson</div>
+                </div>
+                <div class="agent-feed" style="font-size: 15px; overflow-y: visible; line-height: 1.6; color: #1e293b;">
+                    Welcome to the Boardroom Q&A. You can ask any question regarding the evaluation, financial models, valuation metrics, or risk assessment, and I will summarise directly or transfer you to the relevant specialist analyst.
+                </div>
+            </div>
+        `;
+        qaTurnCounter = 0;
+        BoardroomCore.setupAutoScroll(chatLog);
+    }
+
     function deleteQaTurn(turnIndex, btnEl) {
         const chatHistory = document.getElementById("qaChatHistory");
         if (!chatHistory) return;
