@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
@@ -12,6 +12,10 @@ from boardroom.boardroom_config import BoardroomConfig, BoardroomPace
 from ui.ui_hooks import getCurrentStage, isStopRequested, setCurrentStage, emitEvent, SimulationStoppedException
 
 
+class BoardroomModelLoopException(Exception):
+    pass
+
+
 class BoardroomEngine(ABC):
     def __init__(
             self, 
@@ -22,6 +26,7 @@ class BoardroomEngine(ABC):
         self.allowParallel: bool = False
         self.timestamp: pd.Timestamp = timestamp
         self.toolRegistry: ToolRegistry = toolRegistry
+        self.toolRegistry.clearToolLogs()
         self.agents: Dict[str, FinancialAgent] = {}
         self.agentsList: List[FinancialAgent] = []
         self.lastConfig: Optional[BoardroomConfig] = None
@@ -100,6 +105,77 @@ class BoardroomEngine(ABC):
             "agents": agents
         })
 
+    def executeMandatedToolStage(
+        self,
+        agent: FinancialAgent,
+        initialPrompt: str,
+        mandatedToolName: str,
+        config: BoardroomConfig,
+        subrole: Optional[str] = None,
+        maxRetries: int = 8,
+        summarisationOverride: Optional[bool] = None,
+        requireInitialTools: bool = True
+    ) -> Tuple[str, str]:
+        tool = self.toolRegistry.getTool(mandatedToolName)
+        if tool:
+            tool.toolLog.clear()
+
+        currentPrompt = initialPrompt
+        rawAnalysis = ""
+        uiSummary = ""
+
+        for attempt in range(maxRetries + 1):
+            if isStopRequested():
+                raise SimulationStoppedException("Simulation stopped by user.")
+
+            isLastAttempt = (attempt == maxRetries)
+            attemptSummaryOverride = False if not isLastAttempt else summarisationOverride
+
+            rawAnalysis, uiSummary = agent.analyseAndReply(
+                incomingMessage=currentPrompt,
+                toolRegistry=self.toolRegistry,
+                timestamp=self.timestamp,
+                config=config,
+                subrole=subrole,
+                requireInitialTools=requireInitialTools or (attempt > 0),
+                summarisationOverride=attemptSummaryOverride
+            )
+
+            if tool and len(tool.toolLog) > 0:
+                if attempt > 0 and (summarisationOverride is None or summarisationOverride is True) and config.generateSummaries:
+                    from llm.agents.agent_prompts import buildSummariseSysPrompt
+                    modeName = config.modeName if hasattr(config, "modeName") else "SingleEquityRating"
+                    uiSummary = agent.generateUISummary(
+                        rawAnalysis,
+                        buildSummariseSysPrompt(agent.agentRole, modeName, subrole, config.getPromptArgs())
+                    )
+                return rawAnalysis, uiSummary
+
+            if not isLastAttempt:
+                attempted = any(
+                    isinstance(msg.get("tool_calls"), list) and
+                    any(tc.get("function", {}).get("name") == mandatedToolName for tc in msg["tool_calls"])
+                    for msg in agent.messageHistory[-6:] if isinstance(msg, dict) and msg.get("role") == "assistant"
+                )
+                if attempted:
+                    currentPrompt = (
+                        f"The '{mandatedToolName}' tool call you submitted was invalid or resulted in an error. "
+                        f"You must provide a valid '{mandatedToolName}' tool call with corrected parameters to complete this boardroom stage."
+                    )
+                else:
+                    currentPrompt = (
+                        f"You did not execute the mandatory '{mandatedToolName}' tool call. "
+                        f"You must upload your decision by executing the '{mandatedToolName}' tool with all required parameters."
+                    )
+                print(f"\n{ANSI.YELLOW}[Boardroom] Mandatory tool '{mandatedToolName}' not submitted or invalid. Retrying ({attempt + 1}/{maxRetries})...{ANSI.RESET}")
+
+        errorMsg = (
+            f"The model got stuck in a loop and failed to submit a valid '{mandatedToolName}' tool call "
+            f"after {maxRetries} retries. Please try a larger parameter model or adjust generation settings."
+        )
+        print(f"\n{ANSI.RED}{ANSI.BOLD}[Boardroom Error] {errorMsg}{ANSI.RESET}\n")
+        raise BoardroomModelLoopException(errorMsg)
+
 
 def __getattr__(name: str):
     if name == "SingleEquityBoardroomEngine":
@@ -113,6 +189,7 @@ def __getattr__(name: str):
 
 __all__ = [
     "BoardroomEngine",
+    "BoardroomModelLoopException",
     "SingleEquityBoardroomEngine",
     "PortfolioCreationBoardroomEngine"
 ]

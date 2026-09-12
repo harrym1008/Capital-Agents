@@ -46,9 +46,11 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         self.bullAnalyst = FinancialAgent(
             agentRole="Bullish Value Analyst",
             tools=[
+                toolMap["fetchAllSectorsPerformance"],
+                toolMap["fetchAllSectorProfiles"],
+                toolMap["fetchAllSectorRankings"],
                 toolMap["fetchSectorPerformance"],
                 toolMap["fetchSectorProfile"],
-                toolMap["fetchAllSectorRankings"],
                 toolMap["executePythonCalculation"]
             ],
             ansiColor=ANSI.GREEN,
@@ -58,9 +60,11 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         self.bearAnalyst = FinancialAgent(
             agentRole="Bearish Risk Analyst",
             tools=[
+                toolMap["fetchAllSectorsPerformance"],
+                toolMap["fetchAllSectorProfiles"],
+                toolMap["fetchAllSectorRankings"],
                 toolMap["fetchSectorPerformance"],
                 toolMap["fetchSectorProfile"],
-                toolMap["fetchAllSectorRankings"],
                 toolMap["executePythonCalculation"]
             ],
             ansiColor=ANSI.RED,
@@ -194,6 +198,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         lines = [f"- {secInfo.get('sector', secKey)} ({secKey}): {secInfo.get('allocationPct', 0.0)}%" for secKey, secInfo in sectorsDict.items()]
         return "\n".join(lines)
 
+
     def executeFastPortfolioCreation(self, config: PortfolioCreationConfig):
         pace = config.boardroomPace
         promptArgs = config.getPromptArgs()
@@ -222,8 +227,6 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         # Phase 3: Sector Allocation Decision (Portfolio Manager decides directly from Macro)
         self._newPhaseHeader(3, "Sector Allocation Decision", pace)
         confirmSectorTool = self.toolRegistry.getTool("confirmSectorAllocation")
-        if confirmSectorTool:
-            confirmSectorTool.toolLog.clear()
 
         pmSectorPrompt = (
             f"Macro Context:\n{macroRaw}\n\n"
@@ -234,12 +237,13 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"- Allocations must sum to approximately 100.0%.\n\n"
             f"Execute the 'confirmSectorAllocation' tool with your exact sector dictionary and rationale."
         )
-        pmSectorRaw, pmSectorUISummary = self.portManager.analyseAndReply(
-            incomingMessage=pmSectorPrompt,
-            toolRegistry=self.toolRegistry,
-            timestamp=self.timestamp,
+        pmSectorRaw, pmSectorUISummary = self.executeMandatedToolStage(
+            agent=self.portManager,
+            initialPrompt=pmSectorPrompt,
+            mandatedToolName="confirmSectorAllocation",
             config=config,
             subrole="sector",
+            maxRetries=8,
             requireInitialTools=True
         )
 
@@ -295,8 +299,6 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         # Phase 6: Final Executive Decision (Portfolio Manager synthesizes directly from Hunters in Fast mode)
         self._newPhaseHeader(6, "Final Executive Decision", pace)
         confirmPortTool = self.toolRegistry.getTool("confirmPortfolioAllocation")
-        if confirmPortTool:
-            confirmPortTool.toolLog.clear()
 
         pmFinalPrompt = (
             f"Initial Capital: {promptArgs['initialCapital']}\n"
@@ -312,12 +314,13 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Execute the 'confirmPortfolioAllocation' tool with your exact positions array, portfolioRationale, and cashWeightPct."
         )
 
-        pmFinalRaw, pmFinalUISummary = self.portManager.analyseAndReply(
-            incomingMessage=pmFinalPrompt,
-            toolRegistry=self.toolRegistry,
-            timestamp=self.timestamp,
+        pmFinalRaw, pmFinalUISummary = self.executeMandatedToolStage(
+            agent=self.portManager,
+            initialPrompt=pmFinalPrompt,
+            mandatedToolName="confirmPortfolioAllocation",
             config=config,
             subrole="decision",
+            maxRetries=8,
             requireInitialTools=True
         )
 
@@ -375,7 +378,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Macro Analysis Context:\n{macroRaw}\n\n"
             f"Task: Propose a growth and cyclical sector allocation for this {promptArgs['initialCapital']} portfolio.\n"
             f"Constraints: Max single sector allocation is {promptArgs['maxSectorAllocation']}. {promptArgs['sectorDiversityRule']}\n"
-            f"1. Use 'fetchSectorPerformance' to evaluate high-conviction growth and cyclical sectors.\n"
+            f"1. Use 'fetchAllSectorsPerformance', 'fetchAllSectorProfiles', and 'fetchAllSectorRankings' to comprehensively assess all 11 GICS sectors.\n"
             f"2. Present a clear table of percentage allocations across your selected sectors summing to 100.0%.\n"
             f"3. Highlight growth catalysts and upside drivers."
         )
@@ -384,7 +387,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Macro Analysis Context:\n{macroRaw}\n\n"
             f"Task: Propose a defensive, risk-managed sector allocation for this {promptArgs['initialCapital']} portfolio.\n"
             f"Constraints: Max single sector allocation is {promptArgs['maxSectorAllocation']}. {promptArgs['sectorDiversityRule']}\n"
-            f"1. Use 'fetchSectorPerformance' to evaluate defensive, non-cyclical, and capital-preserving sectors.\n"
+            f"1. Use 'fetchAllSectorsPerformance', 'fetchAllSectorProfiles', and 'fetchAllSectorRankings' to comprehensively assess all 11 GICS sectors.\n"
             f"2. Present a clear table of percentage allocations across your selected sectors summing to 100.0%.\n"
             f"3. Highlight vulnerabilities, drawdown risks, and defensive hedges."
         )
@@ -409,8 +412,6 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         # Phase 3: Sector Allocation Decision (Impartial Portfolio Manager reconciles Bull & Bear)
         self._newPhaseHeader(3, "Sector Allocation Decision", pace)
         confirmSectorTool = self.toolRegistry.getTool("confirmSectorAllocation")
-        if confirmSectorTool:
-            confirmSectorTool.toolLog.clear()
 
         pmSectorPrompt = (
             f"Macro Context:\n{macroRaw}\n\n"
@@ -423,12 +424,13 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"- Allocations must sum to approximately 100.0%.\n\n"
             f"Execute the 'confirmSectorAllocation' tool with your exact sector dictionary and rationale."
         )
-        pmSectorRaw, pmSectorUISummary = self.portManager.analyseAndReply(
-            incomingMessage=pmSectorPrompt,
-            toolRegistry=self.toolRegistry,
-            timestamp=self.timestamp,
+        pmSectorRaw, pmSectorUISummary = self.executeMandatedToolStage(
+            agent=self.portManager,
+            initialPrompt=pmSectorPrompt,
+            mandatedToolName="confirmSectorAllocation",
             config=config,
             subrole="sector",
+            maxRetries=8,
             requireInitialTools=True
         )
 
@@ -521,8 +523,6 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         # Phase 6: Final Executive Decision (Impartial Portfolio Manager reconciles Risk proposals)
         self._newPhaseHeader(6, "Final Executive Decision", pace)
         confirmPortTool = self.toolRegistry.getTool("confirmPortfolioAllocation")
-        if confirmPortTool:
-            confirmPortTool.toolLog.clear()
 
         pmFinalPrompt = (
             f"Initial Capital: {promptArgs['initialCapital']}\n"
@@ -538,12 +538,13 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Execute the 'confirmPortfolioAllocation' tool with your exact positions array, portfolioRationale, and cashWeightPct."
         )
 
-        pmFinalRaw, pmFinalUISummary = self.portManager.analyseAndReply(
-            incomingMessage=pmFinalPrompt,
-            toolRegistry=self.toolRegistry,
-            timestamp=self.timestamp,
+        pmFinalRaw, pmFinalUISummary = self.executeMandatedToolStage(
+            agent=self.portManager,
+            initialPrompt=pmFinalPrompt,
+            mandatedToolName="confirmPortfolioAllocation",
             config=config,
             subrole="decision",
+            maxRetries=8,
             requireInitialTools=True
         )
 
@@ -688,6 +689,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         if self.llmClient is None:
             raise ValueError("LLM client is not assigned. Please assign a client before executing the boardroom.")
 
+        self.toolRegistry.clearToolLogs()
         self.llmClient.newTask()
         self.confirmedSectorAllocation = None
         self.confirmedPortfolioAllocation = None

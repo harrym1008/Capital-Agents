@@ -316,6 +316,54 @@ def fetchSectorProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp,
     return cleanData(result)
 
 
+def fetchAllSectorsPerformance(tool: Tool, data: DataProviders, timestamp: pd.Timestamp) -> Dict[str, Any]:
+    cacheKey = f"sector|all_perf_{timestamp.strftime('%Y-%m-%dH%H')}"
+    cached = data.cache.get(cacheKey)
+    if cached is not None:
+        return cached
+
+    with data.sectors.keyedLocks.lockKey(cacheKey):
+        cached = data.cache.get(cacheKey)
+        if cached is not None:
+            return cached
+
+        results = []
+        totalSectors = len(GICS_SECTORS)
+        completedSectors = 0
+
+        with ThreadPoolExecutor(max_workers=min(totalSectors, 8)) as executor:
+            futures = {executor.submit(fetchSectorPerformance, tool, data, timestamp, ticker): ticker for ticker in GICS_SECTORS}
+            for future in as_completed(futures):
+                completedSectors += 1
+                tool.updateProgress((completedSectors / totalSectors) * 100.0)
+                try:
+                    res = future.result()
+                    if res and not res.get("error"):
+                        results.append(res)
+                except Exception:
+                    pass
+
+        # Sort predictably by ticker
+        results.sort(key=lambda x: x.get("ticker", ""))
+        cleanedResult = cleanData(results)
+        data.cache.put(cacheKey, cleanedResult)
+        return cleanedResult
+
+
+def fetchAllSectorProfiles(tool: Tool, data: DataProviders, timestamp: pd.Timestamp) -> Dict[str, Any]:
+    profiles = []
+    for ticker, info in GICS_SECTORS.items():
+        profiles.append({
+            "ticker": info.ticker,
+            "name": info.name,
+            "category": info.category,
+            "description": info.description,
+            "etfIssuer": "State Street Global Advisors (Select Sector SPDR)"
+        })
+    profiles.sort(key=lambda x: x.get("ticker", ""))
+    return cleanData(profiles)
+
+
 from llmtools.functions.confirmation import confirmSectorAllocation
 
 

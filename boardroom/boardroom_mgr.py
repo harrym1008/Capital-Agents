@@ -77,6 +77,7 @@ class BoardroomManager:
 
         toolRegistry = self.getToolRegistry()
         toolRegistry.sourcesManager.reset()
+        toolRegistry.clearToolLogs()
         
         llmClient = self.getClient()
         if not llmClient:

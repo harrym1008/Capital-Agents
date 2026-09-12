@@ -344,8 +344,15 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         origTools = list(self.oneShotAnalyst.tools)
         self.oneShotAnalyst.clearTools()
         self.oneShotAnalyst.addTool(finalSubmitToolName, self.toolRegistry)
-        _, _ = self.oneShotAnalyst.analyseAndReply(
-            uploadPrompt, self.toolRegistry, self.timestamp, config, subrole="upload", requireInitialTools=False, summarisationOverride=False
+        _, _ = self.executeMandatedToolStage(
+            agent=self.oneShotAnalyst,
+            initialPrompt=uploadPrompt,
+            mandatedToolName=finalSubmitToolName,
+            config=config,
+            subrole="upload",
+            maxRetries=8,
+            summarisationOverride=False,
+            requireInitialTools=True
         )
         self.oneShotAnalyst.tools = origTools
 
@@ -451,8 +458,15 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         )
         self.portManager.clearTools()
         self.portManager.addTool(finalSubmitToolName, self.toolRegistry)
-        _, _ = self.portManager.analyseAndReply(
-            uploadPrompt, self.toolRegistry, self.timestamp, config, subrole="upload", requireInitialTools=False, summarisationOverride=False
+        _, _ = self.executeMandatedToolStage(
+            agent=self.portManager,
+            initialPrompt=uploadPrompt,
+            mandatedToolName=finalSubmitToolName,
+            config=config,
+            subrole="upload",
+            maxRetries=8,
+            summarisationOverride=False,
+            requireInitialTools=True
         )
 
         try:
@@ -652,8 +666,15 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         )
         self.portManager.clearTools()
         self.portManager.addTool(finalSubmitToolName, self.toolRegistry)
-        _, _ = self.portManager.analyseAndReply(
-            uploadPrompt, self.toolRegistry, self.timestamp, config, subrole="upload", requireInitialTools=True, summarisationOverride=False
+        _, _ = self.executeMandatedToolStage(
+            agent=self.portManager,
+            initialPrompt=uploadPrompt,
+            mandatedToolName=finalSubmitToolName,
+            config=config,
+            subrole="upload",
+            maxRetries=8,
+            summarisationOverride=False,
+            requireInitialTools=True
         )
 
         try:
@@ -748,6 +769,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         if self.llmClient is None:
             raise ValueError("LLM client is not assigned. Please assign a client before executing the boardroom.")
 
+        self.toolRegistry.clearToolLogs()
         self.configureTransferToolSchema(config.boardroomPace)
 
         self.llmClient.newTask()

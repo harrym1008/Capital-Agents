@@ -415,10 +415,11 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"- Diversity guidance: {{sectorDiversityRule}}\n\n"
 
             f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
-            f"You must evaluate promising sectors by calling 'fetchSectorPerformance' and/or 'fetchAllSectorRankings'.\n\n"
+            f"You must call 'fetchAllSectorsPerformance', 'fetchAllSectorProfiles', and 'fetchAllSectorRankings' "
+            f"on your initial turn to retrieve performance, technical indicators, profiles, and rotation leaderboards for all 11 GICS sectors.\n\n"
 
             f"*** TASK INSTRUCTIONS ***:\n"
-            f"1. Review the Macro Strategist's analysis.\n"
+            f"1. Review the Macro Strategist's analysis and the comprehensive metrics returned by your sector tools.\n"
             f"2. Build a high-upside, growth-oriented sector allocation proposal. Identify leading sectors that offer capital appreciation catalysts.\n"
             f"3. Allocate percentage weightings across your selected sectors (and optional cash/defensive buffer) summing to exactly 100.0%.\n"
             f"4. Ensure no single sector exceeds the {{maxSectorAllocation}} cap.\n\n"
@@ -435,10 +436,11 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"- Diversity guidance: {{sectorDiversityRule}}\n\n"
 
             f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
-            f"You must evaluate defensive and vulnerable sectors by calling 'fetchSectorPerformance' and/or 'fetchAllSectorRankings'.\n\n"
+            f"You must call 'fetchAllSectorsPerformance', 'fetchAllSectorProfiles', and 'fetchAllSectorRankings' "
+            f"on your initial turn to retrieve performance, technical indicators, profiles, and rotation leaderboards for all 11 GICS sectors.\n\n"
 
             f"*** TASK INSTRUCTIONS ***:\n"
-            f"1. Review the Macro Strategist's analysis.\n"
+            f"1. Review the Macro Strategist's analysis and the comprehensive metrics returned by your sector tools.\n"
             f"2. Scrutinize overvalued, high-multiple, or technically extended sectors. Warn of sector-level drawdowns and downside vulnerabilities.\n"
             f"3. Propose a capital-preserving, defensive sector allocation (emphasizing staples, utilities, healthcare, or cash) summing to exactly 100.0%.\n"
             f"4. Ensure no single sector exceeds the {{maxSectorAllocation}} cap.\n\n"

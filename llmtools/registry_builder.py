@@ -29,6 +29,8 @@ from llmtools.functions.sector import (
     fetchSectorPerformance, 
     fetchAllSectorRankings, 
     fetchSectorProfile, 
+    fetchAllSectorsPerformance,
+    fetchAllSectorProfiles,
     fetchStocksInSector,
     DB_SECTOR_TO_TICKER
 )
@@ -416,6 +418,22 @@ def buildToolRegistry(initMacroThread=False):
         toolName="fetchSectorProfile",
         toolDescription="Fetches the descriptive profile and industry categorization for a given GICS sector or sector ETF.",
         parameterSchema=SCHEMAS["sectorQuery"],
+        storeIntoSources=True
+    ))
+
+    toolReg.registerTool(Tool(
+        toolFunction=fetchAllSectorsPerformance,
+        toolName="fetchAllSectorsPerformance",
+        toolDescription="Fetches trailing performance metrics, technicals, volatility, and relative alpha for ALL 11 GICS sector ETFs in a single consolidated list.",
+        parameterSchema=SCHEMAS["empty"],
+        storeIntoSources=True
+    ))
+
+    toolReg.registerTool(Tool(
+        toolFunction=fetchAllSectorProfiles,
+        toolName="fetchAllSectorProfiles",
+        toolDescription="Fetches descriptive profiles, categories, and ETF details for ALL 11 GICS sectors in a single consolidated list.",
+        parameterSchema=SCHEMAS["empty"],
         storeIntoSources=True
     ))
 

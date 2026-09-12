@@ -36,6 +36,8 @@ def precacheMacroToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Timestamp):
         CachedToolCall("fetchMacroNews", timestamp, {"limit": 12}),
         CachedToolCall("fetchMacroSentimentHistory", timestamp),
         CachedToolCall("fetchAllSectorRankings", timestamp, {"lookback": "1mo"}),
+        CachedToolCall("fetchAllSectorsPerformance", timestamp),
+        CachedToolCall("fetchAllSectorProfiles", timestamp),
     ]
 
 

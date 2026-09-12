@@ -169,6 +169,10 @@ class ToolRegistry:
     def getToolMap(self):
         return self.tools
 
+    def clearToolLogs(self):
+        for tool in self.tools.values():
+            tool.toolLog.clear()
+
     def executeTool(self, toolName: str, timestamp: pd.Timestamp, arguments: Dict[str, Any] = {}, callId: Optional[str] = None, skipSources: bool = False):
         tool = self.getTool(toolName)
         if tool:

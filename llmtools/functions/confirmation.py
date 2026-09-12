@@ -33,6 +33,7 @@ def confirmBoardroomDecisionBase(
         summaryLogStr = f"Boardroom decision confirmed for {ticker}: Rating: {rating}, Weighting: {weighting}, {targetKey1}: ${cleanedVal1}, {targetKey2}: ${cleanedVal2}."
 
         result = {
+            "status": "success",
             "ticker": ticker,
             "rating": rating,
             "weighting": weighting,
@@ -100,7 +101,7 @@ def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Times
 
         ticker, resolvedName, note = data.sectors.resolveSector(rawSector)
         if resolvedName == "Unknown" or not ticker:
-            return {"error": f"Sector '{rawSector}' could not be resolved to a valid GICS sector."}
+            return {"error": f"Sector '{rawSector}' could not be resolved to a valid GICS sector. Provided note: {note}"}
 
         cleanedAllocations[ticker] = {
             "sector": resolvedName,

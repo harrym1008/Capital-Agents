@@ -48,36 +48,37 @@ class SectorDataProvider:
 
         # Catch explicit unknown tokens
         if lower == "unknown":
-            return None, "Unknown", f"Sector is categorized as '{cleaned}'. No GICS sector ETF applies."
+            pass    # Give up, return list of permitted sectors after this block
 
-        # Direct GICS ETF ticker match
-        if upper in GICS_SECTORS:
-            return upper, GICS_SECTORS[upper].name, None
+        else:
+            # Direct GICS ETF ticker match
+            if upper in GICS_SECTORS:
+                return upper, GICS_SECTORS[upper].name, None
 
-        # Direct DB underscored key match
-        if lower in DB_SECTOR_TO_TICKER:
-            etfTicker = DB_SECTOR_TO_TICKER[lower]
-            return etfTicker, GICS_SECTORS[etfTicker].name, None
+            # Direct DB underscored key match
+            if lower in DB_SECTOR_TO_TICKER:
+                etfTicker = DB_SECTOR_TO_TICKER[lower]
+                return etfTicker, GICS_SECTORS[etfTicker].name, None
 
-        # Space-separated lower match like "health care"
-        spaced = lower.replace("_", " ")
-        if spaced in SECTOR_NAME_TO_TICKER:
-            etfTicker = SECTOR_NAME_TO_TICKER[spaced]
-            return etfTicker, GICS_SECTORS[etfTicker].name, None
+            # Space-separated lower match like "health care"
+            spaced = lower.replace("_", " ")
+            if spaced in SECTOR_NAME_TO_TICKER:
+                etfTicker = SECTOR_NAME_TO_TICKER[spaced]
+                return etfTicker, GICS_SECTORS[etfTicker].name, None
 
-        # Check if the query is a company ticker like NVDA, AAPL etc
-        compProfile = self.tickerProvider.getTickerProfile(upper)
-        if compProfile is not None:
-            compSector = (compProfile.sector or "").strip().lower()
-            if compSector == "unknown":
-                return None, "Unknown", f"{upper}'s ticker is unknown."
-            if compSector in DB_SECTOR_TO_TICKER:
-                etfTicker = DB_SECTOR_TO_TICKER[compSector]
-                return etfTicker, GICS_SECTORS[etfTicker].name, f"Resolved from company ticker '{upper}' (sector: '{compSector}')."
+            # Check if the query is a company ticker like NVDA, AAPL etc
+            compProfile = self.tickerProvider.getTickerProfile(upper)
+            if compProfile is not None:
+                compSector = (compProfile.sector or "").strip().lower()
+                if compSector == "unknown":
+                    return None, "Unknown", f"{upper}'s ticker is unknown."
+                if compSector in DB_SECTOR_TO_TICKER:
+                    etfTicker = DB_SECTOR_TO_TICKER[compSector]
+                    return etfTicker, GICS_SECTORS[etfTicker].name, f"Resolved from company ticker '{upper}' (sector: '{compSector}')."
 
         # Give up!
-        return None, None, f"Sector or ticker '{sectorOrTicker}' not recognised. Please choose from the following list: {
-            ', '.join(sorted(SECTOR_NAME_TO_TICKER.keys()))}."
+        allowedList = "'" + "', '".join(sorted(DB_SECTOR_TO_TICKER.keys())) + "'."
+        return None, None, f"Sector or ticker '{sectorOrTicker}' not recognised. Choose from this list of sectors:\n{allowedList}"
 
     def resolveTicker(self, sectorOrTicker: str) -> Optional[str]:
         ticker, _, _ = self.resolveSector(sectorOrTicker)
