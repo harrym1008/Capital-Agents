@@ -474,9 +474,9 @@ const BoardroomCore = (function () {
     }
 
     function updateSummariesBtnState() {
-        const btn = document.getElementById("summariesBtn");
+        const btn = document.getElementById("sidebarToggleBtn") || document.getElementById("summariesBtn");
         if (!btn) return;
-        if (highestStageNumber >= 1) {
+        if (highestStageNumber >= 1 || (capturedSources && capturedSources.length > 0)) {
             btn.disabled = false;
             btn.classList.remove("disabled");
         } else {
@@ -511,31 +511,11 @@ const BoardroomCore = (function () {
 
         // Trigger custom stages hook if child template registered one
         emit("stagesBarInit", { mode, stages, bar });
-
-        // Append Sources Tab to the stages bar (always to the right of custom tabs like Q&A)
-        const sourcesTab = document.createElement("div");
-        sourcesTab.className = "stage-item";
-        sourcesTab.id = "stageStep-sources";
-        sourcesTab.innerText = capturedSources.length > 0 ? `Sources (${capturedSources.length})` : "Sources";
-        sourcesTab.onclick = () => {
-            showStageWorkspace("sources");
-        };
-        bar.appendChild(sourcesTab);
-
-        // Pre-build the Sources workspace if not already present
-        ensureSourcesWorkspace();
     }
 
     function showStageWorkspace(stageNum) {
         const allWorkspaces = document.querySelectorAll(".stage-workspace");
         allWorkspaces.forEach(ws => ws.style.display = "none");
-
-        if (stageNum === "sources") {
-            ensureSourcesWorkspace();
-            document.querySelectorAll(".sources-table tr.source-highlight").forEach(r => {
-                r.classList.remove("source-highlight");
-            });
-        }
 
         const targetWorkspace = document.getElementById(`stageWorkspace-${stageNum}`);
         if (targetWorkspace) {
@@ -566,70 +546,85 @@ const BoardroomCore = (function () {
             .replace(/'/g, "&#039;");
     }
 
-    function ensureSourcesWorkspace() {
-        const panesContainer = document.getElementById("panesContainer");
-        if (!panesContainer) return;
-        let ws = document.getElementById("stageWorkspace-sources");
-        if (!ws) {
-            ws = document.createElement("div");
-            ws.className = "stage-workspace";
-            ws.id = "stageWorkspace-sources";
-            ws.style.display = "none";
-            ws.style.flex = "1";
-            ws.style.minHeight = "0";
-            ws.style.height = "100%";
-            ws.style.width = "100%";
-            ws.style.flexDirection = "column";
+    function switchSidebarTab(tabName) {
+        const summariesTab = document.getElementById("sidebarTab-summaries");
+        const sourcesTab = document.getElementById("sidebarTab-sources");
+        const summariesPane = document.getElementById("sidebarPane-summaries");
+        const sourcesPane = document.getElementById("sidebarPane-sources");
 
-            ws.innerHTML = `
-                <div class="sources-workspace-container">
-                    <div class="sources-header-bar">
-                        <h3 class="sources-header-title" id="sourcesHeaderTitle">Sources (0 used)</h3>
-                    </div>
-                    <div class="sources-table-container">
-                        <table class="sources-table" id="sourcesTable">
-                            <thead>
-                                <tr>
-                                    <th style="width: 80px; text-align: center;">Citation</th>
-                                    <th style="width: 220px;">Tool</th>
-                                    <th>Arguments</th>
-                                    <th style="width: 100px;"></th>
-                                </tr>
-                            </thead>
-                            <tbody id="sourcesTableBody">
-                                <tr>
-                                    <td colspan="4">
-                                        <div class="sources-empty-state">No sources yet</div>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            `;
-            panesContainer.appendChild(ws);
+        if (tabName === "sources") {
+            if (summariesTab) summariesTab.classList.remove("viewing");
+            if (sourcesTab) sourcesTab.classList.add("viewing");
+            if (summariesPane) summariesPane.style.display = "none";
+            if (sourcesPane) sourcesPane.style.display = "flex";
+            document.querySelectorAll(".sources-table tr.source-highlight").forEach(r => {
+                r.classList.remove("source-highlight");
+            });
+        } else {
+            if (sourcesTab) sourcesTab.classList.remove("viewing");
+            if (summariesTab) summariesTab.classList.add("viewing");
+            if (sourcesPane) sourcesPane.style.display = "none";
+            if (summariesPane) summariesPane.style.display = "flex";
+        }
+    }
+
+    function openSidebar(defaultTab) {
+        const sidebar = document.getElementById("summarySidebar");
+        if (sidebar && sidebar.classList.contains("collapsed")) {
+            sidebar.classList.remove("collapsed");
+        }
+        if (defaultTab) {
+            switchSidebarTab(defaultTab);
+        }
+    }
+
+    function ensureSourcesWorkspace() {
+        // In the sidebar architecture, sourcesTable exists inside #sidebarPane-sources.
+        // If needed for dynamic re-render, verify table body is present
+        const tbody = document.getElementById("sourcesTableBody");
+        if (!tbody) {
+            const container = document.getElementById("sidebarSourcesContent");
+            if (container) {
+                container.innerHTML = `
+                    <table class="sources-table" id="sourcesTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 60px; text-align: center;">Citation</th>
+                                <th>Tool</th>
+                                <th style="width: 80px; text-align: right;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="sourcesTableBody">
+                            <tr>
+                                <td colspan="3">
+                                    <div class="sources-empty-state">No sources yet</div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                `;
+            }
         }
     }
 
     function resetSourcesUI() {
         capturedSources = [];
-        const title = document.getElementById("sourcesHeaderTitle");
-        if (title) title.innerText = "Sources (0 used)";
+        const sourcesTab = document.getElementById("sidebarTab-sources");
+        if (sourcesTab) {
+            sourcesTab.innerText = "Sources Log";
+        }
         const tbody = document.getElementById("sourcesTableBody");
         if (tbody) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="4">
+                    <td colspan="3">
                         <div class="sources-empty-state">No sources yet</div>
                     </td>
                 </tr>
             `;
         }
-        const sourcesTab = document.getElementById("stageStep-sources");
-        if (sourcesTab) {
-            sourcesTab.innerText = "Sources";
-        }
         closeSourceModal();
+        updateSummariesBtnState();
     }
 
     function addSourceRecord(source) {
@@ -643,16 +638,13 @@ const BoardroomCore = (function () {
             capturedSources.push(source);
         }
 
-        const title = document.getElementById("sourcesHeaderTitle");
-        if (title) {
-            title.innerText = `Sources (${capturedSources.length} used)`;
-        }
-        const sourcesTab = document.getElementById("stageStep-sources");
+        const sourcesTab = document.getElementById("sidebarTab-sources");
         if (sourcesTab) {
-            sourcesTab.innerText = `Sources (${capturedSources.length})`;
+            sourcesTab.innerText = `Sources Log (${capturedSources.length})`;
         }
 
         renderSourcesTable();
+        updateSummariesBtnState();
     }
 
     function renderSourcesTable() {
@@ -665,23 +657,22 @@ const BoardroomCore = (function () {
         }
 
         tbody.innerHTML = capturedSources.map(s => {
-            const argsStr = s.args && Object.keys(s.args).length > 0
+            const hasArgs = s.args && Object.keys(s.args).length > 0;
+            const argsStr = hasArgs
                 ? Object.entries(s.args).map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`).join(", ")
-                : "None";
+                : "";
 
             return `
                 <tr id="source-row-${s.citationNumber}" data-citation="${s.citationNumber}">
-                    <td style="text-align: center;">
+                    <td style="text-align: center; vertical-align: top; padding-top: 10px;">
                         <span class="source-citation-text">[${s.citationNumber}]</span>
                     </td>
-                    <td>
-                        <span class="source-tool-name">${s.toolName || ""}</span>
+                    <td style="vertical-align: top; padding-top: 10px;">
+                        <div class="source-tool-name">${escapeHtml(s.toolName || "")}</div>
+                        ${hasArgs ? `<div class="source-args-text" title="${escapeHtml(argsStr)}">${escapeHtml(argsStr)}</div>` : ""}
                     </td>
-                    <td>
-                        <div class="source-args-text" title="${escapeHtml(argsStr)}">${escapeHtml(argsStr)}</div>
-                    </td>
-                    <td style="text-align: right;">
-                        <button class="source-view-btn" onclick="BoardroomCore.openSourceModal(${s.citationNumber})">View JSON</button>
+                    <td style="text-align: right; vertical-align: top; padding-top: 8px;">
+                        <button class="source-view-btn" onclick="BoardroomCore.openSourceModal(${s.citationNumber})">View</button>
                     </td>
                 </tr>
             `;
@@ -774,7 +765,7 @@ const BoardroomCore = (function () {
     }
 
     function showSourceCitation(citationNumber, subIndex) {
-        showStageWorkspace("sources");
+        openSidebar("sources");
         setTimeout(() => {
             // Remove any existing highlights from all rows
             document.querySelectorAll(".sources-table tr.source-highlight").forEach(r => {
@@ -1162,7 +1153,7 @@ const BoardroomCore = (function () {
         header.style.fontWeight = "800";
         header.style.fontSize = "12px";
         header.style.marginBottom = "6px";
-        header.style.borderBottom = "1px dashed #cbd5e1";
+        header.style.borderBottom = "1px solid #eaeff5";
         header.style.paddingBottom = "4px";
         header.innerText = `Stage ${stageNum} - ${config.name || agentRole}`;
 
@@ -1175,15 +1166,12 @@ const BoardroomCore = (function () {
 
         autoScroll(sidebarContent);
 
-        // Automatically open sidebar when summaries start streaming
-        const sidebar = document.getElementById("summarySidebar");
-        if (sidebar && sidebar.classList.contains("collapsed")) {
-            sidebar.classList.remove("collapsed");
-        }
+        // Automatically open sidebar when summaries start streaming and switch to summaries tab
+        openSidebar("summaries");
     }
 
     function toggleSidebar() {
-        const btn = document.getElementById("summariesBtn");
+        const btn = document.getElementById("sidebarToggleBtn") || document.getElementById("summariesBtn");
         if (btn && btn.disabled) return;
         const sidebar = document.getElementById("summarySidebar");
         if (sidebar) {
@@ -1971,6 +1959,8 @@ const BoardroomCore = (function () {
         showStageWorkspace,
         setupStageLayout,
         initStagesBar,
+        switchSidebarTab,
+        openSidebar,
         toggleSidebar,
         openSettingsModal,
         closeSettingsModal,
@@ -2013,6 +2003,8 @@ window.openSettingsModal = BoardroomCore.openSettingsModal;
 window.closeSettingsModal = BoardroomCore.closeSettingsModal;
 window.handleSettingsOverlayMouseDown = BoardroomCore.handleSettingsOverlayMouseDown;
 window.killActiveBoardroom = BoardroomCore.killActiveBoardroom;
+window.switchSidebarTab = BoardroomCore.switchSidebarTab;
+window.openSidebar = BoardroomCore.openSidebar;
 window.toggleSidebar = BoardroomCore.toggleSidebar;
 window.startSimulation = BoardroomCore.startSimulation;
 window.stopSimulation = BoardroomCore.stopSimulation;

@@ -79,8 +79,8 @@
     <div class="config-bar">
         {% block config_inputs %}{% endblock %}
 
-        <button type="button" id="openSettingsBtn" class="grey-btn" onclick="BoardroomCore.openSettingsModal()">Generation Settings</button>
         <div class="config-actions">
+            <button type="button" id="openSettingsBtn" class="grey-btn" onclick="BoardroomCore.openSettingsModal()">Generation Settings</button>
             <button id="runBtn" class="run-btn" onclick="BoardroomCore.startSimulation()">Start Analysis</button>
             <button id="stopBtn" class="stop-btn" onclick="BoardroomCore.stopSimulation()" style="display: none;">Stop Analysis</button>
         </div>
@@ -95,7 +95,7 @@
             <div id="simulationTimer" class="simulation-timer" style="display: none;">
                 0 mins 0.00 secs
             </div>
-            <button id="summariesBtn" class="summaries-btn" onclick="BoardroomCore.toggleSidebar()">Summaries</button>
+            <button id="sidebarToggleBtn" class="grey-btn sidebar-toggle-btn" onclick="BoardroomCore.toggleSidebar()">Sidebar Toggle</button>
         </div>
     </div>
 
@@ -109,11 +109,38 @@
 
         <!-- Collapsible Summary Sidebar -->
         <div id="summarySidebar" class="summary-sidebar collapsed">
-            <div class="sidebar-header">
-                <h3>Boardroom Summaries Log</h3>
+            <div class="sidebar-tabs-bar" id="sidebarTabsBar">
+                <div class="sidebar-tab-item viewing" id="sidebarTab-summaries" onclick="BoardroomCore.switchSidebarTab('summaries')">
+                    Summary Log
+                </div>
+                <div class="sidebar-tab-item" id="sidebarTab-sources" onclick="BoardroomCore.switchSidebarTab('sources')">
+                    Sources Log
+                </div>
             </div>
-            <div id="sidebarContent" class="sidebar-content">
-                <!-- Summaries will append here in order -->
+            <div id="sidebarPane-summaries" class="sidebar-pane">
+                <div id="sidebarContent" class="sidebar-content">
+                    <!-- Summaries will append here in order -->
+                </div>
+            </div>
+            <div id="sidebarPane-sources" class="sidebar-pane" style="display: none;">
+                <div id="sidebarSourcesContent" class="sidebar-sources-container">
+                    <table class="sources-table" id="sourcesTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px; text-align: center;">No.</th>
+                                <th>Tool and Args</th>
+                                <th style="width: 80px; text-align: right;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="sourcesTableBody">
+                            <tr>
+                                <td colspan="3">
+                                    <div class="sources-empty-state">No sources yet</div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
