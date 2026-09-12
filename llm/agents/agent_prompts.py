@@ -1,6 +1,8 @@
 from typing import Dict, List, Optional
 from boardroom.boardroom_config import TIME_HORIZON_INFO, TimeHorizon
 
+from llmtools.functions.stock_search import DB_SECTOR_TO_TICKER
+
 
 def buildSharedBaseSysPrompt(dateStr: str, toolsStr: str, agentRole: str, agentSpecificPrompt: str) -> str:
     return (
@@ -503,6 +505,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
 
             f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
             f"1. You must call 'fetchStocksInSector' with style='growth' for each confirmed sector to retrieve pre-screened momentum candidates.\n"
+            f"IMPORTANT: You must ONLY ever pass one of these strings in the 'sector' parameter: \n'{', '.join(DB_SECTOR_TO_TICKER.keys())}'.\n"
             f"2. For your top shortlisted picks, use 'fetchBatchFinnhubMetrics' or 'fetchFinnhubCompanyFundamentals' to retrieve fast point-in-time valuation, margins, and growth metrics without EDGAR filing lag or rate limits.\n"
             f"3. Use 'fetchStockPricePerformance' if you require detailed technicals or drawdown history.\n\n"
 
@@ -527,6 +530,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
 
             f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
             f"1. You must call 'fetchStocksInSector' with style='defensive' or 'value' for each confirmed sector.\n"
+            f"IMPORTANT: You must ONLY ever pass one of these strings in the 'sector' parameter: \n'{', '.join(DB_SECTOR_TO_TICKER.keys())}'.\n"
             f"2. For your highest-conviction candidate equities, verify balance sheet solvency, P/E, debt-to-equity, and cash flow using 'fetchBatchFinnhubMetrics' or 'fetchFinnhubCompanyFundamentals'. Use EDGAR filing tools ('fetchBalanceSheet') only when deep forensic audit is required.\n"
             f"3. Verify price stability using 'fetchStockPricePerformance'.\n\n"
 

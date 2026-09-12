@@ -31,9 +31,10 @@ from llmtools.functions.sector import (
     fetchSectorProfile, 
     fetchAllSectorsPerformance,
     fetchAllSectorProfiles,
-    fetchStocksInSector,
     DB_SECTOR_TO_TICKER
 )
+from llmtools.functions.stock_search import fetchStocksInSector
+
 from llmtools.functions.other import (
     executePythonCalculation, 
     transferToAgent
@@ -122,6 +123,28 @@ SCHEMAS = {
             "limit": {
                 "type": "integer",
                 "description": "Maximum number of candidate stocks to return (4 to 20). Defaults to 12.",
+                "default": 12
+            }
+        },
+        "required": ["sector"]
+    },
+
+    "fetchStocksInSector": {
+        "type": "object",
+        "properties": {
+            "sector": {
+                "type": "string",
+                "description": "The GICS sector name selectable from: " + ALL_SECTORS_STRING + "."
+            },
+            "style": {
+                "type": "string",
+                "enum": ["growth", "value", "defensive", "all"],
+                "description": "The investment style bias for screening candidates (growth, value, defensive, or all). Defaults to all.",
+                "default": "all"
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Maximum number of candidate stocks to return (4 to 24). Defaults to 12.",
                 "default": 12
             }
         },
@@ -445,10 +468,12 @@ def buildToolRegistry(initMacroThread=False):
         storeIntoSources=False
     ))
 
+
+    # stock_search.py
     toolReg.registerTool(Tool(
         toolFunction=fetchStocksInSector,
         toolName="fetchStocksInSector",
-        toolDescription="Screens and returns curated equity candidates (10-15 stocks) within a specified GICS sector or sector ETF, with key performance metrics, market cap, and style indicators (growth, value, defensive, all).",
+        toolDescription="Screens and returns equity candidates within a specified GICS sector, sorted by market capitalisation or style (growth, value, defensive).",
         parameterSchema=SCHEMAS["fetchStocksInSector"],
         storeIntoSources=True
     ))

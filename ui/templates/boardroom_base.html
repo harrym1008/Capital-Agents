@@ -103,6 +103,12 @@
     <div class="main-layout" style="display: flex; flex: 1; min-height: 0; overflow: hidden; position: relative;">
         <div class="workspace">
             <div class="panes-container" id="panesContainer">
+                {% if request.path == '/portfolio-creation' %}
+                <p style="color: #7c899b;font-size: 14px;margin: 68px 0;">
+                    This mode makes heavy usage out of pre-downloaded data. For the most up-to-date information, consider a global re-download of all data by running
+                    <span style="font-family:monospace;"> mass_downloader.py</span>.
+                </p>
+                {% endif %}
                 {% block custom_workspace_widgets %}{% endblock %}
             </div>
         </div>

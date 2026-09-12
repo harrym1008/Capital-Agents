@@ -460,7 +460,7 @@
 }
 
 .summary-sidebar.collapsed {
-    margin-right: -28%;
+    margin-right: -23%;
     transform: translateX(100%);
 }
 
