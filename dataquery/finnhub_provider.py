@@ -13,7 +13,7 @@ class FinnhubDataProvider:
     def __init__(self, cache: LRUCache, rateLimiter: RateLimiter):
         self.cache = cache
         self.rateLimiter = rateLimiter
-        self.lockManager = KeyedLockManager()
+        self.keyedLocks = KeyedLockManager()
 
 
     def fetchRawMetrics(self, ticker: str) -> Optional[Dict[str, Any]]:
@@ -26,7 +26,7 @@ class FinnhubDataProvider:
         if cachedMem is not None:
             return cachedMem
 
-        with self.lockManager.lockKey(cleanTicker):
+        with self.keyedLocks.lockKey(cleanTicker):
             # Double check in-memory cache inside lock
             cachedMem = self.cache.get(cacheKey)
             if cachedMem is not None:

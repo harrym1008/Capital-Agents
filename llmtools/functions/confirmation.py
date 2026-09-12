@@ -167,36 +167,37 @@ def confirmPortfolioAllocation(
         if pctVal <= 0:
             continue
 
-        rawSector = str(pos.get("sector", "")).strip()
+        # Validate ticker existence against company database
+        profile = data.tickers.getTickerProfile(rawTicker)
+        if profile is None:
+            return {"error": f"Ticker '{rawTicker}' does not exist in the universe or is not recognised. Please replace it with a valid traded equity."}
+
+        companyName = profile.name or rawTicker
+        rawSector = (profile.sector or "").strip()
         secTicker, resolvedSector, _ = data.sectors.resolveSector(rawSector or rawTicker)
-        sectorName = resolvedSector if resolvedSector and resolvedSector != "Unknown" else rawSector or "Equities"
+        sectorName = resolvedSector if resolvedSector and resolvedSector != "Unknown" else (rawSector or "Equities")
+        industryName = profile.industry.replace("_", " ").title() if profile.industry else "General Equities"
 
-        role = str(pos.get("investmentRole", "CORE_EQUITY")).strip().upper()
         rationale = str(pos.get("rationale", "")).strip()
-
-        # Calculate dollar allocation and estimate shares if price available
         dollarAllocation = round(float(initialCapital) * (pctVal / 100.0), 2)
         latestPrice = None
-        estimatedShares = None
 
         try:
             dayData = data.ohlcv.getSingleDayTickerData(rawTicker, timestamp)
             if dayData is not None and "close" in dayData and pd.notna(dayData["close"]):
                 latestPrice = round(float(dayData["close"]), 2)
-                if latestPrice > 0:
-                    estimatedShares = int(dollarAllocation // latestPrice)
         except Exception:
             pass
 
         compRecord = {
             "ticker": rawTicker,
+            "companyName": companyName,
             "sector": sectorName,
             "sectorEtf": secTicker,
+            "industry": industryName,
             "weightPct": pctVal,
             "dollarAllocation": dollarAllocation,
             "latestPrice": latestPrice,
-            "estimatedShares": estimatedShares,
-            "investmentRole": role,
             "rationale": rationale
         }
         cleanedPositions.append(compRecord)
@@ -219,32 +220,10 @@ def confirmPortfolioAllocation(
 
     cashDollar = round(float(initialCapital) * (cashPct / 100.0), 2)
 
-    # Sub-allocation into SPY ETF if cash is treated as index ETF or cash equivalent
-    spyPrice = None
-    spyShares = None
-    if cashDollar > 0:
-        try:
-            import os
-            spyPath = os.path.join(data.sectors.sectorDir, "SPY.parquet")
-            if os.path.exists(spyPath):
-                spyDf = pd.read_parquet(spyPath)
-                if not spyDf.empty and "date" in spyDf.columns and "close" in spyDf.columns:
-                    spyDf["date"] = pd.to_datetime(spyDf["date"]).dt.tz_localize(None)
-                    normTs = timestamp.tz_localize(None) if timestamp.tzinfo is not None else timestamp
-                    validRows = spyDf[spyDf["date"] <= normTs]
-                    if not validRows.empty:
-                        spyPrice = round(float(validRows["close"].iloc[-1]), 2)
-                        if spyPrice > 0:
-                            spyShares = int(cashDollar // spyPrice)
-        except Exception:
-            pass
-
     cashPositionRecord = {
         "weightPct": cashPct,
         "dollarAllocation": cashDollar,
-        "etfSubstitute": "SPY",
-        "etfPrice": spyPrice,
-        "estimatedEtfShares": spyShares
+        "etfSubstitute": "SPY"
     }
 
     portfolioRecord = {

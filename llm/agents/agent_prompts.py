@@ -413,8 +413,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         "bullishAnalyst": (
             f"You advocate for growth, high-beta, and cyclical sector allocations in a new portfolio of {{initialCapital}}.\n\n"
             f"Portfolio Constraints:\n"
-            f"- Max single sector allocation: {{maxSectorAllocation}}\n"
-            f"- Diversity guidance: {{sectorDiversityRule}}\n\n"
+            f"- Sector Diversity Constraint (MANDATORY): {{sectorDiversityRule}}\n"
+            f"- Max single sector allocation: {{maxSectorAllocation}}\n\n"
 
             f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
             f"You must call 'fetchAllSectorsPerformance', 'fetchAllSectorProfiles', and 'fetchAllSectorRankings' "
@@ -424,7 +424,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"1. Review the Macro Strategist's analysis and the comprehensive metrics returned by your sector tools.\n"
             f"2. Build a high-upside, growth-oriented sector allocation proposal. Identify leading sectors that offer capital appreciation catalysts.\n"
             f"3. Allocate percentage weightings across your selected sectors (and optional cash/defensive buffer) summing to exactly 100.0%.\n"
-            f"4. Ensure no single sector exceeds the {{maxSectorAllocation}} cap.\n\n"
+            f"4. You MUST strictly adhere to the sector count directive: {{sectorDiversityRule}}.\n"
+            f"5. Ensure no single sector exceeds the {{maxSectorAllocation}} cap.\n\n"
 
             f"*** EXPECTED OUTPUT SCHEMA ***:\n"
             f"- Bullish Sector Investment Thesis (Catalysts & Growth Drivers)\n"
@@ -434,8 +435,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         "bearishAnalyst": (
             f"You advocate for capital preservation, defensive positioning, and risk-managed sector allocations in a new portfolio of {{initialCapital}}.\n\n"
             f"Portfolio Constraints:\n"
-            f"- Max single sector allocation: {{maxSectorAllocation}}\n"
-            f"- Diversity guidance: {{sectorDiversityRule}}\n\n"
+            f"- Sector Diversity Constraint (MANDATORY): {{sectorDiversityRule}}\n"
+            f"- Max single sector allocation: {{maxSectorAllocation}}\n\n"
 
             f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
             f"You must call 'fetchAllSectorsPerformance', 'fetchAllSectorProfiles', and 'fetchAllSectorRankings' "
@@ -445,7 +446,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"1. Review the Macro Strategist's analysis and the comprehensive metrics returned by your sector tools.\n"
             f"2. Scrutinize overvalued, high-multiple, or technically extended sectors. Warn of sector-level drawdowns and downside vulnerabilities.\n"
             f"3. Propose a capital-preserving, defensive sector allocation (emphasizing staples, utilities, healthcare, or cash) summing to exactly 100.0%.\n"
-            f"4. Ensure no single sector exceeds the {{maxSectorAllocation}} cap.\n\n"
+            f"4. You MUST strictly adhere to the sector count directive: {{sectorDiversityRule}}.\n"
+            f"5. Ensure no single sector exceeds the {{maxSectorAllocation}} cap.\n\n"
 
             f"*** EXPECTED OUTPUT SCHEMA ***:\n"
             f"- Bearish Sector Risk Audit (Vulnerabilities, Overvaluation, Volatility)\n"
@@ -456,7 +458,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             "sector": (
                 f"You are the Impartial Portfolio Manager making the definitive executive decision on the portfolio's sector allocation for {{initialCapital}}.\n\n"
                 f"Portfolio Constraints to strictly enforce:\n"
-                f"- {{sectorDiversityRule}}\n"
+                f"- MANDATORY SECTOR COUNT DIRECTIVE: {{sectorDiversityRule}}\n"
                 f"- Max single sector allocation: {{maxSectorAllocation}} (acceptable range 20% to 80%)\n"
                 f"- Total allocated percentage must equal 100.0%.\n\n"
 
@@ -466,8 +468,9 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
                 f"*** TASK INSTRUCTIONS ***:\n"
                 f"1. Weigh the Bullish and Bearish sector proposals against the prevailing Macro regime.\n"
                 f"2. Resolve conflicts and establish the optimal compromise: capturing sector upside while maintaining adequate downside protection.\n"
-                f"3. Execute 'confirmSectorAllocation' with your exact sector allocations (e.g. {{{{ 'information_technology': 35.0, 'health_care': 25.0, ... }}}}).\n"
-                f"4. Provide a clear executive summary of the locked sector distribution to direct the Phase 4 Stock Hunters.\n\n"
+                f"3. Strictly enforce the sector count directive: {{sectorDiversityRule}}.\n"
+                f"4. Execute 'confirmSectorAllocation' with your exact sector allocations (e.g. {{{{ 'information_technology': 35.0, 'health_care': 25.0, ... }}}}).\n"
+                f"5. Provide a clear executive summary of the locked sector distribution to direct the Phase 4 Stock Hunters.\n\n"
 
                 f"*** EXPECTED OUTPUT SCHEMA ***:\n"
                 f"- Executive Sector Synthesis\n"
@@ -476,44 +479,45 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             ),
             "decision": (
                 f"You are the Impartial Portfolio Manager delivering the final executive decision and portfolio construction for {{initialCapital}}.\n\n"
-                f"Portfolio Constraints:\n"
+                f"Portfolio Constraints (STRICT & MANDATORY):\n"
+                f"- Target total stock count: {{targetStockCount}}\n"
                 f"- Max single stock allocation: {{maxStockAllocation}} (acceptable range 10% to 60%)\n"
-                f"- Target stock count: {{targetStockCount}} (ranging 1 to 30)\n"
                 f"- Sector allocations must match the confirmed distribution from Phase 3.\n"
                 f"- Total allocations (stocks + cash/buffer) must equal 100.0%.\n\n"
 
                 f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
-                f"You must execute the 'confirmPortfolioAllocation' tool with your final positions list, cash percentage, and executive rationale.\n\n"
+                f"You must execute the 'confirmPortfolioAllocation' tool with your final positions list (ticker and weightPct for each stock), cash percentage, and executive rationale. Note: Company names, sectors, and industries are automatically looked up by the system from each ticker symbol.\n\n"
 
                 f"*** TASK INSTRUCTIONS ***:\n"
                 f"1. Synthesize the proposals to achieve the optimal risk-adjusted portfolio: capturing high-conviction growth upside while safeguarding downside resilience.\n"
-                f"2. Construct the definitive portfolio holdings table with exact percentage weights and dollar allocations summing to 100.0%.\n"
-                f"3. Call 'confirmPortfolioAllocation' with the positions array, portfolioRationale, and cashWeightPct.\n\n"
+                f"2. Construct the definitive portfolio holdings table containing {{targetStockCount}} with percentage weights and dollar allocations summing to 100.0%.\n"
+                f"3. Call 'confirmPortfolioAllocation' with the positions array (containing 'ticker', 'weightPct', and optional 'rationale'), portfolioRationale, and cashWeightPct.\n\n"
 
                 f"*** EXPECTED OUTPUT SCHEMA ***:\n"
                 f"- Executive Portfolio Construction Synthesis\n"
-                f"- Final Portfolio Holdings Table: Ticker | Company Name | Sector | Weight % | Dollar Allocation | Investment Role\n"
+                f"- Final Portfolio Holdings Table: Ticker | Company Name | Sector | Industry | Weight % | Dollar Allocation\n"
                 f"- Sector Alignment Audit Table (Target Sector % vs Actual Stock Sum %)\n"
                 f"- Final Line: **Final Portfolio Confirmed: [Count] stocks, [Cash %] cash**\n"
             )
         },
         "growthStockHunter": (
             f"You are the Growth Stock Hunter identifying high-conviction growth, momentum, and innovation equities to populate the confirmed portfolio sectors for {{initialCapital}}.\n\n"
-            f"Portfolio Constraints:\n"
+            f"Portfolio Constraints (MANDATORY):\n"
+            f"- Target stock count across entire portfolio: {{targetStockCount}}\n"
             f"- Max single stock allocation: {{maxStockAllocation}}\n"
-            f"- Target stock count: {{targetStockCount}}\n\n"
+            f"- Sector constraint: You MUST scout candidate equities ONLY within the confirmed sectors.\n\n"
 
             f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
-            f"1. You must call 'fetchStocksInSector' with style='growth' for each confirmed sector to retrieve pre-screened momentum candidates.\n"
+            f"1. You must call 'fetchStocksInSector' with style='growth' for each confirmed sector to retrieve candidate equities.\n"
             f"IMPORTANT: You must ONLY ever pass one of these strings in the 'sector' parameter: \n'{', '.join(DB_SECTOR_TO_TICKER.keys())}'.\n"
-            f"2. For your top shortlisted picks, use 'fetchBatchFinnhubMetrics' or 'fetchFinnhubCompanyFundamentals' to retrieve fast point-in-time valuation, margins, and growth metrics without EDGAR filing lag or rate limits.\n"
+            f"2. For your top shortlisted picks, use 'fetchBatchFinnhubMetrics' or 'fetchCompanyValuationMetrics' to retrieve valuation, margins, and growth metrics.\n"
             f"3. Use 'fetchStockPricePerformance' if you require detailed technicals or drawdown history.\n\n"
 
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Review the Impartial Portfolio Manager's confirmed sector allocations.\n"
-            f"2. Use 'fetchStocksInSector' with style='growth' to scout candidate equities across the confirmed sectors.\n"
-            f"3. Check valuation and margins for your top candidates using 'fetchBatchFinnhubMetrics' (or 'fetchFinnhubCompanyFundamentals').\n"
-            f"4. Select 2-4 top growth equities per sector demonstrating strong revenue growth, high momentum, market leadership, and clear upside catalysts.\n"
+            f"2. Use 'fetchStocksInSector' with style='growth' to scout candidate equities strictly across the confirmed sectors.\n"
+            f"3. Check valuation and margins for your top candidates using 'fetchBatchFinnhubMetrics' or 'fetchCompanyValuationMetrics'.\n"
+            f"4. Select top growth equities per confirmed sector aligned with the portfolio target stock count ({{targetStockCount}}). Keep your candidate list focused and high-conviction.\n"
             f"5. Present a structured candidate table detailing: Ticker, Company Name, Industry, Market Cap, 3M/12M Momentum, P/E, Margins, and Primary Growth Catalyst.\n\n"
 
             f"*** EXPECTED OUTPUT SCHEMA ***:\n"
@@ -524,21 +528,22 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         ),
         "valueStockHunter": (
             f"You are the Value/Defensive Stock Hunter identifying high-conviction value, dividend, capital-preserving, and low-volatility equities to populate the confirmed portfolio sectors for {{initialCapital}}.\n\n"
-            f"Portfolio Constraints:\n"
+            f"Portfolio Constraints (MANDATORY):\n"
+            f"- Target stock count across entire portfolio: {{targetStockCount}}\n"
             f"- Max single stock allocation: {{maxStockAllocation}}\n"
-            f"- Target stock count: {{targetStockCount}}\n\n"
+            f"- Sector constraint: You MUST scout candidate equities ONLY within the confirmed sectors.\n\n"
 
             f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
-            f"1. You must call 'fetchStocksInSector' with style='defensive' or 'value' for each confirmed sector.\n"
+            f"1. You must call 'fetchStocksInSector' with style='defensive' for each confirmed sector.\n"
             f"IMPORTANT: You must ONLY ever pass one of these strings in the 'sector' parameter: \n'{', '.join(DB_SECTOR_TO_TICKER.keys())}'.\n"
-            f"2. For your highest-conviction candidate equities, verify balance sheet solvency, P/E, debt-to-equity, and cash flow using 'fetchBatchFinnhubMetrics' or 'fetchFinnhubCompanyFundamentals'. Use EDGAR filing tools ('fetchBalanceSheet') only when deep forensic audit is required.\n"
+            f"2. For your highest-conviction candidate equities, verify balance sheet solvency, P/E, debt-to-equity, and cash flow using 'fetchBatchFinnhubMetrics' or 'fetchCompanyValuationMetrics'.\n"
             f"3. Verify price stability using 'fetchStockPricePerformance'.\n\n"
 
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Review the Impartial Portfolio Manager's confirmed sector allocations.\n"
-            f"2. Use 'fetchStocksInSector' with style='defensive' or 'value' to scout candidates per confirmed sector.\n"
-            f"3. Rapidly audit valuation multiples, debt-to-equity, and margins using 'fetchBatchFinnhubMetrics'.\n"
-            f"4. Select 2-4 top value/defensive equities per sector demonstrating reasonable valuation multiples, fortress balance sheets, dividend yield/stability, and low drawdowns.\n"
+            f"2. Use 'fetchStocksInSector' with style='defensive' to scout candidates strictly across the confirmed sectors.\n"
+            f"3. Rapidly audit valuation multiples, debt-to-equity, and margins using 'fetchBatchFinnhubMetrics' or 'fetchCompanyValuationMetrics'.\n"
+            f"4. Select top value/defensive equities per confirmed sector aligned with the portfolio target stock count ({{targetStockCount}}). Keep your candidate list focused and high-conviction.\n"
             f"5. Present a structured candidate table detailing: Ticker, Company Name, Industry, Market Cap, Valuation/P-E, Debt/Equity, Volatility, and Margin of Safety Defense.\n\n"
 
             f"*** EXPECTED OUTPUT SCHEMA ***:\n"
@@ -550,13 +555,13 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         "aggressiveRiskAnalyst": (
             f"You are the Aggressive Risk Analyst designing an aggressive, high-upside individual stock allocation proposal for this {{initialCapital}} portfolio.\n\n"
             f"Portfolio Constraints:\n"
+            f"- Target stock count: {{targetStockCount}}.\n"
             f"- Max single stock allocation: {{maxStockAllocation}}\n"
-            f"- Target stock count: {{targetStockCount}}\n\n"
-            f"- You MUST strictly respect the confirmed sector percentage totals established in Phase 3.\n\n"
+            f"- Sector Alignment: You must respect the confirmed sector percentage totals established in Phase 3. Every stock should belong to a confirmed sector, and stock weights per sector should match that sector's confirmed percentage.\n\n"
 
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Review the candidate stocks scouted by the Growth and Value Hunters in Phase 4.\n"
-            f"2. Formulate a comprehensive stock allocation proposal overweighting high-beta growth leaders while fitting each confirmed sector bucket.\n"
+            f"2. Formulate a comprehensive stock allocation proposal aiming for {{targetStockCount}}, overweighting high-beta growth leaders while fitting each confirmed sector bucket.\n"
             f"3. Assign specific percentage weights (summing to 100.0% including any optional cash buffer) and compute dollar capital per asset using 'executePythonCalculation'.\n"
             f"4. Verify that no single stock exceeds the {{maxStockAllocation}} limit.\n\n"
 
@@ -568,13 +573,13 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         "conservativeRiskAnalyst": (
             f"You are the Conservative Risk Analyst designing a defensive, capital-preserving individual stock allocation proposal for this {{initialCapital}} portfolio.\n\n"
             f"Portfolio Constraints:\n"
+            f"- Target stock count: {{targetStockCount}}.\n"
             f"- Max single stock allocation: {{maxStockAllocation}}\n"
-            f"- Target stock count: {{targetStockCount}}\n\n"
-            f"- You MUST strictly respect the confirmed sector percentage totals established in Phase 3.\n\n"
+            f"- Sector Alignment: You must respect the confirmed sector percentage totals established in Phase 3. Every stock should belong to a confirmed sector, and stock weights per sector should match that sector's confirmed percentage.\n\n"
 
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Review the candidate stocks scouted by the Growth and Value Hunters in Phase 4.\n"
-            f"2. Formulate a comprehensive stock allocation proposal prioritizing lower-beta defensive anchors, dividend stability, and risk buffers within each confirmed sector bucket.\n"
+            f"2. Formulate a comprehensive stock allocation proposal aiming for {{targetStockCount}}, prioritizing lower-beta defensive anchors, dividend stability, and risk buffers within each confirmed sector bucket.\n"
             f"3. Assign specific percentage weights (summing to 100.0% including cash buffer) and compute dollar capital per asset using 'executePythonCalculation'.\n"
             f"4. Verify that no single stock exceeds the {{maxStockAllocation}} limit.\n\n"
 

@@ -142,14 +142,36 @@ class BoardroomEngine(ABC):
             )
 
             if tool and len(tool.toolLog) > 0:
-                if attempt > 0 and (summarisationOverride is None or summarisationOverride is True) and config.generateSummaries:
+                # Notify agent that decision was confirmed and request short justifications & remarks
+                confirmationPrompt = (
+                    f"Your '{mandatedToolName}' submission has been verified, confirmed, and logged in the boardroom system.\n"
+                    f"Please now provide short justifications and executive remarks around your decision-making process, "
+                    f"key trade-offs considered, and final outcome for the boardroom."
+                )
+
+                remarksRaw, _ = agent.analyseAndReply(
+                    incomingMessage=confirmationPrompt,
+                    toolRegistry=self.toolRegistry,
+                    timestamp=self.timestamp,
+                    config=config,
+                    subrole=subrole,
+                    requireInitialTools=False,
+                    summarisationOverride=False
+                )
+
+                combinedRaw = f"{rawAnalysis}\n\n{remarksRaw}".strip()
+
+                if (summarisationOverride is None or summarisationOverride is True) and config.generateSummaries:
                     from llm.agents.agent_prompts import buildSummariseSysPrompt
                     modeName = config.modeName if hasattr(config, "modeName") else "SingleEquityRating"
-                    uiSummary = agent.generateUISummary(
-                        rawAnalysis,
+                    combinedUISummary = agent.generateUISummary(
+                        combinedRaw,
                         buildSummariseSysPrompt(agent.agentRole, modeName, subrole, config.getPromptArgs())
                     )
-                return rawAnalysis, uiSummary
+                else:
+                    combinedUISummary = combinedRaw
+
+                return combinedRaw, combinedUISummary
 
             if not isLastAttempt:
                 attempted = any(

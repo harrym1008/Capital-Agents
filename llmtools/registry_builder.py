@@ -8,7 +8,6 @@ from llmtools.functions.company import (
     fetchCompanyRecentNews, 
     fetchStockPricePerformance, 
     calculateDistFromCurrPrice,
-    fetchFinnhubCompanyFundamentals,
     fetchBatchFinnhubMetrics
 )
 from llmtools.functions.edgar import (
@@ -77,21 +76,15 @@ SCHEMAS = {
         "properties": {
             "positions": {
                 "type": "array",
-                "description": "List of individual stock allocations for the portfolio.",
+                "description": "List of individual stock allocations for the portfolio. Sector, industry, and company name are looked up automatically.",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "ticker": {"type": "string", "description": "Stock ticker symbol (e.g. 'NVDA', 'AAPL')."},
-                        "sector": {"type": "string", "description": "GICS sector of the stock."},
+                        "ticker": {"type": "string", "description": "Stock ticker symbol (e.g. 'AAPL', 'MSFT'). Must exist in the stock universe."},
                         "weightPct": {"type": "number", "description": "Percentage allocation weight in the portfolio (e.g. 12.5)."},
-                        "investmentRole": {
-                            "type": "string",
-                            "enum": ["CORE_GROWTH", "HIGH_BETA_UPSIDE", "DEFENSIVE_VALUE", "DIVIDEND_STABILITY", "CASH_BUFFER"],
-                            "description": "Strategic portfolio role."
-                        },
                         "rationale": {"type": "string", "description": "Concise rationale for including this stock."}
                     },
-                    "required": ["ticker", "sector", "weightPct", "investmentRole"]
+                    "required": ["ticker", "weightPct"]
                 }
             },
             "portfolioRationale": {
@@ -116,35 +109,13 @@ SCHEMAS = {
             },
             "style": {
                 "type": "string",
-                "enum": ["growth", "value", "defensive", "all"],
-                "description": "The investment style bias for screening candidates (growth, value, defensive, or all). Defaults to all.",
+                "enum": ["value", "defensive", "all"],
+                "description": "The investment style bias for screening candidates (value, defensive, or all). Defaults to all.",
                 "default": "all"
             },
             "limit": {
                 "type": "integer",
                 "description": "Maximum number of candidate stocks to return (4 to 20). Defaults to 12.",
-                "default": 12
-            }
-        },
-        "required": ["sector"]
-    },
-
-    "fetchStocksInSector": {
-        "type": "object",
-        "properties": {
-            "sector": {
-                "type": "string",
-                "description": "The GICS sector name selectable from: " + ALL_SECTORS_STRING + "."
-            },
-            "style": {
-                "type": "string",
-                "enum": ["growth", "value", "defensive", "all"],
-                "description": "The investment style bias for screening candidates (growth, value, defensive, or all). Defaults to all.",
-                "default": "all"
-            },
-            "limit": {
-                "type": "integer",
-                "description": "Maximum number of candidate stocks to return (4 to 24). Defaults to 12.",
                 "default": 12
             }
         },
@@ -205,7 +176,7 @@ SCHEMAS = {
             "tickers": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "List of stock ticker symbols to query (e.g. ['AAPL', 'MSFT', 'NVDA']). Maximum 15 tickers."
+                "description": "List of stock ticker symbols to query (e.g. ['TCKR', 'COMP']). Maximum 15 tickers."
             }
         },
         "required": ["tickers"]
@@ -473,7 +444,7 @@ def buildToolRegistry(initMacroThread=False):
     toolReg.registerTool(Tool(
         toolFunction=fetchStocksInSector,
         toolName="fetchStocksInSector",
-        toolDescription="Screens and returns equity candidates within a specified GICS sector, sorted by market capitalisation or style (growth, value, defensive).",
+        toolDescription="Screens and returns equity candidates within a specified GICS sector, sorted by market capitalisation or style (value, defensive, or all).",
         parameterSchema=SCHEMAS["fetchStocksInSector"],
         storeIntoSources=True
     ))
@@ -510,14 +481,6 @@ def buildToolRegistry(initMacroThread=False):
         toolDescription="Calculates the percentage distance of a target price from the current stock price.",
         parameterSchema=SCHEMAS["stockPriceChange"],
         storeIntoSources=False
-    ))
-
-    toolReg.registerTool(Tool(
-        toolFunction=fetchFinnhubCompanyFundamentals,
-        toolName="fetchFinnhubCompanyFundamentals",
-        toolDescription="Fast point-in-time financial metrics for an individual stock (P/E, P/B, margins, ROE, debt-to-equity, EPS, EBITDA) via Finnhub with local caching. Ideal for stock scouting without EDGAR filing overhead.",
-        parameterSchema=SCHEMAS["justTicker"],
-        storeIntoSources=True
     ))
 
     toolReg.registerTool(Tool(

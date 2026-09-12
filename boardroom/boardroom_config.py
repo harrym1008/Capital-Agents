@@ -16,6 +16,8 @@ class BoardroomPace(Enum):
     ONE_SHOT = "one_shot"
     FAST = "fast"
     COMPLETE = "complete"
+    PRESET = "preset"
+
 
 
 TIME_HORIZON_INFO: Dict[TimeHorizon, Dict[str, str]] = {
@@ -132,22 +134,23 @@ class PortfolioCreationConfig(BoardroomConfig):
     maxSectorAllocation: float = 40.0
     maxStockAllocation: float = 20.0
     targetStockCount: Optional[int] = None
+    presetSectorAllocations: Optional[Dict[str, float]] = None
 
     @property
     def modeName(self) -> str:
         return "PortfolioCreation"
 
     def getPromptArgs(self) -> Dict[str, str]:
-        sectorDiversityRule = (
-            f"Select exactly {self.targetSectorCount} distinct GICS sectors."
-            if self.targetSectorCount is not None
-            else "You have full discretion to select the optimal number of sectors (typically 2 to 6 based on market conditions)."
-        )
-        stockCountRule = (
-            f"~{self.targetStockCount} stocks"
-            if self.targetStockCount is not None
-            else "optimal discretion (typically 6 to 18 stocks balanced across confirmed sectors)"
-        )
+        if self.targetSectorCount is not None:
+            sectorDiversityRule = f"Select around {self.targetSectorCount} distinct GICS sectors (approximately {self.targetSectorCount} sectors based on opportunity and balance)."
+        else:
+            sectorDiversityRule = "You have full discretion to select the optimal number of sectors (typically 2 to 6 based on market conditions)."
+
+        if self.targetStockCount is not None:
+            stockCountRule = f"around {self.targetStockCount} total stocks across the portfolio (aim for approximately {self.targetStockCount} stocks)."
+        else:
+            stockCountRule = "optimal discretion (typically 6 to 18 stocks balanced across confirmed sectors)"
+
         return {
             "initialCapital": f"${self.initialCapital:,.2f}",
             "timeHorizon": self.timeHorizon.value,
@@ -167,7 +170,7 @@ class PortfolioCreationConfig(BoardroomConfig):
         timeHorizon = TimeHorizon(horizonRaw) if isinstance(horizonRaw, str) else horizonRaw
 
         boardroomPaceStr = data.get("boardroomPace", "complete")
-        if boardroomPaceStr not in ["complete", "fast"]:
+        if boardroomPaceStr not in ["complete", "fast", "preset"]:
             boardroomPaceStr = "complete"
         boardroomPace = BoardroomPace(boardroomPaceStr)
 
@@ -187,6 +190,8 @@ class PortfolioCreationConfig(BoardroomConfig):
         maxStockAllocation = float(data.get("maxStockAllocation", 20.0))
         maxStockAllocation = max(10.0, min(60.0, maxStockAllocation))
 
+        presetSectorAllocations = data.get("presetSectorAllocations")
+
         maxIterations = int(data.get("maxIterations", 10))
         temperature = float(data.get("temperature", 0.5))
         generateSummaries = bool(data.get("generateSummaries", True))
@@ -201,6 +206,7 @@ class PortfolioCreationConfig(BoardroomConfig):
             maxSectorAllocation=maxSectorAllocation,
             maxStockAllocation=maxStockAllocation,
             targetStockCount=targetStockCount,
+            presetSectorAllocations=presetSectorAllocations,
             maxIterations=maxIterations,
             temperature=temperature,
             generateSummaries=generateSummaries,

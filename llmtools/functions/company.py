@@ -40,70 +40,20 @@ def fetchCompanyProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
     return cleanData(profileDict)
 
 
-def fetchFinnhubCompanyFundamentals(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str):
-    cleanTicker = ticker.strip().upper()
-    metrics = data.finnhub.getPointInTimeMetrics(cleanTicker, timestamp)
-    if not metrics:
-        return {"error": f"No Finnhub financial metrics available for ticker {cleanTicker}."}
-
-    # Fetch latest price & mkt cap from local store if available
-    todayRow = data.ohlcv.getSingleDayTickerData(cleanTicker, timestamp)
-    latestPrice = None
-    marketCap = None
-    if todayRow is not None and not todayRow.empty:
-        latestPrice = todayRow.get("close")
-        shs = todayRow.get("outstandingShares")
-        if latestPrice is not None and shs is not None:
-            marketCap = latestPrice * shs
-
-    profile = data.tickers.getTickerProfile(cleanTicker)
-    companyName = profile.name if profile else cleanTicker
-    sectorName = profile.sector if profile else "Unknown"
-    industryName = profile.industry if profile else "Unknown"
-
-    return cleanData({
-        "ticker": cleanTicker,
-        "companyName": companyName,
-        "sector": sectorName,
-        "industry": industryName,
-        "asOfDate": metrics.get("asOfDate", timestamp.strftime("%Y-%m-%d")),
-        "latestPrice": cleanNumber(latestPrice, NumberType.STOCK_PRICE) if latestPrice else None,
-        "marketCap": cleanNumber(marketCap, NumberType.LARGE_DOLLARS) if marketCap else None,
-        "valuation": {
-            "peTTM": cleanNumber(metrics.get("peTTM"), NumberType.DECIMAL),
-            "pb": cleanNumber(metrics.get("pb"), NumberType.DECIMAL),
-            "psTTM": cleanNumber(metrics.get("psTTM"), NumberType.DECIMAL),
-            "dividendYield": cleanNumber(metrics.get("dividendYield"), NumberType.UNSCALED_PERCENTAGE),
-            "beta": cleanNumber(metrics.get("beta"), NumberType.DECIMAL)
-        },
-        "profitability": {
-            "grossMargin": cleanNumber(metrics.get("grossMargin"), NumberType.UNSCALED_PERCENTAGE),
-            "operatingMargin": cleanNumber(metrics.get("operatingMargin"), NumberType.UNSCALED_PERCENTAGE),
-            "netMargin": cleanNumber(metrics.get("netMargin"), NumberType.UNSCALED_PERCENTAGE),
-            "roeTTM": cleanNumber(metrics.get("roeTTM"), NumberType.UNSCALED_PERCENTAGE),
-            "roaTTM": cleanNumber(metrics.get("roaTTM"), NumberType.UNSCALED_PERCENTAGE)
-        },
-        "financialHealth": {
-            "currentRatio": cleanNumber(metrics.get("currentRatio"), NumberType.DECIMAL),
-            "quickRatio": cleanNumber(metrics.get("quickRatio"), NumberType.DECIMAL),
-            "debtToEquity": cleanNumber(metrics.get("debtToEquity"), NumberType.DECIMAL),
-            "eps": cleanNumber(metrics.get("eps"), NumberType.DECIMAL),
-            "ebitda": cleanNumber(metrics.get("ebitda"), NumberType.LARGE_DOLLARS)
-        },
-        "note": "Point-in-time financial metrics sourced via Finnhub, temporally isolated to evaluation date."
-    })
-
-
 def fetchBatchFinnhubMetrics(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, tickers: list):
     if not isinstance(tickers, list) or not tickers:
         return {"error": "tickers must be a non-empty list of ticker symbols."}
 
     results = []
-    cleanTickers = [str(t).strip().upper() for t in tickers[:15]]  # Cap at 15 to avoid context bloat
+    failures = []
+    cleanTickers = [str(t).strip().upper() for t in tickers[:30]]  # Reported limit is 15, but allow up to 30 in case the models exceed it 
+    totalTickers = len(cleanTickers)
 
-    for t in cleanTickers:
+    for i, t in enumerate(cleanTickers):
         m = data.finnhub.getPointInTimeMetrics(t, timestamp)
+        tool.updateProgress((i + 1) / totalTickers * 100)
         if not m:
+            failures.append(t)
             continue
 
         todayRow = data.ohlcv.getSingleDayTickerData(t, timestamp)

@@ -12,6 +12,8 @@ from llm.agents.agent import FinancialAgent
 from boardroom.boardroom_config import PortfolioCreationConfig, BoardroomConfig, BoardroomPace
 from boardroom.boardroom_engine import BoardroomEngine
 from ui.ui_hooks import setCurrentStage, setCurrentAgent, setAgentPhase, emitEvent, SimulationStoppedException
+from collectors.sector_dl_client import GICS_SECTORS
+
 
 
 class PortfolioCreationBoardroomEngine(BoardroomEngine):
@@ -50,7 +52,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
                 toolMap["fetchAllSectorProfiles"],
                 toolMap["fetchAllSectorRankings"],
                 toolMap["fetchSectorPerformance"],
-                toolMap["fetchSectorProfile"],
+                # toolMap["fetchSectorProfile"],
                 toolMap["executePythonCalculation"]
             ],
             ansiColor=ANSI.GREEN,
@@ -64,7 +66,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
                 toolMap["fetchAllSectorProfiles"],
                 toolMap["fetchAllSectorRankings"],
                 toolMap["fetchSectorPerformance"],
-                toolMap["fetchSectorProfile"],
+                # toolMap["fetchSectorProfile"],
                 toolMap["executePythonCalculation"]
             ],
             ansiColor=ANSI.RED,
@@ -89,7 +91,6 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             tools=[
                 toolMap["fetchStocksInSector"],
                 toolMap["fetchBatchFinnhubMetrics"],
-                toolMap["fetchFinnhubCompanyFundamentals"],
                 toolMap["fetchCompanyProfile"],
                 toolMap["fetchStockPricePerformance"],
                 toolMap["fetchCompanyValuationMetrics"],
@@ -106,11 +107,10 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             tools=[
                 toolMap["fetchStocksInSector"],
                 toolMap["fetchBatchFinnhubMetrics"],
-                toolMap["fetchFinnhubCompanyFundamentals"],
                 toolMap["fetchCompanyProfile"],
                 toolMap["fetchStockPricePerformance"],
                 toolMap["fetchCompanyValuationMetrics"],
-                toolMap["fetchBalanceSheet"],
+                toolMap["fetchCompanyRecentNews"],
                 toolMap["fetchCashFlowStatement"],
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
@@ -123,7 +123,6 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             agentRole="Aggressive Risk Analyst",
             tools=[
                 toolMap["fetchBatchFinnhubMetrics"],
-                toolMap["fetchFinnhubCompanyFundamentals"],
                 toolMap["fetchStockPricePerformance"],
                 toolMap["fetchCompanyValuationMetrics"],
                 toolMap["calculateDistFromCurrPrice"],
@@ -137,7 +136,6 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             agentRole="Conservative Risk Analyst",
             tools=[
                 toolMap["fetchBatchFinnhubMetrics"],
-                toolMap["fetchFinnhubCompanyFundamentals"],
                 toolMap["fetchStockPricePerformance"],
                 toolMap["fetchCompanyValuationMetrics"],
                 toolMap["calculateDistFromCurrPrice"],
@@ -204,7 +202,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         promptArgs = config.getPromptArgs()
         startTime = datetime.now()
 
-        print(f"\n{'='*70}\nStarting Fast Portfolio Creation Boardroom (Pace: FAST)\nCapital: {promptArgs['initialCapital']} | Sector Rule: {promptArgs['sectorDiversityRule']}\n{'='*70}")
+        print(f"\n{'='*70}\nStarting Fast Portfolio Creation Boardroom (Pace: FAST)")
 
         # Phase 1: Macro Environment Analysis (Macro Strategist)
         self._newPhaseHeader(1, "Macro Environment Analysis", pace)
@@ -261,21 +259,27 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         self._newPhaseHeader(4, "Stock Scouting", pace)
         growthPrompt = (
             f"Macro Context:\n{macroRaw}\n\n"
-            f"Confirmed Portfolio Sector Allocations:\n{confirmedSectorsText}\n\n"
+            f"Confirmed Portfolio Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
             f"Task: As the Growth Stock Hunter, scout high-conviction growth and momentum equities across the confirmed sectors.\n"
-            f"Portfolio Constraints: Max single stock allocation: {promptArgs['maxStockAllocation']}. Target count: {promptArgs['targetStockCount']}.\n\n"
+            f"Mandatory Constraints:\n"
+            f"- Target stock count across entire portfolio: {promptArgs['targetStockCount']}. Keep candidate selections focused and calibrated to this target.\n"
+            f"- Sector Boundary: Scout candidate equities ONLY within the confirmed sectors above.\n"
+            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
             f"1. Use 'fetchStocksInSector' with style='growth' for each confirmed sector to screen candidate equities.\n"
-            f"2. Use 'fetchBatchFinnhubMetrics' or 'fetchFinnhubCompanyFundamentals' to retrieve fast valuation and margins on your top 2-3 high-conviction picks per sector.\n"
+            f"2. Use 'fetchBatchFinnhubMetrics' or 'fetchCompanyValuationMetrics' to retrieve valuation and margins on your top high-conviction picks.\n"
             f"3. Present your candidate table with tickers, industry, momentum, and growth catalysts."
         )
 
         valuePrompt = (
             f"Macro Context:\n{macroRaw}\n\n"
-            f"Confirmed Portfolio Sector Allocations:\n{confirmedSectorsText}\n\n"
+            f"Confirmed Portfolio Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
             f"Task: As the Value/Defensive Stock Hunter, scout high-conviction defensive, dividend, and value equities across the confirmed sectors.\n"
-            f"Portfolio Constraints: Max single stock allocation: {promptArgs['maxStockAllocation']}. Target count: {promptArgs['targetStockCount']}.\n\n"
-            f"1. Use 'fetchStocksInSector' with style='defensive' or 'value' for each confirmed sector to screen candidate equities.\n"
-            f"2. Use 'fetchBatchFinnhubMetrics' or 'fetchFinnhubCompanyFundamentals' to evaluate valuation, debt-to-equity, and margins on your top 2-3 high-conviction picks per sector.\n"
+            f"Mandatory Constraints:\n"
+            f"- Target stock count across entire portfolio: {promptArgs['targetStockCount']}. Keep candidate selections focused and calibrated to this target.\n"
+            f"- Sector Boundary: Scout candidate equities ONLY within the confirmed sectors above.\n"
+            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
+            f"1. Use 'fetchStocksInSector' with style='defensive' for each confirmed sector to screen candidate equities.\n"
+            f"2. Use 'fetchBatchFinnhubMetrics' or 'fetchCompanyValuationMetrics' to evaluate valuation, debt-to-equity, and margins on your top high-conviction picks.\n"
             f"3. Present your candidate table with tickers, industry, valuation, and margin of safety rationale."
         )
 
@@ -307,11 +311,11 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Value/Defensive Stock Hunter Scouting:\n{valueRaw}\n\n"
             f"Task: As the Impartial Portfolio Manager, make the final executive decision to construct the portfolio for {promptArgs['initialCapital']}.\n"
             f"Mandatory Constraints:\n"
+            f"- Target stock count: {promptArgs['targetStockCount']}. The final portfolio positions array MUST contain this count of stock holdings.\n"
             f"- Respect confirmed sector totals: stock holdings per sector must sum to the sector's allocated percentage.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
-            f"- Target stock count: {promptArgs['targetStockCount']}.\n"
             f"- Total portfolio allocation (stocks + optional cash buffer) must equal 100.0%.\n\n"
-            f"Execute the 'confirmPortfolioAllocation' tool with your exact positions array, portfolioRationale, and cashWeightPct."
+            f"Execute the 'confirmPortfolioAllocation' tool with your positions array (specifying 'ticker', 'weightPct', and optional 'rationale' for each stock; company name, sector, and industry are resolved automatically), portfolioRationale, and cashWeightPct."
         )
 
         pmFinalRaw, pmFinalUISummary = self.executeMandatedToolStage(
@@ -352,7 +356,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         promptArgs = config.getPromptArgs()
         startTime = datetime.now()
 
-        print(f"\n{'='*70}\nStarting Complete Portfolio Creation Boardroom (Pace: COMPLETE)\nCapital: {promptArgs['initialCapital']} | Sector Rule: {promptArgs['sectorDiversityRule']}\n{'='*70}")
+        print(f"\n{'='*70}\nStarting Complete Portfolio Creation Boardroom (Pace: COMPLETE)\n{'='*70}")
 
         # Phase 1: Macro Environment Analysis (Macro Strategist)
         self._newPhaseHeader(1, "Macro Environment Analysis", pace)
@@ -377,7 +381,9 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         bullPrompt = (
             f"Macro Analysis Context:\n{macroRaw}\n\n"
             f"Task: Propose a growth and cyclical sector allocation for this {promptArgs['initialCapital']} portfolio.\n"
-            f"Constraints: Max single sector allocation is {promptArgs['maxSectorAllocation']}. {promptArgs['sectorDiversityRule']}\n"
+            f"Mandatory Constraints:\n"
+            f"- {promptArgs['sectorDiversityRule']}\n"
+            f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n\n"
             f"1. Use 'fetchAllSectorsPerformance', 'fetchAllSectorProfiles', and 'fetchAllSectorRankings' to comprehensively assess all 11 GICS sectors.\n"
             f"2. Present a clear table of percentage allocations across your selected sectors summing to 100.0%.\n"
             f"3. Highlight growth catalysts and upside drivers."
@@ -386,7 +392,9 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         bearPrompt = (
             f"Macro Analysis Context:\n{macroRaw}\n\n"
             f"Task: Propose a defensive, risk-managed sector allocation for this {promptArgs['initialCapital']} portfolio.\n"
-            f"Constraints: Max single sector allocation is {promptArgs['maxSectorAllocation']}. {promptArgs['sectorDiversityRule']}\n"
+            f"Mandatory Constraints:\n"
+            f"- {promptArgs['sectorDiversityRule']}\n"
+            f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n\n"
             f"1. Use 'fetchAllSectorsPerformance', 'fetchAllSectorProfiles', and 'fetchAllSectorRankings' to comprehensively assess all 11 GICS sectors.\n"
             f"2. Present a clear table of percentage allocations across your selected sectors summing to 100.0%.\n"
             f"3. Highlight vulnerabilities, drawdown risks, and defensive hedges."
@@ -448,21 +456,27 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         self._newPhaseHeader(4, "Stock Scouting", pace)
         growthPrompt = (
             f"Macro Context:\n{macroRaw}\n\n"
-            f"Confirmed Portfolio Sector Allocations:\n{confirmedSectorsText}\n\n"
+            f"Confirmed Portfolio Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
             f"Task: As the Growth Stock Hunter, scout high-conviction growth and momentum equities across the confirmed sectors.\n"
-            f"Portfolio Constraints: Max single stock allocation: {promptArgs['maxStockAllocation']}. Target count: {promptArgs['targetStockCount']}.\n\n"
+            f"Mandatory Constraints:\n"
+            f"- Target stock count across entire portfolio: {promptArgs['targetStockCount']}. Keep candidate selections focused and calibrated to this target.\n"
+            f"- Sector Boundary: Scout candidate equities ONLY within the confirmed sectors above.\n"
+            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
             f"1. Use 'fetchStocksInSector' with style='growth' for each confirmed sector to screen candidate equities.\n"
-            f"2. Use 'fetchBatchFinnhubMetrics' or 'fetchFinnhubCompanyFundamentals' to retrieve fast valuation and margins on your top 2-3 high-conviction picks per sector.\n"
+            f"2. Use 'fetchBatchFinnhubMetrics' or 'fetchCompanyValuationMetrics' to retrieve valuation and margins on your top high-conviction picks.\n"
             f"3. Present your candidate table with tickers, industry, momentum, and growth catalysts."
         )
 
         valuePrompt = (
             f"Macro Context:\n{macroRaw}\n\n"
-            f"Confirmed Portfolio Sector Allocations:\n{confirmedSectorsText}\n\n"
+            f"Confirmed Portfolio Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
             f"Task: As the Value/Defensive Stock Hunter, scout high-conviction defensive, dividend, and value equities across the confirmed sectors.\n"
-            f"Portfolio Constraints: Max single stock allocation: {promptArgs['maxStockAllocation']}. Target count: {promptArgs['targetStockCount']}.\n\n"
-            f"1. Use 'fetchStocksInSector' with style='defensive' or 'value' for each confirmed sector to screen candidate equities.\n"
-            f"2. Use 'fetchBatchFinnhubMetrics' or 'fetchFinnhubCompanyFundamentals' to evaluate valuation, debt-to-equity, and margins on your top 2-3 high-conviction picks per sector.\n"
+            f"Mandatory Constraints:\n"
+            f"- Target stock count across entire portfolio: {promptArgs['targetStockCount']}. Keep candidate selections focused and calibrated to this target.\n"
+            f"- Sector Boundary: Scout candidate equities ONLY within the confirmed sectors above.\n"
+            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
+            f"1. Use 'fetchStocksInSector' with style='defensive' for each confirmed sector to screen candidate equities.\n"
+            f"2. Use 'fetchBatchFinnhubMetrics' or 'fetchCompanyValuationMetrics' to evaluate valuation, debt-to-equity, and margins on your top high-conviction picks.\n"
             f"3. Present your candidate table with tickers, industry, valuation, and margin of safety rationale."
         )
 
@@ -486,21 +500,27 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         # Phase 5: Stock Allocation Proposals (Aggressive & Conservative Risk Analysts in parallel)
         self._newPhaseHeader(5, "Stock Allocation Proposals", pace)
         aggProposalPrompt = (
-            f"Confirmed Sector Allocations:\n{confirmedSectorsText}\n\n"
+            f"Confirmed Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
             f"Growth Candidates Scouted:\n{growthRaw}\n\n"
-            f"Value Candidates Scouted:\n{valueRaw}\n\n"
+            f"Defensive Candidates Scouted:\n{valueRaw}\n\n"
             f"Task: Construct your final aggressive individual stock allocation proposal for {promptArgs['initialCapital']}.\n"
-            f"Constraints: Max single stock allocation is {promptArgs['maxStockAllocation']}. Stock holdings per sector must adhere to confirmed sector limits.\n"
+            f"Mandatory Constraints:\n"
+            f"- Target Stock Count: Aim for {promptArgs['targetStockCount']}.\n"
+            f"- Sector Alignment: Every stock holding must belong to one of the confirmed sectors above, and stock weights per sector must sum to confirmed limits.\n"
+            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
             f"Propose a comprehensive portfolio table (% per asset, dollar allocation, and role) overweighting high-beta growth drivers summing to 100.0%."
         )
 
         consProposalPrompt = (
-            f"Confirmed Sector Allocations:\n{confirmedSectorsText}\n\n"
+            f"Confirmed Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
             f"Growth Candidates Scouted:\n{growthRaw}\n\n"
-            f"Value Candidates Scouted:\n{valueRaw}\n\n"
+            f"Defensive Candidates Scouted:\n{valueRaw}\n\n"
             f"Task: Construct your final conservative individual stock allocation proposal for {promptArgs['initialCapital']}.\n"
-            f"Constraints: Max single stock allocation is {promptArgs['maxStockAllocation']}. Stock holdings per sector must adhere to confirmed sector limits.\n"
-            f"Propose a comprehensive portfolio table (% per asset, dollar allocation, and role) emphasizing dividend stability, lower volatility, and margin of safety summing to 100.0%."
+            f"Mandatory Constraints:\n"
+            f"- Target Stock Count: Aim for {promptArgs['targetStockCount']}.\n"
+            f"- Sector Alignment: Every stock holding must belong to one of the confirmed sectors above, and stock weights per sector must sum to confirmed limits.\n"
+            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
+            f"Propose a comprehensive portfolio table (% per asset, dollar allocation, and role) emphasizing lower volatility, and margin of safety summing to 100.0%."
         )
 
         (aggProposalRaw, aggProposalUISummary), (consProposalRaw, consProposalUISummary) = self._runAgentsConcurrently(
@@ -531,11 +551,11 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Conservative Risk Allocation Proposal:\n{consProposalRaw}\n\n"
             f"Task: As the Impartial Portfolio Manager, reconcile the Aggressive and Conservative proposals to make the definitive portfolio construction decision for {promptArgs['initialCapital']}.\n"
             f"Mandatory Constraints:\n"
+            f"- Target stock count: {promptArgs['targetStockCount']}. The final portfolio positions array MUST contain this count of stock holdings.\n"
             f"- Respect confirmed sector totals: stock holdings per sector must sum to the sector's allocated percentage.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
-            f"- Target stock count: {promptArgs['targetStockCount']}.\n"
             f"- Total portfolio allocation (stocks + optional cash buffer) must equal 100.0%.\n\n"
-            f"Execute the 'confirmPortfolioAllocation' tool with your exact positions array, portfolioRationale, and cashWeightPct."
+            f"Execute the 'confirmPortfolioAllocation' tool with your positions array (specifying 'ticker', 'weightPct', and optional 'rationale' for each stock; company name, sector, and industry are resolved automatically), portfolioRationale, and cashWeightPct."
         )
 
         pmFinalRaw, pmFinalUISummary = self.executeMandatedToolStage(
@@ -572,6 +592,229 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             bullSectorRaw=bullSectorRaw,
             bearSectorUISummary=bearSectorUISummary,
             bearSectorRaw=bearSectorRaw,
+            aggProposalUISummary=aggProposalUISummary,
+            aggProposalRaw=aggProposalRaw,
+            consProposalUISummary=consProposalUISummary,
+            consProposalRaw=consProposalRaw,
+            isFast=False
+        )
+
+    def executePresetPortfolioCreation(self, config: PortfolioCreationConfig):
+        pace = config.boardroomPace
+        promptArgs = config.getPromptArgs()
+        startTime = datetime.now()
+
+        print(f"\n{'='*70}\nStarting Pre-set Sector Allocation Portfolio Creation Boardroom (Pace: PRESET)\n{'='*70}")
+
+        # Populate confirmed sector allocation directly from user pre-set inputs
+        presetMap = config.presetSectorAllocations or {}
+        cleanedAllocations = {}
+
+        for ticker, info in GICS_SECTORS.items():
+            rawPct = presetMap.get(ticker, presetMap.get(info.name, 0.0))
+            try:
+                pctVal = round(float(rawPct), 2)
+            except (ValueError, TypeError):
+                pctVal = 0.0
+
+            if pctVal > 0:
+                cleanedAllocations[ticker] = {
+                    "sector": info.name,
+                    "ticker": ticker,
+                    "allocationPct": pctVal
+                }
+
+        totalAllocated = round(sum(item["allocationPct"] for item in cleanedAllocations.values()), 2)
+        self.confirmedSectorAllocation = {
+            "sectorAllocations": cleanedAllocations,
+            "totalAllocatedPct": totalAllocated,
+            "sectorCount": len(cleanedAllocations),
+            "rationale": "Pre-set sector allocation configured by user."
+        }
+
+        emitEvent("sectorAllocationConfirmed", {
+            "stageNum": 3,
+            "confirmedAllocation": self.confirmedSectorAllocation
+        })
+
+        confirmedSectorsText = self._formatSectorsContext()
+        activeSectorsSummary = ", ".join([f"{item['sector']} ({item['allocationPct']}%)" for item in cleanedAllocations.values()])
+
+        # Phase 1: Macro Environment Analysis (Macro Strategist)
+        self._newPhaseHeader(1, "Macro Environment Analysis", pace)
+        macroPrompt = (
+            f"Task: Conduct top-down macroeconomic analysis to contextualize and guide portfolio equity selection.\n"
+            f"Initial Capital: {promptArgs['initialCapital']}\n"
+            f"Time Horizon: {promptArgs['timeHorizon']}\n\n"
+            f"MANDATED PRE-SET SECTOR ALLOCATION (EXECUTIVE DIRECTIVE):\n"
+            f"{confirmedSectorsText}\n\n"
+            f"CRITICAL DIRECTIVE ON SECTOR ALLOCATION:\n"
+            f"The boardroom executive mandate has ALREADY established and locked the portfolio sector allocation to: {activeSectorsSummary}. "
+            f"Do NOT propose an alternative sector allocation, and do NOT advise underweighting or avoiding the mandated sector(s). "
+            f"Instead, analyze current macroeconomic indicators, market regime, inflation, yields, and sector rotation to assess "
+            f"how the broader economic backdrop specifically impacts the mandated sector(s) ({activeSectorsSummary}), and identify what types "
+            f"of equities and factor exposures (e.g. profitable growth, defensive leaders, high free-cash-flow, low leverage) are best positioned "
+            f"to navigate current conditions within the mandated sector(s).\n\n"
+            f"1. Use 'fetchAllSectorRankings', 'fetchMacroContext', and 'fetchMacroNews' to analyze market regime and economic indicators.\n"
+            f"2. Output your economic indicator table, macro narrative, and market regime classification.\n"
+            f"3. Deliver strategic equity selection guidance tailored strictly to the mandated sectors: {activeSectorsSummary}."
+        )
+        macroRaw, macroUISummary = self.macroAnalyst.analyseAndReply(
+            incomingMessage=macroPrompt,
+            toolRegistry=self.toolRegistry,
+            timestamp=self.timestamp,
+            config=config,
+            requireInitialTools=True
+        )
+
+        # Stages 2 and 3 are skipped because the sector allocation is already pre-set
+
+        # Phase 4: Stock Scouting (Growth Hunter & Value Hunter concurrently)
+        self._newPhaseHeader(4, "Stock Scouting", pace)
+        growthPrompt = (
+            f"MANDATED SECTOR ALLOCATIONS (STRICT & BINDING):\n{confirmedSectorsText}\n\n"
+            f"Macro Context:\n{macroRaw}\n\n"
+            f"Task: As the Growth Stock Hunter, scout high-conviction growth and momentum equities STRICTLY within the confirmed sectors above.\n"
+            f"MANDATORY CONSTRAINTS:\n"
+            f"- TARGET STOCK COUNT: The target total stock count across the entire portfolio is {promptArgs['targetStockCount']}. "
+            f"Keep your shortlisted candidate count focused and calibrated so the boardroom does not exceed this count.\n"
+            f"- STRICT SECTOR BOUNDARY: You MUST ONLY scout candidate equities belonging to the confirmed sectors ({activeSectorsSummary}). "
+            f"Do NOT scout or propose equities from any other sectors, regardless of any general macro commentary.\n"
+            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
+            f"1. Use 'fetchStocksInSector' with style='growth' for each confirmed sector to screen candidate equities.\n"
+            f"2. Use 'fetchBatchFinnhubMetrics' or 'fetchCompanyValuationMetrics' to retrieve valuation and margins on your top high-conviction picks.\n"
+            f"3. Present your candidate table with tickers, industry, momentum, and growth catalysts."
+        )
+
+        valuePrompt = (
+            f"MANDATED SECTOR ALLOCATIONS (STRICT & BINDING):\n{confirmedSectorsText}\n\n"
+            f"Macro Context:\n{macroRaw}\n\n"
+            f"Task: As the Value/Defensive Stock Hunter, scout high-conviction defensive and value equities STRICTLY within the confirmed sectors above.\n"
+            f"MANDATORY CONSTRAINTS:\n"
+            f"- TARGET STOCK COUNT: The target total stock count across the entire portfolio is {promptArgs['targetStockCount']}. "
+            f"Keep your shortlisted candidate count focused and calibrated so the boardroom does not exceed this count.\n"
+            f"- STRICT SECTOR BOUNDARY: You MUST ONLY scout candidate equities belonging to the confirmed sectors ({activeSectorsSummary}). "
+            f"Do NOT scout or propose equities from any other sectors, regardless of any general macro commentary.\n"
+            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
+            f"1. Use 'fetchStocksInSector' with style='defensive' for each confirmed sector to screen candidate equities.\n"
+            f"2. Use 'fetchBatchFinnhubMetrics' or 'fetchCompanyValuationMetrics' to evaluate valuation, debt-to-equity, and margins on your top high-conviction picks.\n"
+            f"3. Present your candidate table with tickers, industry, valuation, and margin of safety rationale."
+        )
+
+        (growthRaw, growthUISummary), (valueRaw, valueUISummary) = self._runAgentsConcurrently(
+            lambda: self.growthHunter.analyseAndReply(
+                incomingMessage=growthPrompt,
+                toolRegistry=self.toolRegistry,
+                timestamp=self.timestamp,
+                config=config,
+                requireInitialTools=True
+            ),
+            lambda: self.valueHunter.analyseAndReply(
+                incomingMessage=valuePrompt,
+                toolRegistry=self.toolRegistry,
+                timestamp=self.timestamp,
+                config=config,
+                requireInitialTools=True
+            )
+        )
+
+        # Phase 5: Stock Allocation Proposals (Aggressive & Conservative Risk Analysts in parallel)
+        self._newPhaseHeader(5, "Stock Allocation Proposals", pace)
+        aggProposalPrompt = (
+            f"Confirmed Pre-Set Sector Allocations (MANDATORY & BINDING):\n{confirmedSectorsText}\n\n"
+            f"Growth Candidates Scouted:\n{growthRaw}\n\n"
+            f"Defensive Candidates Scouted:\n{valueRaw}\n\n"
+            f"Task: Construct your final aggressive individual stock allocation proposal for {promptArgs['initialCapital']}.\n"
+            f"MANDATORY CONSTRAINTS:\n"
+            f"- Target Stock Count: Aim for {promptArgs['targetStockCount']}.\n"
+            f"- STRICT SECTOR ALIGNMENT: Every stock holding must belong to one of the confirmed sectors ({activeSectorsSummary}). "
+            f"Stock holdings per sector MUST strictly sum to each confirmed sector's percentage above.\n"
+            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
+            f"Propose a comprehensive portfolio table (% per asset, dollar allocation, and role) overweighting high-beta growth drivers summing to 100.0%."
+        )
+
+        consProposalPrompt = (
+            f"Confirmed Pre-Set Sector Allocations (MANDATORY & BINDING):\n{confirmedSectorsText}\n\n"
+            f"Growth Candidates Scouted:\n{growthRaw}\n\n"
+            f"Defensive Candidates Scouted:\n{valueRaw}\n\n"
+            f"Task: Construct your final conservative individual stock allocation proposal for {promptArgs['initialCapital']}.\n"
+            f"MANDATORY CONSTRAINTS:\n"
+            f"- Target Stock Count: Aim for {promptArgs['targetStockCount']}.\n"
+            f"- STRICT SECTOR ALIGNMENT: Every stock holding must belong to one of the confirmed sectors ({activeSectorsSummary}). "
+            f"Stock holdings per sector MUST strictly sum to each confirmed sector's percentage above.\n"
+            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
+            f"Propose a comprehensive portfolio table (% per asset, dollar allocation, and role) emphasizing lower volatility, and margin of safety summing to 100.0%."
+        )
+
+        (aggProposalRaw, aggProposalUISummary), (consProposalRaw, consProposalUISummary) = self._runAgentsConcurrently(
+            lambda: self.aggRiskAnalyst.analyseAndReply(
+                incomingMessage=aggProposalPrompt,
+                toolRegistry=self.toolRegistry,
+                timestamp=self.timestamp,
+                config=config,
+                requireInitialTools=False
+            ),
+            lambda: self.consRiskAnalyst.analyseAndReply(
+                incomingMessage=consProposalPrompt,
+                toolRegistry=self.toolRegistry,
+                timestamp=self.timestamp,
+                config=config,
+                requireInitialTools=False
+            )
+        )
+
+        # Phase 6: Final Executive Decision (Impartial Portfolio Manager reconciles Risk proposals)
+        self._newPhaseHeader(6, "Final Executive Decision", pace)
+        confirmPortTool = self.toolRegistry.getTool("confirmPortfolioAllocation")
+
+        pmFinalPrompt = (
+            f"Initial Capital: {promptArgs['initialCapital']}\n"
+            f"Confirmed Sector Allocations:\n{confirmedSectorsText}\n\n"
+            f"Aggressive Risk Allocation Proposal:\n{aggProposalRaw}\n\n"
+            f"Conservative Risk Allocation Proposal:\n{consProposalRaw}\n\n"
+            f"Task: As the Impartial Portfolio Manager, reconcile the Aggressive and Conservative proposals to make the definitive portfolio construction decision for {promptArgs['initialCapital']}.\n"
+            f"MANDATORY CONSTRAINTS:\n"
+            f"- Target stock count: {promptArgs['targetStockCount']}. The final portfolio positions array MUST contain this count of stock holdings.\n"
+            f"- Respect confirmed sector totals: stock holdings per sector must sum to the sector's allocated percentage.\n"
+            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
+            f"- Total portfolio allocation (stocks + optional cash buffer) must equal 100.0%.\n\n"
+            f"Execute the 'confirmPortfolioAllocation' tool with your positions array (specifying 'ticker', 'weightPct', and optional 'rationale' for each stock; company name, sector, and industry are resolved automatically), portfolioRationale, and cashWeightPct."
+        )
+
+        pmFinalRaw, pmFinalUISummary = self.executeMandatedToolStage(
+            agent=self.portManager,
+            initialPrompt=pmFinalPrompt,
+            mandatedToolName="confirmPortfolioAllocation",
+            config=config,
+            subrole="decision",
+            maxRetries=8,
+            requireInitialTools=True
+        )
+
+        if confirmPortTool and confirmPortTool.toolLog:
+            self.confirmedPortfolioAllocation = confirmPortTool.toolLog[-1]
+
+        emitEvent("portfolioCreated", {
+            "stageNum": 6,
+            "confirmedPortfolio": self.confirmedPortfolioAllocation
+        })
+
+        self._recordAndSaveSession(
+            pace=pace,
+            startTime=startTime,
+            config=config,
+            macroUISummary=macroUISummary,
+            macroRaw=macroRaw,
+            growthUISummary=growthUISummary,
+            growthRaw=growthRaw,
+            valueUISummary=valueUISummary,
+            valueRaw=valueRaw,
+            pmFinalUISummary=pmFinalUISummary,
+            pmFinalRaw=pmFinalRaw,
+            bullSectorUISummary=None,
+            bullSectorRaw=None,
+            bearSectorUISummary=None,
+            bearSectorRaw=None,
             aggProposalUISummary=aggProposalUISummary,
             aggProposalRaw=aggProposalRaw,
             consProposalUISummary=consProposalUISummary,
@@ -634,6 +877,42 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
                 f"\nConfirmed Portfolio: {self.confirmedPortfolioAllocation}\n"
                 f"Time taken for portfolio creation: {timeStr}\n"
             )
+        elif pace == BoardroomPace.PRESET:
+            presetSectorText = self._formatSectorsContext()
+            shortSummary = (
+                f"\n{ANSI.BOLD}{self.macroAnalyst.color}Macro Strategist Summary:\n{ANSI.RESET}{macroUISummary}\n"
+                f"{separator}"
+                f"\n{ANSI.BOLD}{ANSI.MAGENTA}Pre-set Sector Allocation:\n{ANSI.RESET}{presetSectorText}\n"
+                f"{separator}"
+                f"\n{ANSI.BOLD}{self.growthHunter.color}Growth Stock Hunter Summary:\n{ANSI.RESET}{growthUISummary}\n"
+                f"{separator}"
+                f"\n{ANSI.BOLD}{self.valueHunter.color}Value/Defensive Stock Hunter Summary:\n{ANSI.RESET}{valueUISummary}\n"
+                f"{separator}"
+                f"\n{ANSI.BOLD}{self.aggRiskAnalyst.color}Aggressive Risk Proposal Summary:\n{ANSI.RESET}{aggProposalUISummary}\n"
+                f"{separator}"
+                f"\n{ANSI.BOLD}{self.consRiskAnalyst.color}Conservative Risk Proposal Summary:\n{ANSI.RESET}{consProposalUISummary}\n"
+                f"{separator}"
+                f"\n{ANSI.BOLD}{self.portManager.color}Final Executive Decision:\n{ANSI.RESET}{pmFinalUISummary}\n"
+                f"\nConfirmed Portfolio: {self.confirmedPortfolioAllocation}\n"
+                f"Time taken for portfolio creation: {timeStr}\n"
+            )
+            fullSummary = (
+                f"\n{ANSI.BOLD}{self.macroAnalyst.color}Macro Strategist Analysis:\n{ANSI.RESET}{macroRaw}\n"
+                f"{separator}"
+                f"\n{ANSI.BOLD}{ANSI.MAGENTA}Pre-set Sector Allocation:\n{ANSI.RESET}{presetSectorText}\n"
+                f"{separator}"
+                f"\n{ANSI.BOLD}{self.growthHunter.color}Growth Stock Hunter Scouting:\n{ANSI.RESET}{growthRaw}\n"
+                f"{separator}"
+                f"\n{ANSI.BOLD}{self.valueHunter.color}Value/Defensive Stock Hunter Scouting:\n{ANSI.RESET}{valueRaw}\n"
+                f"{separator}"
+                f"\n{ANSI.BOLD}{self.aggRiskAnalyst.color}Aggressive Allocation Proposal:\n{ANSI.RESET}{aggProposalRaw}\n"
+                f"{separator}"
+                f"\n{ANSI.BOLD}{self.consRiskAnalyst.color}Conservative Allocation Proposal:\n{ANSI.RESET}{consProposalRaw}\n"
+                f"{separator}"
+                f"\n{ANSI.BOLD}{self.portManager.color}Final Executive Decision:\n{ANSI.RESET}{pmFinalRaw}\n"
+                f"\nConfirmed Portfolio: {self.confirmedPortfolioAllocation}\n"
+                f"Time taken for portfolio creation: {timeStr}\n"
+            )
         else:
             shortSummary = (
                 f"\n{ANSI.BOLD}{self.macroAnalyst.color}Macro Strategist Summary:\n{ANSI.RESET}{macroUISummary}\n"
@@ -677,7 +956,12 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         print(shortSummary)
 
         os.makedirs("output", exist_ok=True)
-        filenamePace = "fast" if isFast else "complete"
+        if isFast:
+            filenamePace = "fast"
+        elif pace == BoardroomPace.PRESET:
+            filenamePace = "preset"
+        else:
+            filenamePace = "complete"
         filepath = os.path.join("output", f"portfolio_{filenamePace}_{startTime.strftime('%Y-%m-%d_%H-%M-%S')}.ans")
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(fullSummary)
@@ -696,5 +980,8 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
 
         if config.boardroomPace == BoardroomPace.FAST:
             self.executeFastPortfolioCreation(config)
+        elif config.boardroomPace == BoardroomPace.PRESET:
+            self.executePresetPortfolioCreation(config)
         else:
             self.executeCompletePortfolioCreation(config)
+

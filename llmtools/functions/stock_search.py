@@ -137,7 +137,7 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
     limit = max(4, min(int(limit) if limit else 25, 40))
 
     style = str(style).strip().lower() if style else "all"
-    if style not in ["growth", "value", "defensive", "all"]:
+    if style not in ["value", "defensive", "all"]:
         style = "all"
 
     ticker, resolvedName, note = data.sectors.resolveSector(sector)
@@ -290,8 +290,6 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
                 valueScore = calculateValueScore(drawdown52w, rsi14, mktCapNum, vol1y, latestClose, sma200)
 
                 tags = []
-                if isTrendAligned and growthScore > 1.5:
-                    tags.append("growth")
                 if defensiveScore < 20.0 and isAboveSma200:
                     tags.append("defensive")
                 if valueScore > 1.5:
@@ -348,9 +346,7 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
 
         selectedPool: List[Dict[str, Any]] = []
         for ind, group in industryBuckets.items():
-            if style == "growth":
-                group.sort(key=lambda x: x["_growthScore"], reverse=True)
-            elif style == "value":
+            if style == "value":
                 group.sort(key=lambda x: x["_valueScore"], reverse=True)
             elif style == "defensive":
                 group.sort(key=lambda x: x["_defensiveScore"])
@@ -360,9 +356,7 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
             selectedPool.extend(group[:4])
 
         # 5. Final Sort across the pooled candidates
-        if style == "growth":
-            selectedPool.sort(key=lambda x: x["_growthScore"], reverse=True)
-        elif style == "value":
+        if style == "value":
             selectedPool.sort(key=lambda x: x["_valueScore"], reverse=True)
         elif style == "defensive":
             selectedPool.sort(key=lambda x: x["_defensiveScore"])
