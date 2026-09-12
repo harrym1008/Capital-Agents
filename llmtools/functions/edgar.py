@@ -632,7 +632,11 @@ def fetchFormattedStatementInJson(data: DataProviders, timestamp: pd.Timestamp,
     reportCurrency = extractCurrency(latestFiling, filingXbrl) or "USD"
 
     formattedStatement = formatStatementFromDataframe(df, latestFiling, data, statementName, ticker, reportCurrency)
-    jsonOutput = {"date": timestamp.strftime("%Y-%m-%d"), "statement": formattedStatement}
+    jsonOutput = {
+        "date": timestamp.strftime("%Y-%m-%d"), 
+        "statement": formattedStatement,
+        "url": latestFiling.homepage_url
+    }
 
     data.cache.put(cacheKey, jsonOutput)
     return jsonOutput

@@ -199,7 +199,7 @@ def fetchMacroNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, lim
         maxReferencedTickers=15
     )
 
-    idx = 0
+    idx = 1
     if newsWithContent is not None and not newsWithContent.empty:
         for _, row in newsWithContent.head(limit).iterrows():
             headline = row.get("headline", "").strip()
@@ -228,6 +228,7 @@ def fetchMacroNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, lim
                 url = f"https://www.benzinga.com/news/01/16/{articleId}"
 
             jsonResult.append({
+                "newsCitationNumber": idx,
                 "index": idx,
                 "headline": headline,
                 "content": content,

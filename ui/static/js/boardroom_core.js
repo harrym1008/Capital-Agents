@@ -85,6 +85,141 @@ const BoardroomCore = (function () {
         return content.length > 0 && /^[\s\-:|]+$/.test(content) && content.includes('-');
     }
 
+    function replaceCitationTags(text) {
+        if (!text) return "";
+
+        function makeCitationButton(citeNumStr, subIndexStr) {
+            const citeNum = parseInt(String(citeNumStr).trim(), 10);
+            if (isNaN(citeNum)) return "";
+
+            if (subIndexStr !== undefined && subIndexStr !== null && String(subIndexStr).trim() !== "") {
+                const subIndex = parseInt(String(subIndexStr).trim(), 10);
+                if (!isNaN(subIndex)) {
+                    return `<button type="button" class="citation-ref-btn" onclick="BoardroomCore.showSourceCitation(${citeNum}, ${subIndex})" title="View Source Citation [${citeNum}, ${subIndex}]"><sup>[${citeNum}, ${subIndex}]</sup></button>`;
+                }
+            }
+            return `<button type="button" class="citation-ref-btn" onclick="BoardroomCore.showSourceCitation(${citeNum})" title="View Source Citation [${citeNum}]"><sup>[${citeNum}]</sup></button>`;
+        }
+
+        // 1. Specific schema: <newsCitation>X:Y</newsCitation> or <newsCitation>X, Y</newsCitation>
+        text = text.replace(/<newsCitation(?:\s+id=["']?([0-9,\s:]+)["']?)?>([\s\S]*?)<\/newsCitation>/gi, (match, idAttr, innerContent) => {
+            const content = (innerContent && innerContent.trim()) ? innerContent.trim() : (idAttr || "");
+            const pairMatch = content.match(/^(\d+)\s*[,:]\s*(\d+)$/);
+            if (pairMatch) {
+                return makeCitationButton(pairMatch[1], pairMatch[2]);
+            }
+            const numbers = content.match(/\d+/g);
+            if (numbers && numbers.length >= 2) {
+                return makeCitationButton(numbers[0], numbers[1]);
+            } else if (numbers && numbers.length === 1) {
+                return makeCitationButton(numbers[0]);
+            }
+            return "";
+        });
+        text = text.replace(/<newsCitation\s+id=["']?([0-9,\s:]+)["']?\s*\/>/gi, (match, idStr) => {
+            const pairMatch = idStr.trim().match(/^(\d+)\s*[,:]\s*(\d+)$/);
+            if (pairMatch) {
+                return makeCitationButton(pairMatch[1], pairMatch[2]);
+            }
+            const numbers = idStr.match(/\d+/g);
+            if (numbers && numbers.length >= 2) {
+                return makeCitationButton(numbers[0], numbers[1]);
+            } else if (numbers && numbers.length === 1) {
+                return makeCitationButton(numbers[0]);
+            }
+            return "";
+        });
+
+        // 2. Specific schema: <toolCitation>X</toolCitation>
+        text = text.replace(/<toolCitation(?:\s+id=["']?(\d+)["']?)?>([\s\S]*?)<\/toolCitation>/gi, (match, idAttr, innerContent) => {
+            const content = (innerContent && innerContent.trim()) ? innerContent.trim() : (idAttr || "");
+            const numbers = content.match(/\d+/g);
+            if (!numbers || numbers.length === 0) return "";
+            return numbers.map(n => makeCitationButton(n)).join("");
+        });
+        text = text.replace(/<toolCitation\s+id=["']?(\d+)["']?\s*\/>/gi, (match, id) => {
+            return makeCitationButton(id);
+        });
+
+        // 3. Fallback/legacy: <citation>X</citation> or <citation>X, Y</citation> or <citation>X:Y</citation>
+        text = text.replace(/<citation(?:\s+id=["']?(\d+)["']?)?>([\s\S]*?)<\/citation>/gi, (match, idAttr, innerContent) => {
+            const content = (innerContent && innerContent.trim()) ? innerContent : (idAttr || "");
+            const pairMatch = content.match(/^(\d+)\s*[,:]\s*(\d+)$/);
+            if (pairMatch) {
+                return makeCitationButton(pairMatch[1], pairMatch[2]);
+            }
+            const numbers = content.match(/\d+/g);
+            if (!numbers || numbers.length === 0) return "";
+            return numbers.map(n => makeCitationButton(n)).join("");
+        });
+
+        // 4. Self-closing: <citation id="X" /> or <citation id="X, Y" />
+        text = text.replace(/<citation\s+id=["']?([0-9,\s:]+)["']?\s*\/>/gi, (match, idStr) => {
+            const pairMatch = idStr.trim().match(/^(\d+)\s*[,:]\s*(\d+)$/);
+            if (pairMatch) {
+                return makeCitationButton(pairMatch[1], pairMatch[2]);
+            }
+            const numbers = idStr.match(/\d+/g);
+            if (!numbers || numbers.length === 0) return "";
+            return numbers.map(n => makeCitationButton(n)).join("");
+        });
+
+        // 5. Short variant: <cite>X, Y</cite> or <cite>X</cite>
+        text = text.replace(/<cite(?:\s+id=["']?(\d+)["']?)?>([\s\S]*?)<\/cite>/gi, (match, idAttr, innerContent) => {
+            const content = (innerContent && innerContent.trim()) ? innerContent : (idAttr || "");
+            const pairMatch = content.match(/^(\d+)\s*[,:]\s*(\d+)$/);
+            if (pairMatch) {
+                return makeCitationButton(pairMatch[1], pairMatch[2]);
+            }
+            const numbers = content.match(/\d+/g);
+            if (!numbers || numbers.length === 0) return "";
+            return numbers.map(n => makeCitationButton(n)).join("");
+        });
+        text = text.replace(/<cite\s+id=["']?([0-9,\s:]+)["']?\s*\/>/gi, (match, idStr) => {
+            const pairMatch = idStr.trim().match(/^(\d+)\s*[,:]\s*(\d+)$/);
+            if (pairMatch) {
+                return makeCitationButton(pairMatch[1], pairMatch[2]);
+            }
+            const numbers = idStr.match(/\d+/g);
+            if (!numbers || numbers.length === 0) return "";
+            return numbers.map(n => makeCitationButton(n)).join("");
+        });
+
+        // 6. Bracket variant: [citation: X, Y] or [cite: X, Y] or [citation: X]
+        text = text.replace(/\[(?:citation|cite):\s*([0-9,\s:]+)\]/gi, (match, numbersStr) => {
+            const pairMatch = numbersStr.trim().match(/^(\d+)\s*[,:]\s*(\d+)$/);
+            if (pairMatch) {
+                return makeCitationButton(pairMatch[1], pairMatch[2]);
+            }
+            const numbers = numbersStr.match(/\d+/g);
+            if (!numbers || numbers.length === 0) return "";
+            return numbers.map(n => makeCitationButton(n)).join("");
+        });
+
+        // 7. Streaming in-progress tags at end of string:
+        text = text.replace(/<newsCitation(?:\s+id=["']?([0-9,\s:]+)["']?)?>\s*(\d+)\s*[,:]\s*(\d+)\s*$/i, (match, idAttr, num1, num2) => {
+            return makeCitationButton(num1, num2);
+        });
+        text = text.replace(/<newsCitation(?:\s+id=["']?([0-9,\s:]+)["']?)?>\s*(\d+)\s*$/i, (match, idAttr, num) => {
+            return makeCitationButton(num);
+        });
+        text = text.replace(/<toolCitation(?:\s+id=["']?(\d+)["']?)?>\s*(\d+)\s*$/i, (match, idAttr, num) => {
+            const targetNum = num || idAttr;
+            if (!targetNum) return "";
+            return makeCitationButton(targetNum);
+        });
+        text = text.replace(/<(?:citation|cite)(?:\s+id=["']?(\d+)["']?)?>\s*(\d+)\s*[,:]\s*(\d+)\s*$/i, (match, idAttr, num1, num2) => {
+            return makeCitationButton(num1, num2);
+        });
+        text = text.replace(/<(?:citation|cite)(?:\s+id=["']?(\d+)["']?)?>\s*(\d+)\s*$/i, (match, idAttr, num) => {
+            const targetNum = num || idAttr;
+            if (!targetNum) return "";
+            return makeCitationButton(targetNum);
+        });
+
+        return text;
+    }
+
     function parseMarkdown(text) {
         if (!text) return "";
 
@@ -135,6 +270,9 @@ const BoardroomCore = (function () {
 
         // 6. Parse backslash dollar signs: \$ -> $
         formattedText = formattedText.replace(/\\\$/g, '$');
+
+        // 7. Parse source citations: <citation>X</citation> -> blue underlined superscript button [X]
+        formattedText = replaceCitationTags(formattedText);
 
         return formattedText;
     }
@@ -329,6 +467,10 @@ const BoardroomCore = (function () {
             clearInterval(timerInterval);
             timerInterval = null;
         }
+        const timerEl = document.getElementById("simulationTimer");
+        if (timerEl) {
+            timerEl.style.display = "none";
+        }
     }
 
     function updateSummariesBtnState() {
@@ -369,11 +511,31 @@ const BoardroomCore = (function () {
 
         // Trigger custom stages hook if child template registered one
         emit("stagesBarInit", { mode, stages, bar });
+
+        // Append Sources Tab to the stages bar (always to the right of custom tabs like Q&A)
+        const sourcesTab = document.createElement("div");
+        sourcesTab.className = "stage-item";
+        sourcesTab.id = "stageStep-sources";
+        sourcesTab.innerText = capturedSources.length > 0 ? `Sources (${capturedSources.length})` : "Sources";
+        sourcesTab.onclick = () => {
+            showStageWorkspace("sources");
+        };
+        bar.appendChild(sourcesTab);
+
+        // Pre-build the Sources workspace if not already present
+        ensureSourcesWorkspace();
     }
 
     function showStageWorkspace(stageNum) {
         const allWorkspaces = document.querySelectorAll(".stage-workspace");
         allWorkspaces.forEach(ws => ws.style.display = "none");
+
+        if (stageNum === "sources") {
+            ensureSourcesWorkspace();
+            document.querySelectorAll(".sources-table tr.source-highlight").forEach(r => {
+                r.classList.remove("source-highlight");
+            });
+        }
 
         const targetWorkspace = document.getElementById(`stageWorkspace-${stageNum}`);
         if (targetWorkspace) {
@@ -390,6 +552,264 @@ const BoardroomCore = (function () {
 
         emit("stageViewChanged", { stageNum });
     }
+
+    // Sources Manager UI State & Functions
+    let capturedSources = [];
+
+    function escapeHtml(str) {
+        if (!str) return "";
+        return String(str)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function ensureSourcesWorkspace() {
+        const panesContainer = document.getElementById("panesContainer");
+        if (!panesContainer) return;
+        let ws = document.getElementById("stageWorkspace-sources");
+        if (!ws) {
+            ws = document.createElement("div");
+            ws.className = "stage-workspace";
+            ws.id = "stageWorkspace-sources";
+            ws.style.display = "none";
+            ws.style.flex = "1";
+            ws.style.minHeight = "0";
+            ws.style.height = "100%";
+            ws.style.width = "100%";
+            ws.style.flexDirection = "column";
+
+            ws.innerHTML = `
+                <div class="sources-workspace-container">
+                    <div class="sources-header-bar">
+                        <h3 class="sources-header-title" id="sourcesHeaderTitle">Sources (0 used)</h3>
+                    </div>
+                    <div class="sources-table-container">
+                        <table class="sources-table" id="sourcesTable">
+                            <thead>
+                                <tr>
+                                    <th style="width: 80px; text-align: center;">Citation</th>
+                                    <th style="width: 220px;">Tool</th>
+                                    <th>Arguments</th>
+                                    <th style="width: 100px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="sourcesTableBody">
+                                <tr>
+                                    <td colspan="4">
+                                        <div class="sources-empty-state">No sources yet</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            panesContainer.appendChild(ws);
+        }
+    }
+
+    function resetSourcesUI() {
+        capturedSources = [];
+        const title = document.getElementById("sourcesHeaderTitle");
+        if (title) title.innerText = "Sources (0 used)";
+        const tbody = document.getElementById("sourcesTableBody");
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="4">
+                        <div class="sources-empty-state">No sources yet</div>
+                    </td>
+                </tr>
+            `;
+        }
+        const sourcesTab = document.getElementById("stageStep-sources");
+        if (sourcesTab) {
+            sourcesTab.innerText = "Sources";
+        }
+        closeSourceModal();
+    }
+
+    function addSourceRecord(source) {
+        if (!source || !source.citationNumber) return;
+        ensureSourcesWorkspace();
+
+        const existingIdx = capturedSources.findIndex(s => s.citationNumber === source.citationNumber);
+        if (existingIdx >= 0) {
+            capturedSources[existingIdx] = source;
+        } else {
+            capturedSources.push(source);
+        }
+
+        const title = document.getElementById("sourcesHeaderTitle");
+        if (title) {
+            title.innerText = `Sources (${capturedSources.length} used)`;
+        }
+        const sourcesTab = document.getElementById("stageStep-sources");
+        if (sourcesTab) {
+            sourcesTab.innerText = `Sources (${capturedSources.length})`;
+        }
+
+        renderSourcesTable();
+    }
+
+    function renderSourcesTable() {
+        const tbody = document.getElementById("sourcesTableBody");
+        if (!tbody) return;
+
+        if (capturedSources.length === 0) {
+            resetSourcesUI();
+            return;
+        }
+
+        tbody.innerHTML = capturedSources.map(s => {
+            const argsStr = s.args && Object.keys(s.args).length > 0
+                ? Object.entries(s.args).map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`).join(", ")
+                : "None";
+
+            return `
+                <tr id="source-row-${s.citationNumber}" data-citation="${s.citationNumber}">
+                    <td style="text-align: center;">
+                        <span class="source-citation-text">[${s.citationNumber}]</span>
+                    </td>
+                    <td>
+                        <span class="source-tool-name">${s.toolName || ""}</span>
+                    </td>
+                    <td>
+                        <div class="source-args-text" title="${escapeHtml(argsStr)}">${escapeHtml(argsStr)}</div>
+                    </td>
+                    <td style="text-align: right;">
+                        <button class="source-view-btn" onclick="BoardroomCore.openSourceModal(${s.citationNumber})">View JSON</button>
+                    </td>
+                </tr>
+            `;
+        }).join("");
+    }
+
+    function openSourceModal(citationNumber) {
+        const source = capturedSources.find(s => s.citationNumber === citationNumber);
+        if (!source) return;
+
+        let modalOverlay = document.getElementById("sourceModalOverlay");
+        if (!modalOverlay) {
+            modalOverlay = document.createElement("div");
+            modalOverlay.id = "sourceModalOverlay";
+            modalOverlay.className = "source-modal-overlay";
+            modalOverlay.onclick = (e) => {
+                if (e.target === modalOverlay) closeSourceModal();
+            };
+            document.body.appendChild(modalOverlay);
+        }
+
+        const formattedArgs = JSON.stringify(source.args || {}, null, 2).replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n");
+        let formattedResult = typeof source.result === "string"
+            ? source.result
+            : JSON.stringify(source.result || {}, null, 2);
+        formattedResult = formattedResult.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n");
+
+        modalOverlay.innerHTML = `
+            <div class="source-modal-window" onclick="event.stopPropagation()">
+                <div class="source-modal-header">
+                    <div class="source-modal-title">
+                        <span>[${source.citationNumber}]</span>
+                        <span>${source.toolName || "Tool Call Result"}</span>
+                    </div>
+                    <button type="button" class="modal-close-btn" onclick="BoardroomCore.closeSourceModal()" title="Close">&times;</button>
+                </div>
+                <div class="source-modal-body">
+                    <div>
+                        <div style="font-weight: 700; font-size: 12px; color: #475569; margin-bottom: 4px;">Arguments:</div>
+                        <pre style="margin: 0; background-color: #f8fafc; border: 1px solid #e2e8f0; color: #0f172a; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 12px; max-height: 120px; overflow-y: auto;">${escapeHtml(formattedArgs)}</pre>
+                    </div>
+                    <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                        <div style="font-weight: 700; font-size: 12px; color: #475569; margin-bottom: 4px;">Tool Output Result:</div>
+                        <pre class="source-modal-pre" style="flex: 1; min-height: 200px;">${escapeHtml(formattedResult)}</pre>
+                    </div>
+                </div>
+                <div class="source-modal-footer">
+                    <button class="run-btn" onclick="BoardroomCore.closeSourceModal()">Close</button>
+                </div>
+            </div>
+        `;
+        modalOverlay.style.display = "flex";
+    }
+
+    function closeSourceModal() {
+        const modalOverlay = document.getElementById("sourceModalOverlay");
+        if (modalOverlay) {
+            modalOverlay.style.display = "none";
+        }
+    }
+
+    function getNewsArticle(source, subIndex) {
+        if (!source || !source.result) return null;
+        const res = source.result;
+        const news = Array.isArray(res.news) ? res.news : (Array.isArray(res) ? res : null);
+        if (!news || news.length === 0) return null;
+
+        // 1. Direct match by newsCitationNumber
+        let article = news.find(a => a && a.newsCitationNumber === subIndex);
+        if (article && article.url) return article;
+
+        // 2. Direct match by index property
+        article = news.find(a => a && a.index === subIndex);
+        if (article && article.url) return article;
+
+        // 3. If subIndex is 0, definitely the first article
+        if (subIndex === 0) {
+            return news[0];
+        }
+
+        // 4. 1-based indexing resolving to array position news[subIndex - 1]
+        if (subIndex > 0 && news[subIndex - 1] && news[subIndex - 1].url) {
+            return news[subIndex - 1];
+        }
+
+        // 5. 0-based array index news[subIndex]
+        if (news[subIndex] && news[subIndex].url) return news[subIndex];
+
+        return null;
+    }
+
+    function showSourceCitation(citationNumber, subIndex) {
+        showStageWorkspace("sources");
+        setTimeout(() => {
+            // Remove any existing highlights from all rows
+            document.querySelectorAll(".sources-table tr.source-highlight").forEach(r => {
+                r.classList.remove("source-highlight");
+            });
+
+            const row = document.getElementById(`source-row-${citationNumber}`);
+            if (row) {
+                row.scrollIntoView({ behavior: "smooth", block: "center" });
+                row.classList.remove("source-highlight");
+                void row.offsetWidth;
+                row.classList.add("source-highlight");
+
+                row.addEventListener("animationend", () => {
+                    row.classList.remove("source-highlight");
+                }, { once: true });
+            }
+
+            // If subIndex is specified, check if it references a news article with a URL
+            if (subIndex !== undefined && subIndex !== null) {
+                const source = capturedSources.find(s => s.citationNumber === citationNumber);
+                const article = getNewsArticle(source, subIndex);
+                if (article && article.url) {
+                    const headline = article.headline || "News Article";
+                    setTimeout(() => {
+                        const proceed = window.confirm(`Do you want to open this article's page in a new tab?  It is called: '${headline}'`);
+                        if (proceed) {
+                            window.open(article.url, "_blank", "noopener,noreferrer");
+                        }
+                    }, 120);
+                }
+            }
+        }, 50);
+    }
+
 
     function setupStageLayout(stageNum, stageName, agents) {
         if (stageNum === 0) {
@@ -1210,6 +1630,7 @@ const BoardroomCore = (function () {
         currentStageNumber = 0;
         highestStageNumber = 0;
         updateSummariesBtnState();
+        resetSourcesUI();
 
         const sidebarContent = document.getElementById("sidebarContent");
         if (sidebarContent) sidebarContent.innerHTML = "";
@@ -1346,6 +1767,18 @@ const BoardroomCore = (function () {
                 if (agentRole) {
                     appendRateLimitToAgentFeed(activeStage, agentRole, payload);
                 }
+                break;
+
+            case "newSource":
+                if (payload.source) {
+                    addSourceRecord(payload.source);
+                }
+                emit("newSource", payload);
+                break;
+
+            case "resetSources":
+                resetSourcesUI();
+                emit("resetSources", payload);
                 break;
 
             case "qaComplete":
@@ -1561,7 +1994,13 @@ const BoardroomCore = (function () {
         parseMarkdown,
         formatOrdinalDate,
         registerRole,
-        runTestDemo
+        runTestDemo,
+        openSourceModal,
+        closeSourceModal,
+        showSourceCitation,
+        ensureSourcesWorkspace,
+        resetSourcesUI,
+        getSources: () => capturedSources
     };
 })();
 
@@ -1578,6 +2017,10 @@ window.toggleSidebar = BoardroomCore.toggleSidebar;
 window.startSimulation = BoardroomCore.startSimulation;
 window.stopSimulation = BoardroomCore.stopSimulation;
 window.showStageWorkspace = BoardroomCore.showStageWorkspace;
+window.openSourceModal = BoardroomCore.openSourceModal;
+window.closeSourceModal = BoardroomCore.closeSourceModal;
+window.showSourceCitation = BoardroomCore.showSourceCitation;
 window.runTestDemo = BoardroomCore.runTestDemo;
 window.testDemo = BoardroomCore.runTestDemo;
 window.testMacroStage = BoardroomCore.runTestDemo;
+

@@ -213,6 +213,18 @@ def registerApiRoutes(app):
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+    @app.route("/api/boardroom/sources")
+    def apiBoardroomSources():
+        try:
+            from boardroom.boardroom_mgr import boardroomManager
+            toolReg = boardroomManager.getToolRegistry()
+            if hasattr(toolReg, "sourcesManager") and toolReg.sourcesManager:
+                return jsonify({"ok": True, "sources": toolReg.sourcesManager.getSources()})
+            return jsonify({"ok": True, "sources": []})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e), "sources": []}), 500
+
+
 
 wsActionHandlers = {}
 

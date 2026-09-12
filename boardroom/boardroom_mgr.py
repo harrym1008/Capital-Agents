@@ -76,6 +76,8 @@ class BoardroomManager:
             ticker = None
 
         toolRegistry = self.getToolRegistry()
+        toolRegistry.sourcesManager.reset()
+        
         llmClient = self.getClient()
         if not llmClient:
             raise RuntimeError("No active LLM server found. Please start a server from the manager setup page.")

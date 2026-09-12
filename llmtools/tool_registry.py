@@ -9,6 +9,7 @@ from threading import RLock
 from typing import Any, Dict, List, Callable, Optional, Union
 import pandas as pd
 from ui.ui_hooks import emitEvent, setCurrentCallId, getCurrentCallId
+from llmtools.sources_manager import SourcesManager
 
 
 class DataProviders:
@@ -31,11 +32,13 @@ class DataProviders:
 
 
 class Tool:
-    def __init__(self, toolFunction: Callable, toolName: str, toolDescription: str, parameterSchema: Dict[str, Any]):
+    def __init__(self, toolFunction: Callable, toolName: str, toolDescription: str, parameterSchema: Dict[str, Any], storeIntoSources: bool = False):
         self.function = toolFunction
         self.name = toolName
         self.description = toolDescription
         self.paramSchema = parameterSchema
+        self.storeIntoSources = storeIntoSources
+        self.registry: Optional['ToolRegistry'] = None
         self.toolLog = []
         self.progressLock = RLock()
         self.lastProgressVal: Dict[str, Any] = {}
@@ -97,7 +100,7 @@ class Tool:
             }
         }
     
-    def executeTool(self, data: DataProviders, timestamp: pd.Timestamp, args: Dict[str, Any], callId: Optional[str] = None):
+    def executeTool(self, data: DataProviders, timestamp: pd.Timestamp, args: Dict[str, Any], callId: Optional[str] = None, sourcesManager: Optional[SourcesManager] = None, skipSources: bool = False):
         if callId:
             setCurrentCallId(callId)
         try:
@@ -107,7 +110,28 @@ class Tool:
             elif isinstance(toolOutput, str):
                 return {"error": toolOutput}        # Assume sole string return values are error messages            
             elif not isinstance(toolOutput, dict):
-                return {"result": toolOutput}
+                toolOutput = {"result": toolOutput}
+
+            isError = isinstance(toolOutput, dict) and "error" in toolOutput
+
+            if not skipSources and self.storeIntoSources and not isError:
+                effectiveSourcesManager = sourcesManager
+                if effectiveSourcesManager is None and getattr(self, "registry", None) is not None:
+                    effectiveSourcesManager = self.registry.sourcesManager
+
+                if effectiveSourcesManager is not None:
+                    citationNumber = effectiveSourcesManager.addSource(self.name, args, toolOutput)
+                    if citationNumber is not None:
+                        if isinstance(toolOutput, dict):
+                            reordered = {
+                                "toolCitationNumber": citationNumber,
+                                "citationNumber": citationNumber
+                            }
+                            reordered.update(toolOutput)
+                            toolOutput = reordered
+                        else:
+                            toolOutput["toolCitationNumber"] = citationNumber
+                            toolOutput["citationNumber"] = citationNumber
             
             return toolOutput
         
@@ -129,8 +153,10 @@ class ToolRegistry:
     def __init__(self):
         self.dataProviders = DataProviders()
         self.tools: Dict[str, Tool] = {}
+        self.sourcesManager = SourcesManager()
 
     def registerTool(self, tool: Tool):
+        tool.registry = self
         self.tools[tool.name] = tool
 
     def registerTools(self, tools: List[Tool]):
@@ -143,9 +169,10 @@ class ToolRegistry:
     def getToolMap(self):
         return self.tools
 
-    def executeTool(self, toolName: str, timestamp: pd.Timestamp, arguments: Dict[str, Any] = {}, callId: Optional[str] = None):
+    def executeTool(self, toolName: str, timestamp: pd.Timestamp, arguments: Dict[str, Any] = {}, callId: Optional[str] = None, skipSources: bool = False):
         tool = self.getTool(toolName)
         if tool:
-            return tool.executeTool(self.dataProviders, timestamp, arguments, callId=callId)
+            effectiveSourcesManager = None if skipSources else self.sourcesManager
+            return tool.executeTool(self.dataProviders, timestamp, arguments, callId=callId, sourcesManager=effectiveSourcesManager, skipSources=skipSources)
         else:
             raise ValueError(f"Tool '{toolName}' not found in registry.")

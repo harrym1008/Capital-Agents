@@ -157,11 +157,20 @@ def handleQaDeleteTurn(data, websocket, eventLoop):
     return {"ok": False, "error": "turnIndex is required"}
 
 
+def handleGetSources(data, websocket, eventLoop):
+    toolReg = boardroomManager.getToolRegistry()
+    if hasattr(toolReg, "sourcesManager") and toolReg.sourcesManager:
+        return {"ok": True, "sources": toolReg.sourcesManager.getSources()}
+    return {"ok": True, "sources": []}
+
+
 registerWsAction("start", handleBoardroomStart)
 registerWsAction("stop", handleBoardroomStop)
 registerWsAction("status", handleBoardroomStatus)
 registerWsAction("qa_query", handleQaQuery)
 registerWsAction("qa_delete_turn", handleQaDeleteTurn)
+registerWsAction("get_sources", handleGetSources)
+
 
 
 async def websocketHandler(websocket):

@@ -45,7 +45,8 @@ def precacheMacroToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Timestamp):
                 toolRegistry.executeTool,
                 toolCall.toolName,
                 toolCall.timestamp,
-                toolCall.args
+                toolCall.args,
+                skipSources=True
             ): toolCall
             for toolCall in toolCalls
         }
@@ -78,7 +79,7 @@ def precacheTickerSpecificToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Ti
         CachedToolCall("fetchCompanyValuationMetrics", timestamp, {"ticker": ticker}),
         CachedToolCall("fetchIncomeStatement", timestamp, {"ticker": ticker, "periodType": "annual"}),
         CachedToolCall("fetchBalanceSheet", timestamp, {"ticker": ticker, "periodType": "quarterly"}),
-        CachedToolCall("fetchCashFlowStatement", timestamp, {"ticker": ticker, "periodType": "annual"}),
+        # CachedToolCall("fetchCashFlowStatement", timestamp, {"ticker": ticker, "periodType": "annual"}),
         # CachedToolCall("fetchLatest10QSentiment", timestamp, {"ticker": ticker}),
     ]
 
@@ -88,7 +89,8 @@ def precacheTickerSpecificToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Ti
                 toolRegistry.executeTool,
                 toolCall.toolName,
                 toolCall.timestamp,
-                toolCall.args
+                toolCall.args,
+                skipSources=True
             ): toolCall
             for toolCall in toolCalls
         }

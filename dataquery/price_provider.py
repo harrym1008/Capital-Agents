@@ -53,9 +53,9 @@ class DailyPriceProvider:
 
             dateCol = dfOnline["date"]
             if dateCol.dt.tz is None:
-                dateCol = dateCol.dt.tz_localize("UTC")
+                dateCol = dateCol.dt.tz_localize(UTC)
             else:
-                dateCol = dateCol.dt.tz_convert("UTC")
+                dateCol = dateCol.dt.tz_convert(UTC)
 
             dfOnline["date"] = dateCol
 
@@ -77,9 +77,9 @@ class DailyPriceProvider:
                     sdf.columns = ["date", "outstandingShares"]
                     sDate = pd.to_datetime(sdf["date"])
                     if sDate.dt.tz is None:
-                        sDate = sDate.dt.tz_localize("UTC")
+                        sDate = sDate.dt.tz_localize(UTC)
                     else:
-                        sDate = sDate.dt.tz_convert("UTC")
+                        sDate = sDate.dt.tz_convert(UTC)
                     sdf["date"] = sDate
                     dfOnline = pd.merge_asof(
                         dfOnline.sort_values("date"),
@@ -120,7 +120,7 @@ class DailyPriceProvider:
             dfOnline["marketCap"] = dfOnline["marketCapNumber"].map(formatMarketCap)
             dfOnline.drop(columns=["marketCapNumber"], inplace=True)
 
-            dateNy = dateCol.dt.tz_convert(NEW_YORK).dt.normalize()
+            dateNy = dfOnline["date"].dt.tz_convert(NEW_YORK).dt.normalize()
             dfOnline = dfOnline.assign(dateNy=dateNy).set_index("dateNy").sort_index()
 
             cols = ["date", "open", "high", "low", "close", "volume", "vwap", "splitFactor", "corpActionToday", "outstandingShares", "marketCap"]
@@ -252,6 +252,8 @@ class DailyPriceProvider:
                 df = pd.concat(parts).sort_index()
                 df = df[~df.index.duplicated(keep="last")]
                 df = df.loc[startNy:endNy].reset_index(drop=True)
+                if "date" in df.columns:
+                    df["date"] = pd.to_datetime(df["date"], utc=True).dt.tz_convert(UTC)
                 self.cache.put(key, df)
 
             return self.adjustPriceDataSplits(df, ticker, referenceDate=referenceDate)

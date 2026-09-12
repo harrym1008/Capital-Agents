@@ -158,7 +158,7 @@ class SectorDataProvider:
 
     def ensureCoverage(self, ticker: str, targetDate: pd.Timestamp):
         targetNorm = self.normaliseTimestamp(targetDate)
-        now = time.time()
+        currentTime = time.time()
         cooldownSeconds = 1800  # 30 min cooldown per ticker
 
         df = self.loadSector(ticker)
@@ -173,18 +173,18 @@ class SectorDataProvider:
                 needsDownload = True
                 dlStart = maxDate + pd.Timedelta(days=1)
 
-        now = pd.Timestamp.now(tz="UTC")
         if needsDownload:
             with self.downloadLock:
-                lastAttempt = self.lastAttemptTime.get(ticker, 0)
-                if now - lastAttempt > cooldownSeconds:
-                    self.lastAttemptTime[ticker] = now
+                lastAttempt = self.lastAttemptTime.get(ticker, 0.0)
+                if (currentTime - lastAttempt) > cooldownSeconds:
+                    self.lastAttemptTime[ticker] = currentTime
                     newDf = self.downloadNonLocalSector(ticker, dlStart, targetNorm)
                     if not newDf.empty:
                         combinedDf = pd.concat([df, newDf], ignore_index=True)
                         combinedDf = combinedDf.drop_duplicates(subset=["date"]).sort_values("date").reset_index(drop=True)
                         
-                        key = f"sector|full_{ticker}_{now.strftime('%Y-%m-%dH%H')}"
+                        nowTs = pd.Timestamp.now(tz="UTC")
+                        key = f"sector|full_{ticker}_{nowTs.strftime('%Y-%m-%dH%H')}"
                         self.cache.put(key, combinedDf)
 
 

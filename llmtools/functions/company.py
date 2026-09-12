@@ -135,7 +135,7 @@ def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timest
 
     newsWithContent = data.news.getRecentNewsForTicker(ticker, before=timestamp, limit=limit, mustHaveContent=True)
 
-    idx = 0
+    idx = 1
     if newsWithContent is not None and not newsWithContent.empty:
         for _, row in newsWithContent.head(limit).iterrows():
             headline = row.get("headline", "").strip()
@@ -164,6 +164,7 @@ def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timest
                 url = f"https://www.benzinga.com/news/01/16/{articleId}"
 
             jsonResult.append({
+                "newsCitationNumber": idx,
                 "index": idx,
                 "headline": headline,
                 "content": content,
@@ -218,11 +219,11 @@ def calculateSharpeRatio(priceData: pd.DataFrame, treasuryData: pd.DataFrame):
     priceDf = priceData.copy()
     treasuryDf = treasuryData.copy()
 
-    if priceDf["date"].dt.tz is not None:
-        priceDf["date"] = priceDf["date"].dt.tz_localize(None)
+    priceDate = pd.to_datetime(priceDf["date"], utc=True)
+    treasuryDate = pd.to_datetime(treasuryDf["date"], utc=True)
 
-    if treasuryDf["date"].dt.tz is not None:
-        treasuryDf["date"] = treasuryDf["date"].dt.tz_localize(None)
+    priceDf["date"] = priceDate.dt.tz_localize(None).dt.normalize()
+    treasuryDf["date"] = treasuryDate.dt.tz_localize(None).dt.normalize()
 
     treasuryDf = treasuryDf.rename(columns={"value": "treasuryRate"})
     mergedData = pd.merge(priceDf, treasuryDf, on="date", how="inner")
@@ -287,6 +288,12 @@ def fetchStockPricePerformance(tool: Tool, data: DataProviders, timestamp: pd.Ti
     priceData = data.ohlcv.getPeriodDailyTickerData(ticker, startDate=startDate, endDate=timestamp)
     if priceData.empty:
         return f"No price data available for ticker {ticker} before {timestamp.strftime('%Y-%m-%d')}"
+
+    if "date" in priceData.columns:
+        if timestamp.tzinfo is not None:
+            priceData["date"] = pd.to_datetime(priceData["date"], utc=True).dt.tz_convert(timestamp.tz)
+        else:
+            priceData["date"] = pd.to_datetime(priceData["date"], utc=True).dt.tz_localize(None)
 
     if "splitFactor" in priceData.columns and not priceData["splitFactor"].empty:
         finalSplitFactor = priceData["splitFactor"].iloc[-1]

@@ -381,14 +381,16 @@ def buildToolRegistry(initMacroThread=False):
         toolFunction=fetchMacroContext,
         toolName="fetchMacroContext",
         toolDescription="Fetches most recent values/prices for market indices, commodities, forex and other economic indicators from the Federal Reserve Economic Data database.",
-        parameterSchema=SCHEMAS["empty"]
+        parameterSchema=SCHEMAS["empty"],
+        storeIntoSources=True
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=fetchMacroNews,
         toolName="fetchMacroNews",
         toolDescription="Fetches the latest geopolitical and macroeconomic headlines and stories via Benzinga.",
-        parameterSchema=SCHEMAS["macroNews"]
+        parameterSchema=SCHEMAS["macroNews"],
+        storeIntoSources=True
     ))
 
 
@@ -397,35 +399,40 @@ def buildToolRegistry(initMacroThread=False):
         toolFunction=fetchSectorPerformance,
         toolName="fetchSectorPerformance",
         toolDescription="Fetches trailing performance metrics (1d, 5d, 1mo, 3mo, 6mo, 12mo), technical indicators (RSI, 50/200 SMA), 52-week range, volatility, and relative alpha vs S&P 500 for a specific GICS sector or sector ETF.",
-        parameterSchema=SCHEMAS["sectorQuery"]
+        parameterSchema=SCHEMAS["sectorQuery"],
+        storeIntoSources=True
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=fetchAllSectorRankings,
         toolName="fetchAllSectorRankings",
         toolDescription="Fetches a ranked leaderboard of all 11 GICS sector ETFs by trailing performance over a specified lookback (5d, 1mo, 3mo, 6mo, 12mo) to evaluate sector rotation and leadership.",
-        parameterSchema=SCHEMAS["sectorRanking"]
+        parameterSchema=SCHEMAS["sectorRanking"],
+        storeIntoSources=True
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=fetchSectorProfile,
         toolName="fetchSectorProfile",
         toolDescription="Fetches the descriptive profile and industry categorization for a given GICS sector or sector ETF.",
-        parameterSchema=SCHEMAS["sectorQuery"]
+        parameterSchema=SCHEMAS["sectorQuery"],
+        storeIntoSources=True
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=confirmSectorAllocation,
         toolName="confirmSectorAllocation",
         toolDescription="Confirms and records the executive sector allocation decisions (%-wise) for the portfolio.",
-        parameterSchema=SCHEMAS["confirmSectorAllocation"]
+        parameterSchema=SCHEMAS["confirmSectorAllocation"],
+        storeIntoSources=False
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=fetchStocksInSector,
         toolName="fetchStocksInSector",
         toolDescription="Screens and returns curated equity candidates (10-15 stocks) within a specified GICS sector or sector ETF, with key performance metrics, market cap, and style indicators (growth, value, defensive, all).",
-        parameterSchema=SCHEMAS["fetchStocksInSector"]
+        parameterSchema=SCHEMAS["fetchStocksInSector"],
+        storeIntoSources=True
     ))
 
 
@@ -434,42 +441,48 @@ def buildToolRegistry(initMacroThread=False):
         toolFunction=fetchCompanyProfile,
         toolName="fetchCompanyProfile",
         toolDescription="Fetches the company profile for a given stock ticker, detailing their name, industry and an *outdated* company summary.",
-        parameterSchema=SCHEMAS["justTicker"]
+        parameterSchema=SCHEMAS["justTicker"],
+        storeIntoSources=True
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=fetchCompanyRecentNews,
         toolName="fetchCompanyRecentNews",
         toolDescription="Fetches the latest Benzinga news articles for a given stock ticker.",
-        parameterSchema=SCHEMAS["tickerNews"]
+        parameterSchema=SCHEMAS["tickerNews"],
+        storeIntoSources=True
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=fetchStockPricePerformance,
         toolName="fetchStockPricePerformance",
         toolDescription="Fetches stock price history for a company, and calculates various metrics including volatility, Sharpe ratio, RSI and others.",
-        parameterSchema=SCHEMAS["justTicker"]
+        parameterSchema=SCHEMAS["justTicker"],
+        storeIntoSources=True
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=calculateDistFromCurrPrice,
         toolName="calculateDistFromCurrPrice",
         toolDescription="Calculates the percentage distance of a target price from the current stock price.",
-        parameterSchema=SCHEMAS["stockPriceChange"]
+        parameterSchema=SCHEMAS["stockPriceChange"],
+        storeIntoSources=False
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=fetchFinnhubCompanyFundamentals,
         toolName="fetchFinnhubCompanyFundamentals",
         toolDescription="Fast point-in-time financial metrics for an individual stock (P/E, P/B, margins, ROE, debt-to-equity, EPS, EBITDA) via Finnhub with local caching. Ideal for stock scouting without EDGAR filing overhead.",
-        parameterSchema=SCHEMAS["justTicker"]
+        parameterSchema=SCHEMAS["justTicker"],
+        storeIntoSources=True
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=fetchBatchFinnhubMetrics,
         toolName="fetchBatchFinnhubMetrics",
         toolDescription="Fast point-in-time valuation and profitability metrics for multiple candidate stocks in a single call (up to 15 tickers). Returns P/E, P/B, margins, ROE, and leverage for quick cross-stock comparison.",
-        parameterSchema=SCHEMAS["batchTickers"]
+        parameterSchema=SCHEMAS["batchTickers"],
+        storeIntoSources=True
     ))
 
 
@@ -478,42 +491,48 @@ def buildToolRegistry(initMacroThread=False):
         toolFunction=fetchCompanyValuationMetrics,
         toolName="fetchCompanyValuationMetrics",
         toolDescription="Fetches market value, price ratios, margins and more financial metrics for a given ticker.",
-        parameterSchema=SCHEMAS["justTicker"]
+        parameterSchema=SCHEMAS["justTicker"],
+        storeIntoSources=True
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=fetchIncomeStatement,
         toolName="fetchIncomeStatement",
         toolDescription="Fetches the most recent income statement (annual or quarterly) for a given stock ticker.",
-        parameterSchema=SCHEMAS["finStatement"]
+        parameterSchema=SCHEMAS["finStatement"],
+        storeIntoSources=True
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=fetchBalanceSheet,
         toolName="fetchBalanceSheet",
         toolDescription="Fetches the most recent balance sheet (annual or quarterly) for a given stock ticker.",
-        parameterSchema=SCHEMAS["finStatement"]
+        parameterSchema=SCHEMAS["finStatement"],
+        storeIntoSources=True
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=fetchCashFlowStatement,
         toolName="fetchCashFlowStatement",
         toolDescription="Fetches the most recent cash flow statement (annual or quarterly) for a given stock ticker.",
-        parameterSchema=SCHEMAS["finStatement"]
+        parameterSchema=SCHEMAS["finStatement"],
+        storeIntoSources=True
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=fetchStatementOfEquity,
         toolName="fetchStatementOfEquity",
         toolDescription="Fetches the most recent statement of equity (annual or quarterly, if it exists) for a given stock ticker.",
-        parameterSchema=SCHEMAS["finStatement"]
+        parameterSchema=SCHEMAS["finStatement"],
+        storeIntoSources=True
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=fetchComprehensiveIncomeStatement,
         toolName="fetchComprehensiveIncomeStatement",
         toolDescription="Fetches the most recent comprehensive income statement (annual or quarterly, if it exists) for a given stock ticker.",
-        parameterSchema=SCHEMAS["finStatement"]
+        parameterSchema=SCHEMAS["finStatement"],
+        storeIntoSources=True
     ))
 
 
@@ -522,21 +541,24 @@ def buildToolRegistry(initMacroThread=False):
         toolFunction=fetchTickerSentimentHistory,
         toolName="fetchTickerSentimentHistory",
         toolDescription="Fetches the history of the (estimated) news sentiment for a given stock ticker.",
-        parameterSchema=SCHEMAS["justTicker"]
+        parameterSchema=SCHEMAS["justTicker"],
+        storeIntoSources=True
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=fetchSentimentDivergence,
         toolName="fetchSentimentDivergence",
         toolDescription="Analyses the divergence between stock price performance and (estimated) news sentiment over a 3-month period.",
-        parameterSchema=SCHEMAS["justTicker"]
+        parameterSchema=SCHEMAS["justTicker"],
+        storeIntoSources=True
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=fetchMacroSentimentHistory,
         toolName="fetchMacroSentimentHistory",
         toolDescription="Fetches the history of the (estimated) news sentiment for major macroeconomic and geopolitical topics.",
-        parameterSchema=SCHEMAS["empty"]
+        parameterSchema=SCHEMAS["empty"],
+        storeIntoSources=True
     ))
 
 
@@ -545,7 +567,8 @@ def buildToolRegistry(initMacroThread=False):
         toolFunction=fetchLatest10QSentiment,
         toolName="fetchLatest10QSentiment",
         toolDescription="Fetches the most recent 10-Q filing for a given stock ticker, extracts the MD&A and Risk Factors sections, and estimates the operational sentiment score based on the text.",
-        parameterSchema=SCHEMAS["justTicker"]
+        parameterSchema=SCHEMAS["justTicker"],
+        storeIntoSources=True
     ))
 
 
@@ -559,7 +582,8 @@ def buildToolRegistry(initMacroThread=False):
                         "Returns stdout and assigned variable values. "
                         "If an error occurs, returns the error message and hint.",
                         
-        parameterSchema=SCHEMAS["pythonCode"]
+        parameterSchema=SCHEMAS["pythonCode"],
+        storeIntoSources=False
     ))
 
     toolReg.registerTool(Tool(
@@ -567,7 +591,8 @@ def buildToolRegistry(initMacroThread=False):
         toolName="confirmBoardroomDecisionImmediateTerm",
         toolDescription="Confirms the final stock rating, weighting, and 3-day & 2-week target prices for a stock "
                         "after the boardroom has produced its final consensus for an immediate-term horizon.",
-        parameterSchema=SCHEMAS["confirmDecisionImmediate"]
+        parameterSchema=SCHEMAS["confirmDecisionImmediate"],
+        storeIntoSources=False
     ))
 
     toolReg.registerTool(Tool(
@@ -575,7 +600,8 @@ def buildToolRegistry(initMacroThread=False):
         toolName="confirmBoardroomDecisionShortTerm",
         toolDescription="Confirms the final stock rating, weighting, and 1-month & 3-month target prices for a stock "
                         "after the boardroom has produced its final consensus for a short-term horizon.",
-        parameterSchema=SCHEMAS["confirmDecisionShortTerm"]
+        parameterSchema=SCHEMAS["confirmDecisionShortTerm"],
+        storeIntoSources=False
     ))
 
     toolReg.registerTool(Tool(
@@ -583,7 +609,8 @@ def buildToolRegistry(initMacroThread=False):
         toolName="confirmBoardroomDecisionMediumTerm",
         toolDescription="Confirms the final stock rating, weighting, and 3-month & 12-month target prices for a stock "
                         "after the boardroom has produced its final consensus for a medium-term horizon.",
-        parameterSchema=SCHEMAS["confirmDecisionMediumTerm"]
+        parameterSchema=SCHEMAS["confirmDecisionMediumTerm"],
+        storeIntoSources=False
     ))
 
     toolReg.registerTool(Tool(
@@ -591,7 +618,8 @@ def buildToolRegistry(initMacroThread=False):
         toolName="confirmBoardroomDecisionLongTerm",
         toolDescription="Confirms the final stock rating, weighting, and 12-month & 3-year target prices for a stock "
                         "after the boardroom has produced its final consensus for a long-term horizon.",
-        parameterSchema=SCHEMAS["confirmDecisionLongTerm"]
+        parameterSchema=SCHEMAS["confirmDecisionLongTerm"],
+        storeIntoSources=False
     ))
 
     toolReg.registerTool(Tool(
@@ -599,21 +627,24 @@ def buildToolRegistry(initMacroThread=False):
         toolName="confirmBoardroomDecisionDistantTerm",
         toolDescription="Confirms the final stock rating, weighting, and 3-year & 10-year target prices for a stock "
                         "after the boardroom has produced its final consensus for a distant-term horizon.",
-        parameterSchema=SCHEMAS["confirmDecisionDistantTerm"]
+        parameterSchema=SCHEMAS["confirmDecisionDistantTerm"],
+        storeIntoSources=False
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=confirmPortfolioAllocation,
         toolName="confirmPortfolioAllocation",
         toolDescription="Confirms and records the executive portfolio creation verdict with individual stock positions, % weightings, dollar amounts, and cash buffer.",
-        parameterSchema=SCHEMAS["confirmPortfolioAllocation"]
+        parameterSchema=SCHEMAS["confirmPortfolioAllocation"],
+        storeIntoSources=False
     ))
 
     toolReg.registerTool(Tool(
         toolFunction=transferToAgent,
         toolName="transferToAgent",
         toolDescription="Transfers the conversation to a specialist boardroom agent with a summary of the question for them to answer directly.",
-        parameterSchema=SCHEMAS["transferToAgent"]
+        parameterSchema=SCHEMAS["transferToAgent"],
+        storeIntoSources=False
     ))
 
     if initMacroThread:
