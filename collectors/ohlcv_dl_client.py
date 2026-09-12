@@ -366,10 +366,12 @@ class SingleTickerDataCollector:
         data = response.json()
 
         nameTagOutputs = {
+            ("ifrs-full", "NumberOfSharesOutstanding"): None,
             ("dei", "EntityCommonStockSharesOutstanding"): None,
             ("us-gaap", "CommonStockSharesOutstanding"): None,
             ("us-gaap", "WeightedAverageNumberOfDilutedSharesOutstanding"): None,
             ("us-gaap", "WeightedAverageNumberOfSharesOutstandingBasic"): None,
+            ("ifrs-full", "WeightedAverageShares"): None,
         }
 
         for namespace, tagKey in nameTagOutputs:
@@ -382,9 +384,10 @@ class SingleTickerDataCollector:
         # Overwrite shares outstanding dates from least reliable to most reliable:
         sharesByDate = {}
 
-        # Least reliable: weighted average shares outstanding from US-GAAP
-        for key in [("us-gaap", "WeightedAverageNumberOfDilutedSharesOutstanding"),
-                     ("us-gaap", "WeightedAverageNumberOfSharesOutstandingBasic")]:
+        # Least reliable: weighted average shares outstanding from US-GAAP & IFRS
+        for key in [("ifrs-full", "WeightedAverageShares"),
+                    ("us-gaap", "WeightedAverageNumberOfDilutedSharesOutstanding"),
+                    ("us-gaap", "WeightedAverageNumberOfSharesOutstandingBasic")]:
             series = nameTagOutputs.get(key)
             if series is not None:
                 for entry in series:
@@ -392,13 +395,15 @@ class SingleTickerDataCollector:
                     if self.startDate <= period <= self.endDate:
                         sharesByDate[period] = entry["val"]
 
-        # Middle reliability: common stock shares outstanding from US-GAAP
-        csSeries = nameTagOutputs.get(("us-gaap", "CommonStockSharesOutstanding"))
-        if csSeries is not None:
-            for entry in csSeries:
-                period = pd.Timestamp(entry["filed"], tz=NEW_YORK)
-                if self.startDate <= period <= self.endDate:
-                    sharesByDate[period] = entry["val"]
+        # Middle reliability: common stock shares outstanding from US-GAAP & IFRS
+        for key in [("us-gaap", "CommonStockSharesOutstanding"),
+                    ("ifrs-full", "NumberOfSharesOutstanding")]:
+            series = nameTagOutputs.get(key)
+            if series is not None:
+                for entry in series:
+                    period = pd.Timestamp(entry["filed"], tz=NEW_YORK)
+                    if self.startDate <= period <= self.endDate:
+                        sharesByDate[period] = entry["val"]
 
         # Most reliable data is dei > EntityCommonStockSharesOutstanding
         deiSeries = nameTagOutputs.get(("dei", "EntityCommonStockSharesOutstanding"))
@@ -419,19 +424,42 @@ class SingleTickerDataCollector:
 
         sharesDf.sort_values("date", inplace=True)
 
+        # Correct sequential 1000x SEC XBRL scale jumps within the historical filing series (e.g. VSLR, RPAY)
+        if len(sharesDf) > 1:
+            for i in range(1, len(sharesDf)):
+                prevVal = sharesDf["outstandingShares"].iloc[i - 1]
+                currVal = sharesDf["outstandingShares"].iloc[i]
+                if prevVal > 0 and currVal > 0:
+                    jumpRatio = currVal / prevVal
+                    if 700 < jumpRatio < 1300:
+                        sharesDf.iloc[i:, sharesDf.columns.get_loc("outstandingShares")] /= 1000.0
+                    elif 0.0007 < jumpRatio < 0.0013:
+                        sharesDf.iloc[i:, sharesDf.columns.get_loc("outstandingShares")] *= 1000.0
+
+        # Fetch yfinance shares for scale checks and ADR calibration
+        yfShares = None
+        try:
+            yfTicker = yf.Ticker(self.ticker)
+            yfShares = yfTicker.info.get("sharesOutstanding") or getattr(yfTicker.fast_info, "shares", None)
+        except Exception:
+            pass
+
+        # Correct SEC Inline-XBRL scale tagging anomalies against current yfinance shares
+        if yfShares and yfShares > 0:
+            latestShares = sharesDf["outstandingShares"].iloc[-1]
+            scaleRatio = latestShares / yfShares
+            if 700 < scaleRatio < 1300:
+                sharesDf["outstandingShares"] /= 1000.0
+            elif 0.0007 < scaleRatio < 0.0013:
+                sharesDf["outstandingShares"] *= 1000.0
+
         # Extrapolate ADR ratio from yfinance
         if self.isAdrc:
-            try:
-                yfTicker = yf.Ticker(self.ticker)
-                yfShares = yfTicker.info.get("sharesOutstanding")
-
-                if yfShares and yfShares > 0:
-                    latestSecShares = sharesDf["outstandingShares"].iloc[-1]
-                    adrRatio = yfShares / latestSecShares
-                    sharesDf["outstandingShares"] *= adrRatio
-                else:
-                    raise Exception("YFinance shares outstanding data is missing or invalid")
-            except Exception:
+            if yfShares and yfShares > 0:
+                latestSecShares = sharesDf["outstandingShares"].iloc[-1]
+                adrRatio = yfShares / latestSecShares
+                sharesDf["outstandingShares"] *= adrRatio
+            else:
                 df["outstandingShares"] = pd.NA
                 df["marketCap"] = "N/A"
                 return df            
@@ -442,20 +470,24 @@ class SingleTickerDataCollector:
         df["outstandingShares"] = df["outstandingShares"].bfill()
 
         # On price splits, outstanding shares must be multiplied by the split factor to reflect the change in shares outstanding
-        # until the next date with a split adjusted outstanding shares value
+        # until the next date with a split adjusted outstanding shares value.
+        # Note: if a split occurred on or after the latest SEC filing date, and yfinance already calibrated the post-split shares,
+        # we do not re-multiply post-filing dates.
+        latestFilingDate = sharesDf["date"].max()
         for action in actions["splits"]:
             splitDate = pd.Timestamp(action["date"], tz=NEW_YORK)
             factor = action["newRate"] / action["oldRate"]
 
-            # Find the next date 
-            nextDate = sharesDf[sharesDf["date"] > splitDate]["date"].min()
+            # Only adjust if the split happened before the latest SEC filing date
+            if splitDate < latestFilingDate:
+                nextDate = sharesDf[sharesDf["date"] > splitDate]["date"].min()
 
-            if pd.isna(nextDate):
-                mask = df["date"] >= splitDate
-            else:
-                mask = (df["date"] >= splitDate) & (df["date"] < nextDate)
+                if pd.isna(nextDate):
+                    mask = df["date"] >= splitDate
+                else:
+                    mask = (df["date"] >= splitDate) & (df["date"] < nextDate)
 
-            df.loc[mask, "outstandingShares"] *= factor
+                df.loc[mask, "outstandingShares"] *= factor
 
 
         # Add formatted market cap column
