@@ -12,7 +12,7 @@ START_DATE = pd.Timestamp(START_DATE_STR, tz=NEW_YORK)
 FIRST_TRAD_DAY_AFTER_START_STR = "2016-01-04"
 FIRST_TRAD_DAY_AFTER_START = pd.Timestamp(FIRST_TRAD_DAY_AFTER_START_STR, tz=NEW_YORK)
 
-END_DATE_STR = "2026-08-08"
+END_DATE_STR = "2026-09-12"
 END_DATE = pd.Timestamp(END_DATE_STR, tz=NEW_YORK)
 
 IPO_BEFORE_START_DATE_STR = "2015-12-31"
@@ -91,4 +91,4 @@ SECTOR_DIRECTORY = "data/sectors/"
 
 # For news_sentiment_client.py
 NEWS_SENTIMENT_PARQUET_PATH = "data/newssentiment.parquet"
-NEWS_SENTIMENT_BATCHES_DIR = "data/sentiment_batches"
+NEWS_SENTIMENT_BATCHES_DIR = "data/sentiment_batches"
