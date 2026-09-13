@@ -87,7 +87,7 @@
     </div>
 {% endblock %}
 
-{% block custom_workspace_widgets %}
+{% block custom_modal_overlays %}
 <!-- Allocate Sectors Modal Overlay -->
 <div id="sectorAllocationOverlay" class="setup-overlay" style="display: none;" onmousedown="handleSectorOverlayMouseDown(event)">
     <div class="splash-load-model-window" style="position: relative; width: min(92vw, 860px); max-height: 90vh; padding: 30px 36px; overflow-y: auto;" onmousedown="event.stopPropagation()">
@@ -188,7 +188,7 @@
             row.innerHTML = `
                 <span style="font-weight: 700; font-size: 13.5px; color: #0f172a; width: 175px; flex-shrink: 0; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" title="${sec.name}">${sec.name}</span>
                 <input type="range" class="sector-slider" data-sector="${sec.ticker}" data-sector-name="${sec.name}" min="0" max="100" value="50" style="flex: 1; accent-color: #2563eb; cursor: pointer;">
-                <input type="text" class="sector-pct-box" id="pct_${sec.ticker}" readonly value="9.09%" style="width: 68px; text-align: center; border: none; font-size: 15px; padding: 4px; cursor: default;">
+                <input type="text" class="sector-pct-box" id="pct_${sec.ticker}" readonly value="9.09%" style="width: 68px; text-align: center; border: none; font-size: 15px; padding: 4px; user-select: none; cursor: default;">
             `;
 
             const slider = row.querySelector(".sector-slider");

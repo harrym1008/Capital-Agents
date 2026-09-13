@@ -160,18 +160,9 @@ class BoardroomEngine(ABC):
                 )
 
                 combinedRaw = f"{rawAnalysis}\n\n{remarksRaw}".strip()
+                finalUISummary = uiSummary if uiSummary else combinedRaw
 
-                if (summarisationOverride is None or summarisationOverride is True) and config.generateSummaries:
-                    from llm.agents.agent_prompts import buildSummariseSysPrompt
-                    modeName = config.modeName if hasattr(config, "modeName") else "SingleEquityRating"
-                    combinedUISummary = agent.generateUISummary(
-                        combinedRaw,
-                        buildSummariseSysPrompt(agent.agentRole, modeName, subrole, config.getPromptArgs())
-                    )
-                else:
-                    combinedUISummary = combinedRaw
-
-                return combinedRaw, combinedUISummary
+                return combinedRaw, finalUISummary
 
             if not isLastAttempt:
                 attempted = any(

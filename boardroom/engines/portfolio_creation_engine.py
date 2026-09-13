@@ -311,11 +311,13 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Value/Defensive Stock Hunter Scouting:\n{valueRaw}\n\n"
             f"Task: As the Impartial Portfolio Manager, make the final executive decision to construct the portfolio for {promptArgs['initialCapital']}.\n"
             f"Mandatory Constraints:\n"
-            f"- Target stock count: {promptArgs['targetStockCount']}. The final portfolio positions array MUST contain this count of stock holdings.\n"
-            f"- Respect confirmed sector totals: stock holdings per sector must sum to the sector's allocated percentage.\n"
+            f"- Target stock count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
+            f"- Sector Allocation Structure: Group stocks by confirmed sector into the 'sectorAllocations' dictionary. Every confirmed non-cash sector must contain stock holdings.\n"
+            f"- Per-Sector Weighting: Inside each sector, assign 'perSectorWeight' percentages to chosen stocks such that they strictly sum to 100.0% of that sector.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
-            f"- Total portfolio allocation (stocks + optional cash buffer) must equal 100.0%.\n\n"
-            f"Execute the 'confirmPortfolioAllocation' tool with your positions array (specifying 'ticker', 'weightPct', and optional 'rationale' for each stock; company name, sector, and industry are resolved automatically), portfolioRationale, and cashWeightPct."
+            f"- Stock Justifications: Provide a 25-35 word rationale for each equity holding.\n"
+            f"- Portfolio Rationale: Provide an executive portfolioRationale of approximately 100 words.\n\n"
+            f"Execute the 'confirmPortfolioAllocation' tool with your 'sectorAllocations' dictionary (mapping each confirmed sector to its list of stocks with 'ticker', 'perSectorWeight', and 'rationale') and 'portfolioRationale'."
         )
 
         pmFinalRaw, pmFinalUISummary = self.executeMandatedToolStage(
@@ -505,10 +507,12 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Defensive Candidates Scouted:\n{valueRaw}\n\n"
             f"Task: Construct your final aggressive individual stock allocation proposal for {promptArgs['initialCapital']}.\n"
             f"Mandatory Constraints:\n"
-            f"- Target Stock Count: Aim for {promptArgs['targetStockCount']}.\n"
-            f"- Sector Alignment: Every stock holding must belong to one of the confirmed sectors above, and stock weights per sector must sum to confirmed limits.\n"
-            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
-            f"Propose a comprehensive portfolio table (% per asset, dollar allocation, and role) overweighting high-beta growth drivers summing to 100.0%."
+            f"- Target Stock Count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
+            f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector above.\n"
+            f"- Per-Sector Weighting: Inside each confirmed sector, propose high-beta growth stocks with 'perSectorWeight' percentages summing strictly to 100.0% for that sector.\n"
+            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
+            f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining catalysts and beta strategy.\n\n"
+            f"Propose a comprehensive portfolio table grouped by confirmed sector (Stock, Sector, Per-Sector Weight %, Dollar Allocation, Investment Role, and 25-35 word Rationale)."
         )
 
         consProposalPrompt = (
@@ -517,10 +521,12 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Defensive Candidates Scouted:\n{valueRaw}\n\n"
             f"Task: Construct your final conservative individual stock allocation proposal for {promptArgs['initialCapital']}.\n"
             f"Mandatory Constraints:\n"
-            f"- Target Stock Count: Aim for {promptArgs['targetStockCount']}.\n"
-            f"- Sector Alignment: Every stock holding must belong to one of the confirmed sectors above, and stock weights per sector must sum to confirmed limits.\n"
-            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
-            f"Propose a comprehensive portfolio table (% per asset, dollar allocation, and role) emphasizing lower volatility, and margin of safety summing to 100.0%."
+            f"- Target Stock Count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
+            f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector above.\n"
+            f"- Per-Sector Weighting: Inside each confirmed sector, propose defensive, low-volatility equities with 'perSectorWeight' percentages summing strictly to 100.0% for that sector.\n"
+            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
+            f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining margin of safety and downside protection.\n\n"
+            f"Propose a comprehensive portfolio table grouped by confirmed sector (Stock, Sector, Per-Sector Weight %, Dollar Allocation, Investment Role, and 25-35 word Rationale)."
         )
 
         (aggProposalRaw, aggProposalUISummary), (consProposalRaw, consProposalUISummary) = self._runAgentsConcurrently(
@@ -551,11 +557,13 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Conservative Risk Allocation Proposal:\n{consProposalRaw}\n\n"
             f"Task: As the Impartial Portfolio Manager, reconcile the Aggressive and Conservative proposals to make the definitive portfolio construction decision for {promptArgs['initialCapital']}.\n"
             f"Mandatory Constraints:\n"
-            f"- Target stock count: {promptArgs['targetStockCount']}. The final portfolio positions array MUST contain this count of stock holdings.\n"
-            f"- Respect confirmed sector totals: stock holdings per sector must sum to the sector's allocated percentage.\n"
+            f"- Target stock count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
+            f"- Sector Allocation Structure: Group stocks by confirmed sector into the 'sectorAllocations' dictionary. Every confirmed non-cash sector must contain stock holdings.\n"
+            f"- Per-Sector Weighting: Inside each sector, assign 'perSectorWeight' percentages to chosen stocks such that they strictly sum to 100.0% of that sector.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
-            f"- Total portfolio allocation (stocks + optional cash buffer) must equal 100.0%.\n\n"
-            f"Execute the 'confirmPortfolioAllocation' tool with your positions array (specifying 'ticker', 'weightPct', and optional 'rationale' for each stock; company name, sector, and industry are resolved automatically), portfolioRationale, and cashWeightPct."
+            f"- Stock Justifications: Provide a 25-35 word rationale for each equity holding.\n"
+            f"- Portfolio Rationale: Provide an executive portfolioRationale of approximately 100 words.\n\n"
+            f"Execute the 'confirmPortfolioAllocation' tool with your 'sectorAllocations' dictionary (mapping each confirmed sector to its list of stocks with 'ticker', 'perSectorWeight', and 'rationale') and 'portfolioRationale'."
         )
 
         pmFinalRaw, pmFinalUISummary = self.executeMandatedToolStage(
@@ -631,6 +639,10 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             "sectorCount": len(cleanedAllocations),
             "rationale": "Pre-set sector allocation configured by user."
         }
+
+        confirmSectorTool = self.toolRegistry.getTool("confirmSectorAllocation")
+        if confirmSectorTool:
+            confirmSectorTool.toolLog.append(self.confirmedSectorAllocation)
 
         emitEvent("sectorAllocationConfirmed", {
             "stageNum": 3,
@@ -726,11 +738,12 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Defensive Candidates Scouted:\n{valueRaw}\n\n"
             f"Task: Construct your final aggressive individual stock allocation proposal for {promptArgs['initialCapital']}.\n"
             f"MANDATORY CONSTRAINTS:\n"
-            f"- Target Stock Count: Aim for {promptArgs['targetStockCount']}.\n"
-            f"- STRICT SECTOR ALIGNMENT: Every stock holding must belong to one of the confirmed sectors ({activeSectorsSummary}). "
-            f"Stock holdings per sector MUST strictly sum to each confirmed sector's percentage above.\n"
-            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
-            f"Propose a comprehensive portfolio table (% per asset, dollar allocation, and role) overweighting high-beta growth drivers summing to 100.0%."
+            f"- Target Stock Count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
+            f"- STRICT SECTOR ALIGNMENT: Group stocks strictly under each confirmed sector ({activeSectorsSummary}).\n"
+            f"- Per-Sector Weighting: Inside each confirmed sector, propose high-beta growth stocks with 'perSectorWeight' percentages summing strictly to 100.0% for that sector.\n"
+            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
+            f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining catalysts and beta strategy.\n\n"
+            f"Propose a comprehensive portfolio table grouped by confirmed sector (Stock, Sector, Per-Sector Weight %, Dollar Allocation, Investment Role, and 25-35 word Rationale)."
         )
 
         consProposalPrompt = (
@@ -739,11 +752,12 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Defensive Candidates Scouted:\n{valueRaw}\n\n"
             f"Task: Construct your final conservative individual stock allocation proposal for {promptArgs['initialCapital']}.\n"
             f"MANDATORY CONSTRAINTS:\n"
-            f"- Target Stock Count: Aim for {promptArgs['targetStockCount']}.\n"
-            f"- STRICT SECTOR ALIGNMENT: Every stock holding must belong to one of the confirmed sectors ({activeSectorsSummary}). "
-            f"Stock holdings per sector MUST strictly sum to each confirmed sector's percentage above.\n"
-            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
-            f"Propose a comprehensive portfolio table (% per asset, dollar allocation, and role) emphasizing lower volatility, and margin of safety summing to 100.0%."
+            f"- Target Stock Count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
+            f"- STRICT SECTOR ALIGNMENT: Group stocks strictly under each confirmed sector ({activeSectorsSummary}).\n"
+            f"- Per-Sector Weighting: Inside each confirmed sector, propose defensive, low-volatility equities with 'perSectorWeight' percentages summing strictly to 100.0% for that sector.\n"
+            f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
+            f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining margin of safety and downside protection.\n\n"
+            f"Propose a comprehensive portfolio table grouped by confirmed sector (Stock, Sector, Per-Sector Weight %, Dollar Allocation, Investment Role, and 25-35 word Rationale)."
         )
 
         (aggProposalRaw, aggProposalUISummary), (consProposalRaw, consProposalUISummary) = self._runAgentsConcurrently(
@@ -774,11 +788,13 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Conservative Risk Allocation Proposal:\n{consProposalRaw}\n\n"
             f"Task: As the Impartial Portfolio Manager, reconcile the Aggressive and Conservative proposals to make the definitive portfolio construction decision for {promptArgs['initialCapital']}.\n"
             f"MANDATORY CONSTRAINTS:\n"
-            f"- Target stock count: {promptArgs['targetStockCount']}. The final portfolio positions array MUST contain this count of stock holdings.\n"
-            f"- Respect confirmed sector totals: stock holdings per sector must sum to the sector's allocated percentage.\n"
+            f"- Target stock count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
+            f"- Sector Allocation Structure: Group stocks by confirmed sector into the 'sectorAllocations' dictionary ({activeSectorsSummary}). Every confirmed sector must contain stock holdings.\n"
+            f"- Per-Sector Weighting: Inside each sector, assign 'perSectorWeight' percentages to chosen stocks such that they strictly sum to 100.0% of that sector.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
-            f"- Total portfolio allocation (stocks + optional cash buffer) must equal 100.0%.\n\n"
-            f"Execute the 'confirmPortfolioAllocation' tool with your positions array (specifying 'ticker', 'weightPct', and optional 'rationale' for each stock; company name, sector, and industry are resolved automatically), portfolioRationale, and cashWeightPct."
+            f"- Stock Justifications: Provide a 25-35 word rationale for each equity holding.\n"
+            f"- Portfolio Rationale: Provide an executive portfolioRationale of approximately 100 words.\n\n"
+            f"Execute the 'confirmPortfolioAllocation' tool with your 'sectorAllocations' dictionary (mapping each confirmed sector to its list of stocks with 'ticker', 'perSectorWeight', and 'rationale') and 'portfolioRationale'."
         )
 
         pmFinalRaw, pmFinalUISummary = self.executeMandatedToolStage(

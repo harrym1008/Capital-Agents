@@ -422,6 +422,8 @@ const BoardroomCore = (function () {
         if (stockCountInp) stockCountInp.disabled = isRunning;
         const stockAllocInp = document.getElementById("maxStockAllocationInput");
         if (stockAllocInp) stockAllocInp.disabled = isRunning;
+        const openSectorModalBtn = document.getElementById("openSectorModalBtn");
+        if (openSectorModalBtn) openSectorModalBtn.disabled = isRunning;
 
         const runBtn = document.getElementById("runBtn");
         if (runBtn) {

@@ -480,24 +480,26 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             "decision": (
                 f"You are the Impartial Portfolio Manager delivering the final executive decision and portfolio construction for {{initialCapital}}.\n\n"
                 f"Portfolio Constraints (STRICT & MANDATORY):\n"
-                f"- Target total stock count: {{targetStockCount}}\n"
+                f"- Target total stock count: Aim for around {{targetStockCount}} stocks across the confirmed sectors.\n"
                 f"- Max single stock allocation: {{maxStockAllocation}} (acceptable range 10% to 60%)\n"
-                f"- Sector allocations must match the confirmed distribution from Phase 3.\n"
-                f"- Total allocations (stocks + cash/buffer) must equal 100.0%.\n\n"
+                f"- Sector Allocation Structure: Group stock holdings strictly under each confirmed sector into the 'sectorAllocations' dictionary.\n"
+                f"- Per-Sector Weighting: Inside each confirmed non-cash sector, stock 'perSectorWeight' percentages must sum strictly to 100.0%.\n"
+                f"- Justifications: Provide a 25-35 word justification per stock holding, and an executive portfolioRationale of approximately 100 words.\n\n"
 
                 f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
-                f"You must execute the 'confirmPortfolioAllocation' tool with your final positions list (ticker and weightPct for each stock), cash percentage, and executive rationale. Note: Company names, sectors, and industries are automatically looked up by the system from each ticker symbol.\n\n"
+                f"You must execute the 'confirmPortfolioAllocation' tool with your 'sectorAllocations' dictionary (mapping each confirmed sector to its list of stocks with 'ticker', 'perSectorWeight', and 'rationale') and 'portfolioRationale'. Note: Company names, sectors, and industries are automatically looked up by the system from each ticker symbol. Cash is preserved automatically from the confirmed sector allocation.\n\n"
 
                 f"*** TASK INSTRUCTIONS ***:\n"
                 f"1. Synthesize the proposals to achieve the optimal risk-adjusted portfolio: capturing high-conviction growth upside while safeguarding downside resilience.\n"
-                f"2. Construct the definitive portfolio holdings table containing {{targetStockCount}} with percentage weights and dollar allocations summing to 100.0%.\n"
-                f"3. Call 'confirmPortfolioAllocation' with the positions array (containing 'ticker', 'weightPct', and optional 'rationale'), portfolioRationale, and cashWeightPct.\n\n"
+                f"2. For each confirmed sector, select top equities and assign 'perSectorWeight' values summing strictly to 100.0% for that sector.\n"
+                f"3. Write a concise 25-35 word rationale for each stock, and an executive portfolioRationale of approximately 100 words.\n"
+                f"4. Call 'confirmPortfolioAllocation' with the 'sectorAllocations' dictionary and 'portfolioRationale'.\n\n"
 
                 f"*** EXPECTED OUTPUT SCHEMA ***:\n"
                 f"- Executive Portfolio Construction Synthesis\n"
-                f"- Final Portfolio Holdings Table: Ticker | Company Name | Sector | Industry | Weight % | Dollar Allocation\n"
-                f"- Sector Alignment Audit Table (Target Sector % vs Actual Stock Sum %)\n"
-                f"- Final Line: **Final Portfolio Confirmed: [Count] stocks, [Cash %] cash**\n"
+                f"- Final Portfolio Holdings Table (Grouped by Sector): Ticker | Company Name | Sector | Per-Sector Weight % | Dollar Allocation | 25-35 Word Rationale\n"
+                f"- Sector Alignment Audit Table (Target Sector % vs Scaled Stock Allocations)\n"
+                f"- Final Line: **Final Portfolio Confirmed: [Count] stocks across confirmed sectors**\n"
             )
         },
         "growthStockHunter": (
@@ -555,37 +557,41 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         "aggressiveRiskAnalyst": (
             f"You are the Aggressive Risk Analyst designing an aggressive, high-upside individual stock allocation proposal for this {{initialCapital}} portfolio.\n\n"
             f"Portfolio Constraints:\n"
-            f"- Target stock count: {{targetStockCount}}.\n"
+            f"- Target stock count: Aim for around {{targetStockCount}} stocks in total.\n"
             f"- Max single stock allocation: {{maxStockAllocation}}\n"
-            f"- Sector Alignment: You must respect the confirmed sector percentage totals established in Phase 3. Every stock should belong to a confirmed sector, and stock weights per sector should match that sector's confirmed percentage.\n\n"
+            f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector from Phase 3.\n"
+            f"- Per-Sector Weighting: Inside each confirmed sector, propose high-beta growth stocks with 'perSectorWeight' percentages summing strictly to 100.0% for that sector.\n"
+            f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining catalysts and beta strategy.\n\n"
 
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Review the candidate stocks scouted by the Growth and Value Hunters in Phase 4.\n"
-            f"2. Formulate a comprehensive stock allocation proposal aiming for {{targetStockCount}}, overweighting high-beta growth leaders while fitting each confirmed sector bucket.\n"
-            f"3. Assign specific percentage weights (summing to 100.0% including any optional cash buffer) and compute dollar capital per asset using 'executePythonCalculation'.\n"
+            f"2. Group selected equities under each confirmed sector bucket, assigning 'perSectorWeight' percentages summing to 100.0% per sector.\n"
+            f"3. Write a concise 25-35 word justification for each chosen stock.\n"
             f"4. Verify that no single stock exceeds the {{maxStockAllocation}} limit.\n\n"
 
             f"*** EXPECTED OUTPUT SCHEMA ***:\n"
             f"- Aggressive Allocation Thesis (Upside Catalysts & Beta Strategy)\n"
-            f"- Markdown Table: Ticker | Sector | Weight % | Dollar Allocation | Investment Role | Growth Rationale\n"
+            f"- Markdown Table (Grouped by Sector): Ticker | Sector | Per-Sector Weight % | Dollar Allocation | Investment Role | 25-35 Word Rationale\n"
             f"- Final Line: **Aggressive Proposed Tickers: [Ticker: %]**\n"
         ),
         "conservativeRiskAnalyst": (
             f"You are the Conservative Risk Analyst designing a defensive, capital-preserving individual stock allocation proposal for this {{initialCapital}} portfolio.\n\n"
             f"Portfolio Constraints:\n"
-            f"- Target stock count: {{targetStockCount}}.\n"
+            f"- Target stock count: Aim for around {{targetStockCount}} stocks in total.\n"
             f"- Max single stock allocation: {{maxStockAllocation}}\n"
-            f"- Sector Alignment: You must respect the confirmed sector percentage totals established in Phase 3. Every stock should belong to a confirmed sector, and stock weights per sector should match that sector's confirmed percentage.\n\n"
+            f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector from Phase 3.\n"
+            f"- Per-Sector Weighting: Inside each confirmed sector, propose defensive, low-volatility equities with 'perSectorWeight' percentages summing strictly to 100.0% for that sector.\n"
+            f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining margin of safety and downside protection.\n\n"
 
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Review the candidate stocks scouted by the Growth and Value Hunters in Phase 4.\n"
-            f"2. Formulate a comprehensive stock allocation proposal aiming for {{targetStockCount}}, prioritizing lower-beta defensive anchors, dividend stability, and risk buffers within each confirmed sector bucket.\n"
-            f"3. Assign specific percentage weights (summing to 100.0% including cash buffer) and compute dollar capital per asset using 'executePythonCalculation'.\n"
+            f"2. Group selected equities under each confirmed sector bucket, assigning 'perSectorWeight' percentages summing to 100.0% per sector.\n"
+            f"3. Write a concise 25-35 word justification for each chosen stock.\n"
             f"4. Verify that no single stock exceeds the {{maxStockAllocation}} limit.\n\n"
 
             f"*** EXPECTED OUTPUT SCHEMA ***:\n"
             f"- Conservative Allocation Thesis (Downside Protection & Capital Preservation)\n"
-            f"- Markdown Table: Ticker | Sector | Weight % | Dollar Allocation | Investment Role | Risk Rationale\n"
+            f"- Markdown Table (Grouped by Sector): Ticker | Sector | Per-Sector Weight % | Dollar Allocation | Investment Role | 25-35 Word Rationale\n"
             f"- Final Line: **Conservative Proposed Tickers: [Ticker: %]**\n"
         )
     }
@@ -638,12 +644,12 @@ def buildSummariseSysPrompt(
             )
         elif roleKey in ["aggressiveRiskAnalyst", "conservativeRiskAnalyst"]:
             agentSpecificPrompt = (
-                f"Highlight your proposed stock allocation percentages and risk rationale."
+                f"Highlight your proposed stock allocation percentages per sector and risk rationale."
             )
         elif roleKey == "portfolioManager":
             if agentSubrole == "decision":
                 agentSpecificPrompt = (
-                    f"State the final confirmed portfolio holdings, total stock count, and cash buffer."
+                    f"State the final confirmed portfolio holdings per sector and executive rationale."
                 )
             else:
                 agentSpecificPrompt = (

@@ -74,30 +74,41 @@ SCHEMAS = {
     "confirmPortfolioAllocation": {
         "type": "object",
         "properties": {
-            "positions": {
-                "type": "array",
-                "description": "List of individual stock allocations for the portfolio. Sector, industry, and company name are looked up automatically.",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "ticker": {"type": "string", "description": "Stock ticker symbol (e.g. 'AAPL', 'MSFT'). Must exist in the stock universe."},
-                        "weightPct": {"type": "number", "description": "Percentage allocation weight in the portfolio (e.g. 12.5)."},
-                        "rationale": {"type": "string", "description": "Concise rationale for including this stock."}
-                    },
-                    "required": ["ticker", "weightPct"]
+            "sectorAllocations": {
+                "type": "object",
+                "description": (
+                    "Dictionary mapping each confirmed GICS sector name or ETF ticker (e.g. 'information_technology', 'health_care') "
+                    "to a list of allocated stock objects within that sector. All confirmed non-cash sectors must be present. "
+                    "The 'perSectorWeight' values within each sector list must sum to 100.0%."
+                ),
+                "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "ticker": {
+                                "type": "string",
+                                "description": "Traded stock ticker symbol."
+                            },
+                            "perSectorWeight": {
+                                "type": "number",
+                                "description": "Percentage weight of this stock WITHIN its sector (e.g. 60.0). All stocks within the sector must sum to 100.0%."
+                            },
+                            "rationale": {
+                                "type": "string",
+                                "description": "Concise 25-35 word investment justification for including this equity."
+                            }
+                        },
+                        "required": ["ticker", "perSectorWeight", "rationale"]
+                    }
                 }
             },
             "portfolioRationale": {
                 "type": "string",
-                "description": "Clear executive rationale explaining portfolio construction, risk management, and sector alignment."
-            },
-            "cashWeightPct": {
-                "type": "number",
-                "description": "Unallocated percentage held in cash (e.g. 5.0). Defaults to 0.0.",
-                "default": 0.0
+                "description": "Executive portfolio construction rationale of approximately 100 words detailing risk management, factor tilts, and alignment with macro and sector directives."
             }
         },
-        "required": ["positions", "portfolioRationale"]
+        "required": ["sectorAllocations", "portfolioRationale"]
     },
 
     "fetchStocksInSector": {
