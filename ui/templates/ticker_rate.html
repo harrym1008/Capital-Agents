@@ -25,19 +25,6 @@
             <option value="distant">Distant (3y & 10y)</option>
         </select>
     </div>
-    <div class="config-group">
-        <label for="simulatedDateCheckbox">Use Sim Date:</label>
-        <input type="checkbox" id="simulatedDateCheckbox">
-    </div>
-    <div class="config-group" id="simulatedDateContainer" style="display: none;">
-        <input type="date" id="simulatedDateInput" min="2016-01-01" max="" style="width: 150px;">
-        <script>
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            const formattedDate = yesterday.toISOString().split('T')[0];
-            document.getElementById("simulatedDateInput").setAttribute("max", formattedDate);
-        </script>
-    </div>
 {% endblock %}
 
 {% block page_scripts %}
@@ -68,14 +55,6 @@
             { num: 7, name: "Decision Upload" }
         ]
     };
-
-    // Toggle Simulated Date input
-    document.getElementById("simulatedDateCheckbox")?.addEventListener("change", function () {
-        const container = document.getElementById("simulatedDateContainer");
-        if (container) {
-            container.style.display = this.checked ? "flex" : "none";
-        }
-    });
 
     function updateQaTargetAgents() {
         const targetSelect = document.getElementById("qaTargetSelect");
@@ -784,14 +763,9 @@
             const mode = document.getElementById("modeSelect").value;
             const horizon = document.getElementById("horizonSelect").value;
 
-            let simDate = null;
-            const simCheckbox = document.getElementById("simulatedDateCheckbox");
-            if (simCheckbox && simCheckbox.checked) {
-                simDate = document.getElementById("simulatedDateInput").value;
-                if (!simDate) {
-                    alert("Please select a valid simulated evaluation date.");
-                    return null;
-                }
+            const simDate = BoardroomCore.getSimulatedDate();
+            if (simDate === undefined) {
+                return null;
             }
             currentSimulatedDate = simDate;
 

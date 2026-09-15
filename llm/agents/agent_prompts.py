@@ -35,6 +35,7 @@ def buildSharedBaseSysPrompt(dateStr: str, toolsStr: str, agentRole: str, agentS
         
         f"*** REASONING & OUTPUT RULES ***:\n"
         f"- Use existing tool outputs from your conversation history where available; batch new data-fetching tool calls only when needed.\n"
+        f"- You must always HEAVILY consider the provided time horizon that the user wishes for you to conduct your financial analysis over.\n"
         f"- Your initial run of tool calls for gaining information (excluding Python and calculation tools) must ALWAYS be in a single batch.\n"
         f"- In your <think> section, focus purely on raw reasoning, calculation, and quantitative analysis without formatting any citation tags.\n"
         f"- Reason step-by-step with dense, quantitative key observations.\n"
@@ -186,7 +187,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
 
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Retrieve macro indicators, headlines, sentiment and sector-wise trends using your tools.\n"
-            f"2. Analyse market conditions: inflation, treasury yields, corporate debt environment, equity risk premiums, and macro news sentiment trends, amongst others.\n"
+            f"2. Analyse market conditions: inflation, treasury yields, corporate debt environment, equity risk premiums, and macro news sentiment trends, amongst others. "
+            f"You must consider the interplay between these factors, and *LOOK FORWARD* across the full time horizon (provided in the user request).\n"
             f"3. Formulate a dense macro summary in narrative paragraphs.\n"
             f"4. State your overall market regime classification as [HEAVILY BULLISH], [MODERATELY BULLISH], [MILDLY BULLISH], [NEUTRAL], [MILDLY BEARISH], [MODERATELY BEARISH], or [HEAVILY BEARISH].\n\n"
 
@@ -401,7 +403,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
 
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Retrieve macro indicators and sector rankings across 1-month and trailing periods.\n"
-            f"2. Analyse market conditions: inflation, treasury yields, market risk regime, and leadership across cyclical vs. defensive sectors.\n"
+            f"2. Analyse market conditions: inflation, treasury yields, market risk regime, and leadership across cyclical vs. defensive sectors. "
+            f"You must consider the interplay between these factors, and *LOOK FORWARD* across the full time horizon (provided in the user request).\n"
             f"3. Formulate a dense macro narrative and classify the market regime as [HEAVILY BULLISH], [MODERATELY BULLISH], [MILDLY BULLISH], [NEUTRAL], [MILDLY BEARISH], [MODERATELY BEARISH], or [HEAVILY BEARISH].\n"
             f"4. Provide broad sector allocation guidance to prepare the Bullish and Bearish analysts for Phase 2.\n\n"
 

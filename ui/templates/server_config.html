@@ -175,17 +175,17 @@
 
         function appendLlamaLog(logLine) {
             const container = document.getElementById("llamaLoadingContainer");
-            const logsPre = document.getElementById("llamaLoadingLogs");
-            if (container.classList.contains("hidden")) {
+            if (container && container.classList.contains("hidden")) {
                 container.classList.remove("hidden");
             }
-            const threshold = 40;
-            const isAtBottom = (logsPre.scrollHeight - logsPre.scrollTop - logsPre.clientHeight) <= threshold;
-
-            logsPre.textContent += logLine + "\n";
-
-            if (isAtBottom) {
-                logsPre.scrollTop = logsPre.scrollHeight;
+            if (typeof appendTerminalLog === 'function') {
+                appendTerminalLog("llamaLoadingLogs", logLine);
+            } else {
+                const logsPre = document.getElementById("llamaLoadingLogs");
+                if (logsPre) {
+                    logsPre.textContent += logLine + "\n";
+                    logsPre.scrollTop = logsPre.scrollHeight;
+                }
             }
         }
 
@@ -672,62 +672,73 @@
             document.getElementById("reconfigureBtn").classList.add("hidden");
         }
 
-        // Check if server is already running on page load
-        async function checkExistingServerStatus() {
-            try {
-                const res = await fetch('/api/server/status');
-                if (res.ok) {
-                    const data = await res.json();
-                    const isRunning = data.running || data.llamacppRunning || data.openrouterRunning || data.openaiCompatibleRunning;
-                    const provider = data.provider || (data.openrouterRunning ? "openrouter" : (data.openaiCompatibleRunning ? "openaicompatible" : (data.llamacppRunning ? "llamacpp" : "")));
-                    updateServerStatus(isRunning, provider);
-                    if (data.costData) {
-                        updateCostUI(data.costData);
-                    }
+        function applyServerStatusState(data) {
+            if (!data) return;
+            const isRunning = !!(data.running || data.llamacppRunning || data.openrouterRunning || data.openaiCompatibleRunning);
+            const provider = data.provider || (data.openrouterRunning ? "openrouter" : (data.openaiCompatibleRunning ? "openaicompatible" : (data.llamacppRunning ? "llamacpp" : "")));
+            updateServerStatus(isRunning, provider);
+            if (data.costData) {
+                updateCostUI(data.costData);
+            }
 
-                    if (isRunning) {
-                        // Present server status panel directly
-                        let provName = "Active Server";
-                        if (data.provider === "openrouter") {
-                            provName = "OpenRouter";
-                        } else if (data.provider === "openaicompatible") {
-                            provName = "OpenAI Compatible";
-                        } else if (data.provider === "llamacpp") {
-                            provName = "Llama.cpp";
-                        }
-                        document.getElementById("displayProvider").textContent = provName;
-                        document.getElementById("displayModel").textContent = data.modelName || "Active Server Process";
-                        document.getElementById("displayParallel").textContent = "Enabled";
-                        
-                        document.getElementById("setupForm").classList.add("hidden");
-                        document.getElementById("serverStatusPanel").classList.remove("hidden");
+            if (isRunning) {
+                // Present server status panel directly
+                let provName = "Active Server";
+                if (data.provider === "openrouter") {
+                    provName = "OpenRouter";
+                } else if (data.provider === "openaicompatible") {
+                    provName = "OpenAI Compatible";
+                } else if (data.provider === "llamacpp") {
+                    provName = "Llama.cpp";
+                }
+                document.getElementById("displayProvider").textContent = provName;
+                document.getElementById("displayModel").textContent = data.modelName || "Active Server Process";
+                document.getElementById("displayParallel").textContent = "Enabled";
+                
+                document.getElementById("setupForm").classList.add("hidden");
+                document.getElementById("serverStatusPanel").classList.remove("hidden");
 
-                        const viewLogsRow = document.getElementById("viewLogsRow");
-                        if (viewLogsRow) {
-                            if (data.provider === "llamacpp" || data.llamacppRunning) {
-                                viewLogsRow.classList.remove("hidden");
-                            } else {
-                                viewLogsRow.classList.add("hidden");
-                            }
-                        }
-                        
-                        if (data.startupLogs && Array.isArray(data.startupLogs) && data.startupLogs.length > 0) {
-                            const container = document.getElementById("llamaLoadingContainer");
-                            const logsPre = document.getElementById("llamaLoadingLogs");
-                            container.classList.remove("hidden");
-                            logsPre.textContent = data.startupLogs.join("\n") + "\n";
-                            logsPre.scrollTop = logsPre.scrollHeight;
-                        } else {
-                            clearLlamaLogs();
-                        }
-                        
-                        showSuccess();
+                const viewLogsRow = document.getElementById("viewLogsRow");
+                if (viewLogsRow) {
+                    if (data.provider === "llamacpp" || data.llamacppRunning) {
+                        viewLogsRow.classList.remove("hidden");
+                    } else {
+                        viewLogsRow.classList.add("hidden");
                     }
                 }
-            } catch (e) {
-                console.warn("Could not query server status:", e);
-                updateServerStatus(false);
+                
+                if (data.startupLogs && Array.isArray(data.startupLogs) && data.startupLogs.length > 0) {
+                    const container = document.getElementById("llamaLoadingContainer");
+                    const logsPre = document.getElementById("llamaLoadingLogs");
+                    container.classList.remove("hidden");
+                    logsPre.textContent = data.startupLogs.join("\n") + "\n";
+                    logsPre.scrollTop = logsPre.scrollHeight;
+                } else {
+                    clearLlamaLogs();
+                }
+                
+                showSuccess();
+            } else if (!isServerLoading) {
+                document.getElementById("serverStatusPanel").classList.add("hidden");
+                document.getElementById("setupForm").classList.remove("hidden");
             }
+        }
+
+        // Check if server is already running on page load or via WebSocket
+        function checkExistingServerStatus() {
+            if (window.latestServerStatus) {
+                applyServerStatusState(window.latestServerStatus);
+            } else if (typeof window.sendWsMessage === 'function') {
+                window.sendWsMessage({ action: "get_server_status" });
+            }
+        }
+
+        if (typeof window.wsSubscribe === 'function') {
+            window.wsSubscribe((payload) => {
+                if (payload.type === "serverStatus" || payload.action === "get_server_status") {
+                    applyServerStatusState(payload);
+                }
+            });
         }
 
         // "Start Server" button listener

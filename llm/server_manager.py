@@ -240,11 +240,13 @@ class ServerManager:
                         self.startSentimentEnginePreload()
                         self.ensureSentimentEngineReady(timeout=35.0)
 
+                        self.broadcastStatus()
                         return True, f"OpenAI Compatible server active and verified (Response: '{result}')."
 
                     except Exception as e:
                         errorMsg = f"OpenAI Compatible setup failed: {e.__class__.__name__}: {str(e)}"
                         emitEvent("error", {"message": errorMsg})
+                        self.broadcastStatus()
                         return False, errorMsg
 
                 case "openrouter":
@@ -257,6 +259,7 @@ class ServerManager:
                         success, result = testLlmClient(client, modelName)
 
                         if not success:
+                            self.broadcastStatus()
                             return False, f"OpenRouter test failed: {result}"
 
                         self.llmClient = client
@@ -267,11 +270,13 @@ class ServerManager:
                         self.startSentimentEnginePreload()
                         self.ensureSentimentEngineReady(timeout=35.0)
 
+                        self.broadcastStatus()
                         return True, f"OpenRouter server active and verified (Response: '{result}')."
 
                     except Exception as e:
                         errorMsg = f"OpenRouter setup failed: {e.__class__.__name__}: {str(e)}"
                         emitEvent("error", {"message": errorMsg})
+                        self.broadcastStatus()
                         return False, errorMsg
 
                 case "llamacpp":
@@ -349,15 +354,24 @@ class ServerManager:
                         # Start background metrics polling loop for Llama.cpp
                         self._startMetricsPolling()
 
+                        self.broadcastStatus()
                         return True, "Llama.cpp boardroom server started and verified."
 
                     except Exception as e:
                         errorMsg = f"Llama.cpp startup failed: {e.__class__.__name__}: {str(e)}"
                         emitEvent("error", {"message": errorMsg})
+                        self.broadcastStatus()
                         return False, errorMsg
 
                 case _:
+                    self.broadcastStatus()
                     return False, f"Unsupported provider: {provider}"
+
+    def broadcastStatus(self):
+        try:
+            emitEvent("serverStatus", self.getStatus())
+        except Exception as e:
+            print(f"Error broadcasting server status: {e}")
 
     def stopServer(self):
         with self.serverLock:
@@ -394,6 +408,7 @@ class ServerManager:
         except Exception as e:
             print(f"Error unloading sentiment engine: {e}")
 
+        self.broadcastStatus()
         return f"Server ({prevType}) stopped"
 
     def getStatus(self):

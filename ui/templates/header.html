@@ -69,8 +69,10 @@
 
     </div>
 </header>
+<script src="/static/js/utils.js"></script>
 <script>
     let activeProviderName = "";
+    window.latestServerStatus = null;
 
     function updateWsStatus(isConnected) {
         const cell = document.getElementById("wsStatusCell");
@@ -129,8 +131,10 @@
             if (costEl) costEl.style.display = "none";
         }
     }
+    window.updateServerStatus = updateServerStatus;
 
     let socket = null;
+    let wsReconnectTimer = null;
     const wsSubscribers = new Set();
 
     window.wsSubscribe = function(callback) {
@@ -149,7 +153,7 @@
                 const prevOnOpen = socket.onopen;
                 socket.onopen = (evt) => {
                     if (prevOnOpen) prevOnOpen(evt);
-                    socket.send(payloadStr);
+                    try { socket.send(payloadStr); } catch (e) {}
                 };
                 return true;
             }
@@ -161,30 +165,39 @@
         return false;
     };
 
-    function formatTokSpeed(val) {
-        if (val === undefined || val === null || isNaN(val) || val <= 0) return "0.0 tok/s";
-        if (val < 1000) {
-            return val.toFixed(1) + " tok/s";
-        } else {
-            return Math.round(val).toString() + " tok/s";
-        }
-    }
-
     function connectWebsocket() {
         if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
             return;
         }
-        const wsUrl = `ws://${window.location.hostname}:9092`;
-        socket = new WebSocket(wsUrl);
+        if (wsReconnectTimer) {
+            clearTimeout(wsReconnectTimer);
+            wsReconnectTimer = null;
+        }
+
+        const wsUrl = `ws://${window.location.hostname || '127.0.0.1'}:9092`;
+        try {
+            socket = new WebSocket(wsUrl);
+        } catch (err) {
+            updateWsStatus(false);
+            wsReconnectTimer = setTimeout(connectWebsocket, 3000);
+            return;
+        }
 
         socket.onopen = () => {
             updateWsStatus(true);
+            if (wsReconnectTimer) {
+                clearTimeout(wsReconnectTimer);
+                wsReconnectTimer = null;
+            }
         };
 
         socket.onclose = () => {
             updateWsStatus(false);
             if (typeof setControlsRunningState === 'function') {
                 setControlsRunningState(false);
+            }
+            if (!wsReconnectTimer) {
+                wsReconnectTimer = setTimeout(connectWebsocket, 2500);
             }
         };
 
@@ -197,7 +210,15 @@
                 const payload = JSON.parse(event.data);
 
                 // Automatically update header token speeds and cost metrics from WS push events
-                if (payload.type === "metricsUpdate") {
+                if (payload.type === "serverStatus" || payload.action === "get_server_status") {
+                    window.latestServerStatus = payload;
+                    const isRunning = !!(payload.running || payload.llamacppRunning || payload.openrouterRunning || payload.openaiCompatibleRunning);
+                    const provider = payload.provider || (payload.openrouterRunning ? "openrouter" : (payload.openaiCompatibleRunning ? "openaicompatible" : (payload.llamacppRunning ? "llamacpp" : "")));
+                    updateServerStatus(isRunning, provider);
+                    if (payload.costData) {
+                        updateCostUI(payload.costData);
+                    }
+                } else if (payload.type === "metricsUpdate") {
                     updateServerStatus(true);
                     if (payload.prefillSpeed !== undefined) {
                         const prefillEl = document.getElementById("prefillSpeedVal");
@@ -226,26 +247,13 @@
             }
         };
     }
+    window.connectWebsocket = connectWebsocket;
 
-    function formatTokenCount(val) {
-        if (val === undefined || val === null || isNaN(val) || val <= 0) return "0";
-        const num = Math.abs(parseFloat(val));
-        if (num >= 1e9) return Number((num / 1e9).toPrecision(3)) + "b";
-        if (num >= 1e6) return Number((num / 1e6).toPrecision(3)) + "m";
-        if (num >= 1e3) return Number((num / 1e3).toPrecision(3)) + "k";
-        return Number(num.toPrecision(3)).toString();
-    }
-
-    function formatCacheHitRate(val) {
-        if (val === undefined || val === null || isNaN(val)) return "0.0%";
-        return parseFloat(val).toFixed(1) + "%";
-    }
-
-    function formatCost(val) {
-        if (val === undefined || val === null || isNaN(val)) return "$0.0000";
-        const num = parseFloat(val);
-        if (num < 10) return "$" + num.toFixed(4);
-        return "$" + num.toFixed(2);
+    // Automatically initialize WebSocket connection when header is loaded
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", connectWebsocket);
+    } else {
+        connectWebsocket();
     }
 
     function updateCostUI(payload) {
@@ -287,4 +295,5 @@
             }
         }
     }
+    window.updateCostUI = updateCostUI;
 </script>

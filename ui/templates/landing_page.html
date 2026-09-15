@@ -57,30 +57,19 @@
             }
         }
 
-        async function checkServerStatus() {
-            try {
-                const res = await fetch('/api/server/status');
-                if (res.ok) {
-                    const data = await res.json();
-                    const isRunning = data.running || data.llamacppRunning || data.openrouterRunning || data.openaiCompatibleRunning;
-                    const provider = data.provider || (data.openrouterRunning ? "openrouter" : (data.openaiCompatibleRunning ? "openaicompatible" : (data.llamacppRunning ? "llamacpp" : "")));
-                    updateServerStatus(isRunning, provider);
-                    if (data.costData) {
-                        updateCostUI(data.costData);
-                    }
-                    setServerConnectedState(isRunning);
-                } else {
-                    updateServerStatus(false);
-                    setServerConnectedState(false);
-                }
-            } catch (e) {
-                updateServerStatus(false);
-                setServerConnectedState(false);
-            }
+        if (window.latestServerStatus) {
+            const isRunning = !!(window.latestServerStatus.running || window.latestServerStatus.llamacppRunning || window.latestServerStatus.openrouterRunning || window.latestServerStatus.openaiCompatibleRunning);
+            setServerConnectedState(isRunning);
         }
 
-        checkServerStatus();
-        setInterval(checkServerStatus, 5000);
+        if (typeof window.wsSubscribe === 'function') {
+            window.wsSubscribe((payload) => {
+                if (payload.type === "serverStatus" || payload.action === "get_server_status") {
+                    const isRunning = !!(payload.running || payload.llamacppRunning || payload.openrouterRunning || payload.openaiCompatibleRunning);
+                    setServerConnectedState(isRunning);
+                }
+            });
+        }
     </script>
 
 

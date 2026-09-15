@@ -594,33 +594,8 @@
         });
 
         function formatDollarInput(input, decimalPlaces) {
-            let value = input.value.replace(/[^\d.]/g, '');
-
-            // Only allow one decimal point
-            let dotIndex = value.indexOf('.');
-            if (dotIndex !== -1) {
-                value = value.slice(0, dotIndex + 1) +
-                        value.slice(dotIndex + 1).replace(/\./g, '');
-            }
-
-            let parts = value.split('.');
-            let integerPart = parts[0];
-            let decimalPart = parts[1] || '';
-
-            // Limit decimal places
-            decimalPart = decimalPart.slice(0, decimalPlaces);
-
-            if (integerPart) {
-                integerPart = parseInt(integerPart, 10).toLocaleString('en-US');
-
-                // Preserve the "." even when there are no decimals yet
-                input.value = dotIndex !== -1
-                    ? `${integerPart}.${decimalPart}`
-                    : integerPart;
-            } else if (dotIndex !== -1) {
-                input.value = '0.' + decimalPart;
-            } else {
-                input.value = '';
+            if (window.AppUtils && window.AppUtils.formatDollarInput) {
+                window.AppUtils.formatDollarInput(input, decimalPlaces);
             }
         }
 

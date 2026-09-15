@@ -81,6 +81,16 @@
     <div class="config-bar">
         {% block config_inputs %}{% endblock %}
 
+        {% block sim_date_control %}
+        <div class="config-group">
+            <label for="simulatedDateCheckbox">Use Sim Date:</label>
+            <input type="checkbox" id="simulatedDateCheckbox">
+        </div>
+        <div class="config-group" id="simulatedDateContainer" style="display: none;">
+            <input type="date" id="simulatedDateInput" min="2016-01-01" max="" style="width: 140px;">
+        </div>
+        {% endblock %}
+
         <div class="config-actions">
             <button type="button" id="openSettingsBtn" class="grey-btn" onclick="BoardroomCore.openSettingsModal()">Generation Settings</button>
             <button id="runBtn" class="run-btn" onclick="BoardroomCore.startSimulation()">Start Analysis</button>
@@ -97,6 +107,9 @@
             <div id="simulationTimer" class="simulation-timer" style="display: none;">
                 0 mins 0.00 secs
             </div>
+            <button id="downloadReportBtn" class="grey-btn download-report-btn" onclick="BoardroomExporter.downloadHtmlReport()" style="display: none;" title="Download Self-Contained HTML Report">
+                Download Report
+            </button>
             <button id="sidebarToggleBtn" class="grey-btn sidebar-toggle-btn" onclick="BoardroomCore.toggleSidebar()">Sidebar Toggle</button>
         </div>
     </div>
@@ -153,8 +166,9 @@
         </div>
     </div>
 
-    <!-- Shared Core Boardroom Logic -->
+    <!-- Shared Core Boardroom Logic & Exporter -->
     <script src="/static/js/boardroom_core.js"></script>
+    <script src="/static/js/boardroom_exporter.js"></script>
 
     {% block page_scripts %}{% endblock %}
 </body>

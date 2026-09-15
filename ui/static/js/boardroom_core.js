@@ -329,44 +329,35 @@ const BoardroomCore = (function () {
         }
     }
 
-    async function checkServerStatus() {
-        try {
-            const res = await fetch("/api/server/status");
-            if (res.ok) {
-                const data = await res.json();
-                const isRunning = !!(data.running || data.llamacppRunning || data.openrouterRunning || data.openaiCompatibleRunning);
-                const provider = data.provider || (data.openrouterRunning ? "openrouter" : (data.openaiCompatibleRunning ? "openaicompatible" : (data.llamacppRunning ? "llamacpp" : "")));
-                currentServerProvider = (provider || "").toLowerCase();
+    function applyServerStatus(data) {
+        if (!data) return;
+        const isRunning = !!(data.running || data.llamacppRunning || data.openrouterRunning || data.openaiCompatibleRunning);
+        const provider = data.provider || (data.openrouterRunning ? "openrouter" : (data.openaiCompatibleRunning ? "openaicompatible" : (data.llamacppRunning ? "llamacpp" : "")));
+        currentServerProvider = (provider || "").toLowerCase();
 
-                if (typeof updateServerStatus === "function") {
-                    updateServerStatus(isRunning, provider);
-                } else if (typeof window.updateServerStatus === "function") {
-                    window.updateServerStatus(isRunning, provider);
-                } else {
-                    setServerConnectedState(isRunning);
-                }
+        if (typeof updateServerStatus === "function") {
+            updateServerStatus(isRunning, provider);
+        } else if (typeof window.updateServerStatus === "function") {
+            window.updateServerStatus(isRunning, provider);
+        } else {
+            setServerConnectedState(isRunning);
+        }
 
-                updateGenerationSettingsUI(currentServerProvider);
-                if (data.costData) {
-                    if (typeof updateCostUI === "function") {
-                        updateCostUI(data.costData);
-                    } else if (typeof window.updateCostUI === "function") {
-                        window.updateCostUI(data.costData);
-                    }
-                }
-            } else {
-                if (typeof updateServerStatus === "function") {
-                    updateServerStatus(false);
-                } else {
-                    setServerConnectedState(false);
-                }
+        updateGenerationSettingsUI(currentServerProvider);
+        if (data.costData) {
+            if (typeof updateCostUI === "function") {
+                updateCostUI(data.costData);
+            } else if (typeof window.updateCostUI === "function") {
+                window.updateCostUI(data.costData);
             }
-        } catch (e) {
-            if (typeof updateServerStatus === "function") {
-                updateServerStatus(false);
-            } else {
-                setServerConnectedState(false);
-            }
+        }
+    }
+
+    function checkServerStatus() {
+        if (window.latestServerStatus) {
+            applyServerStatus(window.latestServerStatus);
+        } else if (typeof window.sendWsMessage === 'function') {
+            window.sendWsMessage({ action: "get_server_status" });
         }
     }
 
@@ -666,14 +657,14 @@ const BoardroomCore = (function () {
 
             return `
                 <tr id="source-row-${s.citationNumber}" data-citation="${s.citationNumber}">
-                    <td style="text-align: center; vertical-align: top; padding-top: 10px;">
+                    <td style="text-align: center; vertical-align: top;">
                         <span class="source-citation-text">[${s.citationNumber}]</span>
                     </td>
-                    <td style="vertical-align: top; padding-top: 10px;">
+                    <td style="vertical-align: top;">
                         <div class="source-tool-name">${escapeHtml(s.toolName || "")}</div>
                         ${hasArgs ? `<div class="source-args-text" title="${escapeHtml(argsStr)}">${escapeHtml(argsStr)}</div>` : ""}
                     </td>
-                    <td style="text-align: right; vertical-align: top; padding-top: 8px;">
+                    <td style="text-align: right; vertical-align: top;">
                         <button class="source-view-btn" onclick="BoardroomCore.openSourceModal(${s.citationNumber})">View</button>
                     </td>
                 </tr>
@@ -707,18 +698,18 @@ const BoardroomCore = (function () {
                 <div class="source-modal-header">
                     <div class="source-modal-title">
                         <span>[${source.citationNumber}]</span>
-                        <span>${source.toolName || "Tool Call Result"}</span>
+                        <span>${escapeHtml(source.toolName || "Tool Call Result")}</span>
                     </div>
                     <button type="button" class="modal-close-btn" onclick="BoardroomCore.closeSourceModal()" title="Close">&times;</button>
                 </div>
                 <div class="source-modal-body">
                     <div>
-                        <div style="font-weight: 700; font-size: 12px; color: #475569; margin-bottom: 4px;">Arguments:</div>
-                        <pre style="margin: 0; background-color: #f8fafc; border: 1px solid #e2e8f0; color: #0f172a; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 12px; max-height: 120px; overflow-y: auto;">${escapeHtml(formattedArgs)}</pre>
+                        <div class="source-modal-section-title">Arguments:</div>
+                        <pre class="source-modal-args-pre">${escapeHtml(formattedArgs)}</pre>
                     </div>
-                    <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
-                        <div style="font-weight: 700; font-size: 12px; color: #475569; margin-bottom: 4px;">Tool Output Result:</div>
-                        <pre class="source-modal-pre" style="flex: 1; min-height: 200px;">${escapeHtml(formattedResult)}</pre>
+                    <div class="source-modal-result-container">
+                        <div class="source-modal-section-title">Tool Output Result:</div>
+                        <pre class="source-modal-pre source-modal-result-pre">${escapeHtml(formattedResult)}</pre>
                     </div>
                 </div>
                 <div class="source-modal-footer">
@@ -1612,6 +1603,9 @@ const BoardroomCore = (function () {
         }
 
         startSimulationTimer();
+        if (typeof BoardroomExporter !== "undefined" && BoardroomExporter.handleSimStart) {
+            BoardroomExporter.handleSimStart();
+        }
 
         // Clear existing state
         activeAgentPanes = {};
@@ -1668,6 +1662,10 @@ const BoardroomCore = (function () {
                 if (typeof updateCostUI === "function") {
                     updateCostUI(payload);
                 }
+                break;
+
+            case "serverStatus":
+                applyServerStatus(payload);
                 break;
 
             case "stageStart":
@@ -1792,6 +1790,10 @@ const BoardroomCore = (function () {
                     }
                 }
 
+                if (typeof BoardroomExporter !== "undefined" && BoardroomExporter.handleSimComplete) {
+                    BoardroomExporter.handleSimComplete(payload);
+                }
+
                 // Mark all stages as completed in the stages bar
                 const items = document.querySelectorAll(".stage-item");
                 items.forEach(item => {
@@ -1840,6 +1842,7 @@ const BoardroomCore = (function () {
         }
 
         setupAutoScroll(document.getElementById("sidebarContent"));
+        initSimulatedDateControl();
         if (typeof connectWebsocket === "function") {
             connectWebsocket();
         } else if (typeof window.connectWebsocket === "function") {
@@ -1847,6 +1850,43 @@ const BoardroomCore = (function () {
         }
         checkServerStatus();
         checkBoardroomStatus();
+    }
+
+    function initSimulatedDateControl() {
+        const dateInput = document.getElementById("simulatedDateInput");
+        const checkbox = document.getElementById("simulatedDateCheckbox");
+        const container = document.getElementById("simulatedDateContainer");
+
+        if (dateInput) {
+            const yesterdayStr = (typeof window.getYesterdayDateString === 'function')
+                ? window.getYesterdayDateString()
+                : (() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() - 1);
+                    return d.toISOString().split('T')[0];
+                })();
+            dateInput.setAttribute("max", yesterdayStr);
+        }
+
+        if (checkbox && container) {
+            checkbox.addEventListener("change", function() {
+                container.style.display = this.checked ? "flex" : "none";
+            });
+        }
+    }
+
+    function getSimulatedDate() {
+        const checkbox = document.getElementById("simulatedDateCheckbox");
+        const dateInput = document.getElementById("simulatedDateInput");
+        if (checkbox && checkbox.checked) {
+            const val = dateInput ? dateInput.value : null;
+            if (!val) {
+                alert("Please select a valid simulated evaluation date.");
+                return undefined;
+            }
+            return val;
+        }
+        return null;
     }
 
     // Dev Test Demo function
@@ -1995,7 +2035,9 @@ const BoardroomCore = (function () {
         showSourceCitation,
         ensureSourcesWorkspace,
         resetSourcesUI,
-        getSources: () => capturedSources
+        getSources: () => capturedSources,
+        initSimulatedDateControl,
+        getSimulatedDate
     };
 })();
 
@@ -2020,4 +2062,6 @@ window.showSourceCitation = BoardroomCore.showSourceCitation;
 window.runTestDemo = BoardroomCore.runTestDemo;
 window.testDemo = BoardroomCore.runTestDemo;
 window.testMacroStage = BoardroomCore.runTestDemo;
+window.initSimulatedDateControl = BoardroomCore.initSimulatedDateControl;
+window.getSimulatedDate = BoardroomCore.getSimulatedDate;
 

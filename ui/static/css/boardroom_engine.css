@@ -147,7 +147,8 @@
 }
 
 .summaries-btn,
-.sidebar-toggle-btn {
+.sidebar-toggle-btn,
+.download-report-btn {
     white-space: nowrap;
 }
 
@@ -393,18 +394,18 @@
 .summary-box {
     border: 2.5px solid transparent;
     border-radius: 8px;
-    background-color: #fcfcfd;
-    padding: 14px;
+    padding: 12px 16px;
     margin-top: 10px;
-    font-size: 16px;
+    background-color: #ffffff;
+    font-size: 13.5px;
     line-height: 1.5;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
     flex-shrink: 0;
 }
 
 .summary-box-title {
-    font-weight: 700;
-    margin-bottom: 6px;
-    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: 4px;
 }
 
 .tool-status-badge {
@@ -432,19 +433,17 @@
     color: #dc2626;
 }
 
-/* Color configurations corresponding to active agents */
+/* Agent Theme Variants */
 .agent-cyan { border-color: #06b6d4; color: #06b6d4; }
 .agent-green { border-color: #10b981; color: #10b981; }
-.agent-red { border-color: #f43f5e; color: #f43f5e; }
+.agent-red { border-color: #ef4444; color: #ef4444; }
 .agent-yellow { border-color: #d97706; color: #d97706; }
 .agent-blue { border-color: #2563eb; color: #2563eb; }
 .agent-magenta { border-color: #d946ef; color: #d946ef; }
 
 /* Collapsible Summary Sidebar styling */
 .summary-sidebar {
-    width: 28%;
-    /* min-width: 320px; */
-    max-width: 400px;
+    width: 380px;
     height: 100%;
     min-height: 0;
     background-color: #ffffff;
@@ -452,7 +451,7 @@
     display: flex;
     flex-direction: column;
     position: relative;
-    transition: transform 0.3s ease, margin-right 0.3s ease;
+    transition: margin-right 0.3s ease;
     flex-shrink: 0;
     box-shadow: -4px 0 10px rgba(0, 0, 0, 0.05);
     z-index: 10;
@@ -460,8 +459,7 @@
 }
 
 .summary-sidebar.collapsed {
-    margin-right: -23%;
-    transform: translateX(100%);
+    margin-right: -380px;
 }
 
 /* Sidebar Tabs Navigation Bar matching Stage items */
@@ -850,5 +848,38 @@
     border-top: 1px solid #e2e8f0;
     background-color: #f8fafc;
 }
+
+.source-modal-section-title {
+    font-weight: 700;
+    font-size: 12px;
+    color: #475569;
+    margin-bottom: 4px;
+}
+
+.source-modal-args-pre {
+    margin: 0;
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    color: #0f172a;
+    padding: 10px;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 12px;
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.source-modal-result-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.source-modal-result-pre {
+    flex: 1;
+    min-height: 200px;
+}
+
 
 

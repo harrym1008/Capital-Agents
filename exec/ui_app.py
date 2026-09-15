@@ -181,6 +181,15 @@ async def websocketHandler(websocket):
     
     print(f"Client connected to Boardroom WebSocket (total: {len(connectedWebsockets)})")
     try:
+        initialStatusMsg = json.dumps({
+            "type": "serverStatus",
+            **serverManager.getStatus()
+        })
+        await websocket.send(initialStatusMsg)
+    except Exception as e:
+        print(f"Error sending initial server status on WS connect: {e}")
+
+    try:
         async for message in websocket:
             await handleWsMessage(websocket, message, eventLoop)
     except websockets.exceptions.ConnectionClosed:

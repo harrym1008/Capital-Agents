@@ -164,10 +164,6 @@ def registerApiRoutes(app):
         message = serverManager.stopServer()
         return jsonify({"ok": True, "message": message})
 
-    @app.route("/api/server/status")
-    def apiServerStatus():
-        return jsonify(serverManager.getStatus())
-
     @app.route("/api/llamacpp/logs")
     @app.route("/api/server/logs")
     def apiLlamaCppLogs():
@@ -230,6 +226,14 @@ wsActionHandlers = {}
 
 def registerWsAction(actionName, handlerFunc):
     wsActionHandlers[actionName] = handlerFunc
+
+def handleGetServerStatus(data, websocket, eventLoop):
+    return {
+        "type": "serverStatus",
+        **serverManager.getStatus()
+    }
+
+registerWsAction("get_server_status", handleGetServerStatus)
 
 def sendWsResponse(websocket, payload, eventLoop=None):
     if websocket:

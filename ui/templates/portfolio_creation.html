@@ -34,7 +34,7 @@
 
     <div class="config-group" id="maxSectorAllocationGroup">
         <label for="maxSectorAllocationInput">Max Sector %:</label>
-        <input type="number" id="maxSectorAllocationInput" class="portfolio-num-input" min="20" max="80" step="1" value="40" title="Max single sector allocation (20% to 80%)">
+        <input type="number" id="maxSectorAllocationInput" class="portfolio-num-input" min="12" max="80" step="1" value="40" title="Max single sector allocation (20% to 80%)">
     </div>
 
     <div class="config-group" id="sectorAllocationBtnGroup" style="display: none;">
@@ -43,12 +43,12 @@
 
     <div class="config-group">
         <label for="targetStockCountInput">Stocks:</label>
-        <input type="number" id="targetStockCountInput" class="portfolio-num-input" min="1" max="30" step="1" placeholder="Auto" title="Target stock count (1 to 30, leave empty for dynamic selection)">
+        <input type="number" id="targetStockCountInput" class="portfolio-num-input" min="1" max="50" step="1" placeholder="Auto" title="Target stock count (1 to 30, leave empty for dynamic selection)">
     </div>
 
     <div class="config-group">
         <label for="maxStockAllocationInput">Max Stock %:</label>
-        <input type="number" id="maxStockAllocationInput" class="portfolio-num-input" min="10" max="60" step="1" value="20" title="Max single stock allocation (10% to 60%)">
+        <input type="number" id="maxStockAllocationInput" class="portfolio-num-input" min="10" max="80" step="1" value="20" title="Max single stock allocation (10% to 60%)">
     </div>
 
     <div class="config-group">
@@ -70,20 +70,6 @@
             <option value="long" selected>Long (12mo & 3y)</option>
             <option value="distant">Distant (3y & 10y)</option>
         </select>
-    </div>
-
-    <div class="config-group">
-        <label for="simulatedDateCheckbox">Use Sim Date:</label>
-        <input type="checkbox" id="simulatedDateCheckbox">
-    </div>
-    <div class="config-group" id="simulatedDateContainer" style="display: none;">
-        <input type="date" id="simulatedDateInput" min="2016-01-01" max="" style="width: 140px;">
-        <script>
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            const formattedDate = yesterday.toISOString().split('T')[0];
-            document.getElementById("simulatedDateInput").setAttribute("max", formattedDate);
-        </script>
     </div>
 {% endblock %}
 
@@ -343,14 +329,6 @@
             closeSectorAllocationModal();
         }
     }
-
-    // Toggle Simulated Date input
-    document.getElementById("simulatedDateCheckbox")?.addEventListener("change", function () {
-        const container = document.getElementById("simulatedDateContainer");
-        if (container) {
-            container.style.display = this.checked ? "flex" : "none";
-        }
-    });
 
     function handleModeChange(mode) {
         const targetSectorGroup = document.getElementById("targetSectorCountGroup");
@@ -848,14 +826,9 @@
                 });
             }
 
-            let simDate = null;
-            const simCheckbox = document.getElementById("simulatedDateCheckbox");
-            if (simCheckbox && simCheckbox.checked) {
-                simDate = document.getElementById("simulatedDateInput").value;
-                if (!simDate) {
-                    alert("Please select a valid simulated evaluation date.");
-                    return null;
-                }
+            const simDate = BoardroomCore.getSimulatedDate();
+            if (simDate === undefined) {
+                return null;
             }
             currentSimulatedDate = simDate;
 
