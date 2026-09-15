@@ -193,7 +193,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             return "No confirmed sector allocation available."
         confirmed = self.confirmedSectorAllocation.get("confirmedAllocation", self.confirmedSectorAllocation)
         sectorsDict = confirmed.get("sectorAllocations", {})
-        lines = [f"- {secInfo.get('sector', secKey)} ({secKey}): {secInfo.get('allocationPct', 0.0)}%" for secKey, secInfo in sectorsDict.items()]
+        lines = [f"- {secInfo.get('sector', secKey)} ({secKey}): {int(round(float(secInfo.get('allocationPct', 0))))}%" for secKey, secInfo in sectorsDict.items()]
         return "\n".join(lines)
 
 
@@ -313,7 +313,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Mandatory Constraints:\n"
             f"- Target stock count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
             f"- Sector Allocation Structure: Group stocks by confirmed sector into the 'sectorAllocations' dictionary. Every confirmed non-cash sector must contain stock holdings.\n"
-            f"- Per-Sector Weighting: Inside each sector, assign 'perSectorWeight' percentages to chosen stocks such that they strictly sum to 100.0% of that sector.\n"
+            f"- Per-Sector Weighting: Inside each sector, assign whole integer 'perSectorWeight' percentages (e.g. 60, 40, not decimals) to chosen stocks such that they strictly sum to 100% of that sector.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
             f"- Stock Justifications: Provide a 25-35 word rationale for each equity holding.\n"
             f"- Portfolio Rationale: Provide an executive portfolioRationale of approximately 100 words.\n\n"
@@ -509,7 +509,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Mandatory Constraints:\n"
             f"- Target Stock Count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
             f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector above.\n"
-            f"- Per-Sector Weighting: Inside each confirmed sector, propose high-beta growth stocks with 'perSectorWeight' percentages summing strictly to 100.0% for that sector.\n"
+            f"- Per-Sector Weighting: Inside each confirmed sector, propose high-beta growth stocks with whole integer 'perSectorWeight' percentages summing strictly to 100% for that sector.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
             f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining catalysts and beta strategy.\n\n"
             f"Propose a comprehensive portfolio table grouped by confirmed sector (Stock, Sector, Per-Sector Weight %, Dollar Allocation, Investment Role, and 25-35 word Rationale)."
@@ -523,7 +523,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Mandatory Constraints:\n"
             f"- Target Stock Count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
             f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector above.\n"
-            f"- Per-Sector Weighting: Inside each confirmed sector, propose defensive, low-volatility equities with 'perSectorWeight' percentages summing strictly to 100.0% for that sector.\n"
+            f"- Per-Sector Weighting: Inside each confirmed sector, propose defensive, low-volatility equities with whole integer 'perSectorWeight' percentages summing strictly to 100% for that sector.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
             f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining margin of safety and downside protection.\n\n"
             f"Propose a comprehensive portfolio table grouped by confirmed sector (Stock, Sector, Per-Sector Weight %, Dollar Allocation, Investment Role, and 25-35 word Rationale)."
@@ -559,7 +559,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Mandatory Constraints:\n"
             f"- Target stock count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
             f"- Sector Allocation Structure: Group stocks by confirmed sector into the 'sectorAllocations' dictionary. Every confirmed non-cash sector must contain stock holdings.\n"
-            f"- Per-Sector Weighting: Inside each sector, assign 'perSectorWeight' percentages to chosen stocks such that they strictly sum to 100.0% of that sector.\n"
+            f"- Per-Sector Weighting: Inside each sector, assign whole integer 'perSectorWeight' percentages (e.g. 60, 40, not decimals) to chosen stocks such that they strictly sum to 100% of that sector.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
             f"- Stock Justifications: Provide a 25-35 word rationale for each equity holding.\n"
             f"- Portfolio Rationale: Provide an executive portfolioRationale of approximately 100 words.\n\n"
@@ -632,7 +632,15 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
                     "allocationPct": pctVal
                 }
 
-        totalAllocated = round(sum(item["allocationPct"] for item in cleanedAllocations.values()), 2)
+        if cleanedAllocations:
+            from llmtools.functions.confirmation import distributeIntegerPercentages
+            keys = list(cleanedAllocations.keys())
+            rawWeights = [cleanedAllocations[k]["allocationPct"] for k in keys]
+            intAllocations = distributeIntegerPercentages(rawWeights, 100)
+            for k, intVal in zip(keys, intAllocations):
+                cleanedAllocations[k]["allocationPct"] = int(intVal)
+
+        totalAllocated = sum(item["allocationPct"] for item in cleanedAllocations.values())
         self.confirmedSectorAllocation = {
             "sectorAllocations": cleanedAllocations,
             "totalAllocatedPct": totalAllocated,
@@ -650,7 +658,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         })
 
         confirmedSectorsText = self._formatSectorsContext()
-        activeSectorsSummary = ", ".join([f"{item['sector']} ({item['allocationPct']}%)" for item in cleanedAllocations.values()])
+        activeSectorsSummary = ", ".join([f"{item['sector']} ({int(item['allocationPct'])}%)" for item in cleanedAllocations.values()])
 
         # Phase 1: Macro Environment Analysis (Macro Strategist)
         self._newPhaseHeader(1, "Macro Environment Analysis", pace)
@@ -740,7 +748,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"MANDATORY CONSTRAINTS:\n"
             f"- Target Stock Count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
             f"- STRICT SECTOR ALIGNMENT: Group stocks strictly under each confirmed sector ({activeSectorsSummary}).\n"
-            f"- Per-Sector Weighting: Inside each confirmed sector, propose high-beta growth stocks with 'perSectorWeight' percentages summing strictly to 100.0% for that sector.\n"
+            f"- Per-Sector Weighting: Inside each confirmed sector, propose high-beta growth stocks with whole integer 'perSectorWeight' percentages summing strictly to 100% for that sector.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
             f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining catalysts and beta strategy.\n\n"
             f"Propose a comprehensive portfolio table grouped by confirmed sector (Stock, Sector, Per-Sector Weight %, Dollar Allocation, Investment Role, and 25-35 word Rationale)."
@@ -754,7 +762,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"MANDATORY CONSTRAINTS:\n"
             f"- Target Stock Count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
             f"- STRICT SECTOR ALIGNMENT: Group stocks strictly under each confirmed sector ({activeSectorsSummary}).\n"
-            f"- Per-Sector Weighting: Inside each confirmed sector, propose defensive, low-volatility equities with 'perSectorWeight' percentages summing strictly to 100.0% for that sector.\n"
+            f"- Per-Sector Weighting: Inside each confirmed sector, propose defensive, low-volatility equities with whole integer 'perSectorWeight' percentages summing strictly to 100% for that sector.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
             f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining margin of safety and downside protection.\n\n"
             f"Propose a comprehensive portfolio table grouped by confirmed sector (Stock, Sector, Per-Sector Weight %, Dollar Allocation, Investment Role, and 25-35 word Rationale)."
@@ -790,7 +798,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"MANDATORY CONSTRAINTS:\n"
             f"- Target stock count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
             f"- Sector Allocation Structure: Group stocks by confirmed sector into the 'sectorAllocations' dictionary ({activeSectorsSummary}). Every confirmed sector must contain stock holdings.\n"
-            f"- Per-Sector Weighting: Inside each sector, assign 'perSectorWeight' percentages to chosen stocks such that they strictly sum to 100.0% of that sector.\n"
+            f"- Per-Sector Weighting: Inside each sector, assign whole integer 'perSectorWeight' percentages (e.g. 60, 40, not decimals) to chosen stocks such that they strictly sum to 100% of that sector.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
             f"- Stock Justifications: Provide a 25-35 word rationale for each equity holding.\n"
             f"- Portfolio Rationale: Provide an executive portfolioRationale of approximately 100 words.\n\n"

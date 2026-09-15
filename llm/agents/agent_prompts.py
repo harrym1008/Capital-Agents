@@ -460,7 +460,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
                 f"Portfolio Constraints to strictly enforce:\n"
                 f"- MANDATORY SECTOR COUNT DIRECTIVE: {{sectorDiversityRule}}\n"
                 f"- Max single sector allocation: {{maxSectorAllocation}} (acceptable range 20% to 80%)\n"
-                f"- Total allocated percentage must equal 100.0%.\n\n"
+                f"- All sector allocations must be whole integer percentages (e.g. 35, 25, 20) summing strictly to 100%.\n\n"
 
                 f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
                 f"You must call the 'confirmSectorAllocation' tool with your final sector allocation dictionary and clear executive rationale.\n\n"
@@ -469,7 +469,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
                 f"1. Weigh the Bullish and Bearish sector proposals against the prevailing Macro regime.\n"
                 f"2. Resolve conflicts and establish the optimal compromise: capturing sector upside while maintaining adequate downside protection.\n"
                 f"3. Strictly enforce the sector count directive: {{sectorDiversityRule}}.\n"
-                f"4. Execute 'confirmSectorAllocation' with your exact sector allocations (e.g. {{{{ 'information_technology': 35.0, 'health_care': 25.0, ... }}}}).\n"
+                f"4. Execute 'confirmSectorAllocation' with your exact whole integer sector allocations (e.g. {{{{ 'information_technology': 35, 'health_care': 25, ... }}}}).\n"
                 f"5. Provide a clear executive summary of the locked sector distribution to direct the Phase 4 Stock Hunters.\n\n"
 
                 f"*** EXPECTED OUTPUT SCHEMA ***:\n"
@@ -483,7 +483,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
                 f"- Target total stock count: Aim for around {{targetStockCount}} stocks across the confirmed sectors.\n"
                 f"- Max single stock allocation: {{maxStockAllocation}} (acceptable range 10% to 60%)\n"
                 f"- Sector Allocation Structure: Group stock holdings strictly under each confirmed sector into the 'sectorAllocations' dictionary.\n"
-                f"- Per-Sector Weighting: Inside each confirmed non-cash sector, stock 'perSectorWeight' percentages must sum strictly to 100.0%.\n"
+                f"- Per-Sector Weighting: Inside each confirmed non-cash sector, stock 'perSectorWeight' percentages must be whole integers (e.g. 60, 40, not decimals) summing strictly to 100%.\n"
                 f"- Justifications: Provide a 25-35 word justification per stock holding, and an executive portfolioRationale of approximately 100 words.\n\n"
 
                 f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
@@ -491,7 +491,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
 
                 f"*** TASK INSTRUCTIONS ***:\n"
                 f"1. Synthesize the proposals to achieve the optimal risk-adjusted portfolio: capturing high-conviction growth upside while safeguarding downside resilience.\n"
-                f"2. For each confirmed sector, select top equities and assign 'perSectorWeight' values summing strictly to 100.0% for that sector.\n"
+                f"2. For each confirmed sector, select top equities and assign whole integer 'perSectorWeight' values summing strictly to 100% for that sector.\n"
                 f"3. Write a concise 25-35 word rationale for each stock, and an executive portfolioRationale of approximately 100 words.\n"
                 f"4. Call 'confirmPortfolioAllocation' with the 'sectorAllocations' dictionary and 'portfolioRationale'.\n\n"
 
@@ -560,12 +560,12 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"- Target stock count: Aim for around {{targetStockCount}} stocks in total.\n"
             f"- Max single stock allocation: {{maxStockAllocation}}\n"
             f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector from Phase 3.\n"
-            f"- Per-Sector Weighting: Inside each confirmed sector, propose high-beta growth stocks with 'perSectorWeight' percentages summing strictly to 100.0% for that sector.\n"
+            f"- Per-Sector Weighting: Inside each confirmed sector, propose high-beta growth stocks with whole integer 'perSectorWeight' percentages summing strictly to 100% for that sector.\n"
             f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining catalysts and beta strategy.\n\n"
 
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Review the candidate stocks scouted by the Growth and Value Hunters in Phase 4.\n"
-            f"2. Group selected equities under each confirmed sector bucket, assigning 'perSectorWeight' percentages summing to 100.0% per sector.\n"
+            f"2. Group selected equities under each confirmed sector bucket, assigning whole integer 'perSectorWeight' percentages summing to 100% per sector.\n"
             f"3. Write a concise 25-35 word justification for each chosen stock.\n"
             f"4. Verify that no single stock exceeds the {{maxStockAllocation}} limit.\n\n"
 
@@ -580,12 +580,12 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"- Target stock count: Aim for around {{targetStockCount}} stocks in total.\n"
             f"- Max single stock allocation: {{maxStockAllocation}}\n"
             f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector from Phase 3.\n"
-            f"- Per-Sector Weighting: Inside each confirmed sector, propose defensive, low-volatility equities with 'perSectorWeight' percentages summing strictly to 100.0% for that sector.\n"
+            f"- Per-Sector Weighting: Inside each confirmed sector, propose defensive, low-volatility equities with whole integer 'perSectorWeight' percentages summing strictly to 100% for that sector.\n"
             f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining margin of safety and downside protection.\n\n"
 
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Review the candidate stocks scouted by the Growth and Value Hunters in Phase 4.\n"
-            f"2. Group selected equities under each confirmed sector bucket, assigning 'perSectorWeight' percentages summing to 100.0% per sector.\n"
+            f"2. Group selected equities under each confirmed sector bucket, assigning whole integer 'perSectorWeight' percentages summing to 100% per sector.\n"
             f"3. Write a concise 25-35 word justification for each chosen stock.\n"
             f"4. Verify that no single stock exceeds the {{maxStockAllocation}} limit.\n\n"
 

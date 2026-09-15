@@ -74,6 +74,26 @@ def confirmBoardroomDecisionDistantTerm(tool: Tool, data: DataProviders, timesta
     return confirmBoardroomDecisionBase(tool, ticker, rating, weighting, "threeYearTarget", threeYearTarget, "tenYearTarget", tenYearTarget)
 
 
+def distributeIntegerPercentages(weights: List[float], totalTarget: int) -> List[int]:
+    if not weights or totalTarget <= 0:
+        return [0] * len(weights)
+    sumWeights = float(sum(weights))
+    if sumWeights <= 0:
+        base = totalTarget // len(weights)
+        rem = totalTarget % len(weights)
+        return [base + (1 if i < rem else 0) for i in range(len(weights))]
+
+    rawFloats = [(float(w) / sumWeights) * totalTarget for w in weights]
+    floors = [int(math.floor(f)) for f in rawFloats]
+    remainders = [(rawFloats[i] - floors[i], i) for i in range(len(weights))]
+    remainders.sort(key=lambda x: (-x[0], x[1]))
+    shortfall = totalTarget - sum(floors)
+    for k in range(shortfall):
+        idx = remainders[k][1]
+        floors[idx] += 1
+    return floors
+
+
 def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, sectorAllocations: Dict[str, float], rationale: str) -> Dict[str, Any]:
     if not isinstance(sectorAllocations, dict) or not sectorAllocations:
         return {"error": "sectorAllocations must be a non-empty dictionary mapping sector names to percentage numbers."}
@@ -120,9 +140,16 @@ def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Times
             "currentAllocations": cleanedAllocations
         }
 
+    # Normalise all sector allocations to exact integers totaling 100%
+    keys = list(cleanedAllocations.keys())
+    rawWeights = [cleanedAllocations[k]["allocationPct"] for k in keys]
+    intAllocations = distributeIntegerPercentages(rawWeights, 100)
+    for k, intVal in zip(keys, intAllocations):
+        cleanedAllocations[k]["allocationPct"] = int(intVal)
+
     decisionRecord = {
         "sectorAllocations": cleanedAllocations,
-        "totalAllocatedPct": totalAllocated,
+        "totalAllocatedPct": 100,
         "sectorCount": len([k for k in cleanedAllocations if k != "CASH"]),
         "rationale": str(rationale).strip()
     }
@@ -130,7 +157,7 @@ def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Times
     tool.toolLog.append(decisionRecord)
     return cleanData({
         "status": "success",
-        "message": f"Sector allocation confirmed with {len(cleanedAllocations)} sectors totaling {totalAllocated}%.",
+        "message": f"Sector allocation confirmed with {len(cleanedAllocations)} sectors totaling 100%.",
         "confirmedAllocation": decisionRecord
     })
 
@@ -272,9 +299,12 @@ def confirmPortfolioAllocation(
                 "error": f"The perSectorWeight values for sector '{sectorName}' sum to {sectorSumWeight}%, but must sum to 100.0%. Please rebalance the stocks within '{sectorName}' to total 100%."
             }
 
-        for pos in sectorPositions:
-            scaledPortfolioWeight = round((pos["perSectorWeight"] / sectorSumWeight) * sectorTargetPct, 2)
-            dollarAllocation = round(float(initialCapital) * (scaledPortfolioWeight / 100.0), 2)
+        sectorIntTarget = int(round(sectorTargetPct))
+        stockPerSecWeights = [p["perSectorWeight"] for p in sectorPositions]
+        stockIntWeights = distributeIntegerPercentages(stockPerSecWeights, sectorIntTarget)
+
+        for pos, intWeight in zip(sectorPositions, stockIntWeights):
+            dollarAllocation = round(float(initialCapital) * (intWeight / 100.0), 2)
             latestPrice = None
 
             try:
@@ -291,24 +321,25 @@ def confirmPortfolioAllocation(
                 "sectorEtf": pos["sectorEtf"],
                 "industry": pos["industry"],
                 "perSectorWeight": pos["perSectorWeight"],
-                "weightPct": scaledPortfolioWeight,
+                "weightPct": int(intWeight),
                 "dollarAllocation": dollarAllocation,
                 "latestPrice": latestPrice,
                 "rationale": pos["rationale"]
             }
             cleanedPositions.append(posRecord)
 
-        sectorSubtotals[sectorName] = sectorTargetPct
+        sectorSubtotals[sectorName] = sectorIntTarget
 
-    cashDollar = round(float(initialCapital) * (confirmedCashPct / 100.0), 2)
+    confirmedCashInt = int(round(confirmedCashPct))
+    cashDollar = round(float(initialCapital) * (confirmedCashInt / 100.0), 2)
     cashPositionRecord = {
-        "weightPct": confirmedCashPct,
+        "weightPct": confirmedCashInt,
         "dollarAllocation": cashDollar,
         "etfSubstitute": "SPY"
     }
 
-    totalStockPct = round(sum(p["weightPct"] for p in cleanedPositions), 2)
-    totalAllocated = round(totalStockPct + confirmedCashPct, 2)
+    totalStockPct = sum(p["weightPct"] for p in cleanedPositions)
+    totalAllocated = totalStockPct + confirmedCashInt
 
     portfolioRecord = {
         "asOfDate": timestamp.strftime("%Y-%m-%d"),
@@ -325,6 +356,6 @@ def confirmPortfolioAllocation(
     tool.toolLog.append(portfolioRecord)
     return cleanData({
         "status": "success",
-        "message": f"Portfolio creation confirmed: {len(cleanedPositions)} stocks across {len(expectedSectors)} sectors ({totalStockPct}%) and cash ({confirmedCashPct}%) totaling {totalAllocated}%.",
+        "message": f"Portfolio creation confirmed: {len(cleanedPositions)} stocks across {len(expectedSectors)} sectors ({totalStockPct}%) and cash ({confirmedCashInt}%) totaling {totalAllocated}%.",
         "confirmedPortfolio": portfolioRecord
     })

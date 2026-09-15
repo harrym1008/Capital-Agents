@@ -497,7 +497,7 @@ def buildToolRegistry(initMacroThread=False):
     toolReg.registerTool(Tool(
         toolFunction=fetchBatchFinnhubMetrics,
         toolName="fetchBatchFinnhubMetrics",
-        toolDescription="Fast point-in-time valuation and profitability metrics for multiple candidate stocks in a single call (up to 15 tickers). Returns P/E, P/B, margins, ROE, and leverage for quick cross-stock comparison.",
+        toolDescription="Fast point-in-time valuation and profitability metrics for multiple candidate stocks in a single call. Returns P/E, P/B, margins, ROE, and leverage for quick cross-stock comparison.",
         parameterSchema=SCHEMAS["batchTickers"],
         storeIntoSources=True
     ))
