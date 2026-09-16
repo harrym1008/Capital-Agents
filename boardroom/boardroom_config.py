@@ -4,12 +4,46 @@ from dataclasses import dataclass
 from enum import Enum
 
 
-class TimeHorizon(Enum):
+class TimeHorizon(str, Enum):
+    @classmethod
+    def fromString(cls, val: Any):
+        if isinstance(val, cls):
+            return val
+        if not val:
+            return next(iter(cls))
+        valStr = str(val).strip().lower().replace("_", " ").replace("-", " ")
+        for member in cls:
+            if member.value.lower() == valStr or member.name.lower() == valStr:
+                return member
+        return next(iter(cls))
+
+
+class SingleEquityTimeHorizon(TimeHorizon):
     IMMEDIATE = "immediate"
     SHORT = "short"
     MEDIUM = "medium"
     LONG = "long"
     DISTANT = "distant"
+
+    @property
+    def label(self) -> str:
+        return TIME_HORIZON_INFO[self]["label"]
+
+
+class PortfolioTimeHorizon(TimeHorizon):
+    ONE_MONTH = "1 month"
+    THREE_MONTHS = "3 months"
+    SIX_MONTHS = "6 months"
+    ONE_YEAR = "1 year"
+    TWO_YEARS = "2 years"
+    THREE_YEARS = "3 years"
+    FIVE_YEARS = "5 years"
+    TEN_YEARS = "10 years"
+    TWENTY_YEARS = "20 years"
+
+    @property
+    def label(self) -> str:
+        return self.value.title()
 
 
 class BoardroomPace(Enum):
@@ -20,36 +54,36 @@ class BoardroomPace(Enum):
 
 
 
-TIME_HORIZON_INFO: Dict[TimeHorizon, Dict[str, str]] = {
-    TimeHorizon.IMMEDIATE: {
+TIME_HORIZON_INFO: Dict[SingleEquityTimeHorizon, Dict[str, Any]] = {
+    SingleEquityTimeHorizon.IMMEDIATE: {
         "label": "Immediate-Term",
         "llmPriceTargets": "3-day and 2-week price targets",
         "llmFinalLinePriceTargets": "3-Day Target: $[PRICE], 2-Week Target: $[PRICE]",
         "llmSubmitToolName": "confirmBoardroomDecisionImmediateTerm",
         "targets": ["3d", "2w"],
     },
-    TimeHorizon.SHORT: {
+    SingleEquityTimeHorizon.SHORT: {
         "label": "Short-Term",
         "llmPriceTargets": "1-month and 3-month price targets",
         "llmFinalLinePriceTargets": "1-Month Target: $[PRICE], 3-Month Target: $[PRICE]",
         "llmSubmitToolName": "confirmBoardroomDecisionShortTerm",
         "targets": ["1mo", "3mo"],
     },
-    TimeHorizon.MEDIUM: {
+    SingleEquityTimeHorizon.MEDIUM: {
         "label": "Medium-Term",
         "llmPriceTargets": "3-month and 12-month price targets",
         "llmFinalLinePriceTargets": "3-Month Target: $[PRICE], 12-Month Target: $[PRICE]",
         "llmSubmitToolName": "confirmBoardroomDecisionMediumTerm",
         "targets": ["3mo", "12mo"],
     },
-    TimeHorizon.LONG: {
+    SingleEquityTimeHorizon.LONG: {
         "label": "Long-Term",
         "llmPriceTargets": "12-month and 36-month price targets",
         "llmFinalLinePriceTargets": "12-Month Target: $[PRICE], 36-Month Target: $[PRICE]",
         "llmSubmitToolName": "confirmBoardroomDecisionLongTerm",
         "targets": ["12mo", "36mo"],
     },
-    TimeHorizon.DISTANT: {
+    SingleEquityTimeHorizon.DISTANT: {
         "label": "Distant-Term",
         "llmPriceTargets": "3-year and 10-year price targets",
         "llmFinalLinePriceTargets": "3-Year Target: $[PRICE], 10-Year Target: $[PRICE]",
@@ -80,26 +114,31 @@ class BoardroomConfig(ABC):
 class SingleEquityRatingConfig(BoardroomConfig):
     ticker: str
     simulatedDateStr: Optional[str]
-    timeHorizon: TimeHorizon
-    boardroomPace: BoardroomPace
+    timeHorizon: SingleEquityTimeHorizon = SingleEquityTimeHorizon.LONG
+    boardroomPace: BoardroomPace = BoardroomPace.FAST
 
     @property
     def modeName(self) -> str:
         return "SingleEquityRating"
 
-    def getTimeHorizonInfo(self) -> Dict[str, str]:
-        return TIME_HORIZON_INFO.get(self.timeHorizon, TIME_HORIZON_INFO[TimeHorizon.LONG])
+    def getTimeHorizonInfo(self) -> Dict[str, Any]:
+        return TIME_HORIZON_INFO.get(self.timeHorizon, TIME_HORIZON_INFO[SingleEquityTimeHorizon.LONG])
 
-    def getPromptArgs(self) -> Dict[str, str]:
-        return self.getTimeHorizonInfo()
+    def getPromptArgs(self) -> Dict[str, Any]:
+        info = self.getTimeHorizonInfo()
+        return {
+            "timeHorizon": self.timeHorizon.label,
+            "ticker": self.ticker,
+            "pacingMode": self.boardroomPace.value.title(),
+            **info
+        }
 
     @classmethod
     def fromDict(cls, data: Dict[str, Any]) -> "SingleEquityRatingConfig":
         ticker = data.get("ticker", "NVDA")
         simulatedDateStr = data.get("simulatedDate") or data.get("simulatedDateStr") or None
 
-        horizonRaw = data.get("timeHorizon", "long")
-        timeHorizon = TimeHorizon(horizonRaw)
+        timeHorizon = SingleEquityTimeHorizon.fromString(data.get("timeHorizon", "long"))
 
         boardroomPaceStr = data.get("boardroomPace", "fast")
         boardroomPace = BoardroomPace(boardroomPaceStr)
@@ -121,11 +160,10 @@ class SingleEquityRatingConfig(BoardroomConfig):
         )
 
 
-
 @dataclass(kw_only=True)
 class PortfolioCreationConfig(BoardroomConfig):
     initialCapital: float = 100_000.0
-    timeHorizon: TimeHorizon = TimeHorizon.LONG
+    timeHorizon: PortfolioTimeHorizon = PortfolioTimeHorizon.ONE_YEAR
     boardroomPace: BoardroomPace = BoardroomPace.COMPLETE
     simulatedDateStr: Optional[str] = None
 
@@ -153,7 +191,7 @@ class PortfolioCreationConfig(BoardroomConfig):
 
         return {
             "initialCapital": f"${self.initialCapital:,.2f}",
-            "timeHorizon": self.timeHorizon.value,
+            "timeHorizon": self.timeHorizon.label,
             "sectorDiversityRule": sectorDiversityRule,
             "maxSectorAllocation": f"{min(max(self.maxSectorAllocation, 20.0), 80.0):.1f}%",
             "maxStockAllocation": f"{min(max(self.maxStockAllocation, 10.0), 60.0):.1f}%",
@@ -166,8 +204,7 @@ class PortfolioCreationConfig(BoardroomConfig):
         initialCapital = float(data.get("initialCapital", 100_000.0))
         simulatedDateStr = data.get("simulatedDate") or data.get("simulatedDateStr") or None
 
-        horizonRaw = data.get("timeHorizon", "long")
-        timeHorizon = TimeHorizon(horizonRaw) if isinstance(horizonRaw, str) else horizonRaw
+        timeHorizon = PortfolioTimeHorizon.fromString(data.get("timeHorizon", "1 year"))
 
         boardroomPaceStr = data.get("boardroomPace", "complete")
         if boardroomPaceStr not in ["complete", "fast", "preset"]:

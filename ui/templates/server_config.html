@@ -213,7 +213,7 @@
                 case "llamaCppLog":
                 case "llamaCppStartupLog":
                     appendLlamaLog(payload.log);
-                    if (isServerLoading && (payload.log.includes("exiting due to model loading error") || payload.log.includes("failed to load model"))) {
+                    if (isServerLoading && payload.log.includes("exiting due to model loading error" )) {
                         showError("Model loading failed: " + payload.log);
                     }
                     break;

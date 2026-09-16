@@ -260,20 +260,48 @@ const BoardroomExporter = (function () {
     }
 
     function freezeCanvases(targetClone, originalRoot) {
-        const origCanvases = originalRoot.querySelectorAll("canvas");
-        origCanvases.forEach(origCanvas => {
-            try {
-                const dataUrl = origCanvas.toDataURL("image/png");
-                const targetCanvas = origCanvas.id
-                    ? targetClone.querySelector(`#${origCanvas.id}`)
-                    : null;
+        const origCanvases = Array.from(originalRoot.querySelectorAll("canvas"));
+        const targetCanvases = Array.from(targetClone.querySelectorAll("canvas"));
 
-                if (targetCanvas) {
-                    const img = document.createElement("img");
-                    img.src = dataUrl;
-                    img.alt = origCanvas.id || "Chart Snapshot";
-                    img.style.cssText = "max-width: 100%; height: auto; display: block; margin: 0 auto;";
-                    if (origCanvas.id) img.id = origCanvas.id + "_img";
+        origCanvases.forEach((origCanvas, idx) => {
+            try {
+                let targetCanvas = null;
+                if (origCanvas.id) {
+                    targetCanvas = targetClone.querySelector(`#${origCanvas.id}`);
+                }
+                if (!targetCanvas && targetCanvases[idx]) {
+                    targetCanvas = targetCanvases[idx];
+                }
+
+                if (!targetCanvas) return;
+
+                // Check visibility of original canvas
+                const isExplicitlyHidden = origCanvas.style.display === "none" || 
+                                           origCanvas.hasAttribute("hidden") || 
+                                           (origCanvas.getAttribute("style") && origCanvas.getAttribute("style").includes("display: none")) ||
+                                           targetCanvas.style.display === "none" ||
+                                           (targetCanvas.getAttribute("style") && targetCanvas.getAttribute("style").includes("display: none"));
+
+                if (isExplicitlyHidden) {
+                    targetCanvas.remove();
+                    return;
+                }
+
+                const dataUrl = origCanvas.toDataURL("image/png");
+                if (!dataUrl || dataUrl === "data:," || dataUrl.length < 50) {
+                    targetCanvas.remove();
+                    return;
+                }
+
+                const img = document.createElement("img");
+                img.src = dataUrl;
+                img.alt = origCanvas.id || "Chart Snapshot";
+                if (origCanvas.id) img.id = origCanvas.id + "_img";
+
+                // Ensure snapshot preserves natural responsive dimensions without overflowing container
+                img.style.cssText = "max-width: 100%; width: 100%; height: 100%; max-height: 100%; display: block; margin: 0 auto; object-fit: contain;";
+
+                if (targetCanvas.parentNode) {
                     targetCanvas.parentNode.replaceChild(img, targetCanvas);
                 }
             } catch (err) {

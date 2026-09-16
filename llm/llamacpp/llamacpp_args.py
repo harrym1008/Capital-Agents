@@ -150,12 +150,6 @@ def findModelConfig(modelIdentifier: str) -> Tuple[Optional[Dict[str, Any]], Opt
 
 
 def buildLlamaCppCommandLine(modelIdentifier: str, allowParallel: bool = True, argOverrides: Optional[dict] = None) -> Tuple[str, List[str], Dict[str, Any]]:
-    """
-    Constructs the exact executable path and argument list to launch llama-server.exe.
-    Enforces locked parameters (--host 127.0.0.1, --port 9081, -lv 4), merges global and per-model
-    arguments, omits empty sampling parameters, and sets model/parallel options.
-    Returns (executablePath, commandArgs, modelConfig).
-    """
     modelConfig, error = findModelConfig(modelIdentifier)
     if error:
         raise ValueError(error)
@@ -239,7 +233,7 @@ def buildLlamaCppCommandLine(modelIdentifier: str, allowParallel: bool = True, a
     return executablePath, commandArgs, modelConfig
 
 
-def validateGgufPath(filePath: str) -> Tuple[bool, Any]:
+def validateGGUFPath(filePath: str) -> Tuple[bool, Any]:
     if not filePath:
         return False, "File path is required."
     cleanPath = filePath.strip().strip('"').strip("'")
@@ -321,7 +315,7 @@ def openNativeExecutableFileDialog() -> str:
         root.attributes("-topmost", True)
         selectedPath = filedialog.askopenfilename(
             title="Select Llama Server Executable",
-            filetypes=[("Executable Files", "*.exe"), ("All Files", "*.*")]
+            filetypes=[("Llama Server Executable", "llama-server.exe"), ("Other Compatible Executables", "*.exe")]
         )
         root.destroy()
         return selectedPath or ""

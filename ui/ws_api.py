@@ -7,7 +7,7 @@ import pandas as pd
 from flask import request, jsonify
 
 from collectors.constants import NEW_YORK
-from llm.llamacpp.llamacpp_args import LLAMACPP_PORT, loadConfig, saveConfig, validateGgufPath, getLlamaCppModelsList, openNativeGgufFileDialog, openNativeExecutableFileDialog
+from llm.llamacpp.llamacpp_args import LLAMACPP_PORT, loadConfig, saveConfig, validateGGUFPath, getLlamaCppModelsList, openNativeGgufFileDialog, openNativeExecutableFileDialog
 from llm.server_manager import serverManager
 
 
@@ -37,7 +37,7 @@ def registerApiRoutes(app):
     def apiValidateGguf():
         data = request.get_json(silent=True) or {}
         filePath = data.get("filePath", "")
-        valid, result = validateGgufPath(filePath)
+        valid, result = validateGGUFPath(filePath)
         if valid:
             return jsonify({"ok": True, "valid": True, "info": result})
         else:
@@ -49,7 +49,7 @@ def registerApiRoutes(app):
         if not selectedPath:
             return jsonify({"ok": True, "cancelled": True})
         
-        valid, result = validateGgufPath(selectedPath)
+        valid, result = validateGGUFPath(selectedPath)
         if not valid:
             return jsonify({"ok": False, "cancelled": False, "error": result})
         
@@ -208,6 +208,29 @@ def registerApiRoutes(app):
             return jsonify(chartData)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/portfolio/backtest", methods=["POST"])
+    def getPortfolioBacktest():
+        data = request.get_json(silent=True) or {}
+        simDate = data.get("simDate") or data.get("simulatedDate")
+        if not simDate:
+            return jsonify({"ok": False, "error": "Missing 'simDate' in request."}), 400
+
+        initialCapital = data.get("initialCapital", 100_000.0)
+        positions = data.get("positions", [])
+        cashPosition = data.get("cashPosition", {})
+
+        try:
+            from simulation.simulation_api import simulationManager
+            backtestData = simulationManager.generatePortfolioBacktestData(
+                simDate=simDate,
+                initialCapital=initialCapital,
+                positions=positions,
+                cashPosition=cashPosition
+            )
+            return jsonify(backtestData)
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
 
     @app.route("/api/boardroom/sources")
     def apiBoardroomSources():

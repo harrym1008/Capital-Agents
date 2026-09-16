@@ -18,6 +18,47 @@
         text-align: center;
         padding: 5px 6px !important;
     }
+    .pie-toggle-btn {
+        font-size: 11px;
+        font-weight: 600;
+        padding: 3px 9px;
+        border-radius: 4px;
+        cursor: pointer;
+        border: 1px solid #cbd5e1;
+        background-color: #f8fafc;
+        color: #475569;
+        transition: all 0.15s ease;
+        line-height: 1.3;
+    }
+    .pie-toggle-btn:hover {
+        background-color: #e2e8f0;
+        color: #0f172a;
+    }
+    .pie-toggle-btn.active {
+        background-color: #2563eb;
+        color: #ffffff;
+        border-color: #2563eb;
+    }
+    .backtest-metric-item {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .backtest-metric-label {
+        font-size: 10px;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .backtest-metric-value {
+        font-size: 13.5px;
+        font-weight: 800;
+        color: #0f172a;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+    }
 </style>
 {% endblock %}
 
@@ -37,20 +78,20 @@
         <input type="number" id="maxSectorAllocationInput" class="portfolio-num-input" min="12" max="80" step="1" value="40" title="Max single sector allocation (20% to 80%)">
     </div>
 
-    <div class="config-group" id="sectorAllocationBtnGroup" style="display: none;">
-        <button type="button" id="openSectorModalBtn" class="grey-btn" onclick="openSectorAllocationModal()">Sector Allocation</button>
-    </div>
-
     <div class="config-group">
         <label for="targetStockCountInput">Stocks:</label>
         <input type="number" id="targetStockCountInput" class="portfolio-num-input" min="1" max="50" step="1" placeholder="Auto" title="Target stock count (1 to 30, leave empty for dynamic selection)">
     </div>
-
+    
     <div class="config-group">
         <label for="maxStockAllocationInput">Max Stock %:</label>
         <input type="number" id="maxStockAllocationInput" class="portfolio-num-input" min="10" max="80" step="1" value="20" title="Max single stock allocation (10% to 60%)">
     </div>
 
+    <div class="config-group" id="sectorAllocationBtnGroup" style="display: none;">
+        <button type="button" id="openSectorModalBtn" class="grey-btn" onclick="openSectorAllocationModal()">Sector Allocation</button>
+    </div>
+    
     <div class="config-group">
         <label for="modeSelect">Mode:</label>
         <select id="modeSelect">
@@ -60,15 +101,18 @@
         </select>
     </div>
 
-    <!-- Hide horizon selection -->
-    <div class="config-group" style="display: none;">     
-        <label for="horizonSelect">Horizon:</label>
+    <div class="config-group">     
+        <label for="horizonSelect">Time Horizon:</label>
         <select id="horizonSelect">
-            <option value="immediate">Immediate (3d & 2wk)</option>
-            <option value="short">Short (1mo & 3mo)</option>
-            <option value="medium">Medium (3mo & 12mo)</option>
-            <option value="long" selected>Long (12mo & 3y)</option>
-            <option value="distant">Distant (3y & 10y)</option>
+            <option value="1 month">1 month</option>
+            <option value="3 months">3 months</option>
+            <option value="6 months">6 months</option>
+            <option value="1 year" selected>1 year</option>
+            <option value="2 years">2 years</option>
+            <option value="3 years">3 years</option>
+            <option value="5 years">5 years</option>
+            <option value="10 years">10 years</option>
+            <option value="20 years">20 years</option>
         </select>
     </div>
 {% endblock %}
@@ -113,8 +157,60 @@
     let currentSimulatedDate = null;
     let sectorChartInstance = null;
     let portfolioSectorChartInstance = null;
+    let portfolioBacktestChartInstance = null;
+    let currentPieBreakdowns = null;
+    let currentPieBreakdownMode = "sector";
+    let cachedBacktestData = null;
     let confirmedSectorData = null;
     let confirmedPortfolioData = null;
+
+    function countDecimalPlaces(num) {
+        if (!num || Math.floor(num) === num) return 0;
+        const str = num.toString();
+        if (str.indexOf("e-") !== -1) return parseInt(str.split("e-")[1], 10);
+        if (str.indexOf(".") !== -1) return str.split(".")[1].length;
+        return 0;
+    }
+
+    function formatYAxisLabel(val, stepSize) {
+        if (val === 0) return "$0";
+        const absVal = Math.abs(val);
+        let unit = "";
+        let div = 1;
+
+        if (absVal >= 1e12) { unit = "T"; div = 1e12; }
+        else if (absVal >= 1e9) { unit = "B"; div = 1e9; }
+        else if (absVal >= 1e6) { unit = "M"; div = 1e6; }
+        else if (absVal >= 1e3) { unit = "k"; div = 1e3; }
+
+        const num = val / div;
+        let dp = 0;
+        if (stepSize && stepSize > 0) {
+            dp = countDecimalPlaces(stepSize / div);
+        } else {
+            dp = countDecimalPlaces(num);
+        }
+        dp = Math.max(0, Math.min(6, dp));
+
+        let minDp = (div === 1 && stepSize && stepSize < 1) ? 2 : 0;
+        const formattedStr = num.toLocaleString("en-US", {
+            minimumFractionDigits: minDp,
+            maximumFractionDigits: dp
+        });
+
+        return "$" + formattedStr + unit;
+    }
+
+    function isDateInPast(dateStr) {
+        if (!dateStr) return false;
+        try {
+            const simTime = new Date(dateStr + "T00:00:00").getTime();
+            const todayTime = new Date().setHours(0, 0, 0, 0);
+            return simTime < todayTime;
+        } catch (e) {
+            return false;
+        }
+    }
 
     // Register custom agent roles for portfolio creation
     BoardroomCore.registerRole("Growth Stock Hunter", { class: "green", initials: "GH", name: "Growth Stock Hunter" });
@@ -405,7 +501,7 @@
         // Stage 6: Final Executive Portfolio Decision Receipt
         if (stageNum === 6 || stageName.includes("Final Executive Decision")) {
             workspace.innerHTML = `
-                <div class="upload-receipt-container" style="flex: 1.1; max-width: 520px; min-width: 340px; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 22px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); align-self: stretch; height: 100%; min-height: 0; overflow-y: auto; box-sizing: border-box;">
+                <div class="upload-receipt-container" style="flex: 1.35; max-width: 680px; min-width: 360px; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 22px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); align-self: stretch; height: 100%; min-height: 0; overflow-y: auto; box-sizing: border-box;">
                     <h2 style="font-size: 18px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 14px; text-align: center;">PORTFOLIO CONSTRUCTION REPORT</h2>
 
                     <div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; font-size: 13.5px; margin-bottom: 12px; line-height: 1.3;">
@@ -422,8 +518,37 @@
                         <div><span id="portfolio-status" class="tool-status-badge status-running">PENDING CONSTRUCTION</span></div>
                     </div>
 
-                    <div id="portfolioChartWrapper" style="width: 100%; height: 200px; position: relative; margin: 10px 0;">
-                        <canvas id="portfolioSectorChartCanvas" style="display: block; width: 100%; height: 100%;"></canvas>
+                    <div id="portfolioChartSection" style="margin: 10px 0;">
+                        <div id="portfolioPieToggleContainer" style="display: none; justify-content: flex-end; align-items: center; gap: 5px; margin-bottom: 6px;">
+                            <span style="font-size: 11px; font-weight: 600; color: #64748b; margin-right: 2px;">View by:</span>
+                            <button type="button" class="pie-toggle-btn active" id="pieToggleSector" onclick="switchPortfolioPieBreakdown('sector')">Sector</button>
+                            <button type="button" class="pie-toggle-btn" id="pieToggleIndustry" onclick="switchPortfolioPieBreakdown('industry')">Industry</button>
+                            <button type="button" class="pie-toggle-btn" id="pieToggleStock" onclick="switchPortfolioPieBreakdown('stock')">Stock</button>
+                        </div>
+
+                        <div id="portfolioChartWrapper" style="width: 100%; height: 270px; position: relative;">
+                            <canvas id="portfolioSectorChartCanvas" style="display: block; width: 100%; height: 100%;"></canvas>
+                            <canvas id="portfolioBacktestChartCanvas" style="display: none; width: 100%; height: 100%;"></canvas>
+                        </div>
+
+                        <div id="portfolioBacktestMetrics" style="display: none; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; padding: 10px 12px; border-radius: 6px;">
+                            <div class="backtest-metric-item">
+                                <div class="backtest-metric-label">Return as of today</div>
+                                <div id="metricPortfolioReturn" class="backtest-metric-value" style="color: #10b981;">--</div>
+                            </div>
+                            <div class="backtest-metric-item">
+                                <div class="backtest-metric-label">Relative vs S&amp;P 500</div>
+                                <div id="metricSp500Comparison" class="backtest-metric-value" style="color: rgb(239, 68, 68);">--</div>
+                            </div>
+                            <div class="backtest-metric-item">
+                                <div class="backtest-metric-label">Sharpe Ratio</div>
+                                <div id="metricSharpeRatio" class="backtest-metric-value" style="color: #0f172a;">--</div>
+                            </div>
+                            <div class="backtest-metric-item">
+                                <div class="backtest-metric-label">Max Drawdown</div>
+                                <div id="metricMaxDrawdown" class="backtest-metric-value" style="color: #ef4444;">--</div>
+                            </div>
+                        </div>
                     </div>
 
                     <div id="portfolioHoldingsContainer" style="margin-top: 12px; border-top: 1px solid #e2e8f0; padding-top: 10px;">
@@ -577,95 +702,27 @@
         });
     }
 
-    // Render Final Portfolio Construction Report Card (Stage 6)
-    function renderPortfolioVisuals(portfolioData) {
-        confirmedPortfolioData = portfolioData;
-        let data = portfolioData;
-        if (portfolioData && portfolioData.confirmedPortfolio) {
-            data = portfolioData.confirmedPortfolio;
-        }
-
-        const cleanCapital = (data && data.initialCapital) ? parseFloat(data.initialCapital) : getCleanInitialCapital();
-        const positions = (data && data.positions) ? data.positions : [];
-        const cashPos = (data && data.cashPosition) ? data.cashPosition : { weightPct: 0, dollarAllocation: 0 };
-        const sectorBreakdown = (data && data.sectorBreakdown) ? data.sectorBreakdown : {};
-
-        const capitalEl = document.getElementById("portfolio-capital");
-        const dateEl = document.getElementById("portfolio-date");
-        const countEl = document.getElementById("portfolio-stock-count");
-        const statusEl = document.getElementById("portfolio-status");
-
-        if (capitalEl) capitalEl.innerText = `$${cleanCapital.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
-        if (dateEl) dateEl.innerText = BoardroomCore.formatOrdinalDate(currentSimulatedDate || (data && data.asOfDate));
-        if (countEl) countEl.innerText = `${positions.length} Equities ${cashPos.weightPct > 0 ? '+ Cash' : ''}`;
-        if (statusEl) {
-            statusEl.innerText = "CONFIRMED";
-            statusEl.className = "tool-status-badge status-success";
-        }
-
-        // Render Holdings Table
-        const holdingsContainer = document.getElementById("portfolioHoldingsContainer");
-        if (holdingsContainer) {
-            let tableHtml = `
-                <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 12px;">
-                    <thead>
-                        <tr style="border-bottom: 2px solid #cbd5e1; background: #f8fafc;">
-                            <th style="text-align: left; padding: 5px 6px;">Ticker / Company</th>
-                            <th style="text-align: left; padding: 5px 6px;">Sector</th>
-                            <th style="text-align: left; padding: 5px 6px;">Industry</th>
-                            <th style="text-align: right; padding: 5px 6px;">Weight</th>
-                            <th style="text-align: right; padding: 5px 6px;">Allocation</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-
-            positions.forEach(pos => {
-                const dollarAmt = pos.dollarAllocation !== undefined ? Number(pos.dollarAllocation).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (cleanCapital * (pos.weightPct / 100)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                const compName = pos.companyName ? `<span style="font-size: 10.5px; color: #64748b; margin-left: 5px; font-weight: 400;">(${pos.companyName})</span>` : "";
-
-                tableHtml += `
-                    <tr style="border-bottom: 1px solid #f1f5f9;">
-                        <td style="padding: 5px 6px; font-weight: 700; color: #0f172a;">${pos.ticker}${compName}</td>
-                        <td style="padding: 5px 6px; color: #475569; font-size: 11px;">${pos.sector || '--'}</td>
-                        <td style="padding: 5px 6px; color: #64748b; font-size: 11px;">${pos.industry || '--'}</td>
-                        <td style="padding: 5px 6px; text-align: right; font-weight: 700; color: #2563eb;">${Number(pos.weightPct).toFixed(0)}%</td>
-                        <td style="padding: 5px 6px; text-align: right; color: #334155;">$${dollarAmt}</td>
-                    </tr>
-                `;
-            });
-
-            if (cashPos.weightPct > 0) {
-                const cashAmt = cashPos.dollarAllocation !== undefined ? Number(cashPos.dollarAllocation).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (cleanCapital * (cashPos.weightPct / 100)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                const etfSub = cashPos.etfSubstitute ? ` <span style="font-size: 9.5px; color: #059669; font-weight: 600;">(SPY ETF Proxy)</span>` : "";
-                tableHtml += `
-                    <tr style="border-bottom: 1px solid #cbd5e1; background: #fdfefe;">
-                        <td style="padding: 5px 6px; font-weight: 700; color: #059669;">USD CASH${etfSub}</td>
-                        <td style="padding: 5px 6px; color: #059669; font-size: 11px;">Cash & Equivalents</td>
-                        <td style="padding: 5px 6px; color: #059669; font-size: 11px;">Liquidity Reserve</td>
-                        <td style="padding: 5px 6px; text-align: right; font-weight: 700; color: #059669;">${Number(cashPos.weightPct).toFixed(0)}%</td>
-                        <td style="padding: 5px 6px; text-align: right; font-weight: 600; color: #059669;">$${cashAmt}</td>
-                    </tr>
-                `;
+    function switchPortfolioPieBreakdown(mode) {
+        currentPieBreakdownMode = mode || "sector";
+        const buttons = ["sector", "industry", "stock"];
+        buttons.forEach(b => {
+            const btn = document.getElementById("pieToggle" + b.charAt(0).toUpperCase() + b.slice(1));
+            if (btn) {
+                if (b === currentPieBreakdownMode) {
+                    btn.classList.add("active");
+                } else {
+                    btn.classList.remove("active");
+                }
             }
+        });
 
-            tableHtml += `</tbody></table>`;
-            holdingsContainer.innerHTML = tableHtml;
-        }
+        if (!currentPieBreakdowns || !currentPieBreakdowns[currentPieBreakdownMode]) return;
 
-        // Render Portfolio Sector Breakdown Donut Chart
         const canvas = document.getElementById("portfolioSectorChartCanvas");
         if (!canvas) return;
 
-        const secLabels = Object.keys(sectorBreakdown);
-        const secValues = secLabels.map(k => parseFloat(sectorBreakdown[k]) || 0);
-
-        if (cashPos.weightPct > 0) {
-            secLabels.push("Cash Buffer");
-            secValues.push(parseFloat(cashPos.weightPct));
-        }
-
-        if (secLabels.length === 0) return;
+        const breakdown = currentPieBreakdowns[currentPieBreakdownMode];
+        const cleanCapital = getCleanInitialCapital();
 
         if (portfolioSectorChartInstance) {
             portfolioSectorChartInstance.destroy();
@@ -675,16 +732,17 @@
         const colors = [
             "#2563eb", "#10b981", "#f59e0b", "#8b5cf6",
             "#06b6d4", "#ec4899", "#64748b", "#14b8a6",
-            "#f97316", "#a855f7", "#3b82f6"
+            "#f97316", "#a855f7", "#3b82f6", "#e11d48",
+            "#0284c7", "#16a34a", "#ca8a04", "#9333ea"
         ];
 
         portfolioSectorChartInstance = new Chart(canvas.getContext("2d"), {
             type: "doughnut",
             data: {
-                labels: secLabels,
+                labels: breakdown.labels,
                 datasets: [{
-                    data: secValues,
-                    backgroundColor: colors.slice(0, secLabels.length),
+                    data: breakdown.values,
+                    backgroundColor: colors.slice(0, breakdown.labels.length),
                     borderWidth: 2,
                     borderColor: "#ffffff"
                 }]
@@ -702,7 +760,12 @@
                     },
                     tooltip: {
                         callbacks: {
-                            label: (ctx) => `${ctx.label}: ${ctx.parsed}% ($${(cleanCapital * ctx.parsed / 100).toLocaleString()})`
+                            label: (ctx) => {
+                                const val = ctx.parsed || 0;
+                                const sub = breakdown.subtitles ? breakdown.subtitles[ctx.dataIndex] : null;
+                                const labelText = sub ? `${ctx.label} (${sub})` : ctx.label;
+                                return ` ${labelText}: ${val.toFixed(1)}% ($${(cleanCapital * val / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
+                            }
                         }
                     }
                 },
@@ -711,10 +774,398 @@
         });
     }
 
+    const hoverCrosshairPlugin = {
+        id: "hoverCrosshair",
+        afterDraw: (chart) => {
+            if (chart.tooltip && chart.tooltip._active && chart.tooltip._active.length > 0) {
+                const activePoint = chart.tooltip._active[0];
+                const xPixel = activePoint.element.x;
+                const ctx = chart.ctx;
+                ctx.save();
+                ctx.beginPath();
+                ctx.setLineDash([3, 3]);
+                ctx.strokeStyle = "#94a3b8";
+                ctx.lineWidth = 1.2;
+                ctx.moveTo(xPixel, chart.scales.y.top);
+                ctx.lineTo(xPixel, chart.scales.y.bottom);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+    };
+
+    function renderPortfolioBacktestChart(chartData) {
+        const canvas = document.getElementById("portfolioBacktestChartCanvas");
+        if (!canvas) return;
+
+        if (portfolioBacktestChartInstance) {
+            portfolioBacktestChartInstance.destroy();
+            portfolioBacktestChartInstance = null;
+        }
+
+        const datasets = [
+            {
+                label: "Portfolio",
+                data: chartData.portfolioPoints || [],
+                borderColor: "#2563eb",
+                borderWidth: 2.4,
+                backgroundColor: "rgba(37, 99, 235, 0.08)",
+                fill: "start",
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 3
+            },
+            {
+                label: "S&P 500",
+                data: chartData.sp500Points || [],
+                borderColor: "#475569",
+                borderWidth: 2,
+                borderDash: [5, 4],
+                backgroundColor: "transparent",
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 3
+            }
+        ];
+
+        const ctx = canvas.getContext("2d");
+        portfolioBacktestChartInstance = new Chart(ctx, {
+            type: "line",
+            data: { datasets: datasets },
+            plugins: [hoverCrosshairPlugin],
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                layout: { padding: { left: 5, right: 15, top: 10, bottom: 0 } },
+                interaction: { mode: "index", intersect: false, axis: "x" },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: "top",
+                        align: "end",
+                        labels: {
+                            boxWidth: 14,
+                            font: { size: 11, weight: "600" },
+                            color: "#475569"
+                        }
+                    },
+                    tooltip: {
+                        mode: "index",
+                        intersect: false,
+                        callbacks: {
+                            label: (ctx) => `${ctx.dataset.label}: $${ctx.parsed.y.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: "time",
+                        time: {
+                            tooltipFormat: "yyyy-MM-dd",
+                            displayFormats: {
+                                day: "MMM d ''yy",
+                                week: "MMM d ''yy",
+                                month: "MMM ''yy",
+                                quarter: "MMM ''yy",
+                                year: "yyyy"
+                            }
+                        },
+                        min: chartData.startDate ? new Date(chartData.startDate + "T00:00:00").getTime() : undefined,
+                        max: chartData.endDate ? new Date(chartData.endDate + "T00:00:00").getTime() : undefined,
+                        grid: { display: false },
+                        ticks: { color: "#64748b", font: { weight: "600", size: 10 }, maxTicksLimit: 7 },
+                        border: { display: false }
+                    },
+                    y: {
+                        suggestedMin: chartData.yMin,
+                        suggestedMax: chartData.yMax,
+                        grid: { color: "rgba(226, 232, 240, 0.8)", drawBorder: false, lineWidth: 1 },
+                        ticks: {
+                            color: "#64748b",
+                            font: { weight: "600", size: 10 },
+                            callback: (val) => formatYAxisLabel(val)
+                        },
+                        border: { display: false }
+                    }
+                }
+            }
+        });
+
+        // Update the 4 text elements under the chart
+        if (chartData.metrics) {
+            const m = chartData.metrics;
+            const retEl = document.getElementById("metricPortfolioReturn");
+            const spEl = document.getElementById("metricSp500Comparison");
+            const srEl = document.getElementById("metricSharpeRatio");
+            const ddEl = document.getElementById("metricMaxDrawdown");
+
+            if (retEl) {
+                const sign = m.portfolioReturnPct >= 0 ? "+" : "";
+                const dolSign = m.portfolioReturnDollar >= 0 ? "+$" : "-$";
+                const absDol = Math.abs(m.portfolioReturnDollar).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                retEl.innerText = `${sign}${m.portfolioReturnPct.toFixed(2)}% (${dolSign}${absDol})`;
+                retEl.style.color = m.portfolioReturnPct >= 0 ? "#10b981" : "#ef4444";
+            }
+            if (spEl) {
+                const sign = m.alphaPct >= 0 ? "+" : "";
+                const label = m.alphaPct >= 0 ? "outperforming" : "underperforming";
+                spEl.innerText = `${sign}${m.alphaPct.toFixed(2)}% (${label})`;
+                spEl.title = `S&P 500 Return: ${m.sp500ReturnPct >= 0 ? '+' : ''}${m.sp500ReturnPct.toFixed(2)}%`;
+                spEl.style.color = m.alphaPct >= 0 ? "#10b981" : "#ef4444";
+            }
+            if (srEl) {
+                srEl.innerText = m.sharpeRatio.toFixed(2);
+                srEl.style.color = m.sharpeRatio >= 1.0 ? "#10b981" : (m.sharpeRatio >= 0 ? "#0f172a" : "#ef4444");
+            }
+            if (ddEl) {
+                const portDd = Math.abs(m.maxDrawdownPct !== undefined ? m.maxDrawdownPct : 0);
+                const spDd = Math.abs(m.sp500MaxDrawdownPct !== undefined ? m.sp500MaxDrawdownPct : 0);
+                let color = "#0f172a";
+                if (portDd < spDd) {
+                    color = "#10b981";
+                } else if (portDd > spDd) {
+                    color = "#ef4444";
+                }
+                ddEl.innerHTML = `<span style="color: ${color}; font-weight: 700;">${portDd.toFixed(2)}%</span> <span style="font-size: 11px; font-weight: 500; color: #0f172a;">(vs ${spDd.toFixed(2)}% for S&P 500)</span>`;
+            }
+        }
+    }
+
+    // Render Holdings Table with optional Backtest Return column
+    function renderHoldingsTable(positions, cashPos, cleanCapital, backtestData = null) {
+        const holdingsContainer = document.getElementById("portfolioHoldingsContainer");
+        if (!holdingsContainer) return;
+
+        const hasBacktest = Boolean(backtestData && backtestData.holdingReturns);
+        const holdingReturns = hasBacktest ? backtestData.holdingReturns : {};
+        const colCount = hasBacktest ? 6 : 5;
+
+        let tableHtml = `
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 12px;">
+                <thead>
+                    <tr style="border-bottom: 2px solid #cbd5e1; background: #f8fafc;">
+                        <th style="text-align: left; padding: 5px 6px;">Ticker / Company</th>
+                        <th style="text-align: left; padding: 5px 6px;">Sector</th>
+                        <th style="text-align: left; padding: 5px 6px;">Industry</th>
+                        <th style="text-align: right; padding: 5px 6px;">Weight</th>
+                        <th style="text-align: right; padding: 5px 6px;">Allocation</th>
+                        ${hasBacktest ? '<th style="text-align: right; padding: 5px 6px;">Return</th>' : ''}
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        positions.forEach((pos, idx) => {
+            const dollarAmt = pos.dollarAllocation !== undefined 
+                ? Number(pos.dollarAllocation).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) 
+                : (cleanCapital * (pos.weightPct / 100)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const compName = pos.companyName 
+                ? `<span style="font-size: 10.5px; color: #64748b; margin-left: 5px; font-weight: 400;">(${pos.companyName})</span>` 
+                : "";
+            const rowBg = idx % 2 === 0 ? "#ffffff" : "#f8fafc";
+            const hasRationale = Boolean(pos.rationale);
+
+            let returnCellHtml = "";
+            if (hasBacktest) {
+                const retInfo = holdingReturns[pos.ticker];
+                if (retInfo && retInfo.returnPct !== undefined) {
+                    const retPct = Number(retInfo.returnPct);
+                    const color = retPct > 0 ? "#10b981" : (retPct < 0 ? "#ef4444" : "#64748b");
+                    const sign = retPct > 0 ? "+" : "";
+                    returnCellHtml = `<td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; text-align: right; font-weight: 700; color: ${color}; font-size: 11.5px;">${sign}${retPct.toFixed(2)}%</td>`;
+                } else {
+                    returnCellHtml = `<td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; text-align: right; color: #94a3b8; font-size: 11px;">--</td>`;
+                }
+            }
+
+            tableHtml += `
+                <tr style="background: ${rowBg};${hasRationale ? '' : ' border-bottom: 1px solid #e2e8f0;'}">
+                    <td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; font-weight: 700; color: #0f172a;">${pos.ticker}${compName}</td>
+                    <td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; color: #475569; font-size: 11px;">${pos.sector || '--'}</td>
+                    <td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; color: #64748b; font-size: 11px;">${pos.industry || '--'}</td>
+                    <td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; text-align: right; font-weight: 700; color: #2563eb;">${Number(pos.weightPct).toFixed(0)}%</td>
+                    <td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; text-align: right; color: #334155;">$${dollarAmt}</td>
+                    ${returnCellHtml}
+                </tr>
+            `;
+
+            if (hasRationale) {
+                tableHtml += `
+                    <tr style="border-bottom: 1px solid #e2e8f0; background: ${rowBg};">
+                        <td colspan="${colCount}" style="padding: 2px 8px 10px 8px; font-size: 11px; color: #475569; line-height: 1.4;">
+                            <span style="font-weight: 700; color: #1e293b; text-transform: uppercase; font-size: 9.5px; letter-spacing: 0.5px;">Rationale: </span>
+                            <span>${pos.rationale}</span>
+                        </td>
+                    </tr>
+                `;
+            }
+        });
+
+        if (cashPos.weightPct > 0) {
+            const cashAmt = cashPos.dollarAllocation !== undefined 
+                ? Number(cashPos.dollarAllocation).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) 
+                : (cleanCapital * (cashPos.weightPct / 100)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const etfSub = cashPos.etfSubstitute ? ` <span style="font-size: 9.5px; color: #059669; font-weight: 600;">(SPY ETF Proxy)</span>` : "";
+            const cashBg = positions.length % 2 === 0 ? "#ffffff" : "#f8fafc";
+            const cashReturnCell = hasBacktest ? `<td style="padding: 6px 6px 2px 6px; text-align: right; font-weight: 600; color: #64748b; font-size: 11.5px;">0.00%</td>` : "";
+
+            tableHtml += `
+                <tr style="background: ${cashBg};">
+                    <td style="padding: 6px 6px 2px 6px; font-weight: 700; color: #059669;">USD CASH${etfSub}</td>
+                    <td style="padding: 6px 6px 2px 6px; color: #059669; font-size: 11px;">Cash & Equivalents</td>
+                    <td style="padding: 6px 6px 2px 6px; color: #059669; font-size: 11px;">Liquidity Reserve</td>
+                    <td style="padding: 6px 6px 2px 6px; text-align: right; font-weight: 700; color: #059669;">${Number(cashPos.weightPct).toFixed(0)}%</td>
+                    <td style="padding: 6px 6px 2px 6px; text-align: right; font-weight: 600; color: #059669;">$${cashAmt}</td>
+                    ${cashReturnCell}
+                </tr>
+                <tr style="border-bottom: 1px solid #e2e8f0; background: ${cashBg};">
+                    <td colspan="${colCount}" style="padding: 2px 8px 10px 8px; font-size: 11px; color: #059669; line-height: 1.4;">
+                        <span style="font-weight: 700; text-transform: uppercase; font-size: 9.5px; letter-spacing: 0.5px;">Rationale: </span>
+                        <span>Liquidity reserve maintained for tactical allocation, downside mitigation, and cash buffer.</span>
+                    </td>
+                </tr>
+            `;
+        }
+
+        tableHtml += `</tbody></table>`;
+        holdingsContainer.innerHTML = tableHtml;
+    }
+
+    // Render Final Portfolio Construction Report Card (Stage 6)
+    function renderPortfolioVisuals(portfolioData) {
+        confirmedPortfolioData = portfolioData;
+        let data = portfolioData;
+        if (portfolioData && portfolioData.confirmedPortfolio) {
+            data = portfolioData.confirmedPortfolio;
+        }
+
+        const cleanCapital = (data && data.initialCapital) ? parseFloat(data.initialCapital) : getCleanInitialCapital();
+        const positions = (data && data.positions) ? data.positions : [];
+        const cashPos = (data && data.cashPosition) ? data.cashPosition : { weightPct: 0, dollarAllocation: 0 };
+        const sectorBreakdown = (data && data.sectorBreakdown) ? data.sectorBreakdown : {};
+
+        const effectiveSimDate = currentSimulatedDate || (data && data.asOfDate) || BoardroomCore.getSimulatedDate();
+
+        const capitalEl = document.getElementById("portfolio-capital");
+        const dateEl = document.getElementById("portfolio-date");
+        const countEl = document.getElementById("portfolio-stock-count");
+        const statusEl = document.getElementById("portfolio-status");
+
+        if (capitalEl) capitalEl.innerText = `$${cleanCapital.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+        if (dateEl) dateEl.innerText = BoardroomCore.formatOrdinalDate(effectiveSimDate);
+        if (countEl) countEl.innerText = `${positions.length} Equities ${cashPos.weightPct > 0 ? '+ Cash' : ''}`;
+        if (statusEl) {
+            statusEl.innerText = "CONFIRMED";
+            statusEl.className = "tool-status-badge status-success";
+        }
+
+        // Chart display logic: Past date -> Backtest Line Chart; Today/Not Past -> 3-view Pie Chart
+        const pastDate = isDateInPast(effectiveSimDate);
+        const currentBacktestData = (pastDate && cachedBacktestData && cachedBacktestData.simDate === effectiveSimDate) ? cachedBacktestData : null;
+        renderHoldingsTable(positions, cashPos, cleanCapital, currentBacktestData);
+
+        const pieToggleContainer = document.getElementById("portfolioPieToggleContainer");
+        const sectorCanvas = document.getElementById("portfolioSectorChartCanvas");
+        const backtestCanvas = document.getElementById("portfolioBacktestChartCanvas");
+        const backtestMetrics = document.getElementById("portfolioBacktestMetrics");
+
+        if (pastDate) {
+            if (pieToggleContainer) pieToggleContainer.style.display = "none";
+            if (sectorCanvas) sectorCanvas.style.display = "none";
+            if (backtestCanvas) backtestCanvas.style.display = "block";
+            if (backtestMetrics) backtestMetrics.style.display = "grid";
+
+            if (cachedBacktestData && cachedBacktestData.simDate === effectiveSimDate) {
+                renderPortfolioBacktestChart(cachedBacktestData);
+                renderHoldingsTable(positions, cashPos, cleanCapital, cachedBacktestData);
+            } else {
+                fetch("/api/portfolio/backtest", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        simDate: effectiveSimDate,
+                        initialCapital: cleanCapital,
+                        positions: positions,
+                        cashPosition: cashPos
+                    })
+                })
+                .then(res => res.json())
+                .then(resData => {
+                    if (resData && resData.ok) {
+                        cachedBacktestData = resData;
+                        renderPortfolioBacktestChart(resData);
+                        renderHoldingsTable(positions, cashPos, cleanCapital, resData);
+                    } else {
+                        console.error("Failed to load backtest data:", resData?.error);
+                    }
+                })
+                .catch(err => console.error("Error calling portfolio backtest API:", err));
+            }
+        } else {
+            if (pieToggleContainer) pieToggleContainer.style.display = "flex";
+            if (sectorCanvas) sectorCanvas.style.display = "block";
+            if (backtestCanvas) backtestCanvas.style.display = "none";
+            if (backtestMetrics) backtestMetrics.style.display = "none";
+
+            // Prepare 3 breakdown datasets: Sector, Industry, Stock
+            // 1. Sector breakdown
+            const secLabels = Object.keys(sectorBreakdown);
+            const secValues = secLabels.map(k => parseFloat(sectorBreakdown[k]) || 0);
+            if (cashPos.weightPct > 0) {
+                secLabels.push("Cash Buffer");
+                secValues.push(parseFloat(cashPos.weightPct));
+            }
+
+            // 2. Industry breakdown
+            const indDict = {};
+            positions.forEach(p => {
+                const ind = p.industry || "General Equities";
+                indDict[ind] = (indDict[ind] || 0) + (parseFloat(p.weightPct) || 0);
+            });
+            const indLabels = Object.keys(indDict);
+            const indValues = indLabels.map(k => indDict[k]);
+            if (cashPos.weightPct > 0) {
+                indLabels.push("Cash Buffer");
+                indValues.push(parseFloat(cashPos.weightPct));
+            }
+
+            // 3. Stock breakdown
+            const stLabels = positions.map(p => p.ticker);
+            const stValues = positions.map(p => parseFloat(p.weightPct) || 0);
+            const stSubs = positions.map(p => p.companyName || "");
+            if (cashPos.weightPct > 0) {
+                stLabels.push("USD Cash");
+                stValues.push(parseFloat(cashPos.weightPct));
+                stSubs.push("Cash Buffer");
+            }
+
+            currentPieBreakdowns = {
+                sector: { labels: secLabels, values: secValues, subtitles: null },
+                industry: { labels: indLabels, values: indValues, subtitles: null },
+                stock: { labels: stLabels, values: stValues, subtitles: stSubs }
+            };
+
+            switchPortfolioPieBreakdown(currentPieBreakdownMode || "sector");
+        }
+    }
+
     // Lifecycle Listeners
     BoardroomCore.on("simulationStarted", () => {
         confirmedSectorData = null;
         confirmedPortfolioData = null;
+        cachedBacktestData = null;
+        if (portfolioBacktestChartInstance) {
+            portfolioBacktestChartInstance.destroy();
+            portfolioBacktestChartInstance = null;
+        }
+        if (portfolioSectorChartInstance) {
+            portfolioSectorChartInstance.destroy();
+            portfolioSectorChartInstance = null;
+        }
+        const pieToggle = document.getElementById("portfolioPieToggleContainer");
+        if (pieToggle) pieToggle.style.display = "none";
         const finalTimeRow = document.getElementById("finalTimeReportRow");
         if (finalTimeRow) finalTimeRow.style.display = "none";
     });

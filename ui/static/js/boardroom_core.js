@@ -20,19 +20,14 @@ const BoardroomCore = (function () {
     const customEventListeners = {};
 
     const roleConfigs = {
-        "Macro Analyst": { class: "cyan", initials: "MS", name: "Macro Analyst" },
-        "Bullish Value Analyst": { class: "green", initials: "BA", name: "Bullish Analyst" },
-        "Bearish Risk Analyst": { class: "red", initials: "RA", name: "Bearish Analyst" },
+        "Macro Analyst": { class: "cyan", initials: "MA", name: "Macro Analyst" },
+        "Bullish Value Analyst": { class: "green", initials: "BL", name: "Bullish Analyst" },
+        "Bearish Risk Analyst": { class: "red", initials: "BR", name: "Bearish Analyst" },
         "Aggressive Risk Analyst": { class: "yellow", initials: "AR", name: "Aggressive Risk" },
         "Conservative Risk Analyst": { class: "blue", initials: "CR", name: "Conservative Risk" },
         "Impartial Portfolio Manager": { class: "magenta", initials: "PM", name: "Portfolio Manager" },
         "One-Shot Analyst": { class: "cyan", initials: "OS", name: "One-Shot Analyst" },
-        "Boardroom Spokesperson": { class: "cyan", initials: "SP", name: "Boardroom Spokesperson" },
-        "Short-Term Specialist": { class: "yellow", initials: "ST", name: "Short-Term Specialist" },
-        "Medium-Term Specialist": { class: "yellow", initials: "MT", name: "Medium-Term Specialist" },
-        "Long-Term Specialist": { class: "yellow", initials: "LT", name: "Long-Term Specialist" },
-        "Distant-Term Specialist": { class: "yellow", initials: "DT", name: "Distant-Term Specialist" },
-        "Chief Investment Officer": { class: "magenta", initials: "CIO", name: "Chief Investment Officer" }
+        "Boardroom Spokesperson": { class: "cyan", initials: "SP", name: "Boardroom Spokesperson" }
     };
 
     function registerRole(roleName, config) {

@@ -5,7 +5,7 @@ sys.path.append(ROOT)
 import json
 import time
 
-from boardroom.boardroom_config import TIME_HORIZON_INFO, SingleEquityRatingConfig, BoardroomPace, TimeHorizon
+from boardroom.boardroom_config import TIME_HORIZON_INFO, SingleEquityRatingConfig, BoardroomPace, SingleEquityTimeHorizon
 from boardroom.boardroom_mgr import executeBoardroomConfig
 
 from llm.server_manager import serverManager
@@ -16,7 +16,7 @@ SIM_TIME_STR = "2025-01-31"
 
 TICKERS = ["MSFT", "KO", "MCD", "NFLX", "LLY", "NVDA", "MU", "JPM", "TSLA", "IBM"]
 
-TIME_HORIZON = TimeHorizon.MEDIUM       # Want 3mo and 12mo targets
+TIME_HORIZON = SingleEquityTimeHorizon.MEDIUM       # Want 3mo and 12mo targets
 SUBMIT_TOOL = TIME_HORIZON_INFO[TIME_HORIZON]["llmSubmitToolName"]
 
 RUNS_PER_TICKER = 3

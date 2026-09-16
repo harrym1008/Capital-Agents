@@ -5,7 +5,7 @@ sys.path.append(ROOT)
 import json
 import time
 
-from boardroom.boardroom_config import TIME_HORIZON_INFO, SingleEquityRatingConfig, BoardroomPace, TimeHorizon
+from boardroom.boardroom_config import TIME_HORIZON_INFO, SingleEquityRatingConfig, BoardroomPace, SingleEquityTimeHorizon
 from boardroom.boardroom_mgr import executeBoardroomConfig
 
 from llm.server_manager import serverManager
@@ -21,7 +21,7 @@ MODELS = {
 SIM_TIME_STR = "2026-06-24"
 TICKERS = ["MSFT", "KO", "MCD", "NFLX", "LLY"]
 
-TIME_HORIZON = TimeHorizon.LONG
+TIME_HORIZON = SingleEquityTimeHorizon.LONG
 SUBMIT_TOOL = TIME_HORIZON_INFO[TIME_HORIZON]["llmSubmitToolName"]
 
 MODES = {

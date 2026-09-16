@@ -1,7 +1,31 @@
-from typing import Dict, List, Optional
-from boardroom.boardroom_config import TIME_HORIZON_INFO, TimeHorizon
+from typing import Dict, List, Optional, Any
 
 from llmtools.functions.stock_search import DB_SECTOR_TO_TICKER
+
+
+MERGED_ARG_KEYS = [
+    "initialCapital",
+    "sectorDiversityRule",
+    "maxSectorAllocation",
+    "maxStockAllocation",
+    "targetStockCount",
+    "targetSectorCount",
+    "timeHorizon",
+    "pacingMode",
+    "label",
+    "llmPriceTargets",
+    "llmFinalLinePriceTargets",
+    "llmSubmitToolName",
+    "ticker"
+]
+
+
+def buildMergedArgs(promptArgs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    undefinedMsg = "*not defined by user*"
+    merged = {key: undefinedMsg for key in MERGED_ARG_KEYS}
+    if promptArgs:
+        merged.update(promptArgs)
+    return merged
 
 
 def buildSharedBaseSysPrompt(dateStr: str, toolsStr: str, agentRole: str, agentSpecificPrompt: str) -> str:
@@ -67,22 +91,9 @@ def buildAgentSpecificSysPrompt(
     agentToolsStr: str, 
     mode: str = "SingleEquityRating", 
     subrole: Optional[str] = None, 
-    promptArgs: Optional[Dict[str, str]] = None
+    promptArgs: Optional[Dict[str, Any]] = None
 ) -> str:
-    mergedArgs = {
-        "initialCapital": "$100,000.00",
-        "sectorDiversityRule": "Select between 3 and 6 distinct sectors",
-        "maxSectorAllocation": "40%",
-        "maxStockAllocation": "25%",
-        "targetStockCount": "10",
-        "targetSectorCount": "Dynamic",
-        "timeHorizon": "Long-term (1 to 2+ years)",
-        "pacingMode": "Complete"
-    }
-    if promptArgs:
-        mergedArgs.update(promptArgs)
-    else:
-        mergedArgs.update(TIME_HORIZON_INFO[TimeHorizon.LONG])
+    mergedArgs = buildMergedArgs(promptArgs)
 
     roleKey = roleKeyMap.get(agentRole, agentRole)
     modeDict = AGENT_SPECIFIC_SYS_PROMPTS.get(mode, AGENT_SPECIFIC_SYS_PROMPTS.get("SingleEquityRating", {}))
@@ -115,11 +126,10 @@ def buildSpokespersonSysPrompt(
     dateStr: str,
     toolsStr: str,
     boardroomContextStr: str,
-    promptArgs: Dict[str, str] = None,
+    promptArgs: Optional[Dict[str, Any]] = None,
     activeRoles: Optional[List[str]] = None
 ) -> str:
-    if not promptArgs:
-        promptArgs = TIME_HORIZON_INFO[TimeHorizon.LONG]
+    mergedArgs = buildMergedArgs(promptArgs)
 
     if not activeRoles:
         activeRoles = [
@@ -156,9 +166,13 @@ def buildSpokespersonSysPrompt(
     return buildSharedBaseSysPrompt(dateStr, toolsStr, "Boardroom Spokesperson", spokespersonPrompt)
 
 
-def buildSpecialistQnASysPrompt(dateStr: str, agentRole: str, toolsStr: str, promptArgs: Dict[str, str] = None) -> str:
-    if not promptArgs:
-        promptArgs = TIME_HORIZON_INFO[TimeHorizon.LONG]
+def buildSpecialistQnASysPrompt(
+    dateStr: str, 
+    agentRole: str, 
+    toolsStr: str, 
+    promptArgs: Optional[Dict[str, Any]] = None
+) -> str:
+    mergedArgs = buildMergedArgs(promptArgs)
 
     specialistPrompt = (
         f"You are the {agentRole} participating in a post-evaluation Q&A session with the user.\n"
@@ -340,6 +354,11 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         "portfolioManager": {
             "decision": (
                 f"You are the Impartial Portfolio Manager delivering the final executive verdict on the target equity.\n\n"
+                f"Your final rating (BUY/HOLD/SELL etc.) MUST make logical sense given the distance from the current price to your two price targets. "
+                f"If your price targets are both above the current price, your rating should be BUY. If your price targets are both below the current price, your rating MUST be SELL. "
+                f"If your targets straddle the current price, your rating should be HOLD. HOLD should also be used as a neutral position."
+                f"You are permitted to extend BUY/SELL to STRONG BUY/STRONG SELL as appropriate. "
+                f"You are permitted some leeway with these rules where one target is over and the other is under the current price, where you can decide on the appropriate rating.\n\n"
 
                 f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
                 f"You must call 'calculateDistFromCurrPrice' to calculate the percentage distance between the current stock price and your chosen price targets.\n\n"
@@ -602,25 +621,12 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
 
 
 def buildSummariseSysPrompt(
-    agentRole: str,
-    mode: str = "SingleEquityRating",
-    agentSubrole: Optional[str] = None,
-    promptArgs: Optional[Dict[str, str]] = None
+    agentRole: str, 
+    mode: str = "SingleEquityRating", 
+    agentSubrole: Optional[str] = None, 
+    promptArgs: Optional[Dict[str, Any]] = None
 ) -> str:
-    mergedArgs = {
-        "initialCapital": "$100,000.00",
-        "sectorDiversityRule": "Select between 3 and 6 distinct sectors",
-        "maxSectorAllocation": "40%",
-        "maxStockAllocation": "25%",
-        "targetStockCount": "10",
-        "targetSectorCount": "Dynamic",
-        "timeHorizon": "Long-term (1 to 2+ years)",
-        "pacingMode": "Complete"
-    }
-    if promptArgs:
-        mergedArgs.update(promptArgs)
-    else:
-        mergedArgs.update(TIME_HORIZON_INFO[TimeHorizon.LONG])
+    mergedArgs = buildMergedArgs(promptArgs)
     roleKey = roleKeyMap.get(agentRole, agentRole)
 
     if mode == "PortfolioCreation":
@@ -726,11 +732,11 @@ def buildSummariseSysPrompt(
         f"- {agentSpecificPrompt}\n"
         f"--> these metrics must be on their own final *SINGLE* line in the exact order."
         f"- Do not invent or hallucinate any metrics, only include what is present in the raw internal analysis.\n"
-
-        f"\nYou are permitted minimal thinking time, so layout your final response and then produce it immediately. Do not overthink.\n"
-
+        
+        f"\nYou are permitted minimal thinking time, so layout your final response and then produce it immediately. Do not overthink.\n\n"
+        
         f"Base your summary entirely on the raw internal analysis provided in the message. Do not add your own external facts, "
         f"and do not lose the core quantitative targets, arguments, or numbers from the raw source.\n\n"
     )
 
-    return systemPrompt.format(**promptArgs)
+    return systemPrompt.format(**mergedArgs)

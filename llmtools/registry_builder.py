@@ -120,8 +120,8 @@ SCHEMAS = {
             },
             "style": {
                 "type": "string",
-                "enum": ["value", "defensive", "all"],
-                "description": "The investment style bias for screening candidates (value, defensive, or all). Defaults to all.",
+                "enum": ["growth", "defensive", "value", "all"],
+                "description": "The investment style bias for screening candidates (growth, defensive, value, or all). Defaults to all.",
                 "default": "all"
             },
             "limit": {

@@ -233,16 +233,16 @@ class LlamaCppProcessInitiator:
         self.logs = collections.deque(maxlen=1000)
         self.printLogsToTerminal = printLogsToTerminal
 
+    def getCommandLine(self):
+        return self.command
 
     def setState(self, newState):
         with self.stateLock:
             self.state = newState
 
-
     def getState(self):
         with self.stateLock:
             return self.state
-
 
     def printToTerminal(self, *args, **kwargs):
         if self.printLogsToTerminal:
@@ -274,6 +274,8 @@ class LlamaCppProcessInitiator:
         except (urllib.error.URLError, urllib.error.HTTPError):
             return False
         
+
+
 
     def startOnAnotherThread(self, readyTimeout=90):
         thread = threading.Thread(target=self.start, args=(readyTimeout,), daemon=True)

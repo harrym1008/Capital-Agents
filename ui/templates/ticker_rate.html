@@ -466,6 +466,26 @@
         }
     };
 
+    const hoverCrosshairPlugin = {
+        id: "hoverCrosshair",
+        afterDraw: (chart) => {
+            if (chart.tooltip && chart.tooltip._active && chart.tooltip._active.length > 0) {
+                const activePoint = chart.tooltip._active[0];
+                const xPixel = activePoint.element.x;
+                const ctx = chart.ctx;
+                ctx.save();
+                ctx.beginPath();
+                ctx.setLineDash([3, 3]);
+                ctx.strokeStyle = "#94a3b8";
+                ctx.lineWidth = 1.2;
+                ctx.moveTo(xPixel, chart.scales.y.top);
+                ctx.lineTo(xPixel, chart.scales.y.bottom);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+    };
+
     function countDecimalPlaces(num) {
         if (!num || Math.floor(num) === num) return 0;
         const str = num.toString();
@@ -594,17 +614,19 @@
         stageChartInstance = new Chart(ctx, {
             type: "line",
             data: { datasets: datasets },
-            plugins: [simDateLinePlugin],
+            plugins: [simDateLinePlugin, hoverCrosshairPlugin],
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 animation: false,
                 layout: { padding: { left: 5, right: 25, top: 10, bottom: 0 } },
                 simDate: chartData.simDate,
-                interaction: { mode: "nearest", intersect: false },
+                interaction: { mode: "index", intersect: false, axis: "x" },
                 plugins: {
                     legend: { display: false },
                     tooltip: {
+                        mode: "index",
+                        intersect: false,
                         callbacks: {
                             label: (context) => `${context.dataset.label}: $${context.parsed.y.toFixed(2)}`
                         }

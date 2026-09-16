@@ -175,13 +175,13 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             return [{"role": "Impartial Portfolio Manager", "color": self.portManager.colorName, "name": "Portfolio Manager"}]
         elif phaseNumber == 4:
             return [
-                {"role": "Growth Stock Hunter", "color": self.growthHunter.colorName, "name": "Growth Hunter"},
-                {"role": "Value/Defensive Stock Hunter", "color": self.valueHunter.colorName, "name": "Value Hunter"}
+                {"role": "Growth Stock Hunter", "color": self.growthHunter.colorName, "name": "Growth Stock Hunter"},
+                {"role": "Value/Defensive Stock Hunter", "color": self.valueHunter.colorName, "name": "Defensive Stock Hunter"}
             ]
         elif phaseNumber == 5:
             return [
-                {"role": "Aggressive Risk Analyst", "color": self.aggRiskAnalyst.colorName, "name": "Aggressive Risk"},
-                {"role": "Conservative Risk Analyst", "color": self.consRiskAnalyst.colorName, "name": "Conservative Risk"}
+                {"role": "Aggressive Risk Analyst", "color": self.aggRiskAnalyst.colorName, "name": "Aggressive Risk Analyst"},
+                {"role": "Conservative Risk Analyst", "color": self.consRiskAnalyst.colorName, "name": "Conservative Risk Analyst"}
             ]
         elif phaseNumber == 6:
             return [{"role": "Impartial Portfolio Manager", "color": self.portManager.colorName, "name": "Portfolio Manager"}]
@@ -230,6 +230,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Macro Context:\n{macroRaw}\n\n"
             f"Task: As the Impartial Portfolio Manager, determine the executive sector allocation for this {promptArgs['initialCapital']} portfolio.\n"
             f"Mandatory Constraints:\n"
+            f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- {promptArgs['sectorDiversityRule']}\n"
             f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n"
             f"- Allocations must sum to approximately 100.0%.\n\n"
@@ -262,6 +263,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Confirmed Portfolio Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
             f"Task: As the Growth Stock Hunter, scout high-conviction growth and momentum equities across the confirmed sectors.\n"
             f"Mandatory Constraints:\n"
+            f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- Target stock count across entire portfolio: {promptArgs['targetStockCount']}. Keep candidate selections focused and calibrated to this target.\n"
             f"- Sector Boundary: Scout candidate equities ONLY within the confirmed sectors above.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
@@ -275,6 +277,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Confirmed Portfolio Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
             f"Task: As the Value/Defensive Stock Hunter, scout high-conviction defensive, dividend, and value equities across the confirmed sectors.\n"
             f"Mandatory Constraints:\n"
+            f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- Target stock count across entire portfolio: {promptArgs['targetStockCount']}. Keep candidate selections focused and calibrated to this target.\n"
             f"- Sector Boundary: Scout candidate equities ONLY within the confirmed sectors above.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
@@ -306,11 +309,13 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
 
         pmFinalPrompt = (
             f"Initial Capital: {promptArgs['initialCapital']}\n"
+            f"Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"Confirmed Sector Allocations:\n{confirmedSectorsText}\n\n"
             f"Growth Stock Hunter Scouting:\n{growthRaw}\n\n"
             f"Value/Defensive Stock Hunter Scouting:\n{valueRaw}\n\n"
             f"Task: As the Impartial Portfolio Manager, make the final executive decision to construct the portfolio for {promptArgs['initialCapital']}.\n"
             f"Mandatory Constraints:\n"
+            f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- Target stock count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
             f"- Sector Allocation Structure: Group stocks by confirmed sector into the 'sectorAllocations' dictionary. Every confirmed non-cash sector must contain stock holdings.\n"
             f"- Per-Sector Weighting: Inside each sector, assign whole integer 'perSectorWeight' percentages (e.g. 60, 40, not decimals) to chosen stocks such that they strictly sum to 100% of that sector.\n"
@@ -384,6 +389,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Macro Analysis Context:\n{macroRaw}\n\n"
             f"Task: Propose a growth and cyclical sector allocation for this {promptArgs['initialCapital']} portfolio.\n"
             f"Mandatory Constraints:\n"
+            f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- {promptArgs['sectorDiversityRule']}\n"
             f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n\n"
             f"1. Use 'fetchAllSectorsPerformance', 'fetchAllSectorProfiles', and 'fetchAllSectorRankings' to comprehensively assess all 11 GICS sectors.\n"
@@ -395,6 +401,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Macro Analysis Context:\n{macroRaw}\n\n"
             f"Task: Propose a defensive, risk-managed sector allocation for this {promptArgs['initialCapital']} portfolio.\n"
             f"Mandatory Constraints:\n"
+            f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- {promptArgs['sectorDiversityRule']}\n"
             f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n\n"
             f"1. Use 'fetchAllSectorsPerformance', 'fetchAllSectorProfiles', and 'fetchAllSectorRankings' to comprehensively assess all 11 GICS sectors.\n"
@@ -429,6 +436,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Bearish Sector Proposal:\n{bearSectorRaw}\n\n"
             f"Task: As the Impartial Portfolio Manager, reconcile the Bullish and Bearish proposals to make the definitive sector allocation decision for {promptArgs['initialCapital']}.\n"
             f"Mandatory Constraints:\n"
+            f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- {promptArgs['sectorDiversityRule']}\n"
             f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n"
             f"- Allocations must sum to approximately 100.0%.\n\n"
@@ -461,6 +469,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Confirmed Portfolio Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
             f"Task: As the Growth Stock Hunter, scout high-conviction growth and momentum equities across the confirmed sectors.\n"
             f"Mandatory Constraints:\n"
+            f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- Target stock count across entire portfolio: {promptArgs['targetStockCount']}. Keep candidate selections focused and calibrated to this target.\n"
             f"- Sector Boundary: Scout candidate equities ONLY within the confirmed sectors above.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
@@ -474,6 +483,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Confirmed Portfolio Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
             f"Task: As the Value/Defensive Stock Hunter, scout high-conviction defensive, dividend, and value equities across the confirmed sectors.\n"
             f"Mandatory Constraints:\n"
+            f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- Target stock count across entire portfolio: {promptArgs['targetStockCount']}. Keep candidate selections focused and calibrated to this target.\n"
             f"- Sector Boundary: Scout candidate equities ONLY within the confirmed sectors above.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
@@ -507,6 +517,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Defensive Candidates Scouted:\n{valueRaw}\n\n"
             f"Task: Construct your final aggressive individual stock allocation proposal for {promptArgs['initialCapital']}.\n"
             f"Mandatory Constraints:\n"
+            f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- Target Stock Count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
             f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector above.\n"
             f"- Per-Sector Weighting: Inside each confirmed sector, propose high-beta growth stocks with whole integer 'perSectorWeight' percentages summing strictly to 100% for that sector.\n"
@@ -521,6 +532,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Defensive Candidates Scouted:\n{valueRaw}\n\n"
             f"Task: Construct your final conservative individual stock allocation proposal for {promptArgs['initialCapital']}.\n"
             f"Mandatory Constraints:\n"
+            f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- Target Stock Count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
             f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector above.\n"
             f"- Per-Sector Weighting: Inside each confirmed sector, propose defensive, low-volatility equities with whole integer 'perSectorWeight' percentages summing strictly to 100% for that sector.\n"
@@ -552,11 +564,13 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
 
         pmFinalPrompt = (
             f"Initial Capital: {promptArgs['initialCapital']}\n"
+            f"Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"Confirmed Sector Allocations:\n{confirmedSectorsText}\n\n"
             f"Aggressive Risk Allocation Proposal:\n{aggProposalRaw}\n\n"
             f"Conservative Risk Allocation Proposal:\n{consProposalRaw}\n\n"
             f"Task: As the Impartial Portfolio Manager, reconcile the Aggressive and Conservative proposals to make the definitive portfolio construction decision for {promptArgs['initialCapital']}.\n"
             f"Mandatory Constraints:\n"
+            f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- Target stock count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
             f"- Sector Allocation Structure: Group stocks by confirmed sector into the 'sectorAllocations' dictionary. Every confirmed non-cash sector must contain stock holdings.\n"
             f"- Per-Sector Weighting: Inside each sector, assign whole integer 'perSectorWeight' percentages (e.g. 60, 40, not decimals) to chosen stocks such that they strictly sum to 100% of that sector.\n"
@@ -696,6 +710,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Macro Context:\n{macroRaw}\n\n"
             f"Task: As the Growth Stock Hunter, scout high-conviction growth and momentum equities STRICTLY within the confirmed sectors above.\n"
             f"MANDATORY CONSTRAINTS:\n"
+            f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- TARGET STOCK COUNT: The target total stock count across the entire portfolio is {promptArgs['targetStockCount']}. "
             f"Keep your shortlisted candidate count focused and calibrated so the boardroom does not exceed this count.\n"
             f"- STRICT SECTOR BOUNDARY: You MUST ONLY scout candidate equities belonging to the confirmed sectors ({activeSectorsSummary}). "
@@ -711,6 +726,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Macro Context:\n{macroRaw}\n\n"
             f"Task: As the Value/Defensive Stock Hunter, scout high-conviction defensive and value equities STRICTLY within the confirmed sectors above.\n"
             f"MANDATORY CONSTRAINTS:\n"
+            f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- TARGET STOCK COUNT: The target total stock count across the entire portfolio is {promptArgs['targetStockCount']}. "
             f"Keep your shortlisted candidate count focused and calibrated so the boardroom does not exceed this count.\n"
             f"- STRICT SECTOR BOUNDARY: You MUST ONLY scout candidate equities belonging to the confirmed sectors ({activeSectorsSummary}). "
@@ -746,6 +762,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Defensive Candidates Scouted:\n{valueRaw}\n\n"
             f"Task: Construct your final aggressive individual stock allocation proposal for {promptArgs['initialCapital']}.\n"
             f"MANDATORY CONSTRAINTS:\n"
+            f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- Target Stock Count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
             f"- STRICT SECTOR ALIGNMENT: Group stocks strictly under each confirmed sector ({activeSectorsSummary}).\n"
             f"- Per-Sector Weighting: Inside each confirmed sector, propose high-beta growth stocks with whole integer 'perSectorWeight' percentages summing strictly to 100% for that sector.\n"
@@ -760,6 +777,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Defensive Candidates Scouted:\n{valueRaw}\n\n"
             f"Task: Construct your final conservative individual stock allocation proposal for {promptArgs['initialCapital']}.\n"
             f"MANDATORY CONSTRAINTS:\n"
+            f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- Target Stock Count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
             f"- STRICT SECTOR ALIGNMENT: Group stocks strictly under each confirmed sector ({activeSectorsSummary}).\n"
             f"- Per-Sector Weighting: Inside each confirmed sector, propose defensive, low-volatility equities with whole integer 'perSectorWeight' percentages summing strictly to 100% for that sector.\n"
@@ -791,11 +809,13 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
 
         pmFinalPrompt = (
             f"Initial Capital: {promptArgs['initialCapital']}\n"
+            f"Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"Confirmed Sector Allocations:\n{confirmedSectorsText}\n\n"
             f"Aggressive Risk Allocation Proposal:\n{aggProposalRaw}\n\n"
             f"Conservative Risk Allocation Proposal:\n{consProposalRaw}\n\n"
             f"Task: As the Impartial Portfolio Manager, reconcile the Aggressive and Conservative proposals to make the definitive portfolio construction decision for {promptArgs['initialCapital']}.\n"
             f"MANDATORY CONSTRAINTS:\n"
+            f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- Target stock count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
             f"- Sector Allocation Structure: Group stocks by confirmed sector into the 'sectorAllocations' dictionary ({activeSectorsSummary}). Every confirmed sector must contain stock holdings.\n"
             f"- Per-Sector Weighting: Inside each sector, assign whole integer 'perSectorWeight' percentages (e.g. 60, 40, not decimals) to chosen stocks such that they strictly sum to 100% of that sector.\n"

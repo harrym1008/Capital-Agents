@@ -309,6 +309,7 @@ class ServerManager:
 
                         def runServerStart():
                             try:
+                                self.recordLog(f"Command:\n{' '.join(serverProcess.getCommandLine())}\n\n")
                                 serverProcess.start(readyTimeout=120)
                             except Exception as e:
                                 serverErrorHolder.append(str(e))

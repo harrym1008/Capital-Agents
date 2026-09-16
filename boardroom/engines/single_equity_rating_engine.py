@@ -10,7 +10,7 @@ from cli.ansi import ANSI
 from llmtools.tool_registry import ToolRegistry
 from llm.agents.agent import FinancialAgent
 from llm.agents.agent_prompts import buildSpokespersonSysPrompt, buildSpecialistQnASysPrompt
-from boardroom.boardroom_config import SingleEquityRatingConfig, BoardroomConfig, TimeHorizon, BoardroomPace
+from boardroom.boardroom_config import SingleEquityRatingConfig, BoardroomConfig, SingleEquityTimeHorizon, TimeHorizon, BoardroomPace
 from boardroom.boardroom_engine import BoardroomEngine
 from ui.ui_hooks import getCurrentStage, isStopRequested, setCurrentStage, setCurrentAgent, setAgentPhase, emitEvent, SimulationStoppedException
 
@@ -288,8 +288,8 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
                 return [{"role": "Impartial Portfolio Manager", "color": self.portManager.color, "name": "Portfolio Manager"}]
             else:
                 return [
-                    {"role": "Aggressive Risk Analyst", "color": self.aggRiskAnalyst.color, "name": "Aggressive Risk"},
-                    {"role": "Conservative Risk Analyst", "color": self.consRiskAnalyst.color, "name": "Conservative Risk"}
+                    {"role": "Aggressive Risk Analyst", "color": self.aggRiskAnalyst.color, "name": "Aggressive Risk Analyst"},
+                    {"role": "Conservative Risk Analyst", "color": self.consRiskAnalyst.color, "name": "Conservative Risk Analyst"}
                 ]
         elif phaseNumber == 4:
             if isFast:
@@ -301,8 +301,8 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
                 ]
         elif phaseNumber == 5:
             return [
-                {"role": "Aggressive Risk Analyst", "color": self.aggRiskAnalyst.color, "name": "Aggressive Risk"},
-                {"role": "Conservative Risk Analyst", "color": self.consRiskAnalyst.color, "name": "Conservative Risk"}
+                {"role": "Aggressive Risk Analyst", "color": self.aggRiskAnalyst.color, "name": "Aggressive Risk Analyst"},
+                {"role": "Conservative Risk Analyst", "color": self.consRiskAnalyst.color, "name": "Conservative Risk Analyst"}
             ]
         elif phaseNumber == 6:
             return [{"role": "Impartial Portfolio Manager", "color": self.portManager.color, "name": "Portfolio Manager"}]
@@ -323,11 +323,12 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         # Phase 1: One Shot Analysis
         self._newPhaseHeader(1, "One-Shot Analysis", pace)
         oneShotPrompt = (
+            f"Target Asset: {targetTicker}\n"
+            f"Time Horizon: {timeHorizonInfo['label']}\n\n"
             f"Task: Conduct your complete analysis of macro conditions, single-stock reserach, risk assessment and final " 
-            f"executive decision in one go for the ticker: {targetTicker}.\n"
+            f"executive decision in one go for the ticker: {targetTicker} over the {timeHorizonInfo['label']} time horizon.\n"
             f"Execute your data tools (macro, financials, valuation, statements, stock performance, news) to retrieve hard facts. "
             f"Present your final executive decision with explicit rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and {timeHorizonInfo['llmFinalLinePriceTargets']}." 
-            
         )
         oneShotRaw, _ = self.oneShotAnalyst.analyseAndReply(
             oneShotPrompt, self.toolRegistry, self.timestamp, config, subrole="analysis", requireInitialTools=True
@@ -402,9 +403,10 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         # Phase 1: Macro Environment Analysis
         self._newPhaseHeader(1, "Macro Environment Analysis", pace)
         macroPrompt = (
-            "Task: Conduct top-down macroeconomic analysis for the US financial markets.\n"
-            "Use your macro-specific tools to retrieve economic indicators, headlines, and sentiment history. "
-            "Present a narrative macro summary and explicitly output your overall market regime classification as BULLISH, BEARISH, or NEUTRAL."
+            f"Time Horizon: {timeHorizonInfo['label']}\n\n"
+            f"Task: Conduct top-down macroeconomic analysis for the US financial markets over the {timeHorizonInfo['label']} time horizon.\n"
+            f"Use your macro-specific tools to retrieve economic indicators, headlines, and sentiment history. "
+            f"Present a narrative macro summary and explicitly output your overall market regime classification as BULLISH, BEARISH, or NEUTRAL."
         )
         macroRaw, macroUISummary = self.macroAnalyst.analyseAndReply(
             macroPrompt, self.toolRegistry, self.timestamp, config, subrole=None, requireInitialTools=True
@@ -414,7 +416,8 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         self._newPhaseHeader(2, f"Specialist Research on {targetTicker}", pace)
         researchPrompt = (
             f"Macroeconomic Context:\n{macroRaw}\n\n"
-            f"Task: Conduct single-stock research on ticker {targetTicker}.\n"
+            f"Time Horizon: {timeHorizonInfo['label']}\n\n"
+            f"Task: Conduct single-stock research on ticker {targetTicker} over the {timeHorizonInfo['label']} time horizon.\n"
             f"Execute your data tools (valuation metrics, financial statements, stock price performance, company profile, etc.) to retrieve hard facts. "
             f"Present your thesis and state: explicit rating ({{permittedRatings}}), OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT weight, and preliminary {timeHorizonInfo['llmPriceTargets']}."
         )
@@ -435,10 +438,11 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         self._newPhaseHeader(3, f"Final Executive Decision on {targetTicker}", pace)
         managerPrompt = (
             f"Target Asset: {targetTicker}\n"
+            f"Time Horizon: {timeHorizonInfo['label']}\n\n"
             f"Macro Conditions:\n{macroRaw}\n\n"
             f"Aggressive Allocation Case:\n{bullThesisRaw}\n\n"
             f"Conservative Allocation Case:\n{bearThesisRaw}\n\n"
-            f"Task: Produce the final executive investment decision for {targetTicker}.\n"
+            f"Task: Produce the final executive investment decision for {targetTicker} over the {timeHorizonInfo['label']} time horizon.\n"
             f"Weigh upside potential against solvency risks. You MUST verify your final price targets using the 'calculateDistFromCurrPrice' tool. "
             f"Include a definitive rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and {timeHorizonInfo['llmFinalLinePriceTargets']}."
         )
@@ -468,6 +472,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
             summarisationOverride=False,
             requireInitialTools=True
         )
+        self.portManager.tools = []
 
         try:
             formattedExecutiveDecision = self.toolRegistry.getTool(finalSubmitToolName).toolLog[-1]
@@ -541,9 +546,10 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         # Phase 1: Macro Environment Analysis
         self._newPhaseHeader(1, "Macro Environment Analysis", pace)
         macroPrompt = (
-            "Task: Conduct top-down macroeconomic analysis for the US financial markets.\n"
-            "Use your macro-specific tools to retrieve economic indicators, headlines, and sentiment history. "
-            "Present a narrative macro summary and explicitly output your overall market regime classification as BULLISH, BEARISH, or NEUTRAL."
+            f"Time Horizon: {timeHorizonInfo['label']}\n\n"
+            f"Task: Conduct top-down macroeconomic analysis for the US financial markets over the {timeHorizonInfo['label']} time horizon.\n"
+            f"Use your macro-specific tools to retrieve economic indicators, headlines, and sentiment history. "
+            f"Present a narrative macro summary and explicitly output your overall market regime classification as BULLISH, BEARISH, or NEUTRAL."
         )
         macroRaw, macroUISummary = self.macroAnalyst.analyseAndReply(
             macroPrompt, self.toolRegistry, self.timestamp, config, subrole=None, requireInitialTools=True
@@ -553,7 +559,8 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         self._newPhaseHeader(2, f"Specialist Research on {targetTicker}", pace)
         researchPrompt = (
             f"Macroeconomic Context:\n{macroRaw}\n\n"
-            f"Task: Conduct single-stock research on ticker {targetTicker}.\n"
+            f"Time Horizon: {timeHorizonInfo['label']}\n\n"
+            f"Task: Conduct single-stock research on ticker {targetTicker} over the {timeHorizonInfo['label']} time horizon.\n"
             f"Execute your data tools (valuation metrics, financial statements, stock price performance, company profile) to retrieve hard facts. "
             f"Present your thesis and state: explicit rating ({{permittedRatings}}), OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT weight, and preliminary {timeHorizonInfo['llmPriceTargets']}."
         )
@@ -643,10 +650,11 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         self._newPhaseHeader(6, f"Final Executive Decision on {targetTicker}", pace)
         managerPrompt = (
             f"Target Asset: {targetTicker}\n"
+            f"Time Horizon: {timeHorizonInfo['label']}\n\n"
             f"Macro Conditions:\n{macroRaw}\n\n"
             f"Aggressive Allocation Case:\n{aggProposalRaw}\n\n"
             f"Conservative Allocation Case:\n{consProposalRaw}\n\n"
-            f"Task: Produce the final executive investment decision for {targetTicker}.\n"
+            f"Task: Produce the final executive investment decision for {targetTicker} over the {timeHorizonInfo['label']} time horizon.\n"
             f"Weigh upside potential against solvency risks. You MUST verify your final price targets using the 'calculateDistFromCurrPrice' tool. "
             f"Include a definitive rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and {timeHorizonInfo['llmFinalLinePriceTargets']}."
         )
@@ -891,7 +899,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
             config = SingleEquityRatingConfig(
                 ticker="UNKNOWN",
                 simulatedDateStr=self.timestamp.strftime("%Y-%m-%d"),
-                timeHorizon=TimeHorizon.LONG,
+                timeHorizon=SingleEquityTimeHorizon.LONG,
                 boardroomPace=BoardroomPace.FAST
             )
 

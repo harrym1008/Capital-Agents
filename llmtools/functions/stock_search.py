@@ -47,14 +47,14 @@ def calculateRsi(series: pd.Series, period: int = 14) -> float:
     return float(100 - (100 / (1 + rs)))
 
 
-def calculateGrowthScore(ret1y: float, ret3m: float, vol1y: float, isTrendAligned: bool, rsi14: float) -> float:
+def calculateGrowthScore(ret1y: float, ret3m: float, vol1y: float, bullishTrendAlignment: bool, rsi14: float) -> float:
     # 1. 1-Year Sharpe proxy (reward return relative to volatility)
-    # 2. Trend alignment bonus (Stage-2: Close > SMA50 > SMA200)
+    # 2. Bullish trend alignment bonus (Close > SMA50 > SMA200)
     # 3. Dual-horizon expansion bonus (both 12m and 3m positive)
     # 4. Penalise extremely overbought conditions where RSI > 75
 
     sharpeProxy = (ret1y / vol1y) if vol1y > 0 else 0.0    
-    trendBonus = 1.0 if isTrendAligned else 0.0    
+    trendBonus = 1.0 if bullishTrendAlignment else 0.0    
     consistencyBonus = 0.5 if (ret1y > 10.0 and ret3m > 0.0) else 0.0    
     overboughtPenalty = 0.75 if rsi14 > 75.0 else 0.0
 
@@ -137,7 +137,7 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
     limit = max(4, min(int(limit) if limit else 25, 40))
 
     style = str(style).strip().lower() if style else "all"
-    if style not in ["value", "defensive", "all"]:
+    if style not in ["growth", "defensive", "value", "all"]:
         style = "all"
 
     ticker, resolvedName, note = data.sectors.resolveSector(sector)
@@ -280,20 +280,14 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
                 sma200 = float(np.mean(closes[-min(200, len(closes)):]))
                 rsi14 = round(calculateRsi(validDf["close"], period=14), 1)
 
-                # Stage 2 Trend Alignment: Close > SMA50 > SMA200
-                isTrendAligned = bool(latestClose > sma50 > sma200)
+                # Bullish Trend Alignment: Close > SMA50 > SMA200
+                bullishTrendAlignment = bool(latestClose > sma50 > sma200)
                 isAboveSma200 = bool(latestClose > sma200)
 
                 # Heuristic Scores
-                growthScore = calculateGrowthScore(return12m, return3m, vol1y, isTrendAligned, rsi14)
+                growthScore = calculateGrowthScore(return12m, return3m, vol1y, bullishTrendAlignment, rsi14)
                 defensiveScore = calculateDefensiveScore(downsideVol, maxDd1y, vol1y, drawdown52w, isAboveSma200, worstDayLoss)
                 valueScore = calculateValueScore(drawdown52w, rsi14, mktCapNum, vol1y, latestClose, sma200)
-
-                tags = []
-                if defensiveScore < 20.0 and isAboveSma200:
-                    tags.append("defensive")
-                if valueScore > 1.5:
-                    tags.append("value")
 
                 return {
                     "ticker": t,
@@ -308,8 +302,9 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
                     "maxDrawdown1y": f"{maxDd1y:+0.1f}%",
                     "distFrom52wHigh": f"{drawdown52w:+0.1f}%",
                     "rsi14": rsi14,
-                    "stage2Trend": isTrendAligned,
-                    "styleTags": tags,
+                    "bullishTrendAlignment": bullishTrendAlignment,
+                    "growthScore": round(growthScore, 2),
+                    "defensiveScore": round(defensiveScore, 2),
 
                     "_marketCapNum": mktCapNum,
                     "_growthScore": growthScore,
@@ -346,7 +341,9 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
 
         selectedPool: List[Dict[str, Any]] = []
         for ind, group in industryBuckets.items():
-            if style == "value":
+            if style == "growth":
+                group.sort(key=lambda x: x["_growthScore"], reverse=True)
+            elif style == "value":
                 group.sort(key=lambda x: x["_valueScore"], reverse=True)
             elif style == "defensive":
                 group.sort(key=lambda x: x["_defensiveScore"])
@@ -356,7 +353,9 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
             selectedPool.extend(group[:4])
 
         # 5. Final Sort across the pooled candidates
-        if style == "value":
+        if style == "growth":
+            selectedPool.sort(key=lambda x: x["_growthScore"], reverse=True)
+        elif style == "value":
             selectedPool.sort(key=lambda x: x["_valueScore"], reverse=True)
         elif style == "defensive":
             selectedPool.sort(key=lambda x: x["_defensiveScore"])
