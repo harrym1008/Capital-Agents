@@ -410,6 +410,10 @@ const BoardroomCore = (function () {
         if (stockAllocInp) stockAllocInp.disabled = isRunning;
         const openSectorModalBtn = document.getElementById("openSectorModalBtn");
         if (openSectorModalBtn) openSectorModalBtn.disabled = isRunning;
+        const allocBiasCheck = document.getElementById("allocationBiasCheckbox");
+        if (allocBiasCheck) allocBiasCheck.disabled = isRunning;
+        const allocBiasSlider = document.getElementById("allocationBiasSlider");
+        if (allocBiasSlider) allocBiasSlider.disabled = isRunning;
 
         const runBtn = document.getElementById("runBtn");
         if (runBtn) {
@@ -1479,7 +1483,7 @@ const BoardroomCore = (function () {
     function getGenerationSettings() {
         const maxIters = parseInt(document.getElementById("maxItersInput")?.value || 6, 10);
         const thinkingBudget = parseInt(document.getElementById("thinkingBudgetInput")?.value || 2048, 10);
-        const temp = parseFloat(document.getElementById("temperatureInput")?.value || 0.6);
+        const temp = parseFloat(document.getElementById("temperatureInput")?.value || 0.5);
         const generateSummaries = document.getElementById("generateSummariesCheckbox") ? document.getElementById("generateSummariesCheckbox").checked : true;
 
         return {
@@ -1838,6 +1842,7 @@ const BoardroomCore = (function () {
 
         setupAutoScroll(document.getElementById("sidebarContent"));
         initSimulatedDateControl();
+        initScrollbarAutoPadding();
         if (typeof connectWebsocket === "function") {
             connectWebsocket();
         } else if (typeof window.connectWebsocket === "function") {
@@ -1845,6 +1850,42 @@ const BoardroomCore = (function () {
         }
         checkServerStatus();
         checkBoardroomStatus();
+    }
+
+    function initScrollbarAutoPadding() {
+        const checkScrollbars = () => {
+            const containers = [
+                document.getElementById("configInputsContainer"),
+                document.getElementById("stagesScrollContainer")
+            ];
+            containers.forEach(el => {
+                if (!el) return;
+                const isOverflowing = el.scrollWidth > (el.clientWidth + 1);
+                el.classList.toggle("has-scrollbar", isOverflowing);
+            });
+        };
+
+        if (window.ResizeObserver) {
+            const ro = new ResizeObserver(() => {
+                checkScrollbars();
+            });
+            const c1 = document.getElementById("configInputsContainer");
+            if (c1) {
+                ro.observe(c1);
+                const mo = new MutationObserver(() => checkScrollbars());
+                mo.observe(c1, { attributes: true, subtree: true, childList: true });
+            }
+            const c2 = document.getElementById("stagesScrollContainer");
+            if (c2) {
+                ro.observe(c2);
+                const mo2 = new MutationObserver(() => checkScrollbars());
+                mo2.observe(c2, { attributes: true, subtree: true, childList: true });
+            }
+        }
+
+        window.addEventListener("resize", checkScrollbars);
+        setTimeout(checkScrollbars, 50);
+        setTimeout(checkScrollbars, 300);
     }
 
     function initSimulatedDateControl() {

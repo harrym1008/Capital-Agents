@@ -8,7 +8,44 @@
     display: flex;
     gap: 20px;
     align-items: center;
-    flex-wrap: wrap;
+    justify-content: space-between;
+    flex-shrink: 0;
+    min-width: 0;
+}
+
+.config-inputs-container {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex: 1;
+    min-width: 0;
+    padding-bottom: 0px;
+    margin-bottom: 0px;
+    box-sizing: border-box;
+}
+
+.config-inputs-container.has-scrollbar {
+    padding-bottom: 8px;
+    margin-bottom: -4px;
+}
+
+.config-inputs-container::-webkit-scrollbar {
+    height: 5px;
+}
+
+.config-inputs-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.config-inputs-container::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+.config-inputs-container::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
 }
 
 .config-actions {
@@ -16,12 +53,15 @@
     display: flex;
     gap: 10px;
     align-items: center;
+    flex-shrink: 0;
 }
 
 .config-group {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .config-group label {
@@ -42,6 +82,17 @@
     width: 16px;
     height: 16px;
     cursor: pointer;
+    padding: 0;
+    border: none;
+}
+
+.config-group input[type="range"] {
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    height: 18px;
+    margin: 0;
 }
 
 .config-group input[type="date"] {
@@ -83,7 +134,31 @@
     overflow-y: hidden;
     flex: 1;
     min-width: 0;
-    padding-bottom: 2px;
+    padding-bottom: 0px;
+    margin-bottom: 0px;
+    box-sizing: border-box;
+}
+
+.stages-scroll-container.has-scrollbar {
+    padding-bottom: 6px;
+    margin-bottom: -3px;
+}
+
+.stages-scroll-container::-webkit-scrollbar {
+    height: 5px;
+}
+
+.stages-scroll-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.stages-scroll-container::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+.stages-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
 }
 
 .stage-item {

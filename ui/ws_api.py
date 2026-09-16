@@ -219,6 +219,7 @@ def registerApiRoutes(app):
         initialCapital = data.get("initialCapital", 100_000.0)
         positions = data.get("positions", [])
         cashPosition = data.get("cashPosition", {})
+        timeHorizon = data.get("timeHorizon")
 
         try:
             from simulation.simulation_api import simulationManager
@@ -226,7 +227,8 @@ def registerApiRoutes(app):
                 simDate=simDate,
                 initialCapital=initialCapital,
                 positions=positions,
-                cashPosition=cashPosition
+                cashPosition=cashPosition,
+                timeHorizon=timeHorizon
             )
             return jsonify(backtestData)
         except Exception as e:

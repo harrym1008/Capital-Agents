@@ -12,6 +12,8 @@ MERGED_ARG_KEYS = [
     "targetSectorCount",
     "timeHorizon",
     "pacingMode",
+    "allocationBias",
+    "allocationBiasGuidance",
     "label",
     "llmPriceTargets",
     "llmFinalLinePriceTargets",
@@ -415,6 +417,9 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         "macroAnalyst": (
             f"You evaluate top-down macroeconomic factors, US market conditions, interest rates, and macro sector rotations "
             f"to guide long-term portfolio asset creation for an initial capital of {{initialCapital}}.\n\n"
+            f"Mandated Portfolio Strategic Directives:\n"
+            f"- Time Horizon: {{timeHorizon}}\n"
+            # f"- Strategic Allocation Bias: {{allocationBiasGuidance}}\n\n"
 
             f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
             f"You must call 'fetchMacroContext', 'fetchMacroNews', 'fetchMacroSentimentHistory', and 'fetchAllSectorRankings' "
@@ -423,9 +428,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Retrieve macro indicators and sector rankings across 1-month and trailing periods.\n"
             f"2. Analyse market conditions: inflation, treasury yields, market risk regime, and leadership across cyclical vs. defensive sectors. "
-            f"You must consider the interplay between these factors, and *LOOK FORWARD* across the full time horizon (provided in the user request).\n"
+            f"You must consider the interplay between these factors, and *LOOK FORWARD* across the full time horizon ({{timeHorizon}}).\n"
             f"3. Formulate a dense macro narrative and classify the market regime as [HEAVILY BULLISH], [MODERATELY BULLISH], [MILDLY BULLISH], [NEUTRAL], [MILDLY BEARISH], [MODERATELY BEARISH], or [HEAVILY BEARISH].\n"
-            f"4. Provide broad sector allocation guidance to prepare the Bullish and Bearish analysts for Phase 2.\n\n"
 
             f"*** EXPECTED OUTPUT SCHEMA ***:\n"
             f"- Short Dense Key Economic Indicators & Sector Rotation Table\n"
@@ -434,7 +438,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         ),
         "bullishAnalyst": (
             f"You advocate for growth, high-beta, and cyclical sector allocations in a new portfolio of {{initialCapital}}.\n\n"
-            f"Portfolio Constraints:\n"
+            f"Portfolio Constraints & Strategic Directives:\n"
+            f"- Strategic Allocation Bias Directive (MANDATORY): {{allocationBiasGuidance}}\n"
             f"- Sector Diversity Constraint (MANDATORY): {{sectorDiversityRule}}\n"
             f"- Max single sector allocation: {{maxSectorAllocation}}\n\n"
 
@@ -445,9 +450,10 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Review the Macro Strategist's analysis and the comprehensive metrics returned by your sector tools.\n"
             f"2. Build a high-upside, growth-oriented sector allocation proposal. Identify leading sectors that offer capital appreciation catalysts.\n"
-            f"3. Allocate percentage weightings across your selected sectors (and optional cash/defensive buffer) summing to exactly 100.0%.\n"
-            f"4. You MUST strictly adhere to the sector count directive: {{sectorDiversityRule}}.\n"
-            f"5. Ensure no single sector exceeds the {{maxSectorAllocation}} cap.\n\n"
+            f"3. Align your proposal directly with the Strategic Allocation Bias Directive: {{allocationBiasGuidance}}. If a massive growth bias is mandated, aggressively maximize high-conviction growth/cyclical sectors; if a defensive bias is mandated, identify the most resilient, high-quality growth leaders with strong balance sheets.\n"
+            f"4. Allocate percentage weightings across your selected sectors (and optional cash/defensive buffer) summing to exactly 100.0%.\n"
+            f"5. You MUST strictly adhere to the sector count directive: {{sectorDiversityRule}}.\n"
+            f"6. Ensure no single sector exceeds the {{maxSectorAllocation}} cap.\n\n"
 
             f"*** EXPECTED OUTPUT SCHEMA ***:\n"
             f"- Bullish Sector Investment Thesis (Catalysts & Growth Drivers)\n"
@@ -456,7 +462,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         ),
         "bearishAnalyst": (
             f"You advocate for capital preservation, defensive positioning, and risk-managed sector allocations in a new portfolio of {{initialCapital}}.\n\n"
-            f"Portfolio Constraints:\n"
+            f"Portfolio Constraints & Strategic Directives:\n"
+            f"- Strategic Allocation Bias Directive (MANDATORY): {{allocationBiasGuidance}}\n"
             f"- Sector Diversity Constraint (MANDATORY): {{sectorDiversityRule}}\n"
             f"- Max single sector allocation: {{maxSectorAllocation}}\n\n"
 
@@ -467,9 +474,10 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Review the Macro Strategist's analysis and the comprehensive metrics returned by your sector tools.\n"
             f"2. Scrutinize overvalued, high-multiple, or technically extended sectors. Warn of sector-level drawdowns and downside vulnerabilities.\n"
-            f"3. Propose a capital-preserving, defensive sector allocation (emphasizing staples, utilities, healthcare, or cash) summing to exactly 100.0%.\n"
-            f"4. You MUST strictly adhere to the sector count directive: {{sectorDiversityRule}}.\n"
-            f"5. Ensure no single sector exceeds the {{maxSectorAllocation}} cap.\n\n"
+            f"3. Propose a capital-preserving, defensive sector allocation (with optional cash buffer) summing to exactly 100.0%.\n"
+            f"4. Align your risk audit and defensive proposals directly with the Strategic Allocation Bias Directive: {{allocationBiasGuidance}}. If a massive defensive bias is mandated, enforce maximum defensive sector weighting and cash buffers; if a growth bias is mandated, emphasize critical risk stops and hedges while respecting the growth mandate.\n"
+            f"5. You MUST strictly adhere to the sector count directive: {{sectorDiversityRule}}.\n"
+            f"6. Ensure no single sector exceeds the {{maxSectorAllocation}} cap.\n\n"
 
             f"*** EXPECTED OUTPUT SCHEMA ***:\n"
             f"- Bearish Sector Risk Audit (Vulnerabilities, Overvaluation, Volatility)\n"
@@ -479,7 +487,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         "portfolioManager": {
             "sector": (
                 f"You are the Impartial Portfolio Manager making the definitive executive decision on the portfolio's sector allocation for {{initialCapital}}.\n\n"
-                f"Portfolio Constraints to strictly enforce:\n"
+                f"Portfolio Constraints & Strategic Directives (STRICT & MANDATORY):\n"
+                f"- STRATEGIC ALLOCATION BIAS DIRECTIVE: {{allocationBiasGuidance}}\n"
                 f"- MANDATORY SECTOR COUNT DIRECTIVE: {{sectorDiversityRule}}\n"
                 f"- Max single sector allocation: {{maxSectorAllocation}} (acceptable range 20% to 80%)\n"
                 f"- All sector allocations must be whole integer percentages (e.g. 35, 25, 20) summing strictly to 100%.\n\n"
@@ -489,9 +498,9 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
 
                 f"*** TASK INSTRUCTIONS ***:\n"
                 f"1. Weigh the Bullish and Bearish sector proposals against the prevailing Macro regime.\n"
-                f"2. Resolve conflicts and establish the optimal compromise: capturing sector upside while maintaining adequate downside protection.\n"
+                f"2. Strictly enforce the user's Strategic Allocation Bias Directive ({{allocationBiasGuidance}}) in your final distribution: if a growth bias is mandated, skew sector weightings heavily towards growth/cyclical sectors; if a defensive bias is mandated, skew heavily towards defensive sectors and cash buffer.\n"
                 f"3. Strictly enforce the sector count directive: {{sectorDiversityRule}}.\n"
-                f"4. Execute 'confirmSectorAllocation' with your exact whole integer sector allocations (e.g. {{{{ 'information_technology': 35, 'health_care': 25, ... }}}}).\n"
+                f"4. Execute 'confirmSectorAllocation' with your exact whole integer sector allocations (e.g. {{{{ 'example_sector_1': 35, 'example_sector_2': 25, ... }}}}).\n"
                 f"5. Provide a clear executive summary of the locked sector distribution to direct the Phase 4 Stock Hunters.\n\n"
 
                 f"*** EXPECTED OUTPUT SCHEMA ***:\n"
@@ -501,7 +510,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             ),
             "decision": (
                 f"You are the Impartial Portfolio Manager delivering the final executive decision and portfolio construction for {{initialCapital}}.\n\n"
-                f"Portfolio Constraints (STRICT & MANDATORY):\n"
+                f"Portfolio Constraints & Strategic Directives (STRICT & MANDATORY):\n"
+                f"- STRATEGIC ALLOCATION BIAS DIRECTIVE: {{allocationBiasGuidance}}\n"
                 f"- Target total stock count: Aim for around {{targetStockCount}} stocks across the confirmed sectors.\n"
                 f"- Max single stock allocation: {{maxStockAllocation}} (acceptable range 10% to 60%)\n"
                 f"- Sector Allocation Structure: Group stock holdings strictly under each confirmed sector into the 'sectorAllocations' dictionary.\n"
@@ -512,7 +522,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
                 f"You must execute the 'confirmPortfolioAllocation' tool with your 'sectorAllocations' dictionary (mapping each confirmed sector to its list of stocks with 'ticker', 'perSectorWeight', and 'rationale') and 'portfolioRationale'. Note: Company names, sectors, and industries are automatically looked up by the system from each ticker symbol. Cash is preserved automatically from the confirmed sector allocation.\n\n"
 
                 f"*** TASK INSTRUCTIONS ***:\n"
-                f"1. Synthesize the proposals to achieve the optimal risk-adjusted portfolio: capturing high-conviction growth upside while safeguarding downside resilience.\n"
+                f"1. Synthesize the proposals to achieve the optimal portfolio matching the Strategic Allocation Bias Directive: {{allocationBiasGuidance}}.\n"
                 f"2. For each confirmed sector, select top equities and assign whole integer 'perSectorWeight' values summing strictly to 100% for that sector.\n"
                 f"3. Write a concise 25-35 word rationale for each stock, and an executive portfolioRationale of approximately 100 words.\n"
                 f"4. Call 'confirmPortfolioAllocation' with the 'sectorAllocations' dictionary and 'portfolioRationale'.\n\n"
@@ -526,7 +536,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         },
         "growthStockHunter": (
             f"You are the Growth Stock Hunter identifying high-conviction growth, momentum, and innovation equities to populate the confirmed portfolio sectors for {{initialCapital}}.\n\n"
-            f"Portfolio Constraints (MANDATORY):\n"
+            f"Portfolio Constraints & Strategic Directives (MANDATORY):\n"
+            f"- Strategic Allocation Bias: {{allocationBiasGuidance}}\n"
             f"- Target stock count across entire portfolio: {{targetStockCount}}\n"
             f"- Max single stock allocation: {{maxStockAllocation}}\n"
             f"- Sector constraint: You MUST scout candidate equities ONLY within the confirmed sectors.\n\n"
@@ -541,7 +552,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"1. Review the Impartial Portfolio Manager's confirmed sector allocations.\n"
             f"2. Use 'fetchStocksInSector' with style='growth' to scout candidate equities strictly across the confirmed sectors.\n"
             f"3. Check valuation and margins for your top candidates using 'fetchBatchFinnhubMetrics' or 'fetchCompanyValuationMetrics'.\n"
-            f"4. Select top growth equities per confirmed sector aligned with the portfolio target stock count ({{targetStockCount}}). Keep your candidate list focused and high-conviction.\n"
+            f"4. Select top growth equities per confirmed sector aligned with the portfolio target stock count ({{targetStockCount}}) and Strategic Allocation Bias Directive ({{allocationBiasGuidance}}). Keep your candidate list focused and high-conviction.\n"
             f"5. Present a structured candidate table detailing: Ticker, Company Name, Industry, Market Cap, 3M/12M Momentum, P/E, Margins, and Primary Growth Catalyst.\n\n"
 
             f"*** EXPECTED OUTPUT SCHEMA ***:\n"
@@ -552,7 +563,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         ),
         "valueStockHunter": (
             f"You are the Value/Defensive Stock Hunter identifying high-conviction value, dividend, capital-preserving, and low-volatility equities to populate the confirmed portfolio sectors for {{initialCapital}}.\n\n"
-            f"Portfolio Constraints (MANDATORY):\n"
+            f"Portfolio Constraints & Strategic Directives (MANDATORY):\n"
+            f"- Strategic Allocation Bias: {{allocationBiasGuidance}}\n"
             f"- Target stock count across entire portfolio: {{targetStockCount}}\n"
             f"- Max single stock allocation: {{maxStockAllocation}}\n"
             f"- Sector constraint: You MUST scout candidate equities ONLY within the confirmed sectors.\n\n"
@@ -567,7 +579,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"1. Review the Impartial Portfolio Manager's confirmed sector allocations.\n"
             f"2. Use 'fetchStocksInSector' with style='defensive' to scout candidates strictly across the confirmed sectors.\n"
             f"3. Rapidly audit valuation multiples, debt-to-equity, and margins using 'fetchBatchFinnhubMetrics' or 'fetchCompanyValuationMetrics'.\n"
-            f"4. Select top value/defensive equities per confirmed sector aligned with the portfolio target stock count ({{targetStockCount}}). Keep your candidate list focused and high-conviction.\n"
+            f"4. Select top value/defensive equities per confirmed sector aligned with the portfolio target stock count ({{targetStockCount}}) and Strategic Allocation Bias Directive ({{allocationBiasGuidance}}). Keep your candidate list focused and high-conviction.\n"
             f"5. Present a structured candidate table detailing: Ticker, Company Name, Industry, Market Cap, Valuation/P-E, Debt/Equity, Volatility, and Margin of Safety Defense.\n\n"
 
             f"*** EXPECTED OUTPUT SCHEMA ***:\n"
@@ -578,7 +590,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         ),
         "aggressiveRiskAnalyst": (
             f"You are the Aggressive Risk Analyst designing an aggressive, high-upside individual stock allocation proposal for this {{initialCapital}} portfolio.\n\n"
-            f"Portfolio Constraints:\n"
+            f"Portfolio Constraints & Strategic Directives:\n"
+            f"- Strategic Allocation Bias: {{allocationBiasGuidance}}\n"
             f"- Target stock count: Aim for around {{targetStockCount}} stocks in total.\n"
             f"- Max single stock allocation: {{maxStockAllocation}}\n"
             f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector from Phase 3.\n"
@@ -587,7 +600,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
 
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Review the candidate stocks scouted by the Growth and Value Hunters in Phase 4.\n"
-            f"2. Group selected equities under each confirmed sector bucket, assigning whole integer 'perSectorWeight' percentages summing to 100% per sector.\n"
+            f"2. Group selected equities under each confirmed sector bucket, assigning whole integer 'perSectorWeight' percentages summing to 100% per sector while applying the Strategic Allocation Bias Directive: {{allocationBiasGuidance}}.\n"
             f"3. Write a concise 25-35 word justification for each chosen stock.\n"
             f"4. Verify that no single stock exceeds the {{maxStockAllocation}} limit.\n\n"
 
@@ -598,7 +611,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
         ),
         "conservativeRiskAnalyst": (
             f"You are the Conservative Risk Analyst designing a defensive, capital-preserving individual stock allocation proposal for this {{initialCapital}} portfolio.\n\n"
-            f"Portfolio Constraints:\n"
+            f"Portfolio Constraints & Strategic Directives:\n"
+            f"- Strategic Allocation Bias: {{allocationBiasGuidance}}\n"
             f"- Target stock count: Aim for around {{targetStockCount}} stocks in total.\n"
             f"- Max single stock allocation: {{maxStockAllocation}}\n"
             f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector from Phase 3.\n"
@@ -607,7 +621,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
 
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Review the candidate stocks scouted by the Growth and Value Hunters in Phase 4.\n"
-            f"2. Group selected equities under each confirmed sector bucket, assigning whole integer 'perSectorWeight' percentages summing to 100% per sector.\n"
+            f"2. Group selected equities under each confirmed sector bucket, assigning whole integer 'perSectorWeight' percentages summing to 100% per sector while applying the Strategic Allocation Bias Directive: {{allocationBiasGuidance}}.\n"
             f"3. Write a concise 25-35 word justification for each chosen stock.\n"
             f"4. Verify that no single stock exceeds the {{maxStockAllocation}} limit.\n\n"
 

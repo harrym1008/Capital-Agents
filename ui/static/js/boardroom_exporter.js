@@ -115,6 +115,30 @@ const BoardroomExporter = (function () {
                 return;
             }
 
+            // Skip allocation bias slider container group
+            if (group.querySelector("#allocationBiasSlider")) {
+                return;
+            }
+
+            const allocBiasCheck = group.querySelector("#allocationBiasCheckbox");
+            if (allocBiasCheck) {
+                if (allocBiasCheck.checked) {
+                    const slider = document.getElementById("allocationBiasSlider");
+                    const val = slider ? parseInt(slider.value, 10) : 1;
+                    const biasLabels = {
+                        1: "Maximum Growth Bias",
+                        2: "Moderate Growth Bias",
+                        3: "Minor Growth Bias",
+                        4: "Minor Defensive Bias",
+                        5: "Moderate Defensive Bias",
+                        6: "Maximum Defensive Bias"
+                    };
+                    const biasLabel = biasLabels[val] || "Maximum Growth Bias";
+                    params.push({ key: "Allocation Bias", value: biasLabel });
+                }
+                return;
+            }
+
             const labelEl = group.querySelector("label");
             const labelText = labelEl ? labelEl.innerText.replace(/:$/, "").trim() : "";
 
@@ -609,8 +633,8 @@ const BoardroomExporter = (function () {
             const qaWorkspace = layoutClone.querySelector("#stageWorkspace-qa");
             if (qaWorkspace) qaWorkspace.remove();
 
-            // Remove any action buttons inside panes (like Q&A delete turn buttons)
-            layoutClone.querySelectorAll(".qa-delete-btn, .qa-user-pane, .modal-close-btn").forEach(btn => btn.remove());
+            // Remove any action buttons inside panes (like Q&A delete turn buttons, interactive toggle buttons)
+            layoutClone.querySelectorAll(".qa-delete-btn, .qa-user-pane, .modal-close-btn, #portfolioPieToggleContainer, #portfolioBacktestToggleContainer, .pie-toggle-btn").forEach(btn => btn.remove());
 
             // Freeze all canvases in the clone
             freezeCanvases(layoutClone, origLayout);

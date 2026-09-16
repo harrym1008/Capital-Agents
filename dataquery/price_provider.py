@@ -68,32 +68,12 @@ class DailyPriceProvider:
             dfOnline["corpActionToday"] = False
 
             try:
-                sharesSeries = yfTicker.get_shares_full(
-                    start=startDate.strftime("%Y-%m-%d"),
-                    end=(endDate + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-                )
-                if sharesSeries is not None and not sharesSeries.empty:
-                    sdf = sharesSeries.reset_index()
-                    sdf.columns = ["date", "outstandingShares"]
-                    sDate = pd.to_datetime(sdf["date"])
-                    if sDate.dt.tz is None:
-                        sDate = sDate.dt.tz_localize(UTC)
-                    else:
-                        sDate = sDate.dt.tz_convert(UTC)
-                    sdf["date"] = sDate
-                    dfOnline = pd.merge_asof(
-                        dfOnline.sort_values("date"),
-                        sdf.sort_values("date"),
-                        on="date",
-                        direction="backward"
-                    )
-                    dfOnline["outstandingShares"] = dfOnline["outstandingShares"].ffill().bfill()
-                else:
-                    fallbackShares = getattr(yfTicker, "fast_info", {}).get("shares_outstanding") or yfTicker.info.get("sharesOutstanding", 0)
-                    dfOnline["outstandingShares"] = float(fallbackShares or 0)
+                fallbackShares = getattr(yfTicker, "fast_info", {}).get("shares_outstanding")
+                if not fallbackShares:
+                    fallbackShares = 0
+                dfOnline["outstandingShares"] = float(fallbackShares)
             except Exception:
-                fallbackShares = getattr(yfTicker, "fast_info", {}).get("shares_outstanding") or yfTicker.info.get("sharesOutstanding", 0)
-                dfOnline["outstandingShares"] = float(fallbackShares or 0)
+                dfOnline["outstandingShares"] = 0.0
 
             def formatMarketCap(marketCap):
                 def clean(number):

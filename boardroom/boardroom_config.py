@@ -173,10 +173,64 @@ class PortfolioCreationConfig(BoardroomConfig):
     maxStockAllocation: float = 20.0
     targetStockCount: Optional[int] = None
     presetSectorAllocations: Optional[Dict[str, float]] = None
+    allocationBias: Optional[int] = None
 
     @property
     def modeName(self) -> str:
         return "PortfolioCreation"
+
+    def getAllocationBiasLabel(self) -> str:
+        if self.allocationBias is None:
+            return "None (Balanced Strategy)"
+        bias = int(self.allocationBias)
+        labels = {
+            1: "Maximum Growth Bias",
+            2: "Moderate Growth Bias",
+            3: "Minor Growth Bias",
+            4: "Minor Defensive Bias",
+            5: "Moderate Defensive Bias",
+            6: "Maximum Defensive Bias"
+        }
+        return labels.get(bias, "Balanced Strategy")
+
+    def getAllocationBiasGuidance(self) -> str:
+        if self.allocationBias is None:
+            return "Balanced portfolio strategy with impartial equilibrium between growth upside and defensive capital preservation."
+        bias = int(self.allocationBias)
+        if bias == 1:
+            return (
+                "MANDATORY MAXIMUM GROWTH BIAS DIRECTIVE: Heavily skew all sector distributions and stock selections towards "
+                "high-beta, high-momentum, innovative, and rapid capital appreciation equities. Strongly minimize cash reserves "
+                "and defensive weightings in pursuit of maximum upside growth potential."
+            )
+        elif bias == 2:
+            return (
+                "MODERATE GROWTH BIAS DIRECTIVE: Lean towards growth-oriented, cyclical, and innovative leaders with strong "
+                "revenue expansion catalysts while maintaining sensible baseline balance sheet risk controls."
+            )
+        elif bias == 3:
+            return (
+                "MINOR GROWTH BIAS DIRECTIVE: Tilt slightly towards growth and cyclical opportunities while keeping a well-diversified "
+                "foundation across core defensive and stable opportunities."
+            )
+        elif bias == 4:
+            return (
+                "MINOR DEFENSIVE BIAS DIRECTIVE: Tilt slightly towards capital preservation, lower-volatility companies, and dividend "
+                "stability while maintaining modest participation in broad market growth."
+            )
+        elif bias == 5:
+            return (
+                "MODERATE DEFENSIVE BIAS DIRECTIVE: Lean towards defensive, dividend-paying, capital-preserving, and lower-volatility "
+                "allocations to protect against downside market drawdowns."
+            )
+        elif bias == 6:
+            return (
+                "MANDATORY MAXIMUM DEFENSIVE BIAS DIRECTIVE: Heavily skew all sector distributions and stock selections towards "
+                "maximum capital preservation, rock-solid balance sheet solvency, high dividend yield, low-beta defensive assets, "
+                "and tactical cash reserves. Strictly minimize speculative, high-multiple, or volatile high-beta equities."
+            )
+        else:
+            return "Balanced portfolio strategy with impartial equilibrium between growth upside and defensive capital preservation."
 
     def getPromptArgs(self) -> Dict[str, str]:
         if self.targetSectorCount is not None:
@@ -196,7 +250,9 @@ class PortfolioCreationConfig(BoardroomConfig):
             "maxSectorAllocation": f"{min(max(self.maxSectorAllocation, 20.0), 80.0):.1f}%",
             "maxStockAllocation": f"{min(max(self.maxStockAllocation, 10.0), 60.0):.1f}%",
             "targetStockCount": stockCountRule,
-            "targetSectorCount": str(self.targetSectorCount) if self.targetSectorCount is not None else "Dynamic"
+            "targetSectorCount": str(self.targetSectorCount) if self.targetSectorCount is not None else "Dynamic",
+            "allocationBias": self.getAllocationBiasLabel(),
+            "allocationBiasGuidance": self.getAllocationBiasGuidance()
         }
 
     @classmethod
@@ -229,6 +285,11 @@ class PortfolioCreationConfig(BoardroomConfig):
 
         presetSectorAllocations = data.get("presetSectorAllocations")
 
+        allocationBiasRaw = data.get("allocationBias")
+        allocationBias = int(allocationBiasRaw) if allocationBiasRaw is not None and str(allocationBiasRaw).strip() != "" else None
+        if allocationBias is not None:
+            allocationBias = max(0, min(100, allocationBias))
+
         maxIterations = int(data.get("maxIterations", 10))
         temperature = float(data.get("temperature", 0.5))
         generateSummaries = bool(data.get("generateSummaries", True))
@@ -244,6 +305,7 @@ class PortfolioCreationConfig(BoardroomConfig):
             maxStockAllocation=maxStockAllocation,
             targetStockCount=targetStockCount,
             presetSectorAllocations=presetSectorAllocations,
+            allocationBias=allocationBias,
             maxIterations=maxIterations,
             temperature=temperature,
             generateSummaries=generateSummaries,

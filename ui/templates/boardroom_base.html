@@ -42,9 +42,9 @@
                 <div class="model-select-form-group">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <label for="temperatureInput" style="margin: 0;">Temperature:</label>
-                        <span id="temperatureInputText" style="font-weight: 600; font-size: 16px; color: #1e293b;">0.60</span>
+                        <span id="temperatureInputText" style="font-weight: 600; font-size: 16px; color: #1e293b;">0.50</span>
                     </div>
-                    <input type="range" id="temperatureInput" value="0.6" min="0" max="2" step="0.01">
+                    <input type="range" id="temperatureInput" value="0.5" min="0" max="2" step="0.01">
                 </div>
 
                 <div class="model-select-form-group">
@@ -79,17 +79,19 @@
 
     <!-- Universal Config Bar Container -->
     <div class="config-bar">
-        {% block config_inputs %}{% endblock %}
+        <div class="config-inputs-container" id="configInputsContainer">
+            {% block config_inputs %}{% endblock %}
 
-        {% block sim_date_control %}
-        <div class="config-group">
-            <label for="simulatedDateCheckbox">Use Sim Date:</label>
-            <input type="checkbox" id="simulatedDateCheckbox">
+            {% block sim_date_control %}
+            <div class="config-group">
+                <label for="simulatedDateCheckbox">Use Sim Date:</label>
+                <input type="checkbox" id="simulatedDateCheckbox">
+            </div>
+            <div class="config-group" id="simulatedDateContainer" style="display: none;">
+                <input type="date" id="simulatedDateInput" min="2016-01-01" max="" style="width: 120px;">
+            </div>
+            {% endblock %}
         </div>
-        <div class="config-group" id="simulatedDateContainer" style="display: none;">
-            <input type="date" id="simulatedDateInput" min="2016-01-01" max="" style="width: 120px;">
-        </div>
-        {% endblock %}
 
         <div class="config-actions">
             <button type="button" id="openSettingsBtn" class="grey-btn" onclick="BoardroomCore.openSettingsModal()">Generation Settings</button>

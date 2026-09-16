@@ -354,7 +354,155 @@ class SimulationManager:
 
         return res
 
-    def generatePortfolioBacktestData(self, simDate, initialCapital: float = 100_000.0, positions: list = None, cashPosition: dict = None) -> dict:
+    def computeHorizonEndDate(self, simDateTs: pd.Timestamp, timeHorizon: str) -> pd.Timestamp:
+        if not timeHorizon:
+            return simDateTs
+        h = str(timeHorizon).strip().lower()
+        parts = h.split()
+        if not parts:
+            return simDateTs
+        try:
+            num = int(parts[0])
+        except (ValueError, TypeError):
+            num = 1
+        if "month" in h:
+            return simDateTs + pd.DateOffset(months=num)
+        elif "year" in h:
+            return simDateTs + pd.DateOffset(years=num)
+        return simDateTs
+
+    def _calculateBacktestSlice(self, simDateTs: pd.Timestamp, maxDateTs: pd.Timestamp, sp500Df: pd.DataFrame, stockDfs: dict, shares: dict, capital: float, cashDollar: float, cashWeightPct: float) -> dict:
+        normMax = maxDateTs.tz_localize(None) if maxDateTs.tzinfo is not None else maxDateTs
+        spSlice = sp500Df[sp500Df["normDate"] <= normMax].copy()
+        if spSlice.empty or len(spSlice) < 2:
+            return None
+
+        sp0 = float(spSlice.iloc[0]["close"])
+        tradingDates = sorted(list(spSlice["normDate"].unique()))
+        portfolioPoints = []
+        sp500Points = []
+        dailyValues = []
+        allPrices = []
+
+        lastPrices = {}
+        for ticker, df in stockDfs.items():
+            dfSlice = df[df.index <= normMax]
+            if not dfSlice.empty:
+                lastPrices[ticker] = float(dfSlice.iloc[0]["close"])
+
+        spDict = dict(zip(spSlice["normDate"], spSlice["close"]))
+
+        for d in tradingDates:
+            dateStr = d.strftime("%Y-%m-%d")
+            equityVal = 0.0
+            for ticker, sh in shares.items():
+                df = stockDfs.get(ticker)
+                if df is not None and d in df.index:
+                    lastPrices[ticker] = float(df.loc[d, "close"])
+                equityVal += sh * lastPrices.get(ticker, 0.0)
+
+            portVal = equityVal + cashDollar
+            dailyValues.append(portVal)
+            portfolioPoints.append({"x": dateStr, "y": round(float(portVal), 2)})
+            allPrices.append(portVal)
+
+            spClose = spDict.get(d, sp0)
+            spVal = capital * (float(spClose) / sp0) if sp0 > 0 else capital
+            sp500Points.append({"x": dateStr, "y": round(float(spVal), 2)})
+            allPrices.append(spVal)
+
+        if not dailyValues:
+            return None
+
+        portSeries = pd.Series(dailyValues, index=tradingDates)
+        portFinal = float(portSeries.iloc[-1])
+        spFinal = float(sp500Points[-1]["y"])
+
+        portReturnPct = ((portFinal - capital) / capital) * 100.0
+        portReturnDollar = portFinal - capital
+        spReturnPct = ((spFinal - capital) / capital) * 100.0
+        spReturnDollar = spFinal - capital
+        alphaPct = portReturnPct - spReturnPct
+
+        runningMax = portSeries.cummax()
+        drawdown = (portSeries / runningMax) - 1.0
+        maxDrawdownPct = float(drawdown.min()) * 100.0
+
+        spSeries = pd.Series([p["y"] for p in sp500Points], index=tradingDates)
+        spRunningMax = spSeries.cummax()
+        spDrawdown = (spSeries / spRunningMax) - 1.0
+        spMaxDrawdownPct = float(spDrawdown.min()) * 100.0
+
+        portDfForSharpe = pd.DataFrame({"date": tradingDates, "close": dailyValues})
+        treasDf = self.macroProvider.loadSeries(MacroSeries.TREAS_3MO)
+        sharpe = 0.0
+        if treasDf is not None and not treasDf.empty:
+            try:
+                sharpe = float(calculateSharpeRatio(portDfForSharpe, treasDf))
+            except Exception:
+                sharpe = 0.0
+
+        if sharpe == 0.0 or pd.isna(sharpe):
+            dailyReturns = portSeries.pct_change().dropna()
+            stdDev = dailyReturns.std()
+            if stdDev > 0 and not pd.isna(stdDev):
+                sharpe = float((dailyReturns.mean() / stdDev) * np.sqrt(252))
+
+        minPrice = min(allPrices) if allPrices else capital
+        maxPrice = max(allPrices) if allPrices else capital
+        priceRange = maxPrice - minPrice
+        if priceRange == 0:
+            priceRange = maxPrice * 0.2 if maxPrice > 0 else 1000.0
+
+        holdingReturns = {}
+        for ticker, df in stockDfs.items():
+            dfSlice = df[df.index <= normMax]
+            if not dfSlice.empty:
+                p0 = float(dfSlice.iloc[0]["close"])
+                pEnd = float(dfSlice.iloc[-1]["close"])
+                retPct = ((pEnd - p0) / p0) * 100.0 if p0 > 0 else 0.0
+                sh = shares.get(ticker, 0.0)
+                retDollar = (pEnd - p0) * sh
+                holdingReturns[ticker] = {
+                    "returnPct": round(float(retPct), 2),
+                    "returnDollar": round(float(retDollar), 2),
+                    "startPrice": round(float(p0), 2),
+                    "endPrice": round(float(pEnd), 2)
+                }
+
+        if cashDollar > 0 or cashWeightPct > 0:
+            holdingReturns["CASH"] = {
+                "returnPct": 0.0,
+                "returnDollar": 0.0,
+                "startPrice": 1.0,
+                "endPrice": 1.0
+            }
+
+        leeway = max(priceRange * 0.08, minPrice * 0.05)
+        yMin = max(0.0, minPrice - leeway)
+        yMax = maxPrice + leeway
+
+        return {
+            "startDate": tradingDates[0].strftime("%Y-%m-%d"),
+            "endDate": tradingDates[-1].strftime("%Y-%m-%d"),
+            "portfolioPoints": portfolioPoints,
+            "sp500Points": sp500Points,
+            "holdingReturns": holdingReturns,
+            "yMin": round(float(yMin), 2),
+            "yMax": round(float(yMax), 2),
+            "metrics": {
+                "portfolioReturnPct": round(portReturnPct, 2),
+                "portfolioReturnDollar": round(portReturnDollar, 2),
+                "sp500ReturnPct": round(spReturnPct, 2),
+                "sp500ReturnDollar": round(spReturnDollar, 2),
+                "alphaPct": round(alphaPct, 2),
+                "sharpeRatio": round(sharpe, 2) if not pd.isna(sharpe) else 0.0,
+                "maxDrawdownPct": round(abs(maxDrawdownPct), 2),
+                "sp500MaxDrawdownPct": round(abs(spMaxDrawdownPct), 2)
+            }
+        }
+
+    def generatePortfolioBacktestData(self, simDate, initialCapital: float = 100_000.0, positions: list = None, cashPosition: dict = None, timeHorizon: str = None) -> dict:
         todayTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
         simDateTs = pd.Timestamp(simDate)
         if simDateTs.tzinfo is None:
@@ -393,169 +541,80 @@ class SimulationManager:
         sp500Df = sp500Df.sort_values("date").reset_index(drop=True)
         sp500Df["normDate"] = pd.to_datetime(sp500Df["date"]).dt.tz_localize(None).dt.normalize()
         sp500Df = sp500Df.drop_duplicates(subset=["normDate"]).sort_values("normDate").reset_index(drop=True)
-        sp0 = float(sp500Df.iloc[0]["close"])
 
-        # 2. Fetch stock data for each holding
+        # 2. Fetch stock data for each holding concurrently
         stockDfs = {}
         shares = {}
         totalStockAlloc = 0.0
 
-        for pos in positions:
+        def fetchStockHolding(pos):
             ticker = str(pos.get("ticker", "")).strip().upper()
             if not ticker:
-                continue
+                return None
             dollarAlloc = float(pos.get("dollarAllocation", 0.0) or 0.0)
             weightPct = float(pos.get("weightPct", 0.0) or 0.0)
             if dollarAlloc <= 0.0 and weightPct > 0.0:
                 dollarAlloc = capital * (weightPct / 100.0)
 
-            totalStockAlloc += dollarAlloc
             df = self.priceProvider.getPeriodDailyTickerData(ticker, simDateTs, todayTs, referenceDate=simDateTs)
             if df.empty or "close" not in df.columns:
-                continue
+                return None
 
             df = df.copy()
             dateCol = "dateNy" if "dateNy" in df.columns else "date"
             df["normDate"] = pd.to_datetime(df[dateCol]).dt.tz_localize(None).dt.normalize()
             df = df.dropna(subset=["close"]).drop_duplicates(subset=["normDate"]).sort_values("normDate").set_index("normDate")
             if df.empty:
-                continue
+                return None
 
-            stockDfs[ticker] = df
-            p0 = float(df.iloc[0]["close"])
-            shares[ticker] = dollarAlloc / p0 if p0 > 0 else 0.0
+            return (ticker, dollarAlloc, df)
+
+        numWorkers = min(16, max(len(positions), 1))
+        with ThreadPoolExecutor(max_workers=numWorkers) as executor:
+            results = list(executor.map(fetchStockHolding, positions))
+
+        for res in results:
+            if res is not None:
+                ticker, dollarAlloc, df = res
+                totalStockAlloc += dollarAlloc
+                stockDfs[ticker] = df
+                p0 = float(df.iloc[0]["close"])
+                shares[ticker] = dollarAlloc / p0 if p0 > 0 else 0.0
 
         # Adjust cash dollar if remaining capital was unallocated
         if cashDollar <= 0.0 and capital > totalStockAlloc:
             cashDollar = capital - totalStockAlloc
 
-        # 3. Build daily series
-        tradingDates = sorted(list(sp500Df["normDate"].unique()))
-        portfolioPoints = []
-        sp500Points = []
-        dailyValues = []
-        allPrices = []
-
-        lastPrices = {}
-        for ticker, df in stockDfs.items():
-            lastPrices[ticker] = float(df.iloc[0]["close"])
-
-        spDict = dict(zip(sp500Df["normDate"], sp500Df["close"]))
-
-        for d in tradingDates:
-            dateStr = d.strftime("%Y-%m-%d")
-            equityVal = 0.0
-            for ticker, sh in shares.items():
-                df = stockDfs.get(ticker)
-                if df is not None and d in df.index:
-                    lastPrices[ticker] = float(df.loc[d, "close"])
-                equityVal += sh * lastPrices.get(ticker, 0.0)
-
-            portVal = equityVal + cashDollar
-            dailyValues.append(portVal)
-            portfolioPoints.append({"x": dateStr, "y": round(float(portVal), 2)})
-            allPrices.append(portVal)
-
-            spClose = spDict.get(d, sp0)
-            spVal = capital * (float(spClose) / sp0) if sp0 > 0 else capital
-            sp500Points.append({"x": dateStr, "y": round(float(spVal), 2)})
-            allPrices.append(spVal)
-
-        if not dailyValues:
+        # 3. Calculate full slice (simDate to today)
+        fullSlice = self._calculateBacktestSlice(simDateTs, todayTs, sp500Df, stockDfs, shares, capital, cashDollar, cashWeightPct)
+        if not fullSlice:
             return {
                 "ok": False,
                 "error": "No trading dates found for the specified period."
             }
 
-        portSeries = pd.Series(dailyValues, index=tradingDates)
-        portFinal = float(portSeries.iloc[-1])
-        spFinal = float(sp500Points[-1]["y"])
+        # 4. Calculate horizon slice if applicable
+        canToggle = False
+        horizonSlice = None
+        if timeHorizon:
+            horizonEndTs = self.computeHorizonEndDate(simDateTs, timeHorizon)
+            normHorizon = horizonEndTs.tz_localize(None) if horizonEndTs.tzinfo is not None else horizonEndTs
+            normToday = todayTs.tz_localize(None) if todayTs.tzinfo is not None else todayTs
+            if normHorizon < normToday:
+                horizonSlice = self._calculateBacktestSlice(simDateTs, horizonEndTs, sp500Df, stockDfs, shares, capital, cashDollar, cashWeightPct)
+                if horizonSlice and horizonSlice.get("endDate") != fullSlice.get("endDate"):
+                    canToggle = True
 
-        portReturnPct = ((portFinal - capital) / capital) * 100.0
-        portReturnDollar = portFinal - capital
-        spReturnPct = ((spFinal - capital) / capital) * 100.0
-        spReturnDollar = spFinal - capital
-        alphaPct = portReturnPct - spReturnPct
-
-        # Maximum Drawdown calculation for Portfolio & S&P 500
-        runningMax = portSeries.cummax()
-        drawdown = (portSeries / runningMax) - 1.0
-        maxDrawdownPct = float(drawdown.min()) * 100.0
-
-        spSeries = pd.Series([p["y"] for p in sp500Points], index=tradingDates)
-        spRunningMax = spSeries.cummax()
-        spDrawdown = (spSeries / spRunningMax) - 1.0
-        spMaxDrawdownPct = float(spDrawdown.min()) * 100.0
-
-        # Sharpe Ratio calculation
-        portDfForSharpe = pd.DataFrame({"date": tradingDates, "close": dailyValues})
-        treasDf = self.macroProvider.loadSeries(MacroSeries.TREAS_3MO)
-        sharpe = 0.0
-        if treasDf is not None and not treasDf.empty:
-            try:
-                sharpe = float(calculateSharpeRatio(portDfForSharpe, treasDf))
-            except Exception:
-                sharpe = 0.0
-
-        if sharpe == 0.0 or pd.isna(sharpe):
-            dailyReturns = portSeries.pct_change().dropna()
-            stdDev = dailyReturns.std()
-            if stdDev > 0 and not pd.isna(stdDev):
-                sharpe = float((dailyReturns.mean() / stdDev) * np.sqrt(252))
-
-        minPrice = min(allPrices) if allPrices else capital
-        maxPrice = max(allPrices) if allPrices else capital
-        priceRange = maxPrice - minPrice
-        if priceRange == 0:
-            priceRange = maxPrice * 0.2 if maxPrice > 0 else 1000.0
-
-        holdingReturns = {}
-        for ticker, df in stockDfs.items():
-            if not df.empty:
-                p0 = float(df.iloc[0]["close"])
-                pEnd = float(df.iloc[-1]["close"])
-                retPct = ((pEnd - p0) / p0) * 100.0 if p0 > 0 else 0.0
-                sh = shares.get(ticker, 0.0)
-                retDollar = (pEnd - p0) * sh
-                holdingReturns[ticker] = {
-                    "returnPct": round(float(retPct), 2),
-                    "returnDollar": round(float(retDollar), 2),
-                    "startPrice": round(float(p0), 2),
-                    "endPrice": round(float(pEnd), 2)
-                }
-
-        if cashDollar > 0 or cashWeightPct > 0:
-            holdingReturns["CASH"] = {
-                "returnPct": 0.0,
-                "returnDollar": 0.0,
-                "startPrice": 1.0,
-                "endPrice": 1.0
-            }
-
-        leeway = max(priceRange * 0.08, minPrice * 0.05)
-        yMin = max(0.0, minPrice - leeway)
-        yMax = maxPrice + leeway
+        primarySlice = horizonSlice if (canToggle and horizonSlice) else fullSlice
 
         return {
             "ok": True,
             "simDate": simDateTs.strftime("%Y-%m-%d"),
-            "startDate": tradingDates[0].strftime("%Y-%m-%d"),
-            "endDate": tradingDates[-1].strftime("%Y-%m-%d"),
-            "portfolioPoints": portfolioPoints,
-            "sp500Points": sp500Points,
-            "holdingReturns": holdingReturns,
-            "yMin": round(float(yMin), 2),
-            "yMax": round(float(yMax), 2),
-            "metrics": {
-                "portfolioReturnPct": round(portReturnPct, 2),
-                "portfolioReturnDollar": round(portReturnDollar, 2),
-                "sp500ReturnPct": round(spReturnPct, 2),
-                "sp500ReturnDollar": round(spReturnDollar, 2),
-                "alphaPct": round(alphaPct, 2),
-                "sharpeRatio": round(sharpe, 2) if not pd.isna(sharpe) else 0.0,
-                "maxDrawdownPct": round(abs(maxDrawdownPct), 2),
-                "sp500MaxDrawdownPct": round(abs(spMaxDrawdownPct), 2)
-            }
+            "canToggle": canToggle,
+            "timeHorizon": timeHorizon,
+            "horizon": horizonSlice,
+            "full": fullSlice,
+            **primarySlice
         }
 
     def cleanNans(self, obj):

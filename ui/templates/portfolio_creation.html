@@ -93,6 +93,16 @@
     </div>
     
     <div class="config-group">
+        <label for="allocationBiasCheckbox">Allocation Bias:</label>
+        <input type="checkbox" id="allocationBiasCheckbox" onchange="toggleAllocationBias()">
+    </div>
+    <div class="config-group" id="allocationBiasSliderContainer" style="display: none; align-items: center; gap: 6px;">
+        <span style="font-size: 11.5px; font-weight: 600; color: #16a34a; user-select: none;">Growth</span>
+        <input type="range" id="allocationBiasSlider" min="1" max="6" step="1" value="4" oninput="updateAllocationBiasTooltip()" style="width: 85px; cursor: pointer; accent-color: #2563eb;" title="Maximum Growth Bias">
+        <span style="font-size: 11.5px; font-weight: 600; color: #2563eb; user-select: none;">Defensive</span>
+    </div>
+
+    <div class="config-group">
         <label for="modeSelect">Mode:</label>
         <select id="modeSelect">
             <option value="fast">Fast Evaluation</option>
@@ -161,6 +171,7 @@
     let currentPieBreakdowns = null;
     let currentPieBreakdownMode = "sector";
     let cachedBacktestData = null;
+    let currentBacktestHorizonMode = "horizon";
     let confirmedSectorData = null;
     let confirmedPortfolioData = null;
 
@@ -444,6 +455,31 @@
         BoardroomCore.initStagesBar(mode, portfolioCreationStages);
     }
 
+    const ALLOCATION_BIAS_LABELS = {
+        1: "Maximum Growth Bias",
+        2: "Moderate Growth Bias",
+        3: "Minor Growth Bias",
+        4: "Minor Defensive Bias",
+        5: "Moderate Defensive Bias",
+        6: "Maximum Defensive Bias"
+    };
+
+    function updateAllocationBiasTooltip() {
+        const slider = document.getElementById("allocationBiasSlider");
+        if (!slider) return;
+        const val = parseInt(slider.value, 10);
+        const label = ALLOCATION_BIAS_LABELS[val] || "Maximum Growth Bias";
+        slider.title = label;
+    }
+
+    function toggleAllocationBias() {
+        const checkbox = document.getElementById("allocationBiasCheckbox");
+        const container = document.getElementById("allocationBiasSliderContainer");
+        if (!checkbox || !container) return;
+        container.style.display = checkbox.checked ? "flex" : "none";
+        updateAllocationBiasTooltip();
+    }
+
     // Handle evaluation mode changes
     document.getElementById("modeSelect")?.addEventListener("change", function () {
         handleModeChange(this.value);
@@ -526,6 +562,12 @@
                             <button type="button" class="pie-toggle-btn" id="pieToggleStock" onclick="switchPortfolioPieBreakdown('stock')">Stock</button>
                         </div>
 
+                        <div id="portfolioBacktestToggleContainer" style="display: none; justify-content: flex-end; align-items: center; gap: 5px; margin-bottom: 6px;">
+                            <span style="font-size: 11px; font-weight: 600; color: #64748b; margin-right: 2px;">Horizon:</span>
+                            <button type="button" class="pie-toggle-btn active" id="backtestToggleHorizon" onclick="switchPortfolioBacktestHorizon('horizon')">Hold for Horizon</button>
+                            <button type="button" class="pie-toggle-btn" id="backtestToggleNow" onclick="switchPortfolioBacktestHorizon('now')">Hold until Now</button>
+                        </div>
+
                         <div id="portfolioChartWrapper" style="width: 100%; height: 270px; position: relative;">
                             <canvas id="portfolioSectorChartCanvas" style="display: block; width: 100%; height: 100%;"></canvas>
                             <canvas id="portfolioBacktestChartCanvas" style="display: none; width: 100%; height: 100%;"></canvas>
@@ -533,7 +575,7 @@
 
                         <div id="portfolioBacktestMetrics" style="display: none; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; padding: 10px 12px; border-radius: 6px;">
                             <div class="backtest-metric-item">
-                                <div class="backtest-metric-label">Return as of today</div>
+                                <div id="metricPortfolioReturnLabel" class="backtest-metric-label">Return as of today</div>
                                 <div id="metricPortfolioReturn" class="backtest-metric-value" style="color: #10b981;">--</div>
                             </div>
                             <div class="backtest-metric-item">
@@ -794,7 +836,68 @@
         }
     };
 
-    function renderPortfolioBacktestChart(chartData) {
+    function updatePortfolioBacktestToggle(backtestPayload) {
+        const toggleContainer = document.getElementById("portfolioBacktestToggleContainer");
+        const btnHorizon = document.getElementById("backtestToggleHorizon");
+        const btnNow = document.getElementById("backtestToggleNow");
+
+        if (!toggleContainer) return;
+
+        if (backtestPayload && backtestPayload.canToggle) {
+            const horizonLabel = backtestPayload.timeHorizon ? `Hold for ${backtestPayload.timeHorizon}` : "Hold for Horizon";
+            if (btnHorizon) {
+                btnHorizon.innerText = horizonLabel;
+                if (currentBacktestHorizonMode === "horizon") {
+                    btnHorizon.classList.add("active");
+                } else {
+                    btnHorizon.classList.remove("active");
+                }
+            }
+            if (btnNow) {
+                btnNow.innerText = "Hold until Now";
+                if (currentBacktestHorizonMode === "now") {
+                    btnNow.classList.add("active");
+                } else {
+                    btnNow.classList.remove("active");
+                }
+            }
+            toggleContainer.style.display = "flex";
+        } else {
+            toggleContainer.style.display = "none";
+        }
+    }
+
+    function switchPortfolioBacktestHorizon(mode) {
+        currentBacktestHorizonMode = mode;
+        const btnHorizon = document.getElementById("backtestToggleHorizon");
+        const btnNow = document.getElementById("backtestToggleNow");
+
+        if (mode === "horizon") {
+            if (btnHorizon) btnHorizon.classList.add("active");
+            if (btnNow) btnNow.classList.remove("active");
+        } else {
+            if (btnNow) btnNow.classList.add("active");
+            if (btnHorizon) btnHorizon.classList.remove("active");
+        }
+
+        if (!cachedBacktestData) return;
+
+        const activeData = (mode === "horizon" && cachedBacktestData.horizon)
+            ? cachedBacktestData.horizon
+            : (cachedBacktestData.full || cachedBacktestData);
+
+        renderPortfolioBacktestChart(activeData, mode);
+
+        if (confirmedPortfolioData) {
+            const data = confirmedPortfolioData.confirmedPortfolio || confirmedPortfolioData;
+            const positions = data.positions || [];
+            const cashPos = data.cashPosition || { weightPct: 0, dollarAllocation: 0 };
+            const cleanCapital = (data.initialCapital) ? parseFloat(data.initialCapital) : getCleanInitialCapital();
+            renderHoldingsTable(positions, cashPos, cleanCapital, activeData);
+        }
+    }
+
+    function renderPortfolioBacktestChart(chartData, mode = null) {
         const canvas = document.getElementById("portfolioBacktestChartCanvas");
         if (!canvas) return;
 
@@ -802,6 +905,8 @@
             portfolioBacktestChartInstance.destroy();
             portfolioBacktestChartInstance = null;
         }
+
+        const activeMode = mode || currentBacktestHorizonMode;
 
         const datasets = [
             {
@@ -896,10 +1001,21 @@
         // Update the 4 text elements under the chart
         if (chartData.metrics) {
             const m = chartData.metrics;
+            const retLabelEl = document.getElementById("metricPortfolioReturnLabel");
             const retEl = document.getElementById("metricPortfolioReturn");
             const spEl = document.getElementById("metricSp500Comparison");
             const srEl = document.getElementById("metricSharpeRatio");
             const ddEl = document.getElementById("metricMaxDrawdown");
+
+            if (retLabelEl) {
+                if (activeMode === "horizon" && cachedBacktestData?.canToggle && cachedBacktestData?.timeHorizon) {
+                    retLabelEl.innerText = `Return (${cachedBacktestData.timeHorizon})`;
+                } else if (activeMode === "horizon" && chartData.endDate) {
+                    retLabelEl.innerText = `Return (${chartData.endDate})`;
+                } else {
+                    retLabelEl.innerText = "Return as of today";
+                }
+            }
 
             if (retEl) {
                 const sign = m.portfolioReturnPct >= 0 ? "+" : "";
@@ -1063,9 +1179,13 @@
 
         // Chart display logic: Past date -> Backtest Line Chart; Today/Not Past -> 3-view Pie Chart
         const pastDate = isDateInPast(effectiveSimDate);
-        const currentBacktestData = (pastDate && cachedBacktestData && cachedBacktestData.simDate === effectiveSimDate) ? cachedBacktestData : null;
+        const selectedHorizon = document.getElementById("horizonSelect")?.value || "1 year";
+        const currentBacktestData = (pastDate && cachedBacktestData && cachedBacktestData.simDate === effectiveSimDate && cachedBacktestData.timeHorizon === selectedHorizon) 
+            ? ((currentBacktestHorizonMode === "horizon" && cachedBacktestData.horizon) ? cachedBacktestData.horizon : (cachedBacktestData.full || cachedBacktestData))
+            : null;
         renderHoldingsTable(positions, cashPos, cleanCapital, currentBacktestData);
 
+        const backtestToggleContainer = document.getElementById("portfolioBacktestToggleContainer");
         const pieToggleContainer = document.getElementById("portfolioPieToggleContainer");
         const sectorCanvas = document.getElementById("portfolioSectorChartCanvas");
         const backtestCanvas = document.getElementById("portfolioBacktestChartCanvas");
@@ -1077,10 +1197,15 @@
             if (backtestCanvas) backtestCanvas.style.display = "block";
             if (backtestMetrics) backtestMetrics.style.display = "grid";
 
-            if (cachedBacktestData && cachedBacktestData.simDate === effectiveSimDate) {
-                renderPortfolioBacktestChart(cachedBacktestData);
-                renderHoldingsTable(positions, cashPos, cleanCapital, cachedBacktestData);
+            if (cachedBacktestData && cachedBacktestData.simDate === effectiveSimDate && cachedBacktestData.timeHorizon === selectedHorizon) {
+                updatePortfolioBacktestToggle(cachedBacktestData);
+                const activeData = (currentBacktestHorizonMode === "horizon" && cachedBacktestData.horizon) 
+                    ? cachedBacktestData.horizon 
+                    : (cachedBacktestData.full || cachedBacktestData);
+                renderPortfolioBacktestChart(activeData, currentBacktestHorizonMode);
+                renderHoldingsTable(positions, cashPos, cleanCapital, activeData);
             } else {
+                currentBacktestHorizonMode = "horizon";
                 fetch("/api/portfolio/backtest", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -1088,15 +1213,20 @@
                         simDate: effectiveSimDate,
                         initialCapital: cleanCapital,
                         positions: positions,
-                        cashPosition: cashPos
+                        cashPosition: cashPos,
+                        timeHorizon: selectedHorizon
                     })
                 })
                 .then(res => res.json())
                 .then(resData => {
                     if (resData && resData.ok) {
                         cachedBacktestData = resData;
-                        renderPortfolioBacktestChart(resData);
-                        renderHoldingsTable(positions, cashPos, cleanCapital, resData);
+                        updatePortfolioBacktestToggle(resData);
+                        const activeData = (currentBacktestHorizonMode === "horizon" && resData.horizon)
+                            ? resData.horizon
+                            : (resData.full || resData);
+                        renderPortfolioBacktestChart(activeData, currentBacktestHorizonMode);
+                        renderHoldingsTable(positions, cashPos, cleanCapital, activeData);
                     } else {
                         console.error("Failed to load backtest data:", resData?.error);
                     }
@@ -1104,6 +1234,7 @@
                 .catch(err => console.error("Error calling portfolio backtest API:", err));
             }
         } else {
+            if (backtestToggleContainer) backtestToggleContainer.style.display = "none";
             if (pieToggleContainer) pieToggleContainer.style.display = "flex";
             if (sectorCanvas) sectorCanvas.style.display = "block";
             if (backtestCanvas) backtestCanvas.style.display = "none";
@@ -1156,6 +1287,7 @@
         confirmedSectorData = null;
         confirmedPortfolioData = null;
         cachedBacktestData = null;
+        currentBacktestHorizonMode = "horizon";
         if (portfolioBacktestChartInstance) {
             portfolioBacktestChartInstance.destroy();
             portfolioBacktestChartInstance = null;
@@ -1164,6 +1296,8 @@
             portfolioSectorChartInstance.destroy();
             portfolioSectorChartInstance = null;
         }
+        const backtestToggle = document.getElementById("portfolioBacktestToggleContainer");
+        if (backtestToggle) backtestToggle.style.display = "none";
         const pieToggle = document.getElementById("portfolioPieToggleContainer");
         if (pieToggle) pieToggle.style.display = "none";
         const finalTimeRow = document.getElementById("finalTimeReportRow");
@@ -1262,6 +1396,13 @@
             const mode = document.getElementById("modeSelect").value;
             const horizon = document.getElementById("horizonSelect").value;
 
+            const isBiasEnabled = document.getElementById("allocationBiasCheckbox")?.checked;
+            let allocationBiasVal = null;
+            if (isBiasEnabled) {
+                const sliderVal = parseInt(document.getElementById("allocationBiasSlider")?.value, 10);
+                allocationBiasVal = isNaN(sliderVal) ? 1 : Math.max(1, Math.min(6, sliderVal));
+            }
+
             let presetAllocations = null;
             if (mode === "preset") {
                 presetAllocations = {};
@@ -1293,6 +1434,7 @@
                 targetStockCount: targetStocks,
                 boardroomPace: mode,
                 timeHorizon: horizon,
+                allocationBias: allocationBiasVal,
                 simulatedDate: simDate,
                 presetSectorAllocations: presetAllocations,
                 ...BoardroomCore.getGenerationSettings()

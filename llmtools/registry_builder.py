@@ -61,7 +61,7 @@ SCHEMAS = {
         "properties": {
             "sectorAllocations": {
                 "type": "object",
-                "description": "Mapping of sector names (or ETF tickers) to percentage numbers summing to 100% (e.g. {'information_technology': 35.0, 'health_care': 25.0, 'financials': 20.0, 'cash': 20.0})."
+                "description": "Mapping of sector names (or ETF tickers) to percentage numbers summing to 100% (e.g. {'example_sector_1': 35.0, 'example_sector_2': 25.0, 'example_sector_3': 20.0, 'cash': 20.0})."
             },
             "rationale": {
                 "type": "string",
@@ -77,7 +77,7 @@ SCHEMAS = {
             "sectorAllocations": {
                 "type": "object",
                 "description": (
-                    "Dictionary mapping each confirmed GICS sector name or ETF ticker (e.g. 'information_technology', 'health_care') "
+                    "Dictionary mapping each confirmed GICS sector name or ETF ticker (e.g. 'example_sector_1', 'example_sector_2') "
                     "to a list of allocated stock objects within that sector. All confirmed non-cash sectors must be present. "
                     "The 'perSectorWeight' values within each sector list must sum to 100.0%."
                 ),
@@ -116,7 +116,7 @@ SCHEMAS = {
         "properties": {
             "sector": {
                 "type": "string",
-                "description": "The GICS sector name or ETF ticker (e.g. 'information_technology', 'XLK', 'health_care', 'XLV'), selectable from: " + ALL_SECTORS_STRING + "."
+                "description": "The GICS sector name or ETF ticker, selectable from: " + ALL_SECTORS_STRING + "."
             },
             "style": {
                 "type": "string",
