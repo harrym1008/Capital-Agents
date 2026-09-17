@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from collectors.sector_dl_client import GICS_SECTORS, DB_SECTOR_TO_TICKER
-from collectors.constants import UTC, NEW_YORK
+from collectors.constants import UTC, NEW_YORK, END_DATE
 from dataquery.macro_provider import MacroSeries
 from llmtools.tool_registry import DataProviders, Tool
 from llmtools.functions.helpers import cleanData, formatArticleAge, cleanHtmlContent
@@ -111,7 +111,9 @@ def calculateAnnualisedVolatility(df: pd.DataFrame, window: int = 90) -> float:
 
 
 def fetchSectorPerformance(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, sectorOrTicker: str) -> Dict[str, Any]:
-    cacheKey = f"sector|perf_{sectorOrTicker}_{timestamp.strftime('%Y-%m-%dH%H')}"
+    tsNy = timestamp.tz_convert(NEW_YORK) if timestamp.tzinfo is not None else timestamp.tz_localize(NEW_YORK)
+    effectiveTs = min(tsNy, END_DATE)
+    cacheKey = f"sector|perf_{sectorOrTicker}_{effectiveTs.strftime('%Y-%m-%dH%H')}"
     cached = data.cache.get(cacheKey)
     if cached is not None:
         return cached
@@ -130,31 +132,31 @@ def fetchSectorPerformance(tool: Tool, data: DataProviders, timestamp: pd.Timest
     sectorName = info.name if info else ticker
     sectorCategory = info.category if info else "Unknown"
 
-    startDate = timestamp - pd.DateOffset(years=5, weeks=2)
-    df = data.sectors.getSectorData(ticker, startDate=startDate, endDate=timestamp)
+    startDate = effectiveTs - pd.DateOffset(years=5, weeks=2)
+    df = data.sectors.getSectorData(ticker, startDate=startDate, endDate=effectiveTs)
 
     if df.empty:
-        if ticker == "XLC" and timestamp < pd.Timestamp("2018-06-19"):
+        if ticker == "XLC" and effectiveTs < pd.Timestamp("2018-06-19", tz=NEW_YORK):
             return cleanData({
                 "ticker": ticker,
                 "sector": sectorName,
                 "notice": "XLC (Communication Services) was launched in June 2018. Historical data is not available before 2018-06-19."
             })
-        return cleanData({"error": f"No historical data available for sector ETF {ticker} before {timestamp.strftime('%Y-%m-%d')}."})
+        return cleanData({"error": f"No historical data available for sector ETF {ticker} before {effectiveTs.strftime('%Y-%m-%d')}."})
 
     latestRow = df.iloc[-1]
     latestClose = float(latestRow["close"])
     latestDateStr = latestRow["date"].strftime("%Y-%m-%d")
 
     pastPeriods = {
-        "1d": timestamp - pd.DateOffset(days=1),
-        "5d": timestamp - pd.DateOffset(weeks=1),
-        "1mo": timestamp - pd.DateOffset(months=1),
-        "3mo": timestamp - pd.DateOffset(months=3),
-        "6mo": timestamp - pd.DateOffset(months=6),
-        "12mo": timestamp - pd.DateOffset(years=1),
-        "3y": timestamp - pd.DateOffset(years=3),
-        "5y": timestamp - pd.DateOffset(years=5)
+        "1d": effectiveTs - pd.DateOffset(days=1),
+        "5d": effectiveTs - pd.DateOffset(weeks=1),
+        "1mo": effectiveTs - pd.DateOffset(months=1),
+        "3mo": effectiveTs - pd.DateOffset(months=3),
+        "6mo": effectiveTs - pd.DateOffset(months=6),
+        "12mo": effectiveTs - pd.DateOffset(years=1),
+        "3y": effectiveTs - pd.DateOffset(years=3),
+        "5y": effectiveTs - pd.DateOffset(years=5)
     }
 
     returns = {}
@@ -168,7 +170,7 @@ def fetchSectorPerformance(tool: Tool, data: DataProviders, timestamp: pd.Timest
         else:
             returns[period] = None
 
-    benchReturns = calculateBenchmarkReturns(data, timestamp, pastPeriods)
+    benchReturns = calculateBenchmarkReturns(data, effectiveTs, pastPeriods)
     relativeAlpha = {}
     for period in ["5d", "1mo", "3mo", "6mo", "12mo"]:
         secRet = returns.get(period)
@@ -177,7 +179,7 @@ def fetchSectorPerformance(tool: Tool, data: DataProviders, timestamp: pd.Timest
             relativeAlpha[period] = round(secRet - spyRet, 2)
 
     technicals = calculateSectorTechnicals(df, latestClose)
-    range52Week = calculateSectorRange52Week(df, timestamp, latestClose)
+    range52Week = calculateSectorRange52Week(df, effectiveTs, latestClose)
     annualisedVol = calculateAnnualisedVolatility(df, window=90)
 
     output = {
@@ -205,7 +207,9 @@ def fetchAllSectorRankings(tool: Tool, data: DataProviders, timestamp: pd.Timest
     if lookback not in validLookbacks:
         lookback = "1mo"
 
-    cacheKey = f"sector|leaderboard_{lookback}_{timestamp.strftime('%Y-%m-%dH%H')}"
+    tsNy = timestamp.tz_convert(NEW_YORK) if timestamp.tzinfo is not None else timestamp.tz_localize(NEW_YORK)
+    effectiveTs = min(tsNy, END_DATE)
+    cacheKey = f"sector|leaderboard_{lookback}_{effectiveTs.strftime('%Y-%m-%dH%H')}"
     cached = data.cache.get(cacheKey)
     if cached is not None:
         return cached
@@ -216,18 +220,18 @@ def fetchAllSectorRankings(tool: Tool, data: DataProviders, timestamp: pd.Timest
             return cached
 
         lookbackDeltas = {
-            "5d": timestamp - pd.DateOffset(weeks=1),
-            "1mo": timestamp - pd.DateOffset(months=1),
-            "3mo": timestamp - pd.DateOffset(months=3),
-            "6mo": timestamp - pd.DateOffset(months=6),
-            "12mo": timestamp - pd.DateOffset(years=1)
+            "5d": effectiveTs - pd.DateOffset(weeks=1),
+            "1mo": effectiveTs - pd.DateOffset(months=1),
+            "3mo": effectiveTs - pd.DateOffset(months=3),
+            "6mo": effectiveTs - pd.DateOffset(months=6),
+            "12mo": effectiveTs - pd.DateOffset(years=1)
         }
-        pastDate = lookbackDeltas.get(lookback, timestamp - pd.DateOffset(months=1))
-        benchReturns = calculateBenchmarkReturns(data, timestamp, {lookback: pastDate})
+        pastDate = lookbackDeltas.get(lookback, effectiveTs - pd.DateOffset(months=1))
+        benchReturns = calculateBenchmarkReturns(data, effectiveTs, {lookback: pastDate})
         spyReturn = benchReturns.get(lookback)
 
         rankings = []
-        startDate = timestamp - pd.DateOffset(years=2)
+        startDate = effectiveTs - pd.DateOffset(years=2)
         pastNorm = pastDate.tz_localize(None) if pastDate.tzinfo is not None else pastDate
 
         def processSector(ticker, info):
@@ -281,7 +285,7 @@ def fetchAllSectorRankings(tool: Tool, data: DataProviders, timestamp: pd.Timest
         bottomSector = rankings[-1] if rankings else None
 
         result = {
-            "asOfDate": timestamp.strftime("%Y-%m-%d"),
+            "asOfDate": effectiveTs.strftime("%Y-%m-%d"),
             "lookback": lookback,
             "benchmarkSP500Return": round(spyReturn, 2) if spyReturn is not None else None,
             "rankings": rankings,
@@ -319,7 +323,9 @@ def fetchSectorProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp,
 
 
 def fetchAllSectorsPerformance(tool: Tool, data: DataProviders, timestamp: pd.Timestamp) -> Dict[str, Any]:
-    cacheKey = f"sector|all_perf_{timestamp.strftime('%Y-%m-%dH%H')}"
+    tsNy = timestamp.tz_convert(NEW_YORK) if timestamp.tzinfo is not None else timestamp.tz_localize(NEW_YORK)
+    effectiveTs = min(tsNy, END_DATE)
+    cacheKey = f"sector|all_perf_{effectiveTs.strftime('%Y-%m-%dH%H')}"
     cached = data.cache.get(cacheKey)
     if cached is not None:
         return cached
@@ -334,7 +340,7 @@ def fetchAllSectorsPerformance(tool: Tool, data: DataProviders, timestamp: pd.Ti
         completedSectors = 0
 
         with ThreadPoolExecutor(max_workers=min(totalSectors, 8)) as executor:
-            futures = {executor.submit(fetchSectorPerformance, tool, data, timestamp, ticker): ticker for ticker in GICS_SECTORS}
+            futures = {executor.submit(fetchSectorPerformance, tool, data, effectiveTs, ticker): ticker for ticker in GICS_SECTORS}
             for future in as_completed(futures):
                 completedSectors += 1
                 tool.updateProgress((completedSectors / totalSectors) * 100.0)
@@ -476,9 +482,10 @@ def subsampleSectorArticles(newsDf: pd.DataFrame) -> pd.DataFrame:
 
 
 def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Timestamp) -> Dict[str, Any]:
-    tsNorm = timestamp.tz_localize(None) if timestamp.tzinfo is not None else timestamp
     tsNy = timestamp.tz_convert(NEW_YORK) if timestamp.tzinfo is not None else timestamp.tz_localize(NEW_YORK)
-    cacheKey = f"sector|all_analysis_{tsNy.strftime('%Y-%m-%dH%H')}"
+    effectiveTs = min(tsNy, END_DATE)
+    effectiveNorm = effectiveTs.tz_localize(None) if effectiveTs.tzinfo is not None else effectiveTs
+    cacheKey = f"sector|all_analysis_{effectiveTs.strftime('%Y-%m-%dH%H')}"
 
     cached = data.cache.get(cacheKey)
     if cached is not None:
@@ -503,7 +510,7 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
             if sp500Raw is not None and not sp500Raw.empty:
                 validSpy = sp500Raw.copy()
                 validSpy["date"] = pd.to_datetime(validSpy["date"], utc=True).dt.tz_localize(None)
-                validSpy = validSpy[validSpy["date"] <= tsNorm].sort_values("date").reset_index(drop=True)
+                validSpy = validSpy[validSpy["date"] <= effectiveNorm].sort_values("date").reset_index(drop=True)
                 spyClosesDf = validSpy[["date", "close"]]
         except Exception:
             pass
@@ -514,7 +521,7 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
             if treasRaw is not None and not treasRaw.empty:
                 validTreas = treasRaw.copy()
                 validTreas["date"] = pd.to_datetime(validTreas["date"], utc=True).dt.tz_localize(None)
-                treasDf = validTreas[validTreas["date"] <= tsNorm].sort_values("date").reset_index(drop=True)
+                treasDf = validTreas[validTreas["date"] <= effectiveNorm].sort_values("date").reset_index(drop=True)
         except Exception:
             pass
 
@@ -523,10 +530,10 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
         if not spyClosesDf.empty:
             latestSpyClose = float(spyClosesDf["close"].iloc[-1])
             spyPastDates = {
-                "1mo": tsNorm - pd.DateOffset(months=1),
-                "3mo": tsNorm - pd.DateOffset(months=3),
-                "6mo": tsNorm - pd.DateOffset(months=6),
-                "12mo": tsNorm - pd.DateOffset(years=1)
+                "1mo": effectiveNorm - pd.DateOffset(months=1),
+                "3mo": effectiveNorm - pd.DateOffset(months=3),
+                "6mo": effectiveNorm - pd.DateOffset(months=6),
+                "12mo": effectiveNorm - pd.DateOffset(years=1)
             }
             for period, pastDate in spyPastDates.items():
                 pastRows = spyClosesDf[spyClosesDf["date"] <= pastDate]
@@ -535,8 +542,8 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
                     benchReturns[period] = round(((latestSpyClose - pastSpyClose) / pastSpyClose) * 100.0, 2)
 
         # 2. Extract constituent metrics, market caps, and news per sector
-        oneYearAgo = tsNorm - pd.DateOffset(years=1, weeks=1)
-        threeMoAgo = tsNorm - pd.DateOffset(months=3)
+        oneYearAgo = effectiveNorm - pd.DateOffset(years=1, weeks=1)
+        threeMoAgo = effectiveNorm - pd.DateOffset(months=3)
 
         sectorHoldingsData = {}
         sectorNewsDfs = {}
@@ -551,7 +558,7 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
                 p for p in data.tickers.tickerIndex.values()
                 if p.sector == dbKey
                 and p.industry and p.industry.lower() != "unknown"
-                and data.tickers.isTickerListed(p.ticker, timestamp)
+                and data.tickers.isTickerListed(p.ticker, effectiveTs)
                 and p.ticker in data.ohlcv.tickersPaths
             ]
 
@@ -561,7 +568,7 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
 
             # Step 1: Fast market cap screen across all candidates
             def getCandidateCap(p):
-                row = data.ohlcv.getSingleDayTickerData(p.ticker, timestamp)
+                row = data.ohlcv.getSingleDayTickerData(p.ticker, effectiveTs)
                 if row is None or "marketCap" not in row:
                     return None
                 capStr = str(row["marketCap"])
@@ -583,7 +590,7 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
             # Step 2: Evaluate 1-year OHLCV for top 25 holdings (fast breadth & constituent divergence)
             def evalTopHolding(item):
                 p, capNum, capStr = item
-                df = data.ohlcv.getPeriodDailyTickerData(p.ticker, startDate=oneYearAgo, endDate=timestamp)
+                df = data.ohlcv.getPeriodDailyTickerData(p.ticker, startDate=oneYearAgo, endDate=effectiveTs)
                 ret3mo = 0.0
                 aboveSma50 = False
                 aboveSma200 = False
@@ -615,19 +622,19 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
             top5 = evaluatedTopHoldings[:5]
 
             # Step 3: Fetch top 20 recent articles for the agent to inspect directly
-            recentNewsDf = data.news.getRecentSectorNews(etfTicker, timestamp, limit=20, maxOtherSectorTickers=2)
+            recentNewsDf = data.news.getRecentSectorNews(etfTicker, effectiveTs, limit=20, maxOtherSectorTickers=2)
             agentHeadlines = []
             if not recentNewsDf.empty and "headline" in recentNewsDf.columns:
                 for _, r in recentNewsDf.iterrows():
                     hl = cleanHtmlContent(str(r.get("headline", "")).strip())
                     dtVal = r.get("date")
-                    age = formatArticleAge(dtVal, timestamp)
+                    age = formatArticleAge(dtVal, effectiveTs)
                     if hl:
                         agentHeadlines.append(f"{hl} ({age})")
 
             # Step 4: Query constituent news for FinBERT sentiment (engine-subsampled)
             candidateTickers = [etfTicker] + top20Tickers
-            rawNewsDf = data.news.getSectorConstituentsNews(candidateTickers, timestamp, limit=400, maxReferencedTickers=10)
+            rawNewsDf = data.news.getSectorConstituentsNews(candidateTickers, effectiveTs, limit=400, maxReferencedTickers=10)
             newsDf = subsampleSectorArticles(rawNewsDf)
             sectorNewsDfs[etfTicker] = newsDf
 
@@ -698,8 +705,8 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
             capWeightPct = round((sectorMarketCapSums.get(etfTicker, 0.0) / totalMarketCapAll) * 100.0, 1)
 
             # Trailing ETF prices & technicals
-            startDate = tsNorm - pd.DateOffset(years=4)
-            secDf = data.sectors.getSectorData(etfTicker, startDate=startDate, endDate=timestamp)
+            startDate = effectiveNorm - pd.DateOffset(years=4)
+            secDf = data.sectors.getSectorData(etfTicker, startDate=startDate, endDate=effectiveTs)
             if not secDf.empty and "date" in secDf.columns:
                 secDf["date"] = pd.to_datetime(secDf["date"], utc=True).dt.tz_localize(None)
 
@@ -713,10 +720,10 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
             if not secDf.empty:
                 latestClose = float(secDf["close"].iloc[-1])
                 pastDates = {
-                    "1mo": tsNorm - pd.DateOffset(months=1),
-                    "3mo": tsNorm - pd.DateOffset(months=3),
-                    "6mo": tsNorm - pd.DateOffset(months=6),
-                    "12mo": tsNorm - pd.DateOffset(years=1)
+                    "1mo": effectiveNorm - pd.DateOffset(months=1),
+                    "3mo": effectiveNorm - pd.DateOffset(months=3),
+                    "6mo": effectiveNorm - pd.DateOffset(months=6),
+                    "12mo": effectiveNorm - pd.DateOffset(years=1)
                 }
                 for period, pastDate in pastDates.items():
                     pastRows = secDf[secDf["date"] <= pastDate]
@@ -732,7 +739,7 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
                             relativeAlpha[period] = round(retVal - spyRet, 2)
 
                 rawTechnicals = calculateSectorTechnicals(secDf, latestClose)
-                range52 = calculateSectorRange52Week(secDf, timestamp, latestClose)
+                range52 = calculateSectorRange52Week(secDf, effectiveTs, latestClose)
                 technicals = {
                     "rsi14": rawTechnicals.get("rsi14"),
                     "distFromSma50Pct": rawTechnicals.get("distFromSma50Pct"),
@@ -818,7 +825,7 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
         sectorsResults.sort(key=lambda s: s.get("benchmarkWeightPct", 0.0), reverse=True)
 
         finalOutput = {
-            "asOfDate": tsNy.strftime("%Y-%m-%d"),
+            "asOfDate": effectiveTs.strftime("%Y-%m-%d"),
             "sectorsCount": len(sectorsResults),
             "benchmarkSP500Returns": benchReturns,
             "sectors": sectorsResults
@@ -831,4 +838,6 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
             tool.updateProgress(100.0)
 
         return cleanedFinal
+
+
 
