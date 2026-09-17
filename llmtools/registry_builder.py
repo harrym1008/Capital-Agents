@@ -8,7 +8,8 @@ from llmtools.functions.company import (
     fetchCompanyRecentNews, 
     fetchStockPricePerformance, 
     calculateDistFromCurrPrice,
-    fetchBatchFinnhubMetrics
+    fetchBatchStockOverviews,
+    fetchShortInterestHistory
 )
 from llmtools.functions.edgar import (
     fetchCompanyValuationMetrics, 
@@ -30,6 +31,7 @@ from llmtools.functions.sector import (
     fetchSectorProfile, 
     fetchAllSectorsPerformance,
     fetchAllSectorProfiles,
+    fetchAllSectorsAnalysis,
     DB_SECTOR_TO_TICKER
 )
 from llmtools.functions.stock_search import fetchStocksInSector
@@ -191,6 +193,22 @@ SCHEMAS = {
             }
         },
         "required": ["tickers"]
+    },
+
+    "shortInterestHistory": {
+        "type": "object",
+        "properties": {
+            "ticker": {
+                "type": "string",
+                "description": "The stock ticker symbol."
+            },
+            "months": {
+                "type": "integer",
+                "description": "Number of months of short interest history to retrieve (1-24). Defaults to 6.",
+                "default": 6
+            }
+        },
+        "required": ["ticker"]
     },
 
     "tickerNews": {
@@ -443,6 +461,19 @@ def buildToolRegistry(initMacroThread=False):
     ))
 
     toolReg.registerTool(Tool(
+        toolFunction=fetchAllSectorsAnalysis,
+        toolName="fetchAllSectorsAnalysis",
+        toolDescription=(
+            "Performs comprehensive multi-dimensional quantitative and fundamental analysis across ALL 11 GICS sectors. "
+            "Returns breadth (% > 50/200 SMA), equal-weight vs cap-weight return divergence, 1Y/3Y relative strength channels vs SPY, "
+            "10Y Treasury yield beta, S&P 500 benchmark cap weights, clean sub-industries list, top 5 holdings breakdown, and "
+            "400-article constituent FinBERT neural news sentiment for each sector in a single consolidated report."
+        ),
+        parameterSchema=SCHEMAS["empty"],
+        storeIntoSources=True
+    ))
+
+    toolReg.registerTool(Tool(
         toolFunction=confirmSectorAllocation,
         toolName="confirmSectorAllocation",
         toolDescription="Confirms and records the executive sector allocation decisions (%-wise) for the portfolio.",
@@ -495,10 +526,18 @@ def buildToolRegistry(initMacroThread=False):
     ))
 
     toolReg.registerTool(Tool(
-        toolFunction=fetchBatchFinnhubMetrics,
-        toolName="fetchBatchFinnhubMetrics",
-        toolDescription="Fast point-in-time valuation and profitability metrics for multiple candidate stocks in a single call. Returns P/E, P/B, margins, ROE, and leverage for quick cross-stock comparison.",
+        toolFunction=fetchBatchStockOverviews,
+        toolName="fetchBatchStockOverviews",
+        toolDescription="Comprehensive point-in-time stock screening for multiple candidates in a single call. Returns valuation multiples, profitability margins, growth rates (EPS/revenue QoQ and YoY), leverage ratios, price returns (1mo/3mo/6mo/1y), beta, 30-day volatility, recent news headlines with sentiment scoring, and short interest data for fast cross-stock comparison.",
         parameterSchema=SCHEMAS["batchTickers"],
+        storeIntoSources=True
+    ))
+
+    toolReg.registerTool(Tool(
+        toolFunction=fetchShortInterestHistory,
+        toolName="fetchShortInterestHistory",
+        toolDescription="Retrieves short interest history for a stock over a specified number of months. Shows FINRA short positions, changes, days-to-cover, and overall trend direction for squeeze risk and sentiment analysis.",
+        parameterSchema=SCHEMAS["shortInterestHistory"],
         storeIntoSources=True
     ))
 

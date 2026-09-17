@@ -12,6 +12,7 @@ from collectors.rate_limiter import GlobalRateLimiters
 from collectors.news_dl_client import cleanAndFilterArticlesDf
 from dataquery.lru_cache import LRUCache
 from dataquery.keyed_lock import KeyedLockManager
+from collectors.sector_dl_client import GICS_SECTORS, DB_SECTOR_TO_TICKER
 
 load_dotenv()
 
@@ -553,3 +554,198 @@ class NewsDataProvider:
             df = self.truncateDfContent(df, summaryMaxChars)
             self.cache.put(key, df)
             return df
+
+    def getRecentSectorNews(self, sectorOrTicker: str, before: pd.Timestamp, 
+                            limit: int = 20, 
+                            startDate: Optional[pd.Timestamp] = None,
+                            maxOtherSectorTickers: Optional[int] = 2, 
+                            mustHaveContent: bool = False, 
+                            maxReferencedTickers: Optional[int] = 12,
+                            summaryMaxChars: int = 2500) -> pd.DataFrame:
+        if limit < 1:
+            return pd.DataFrame()
+
+        cleanInput = str(sectorOrTicker).strip()
+        upper = cleanInput.upper()
+        lower = cleanInput.lower()
+
+        targetTicker = upper if upper in GICS_SECTORS else DB_SECTOR_TO_TICKER.get(lower)
+        if not targetTicker:
+            targetTicker = upper
+
+        beforeNorm = self.normaliseTimestamp(before)
+        sixMonthsAgo = beforeNorm - pd.DateOffset(months=6)
+        startNorm = self.normaliseTimestamp(startDate) if startDate is not None else sixMonthsAgo
+
+        startKeyStr = startNorm.strftime('%Y-%m-%dH%H')
+        key = (
+            f"news|sector_adapt_{targetTicker}_{beforeNorm.strftime('%Y-%m-%dH%H')}_{startKeyStr}_"
+            f"{limit}_{maxOtherSectorTickers}_{mustHaveContent}_{maxReferencedTickers}_{summaryMaxChars}"
+        )
+
+        cached = self.cache.get(key)
+        if isinstance(cached, pd.DataFrame):
+            return cached
+
+        with self.keyedLocks.lockKey(key):
+            cached = self.cache.get(key)
+            if isinstance(cached, pd.DataFrame):
+                return cached
+
+            self.ensureCoverage(beforeNorm, tickers=[targetTicker], maxPages=1, sort="desc")
+
+            relationSql = self.getQueryRelationSql()
+            if relationSql is None:
+                return pd.DataFrame()
+
+            allSectorTickers = list(GICS_SECTORS.keys())
+            otherSectors = [t for t in allSectorTickers if t != targetTicker]
+
+            startThreshold = maxOtherSectorTickers if maxOtherSectorTickers is not None else 2
+            bestDf = pd.DataFrame()
+
+            # Cascade from startThreshold (default 2) up to 7 other sector tickers within 6 months
+            for currentMaxOther in range(startThreshold, 8):
+                conditions = [
+                    "date <= ?",
+                    "date >= ?",
+                    "list_contains(tickers, ?)",
+                ]
+                queryParams = [beforeNorm.to_pydatetime(), startNorm.to_pydatetime(), targetTicker]
+
+                if otherSectors:
+                    if currentMaxOther == 0:
+                        conditions.append("NOT list_has_any(tickers, ?)")
+                        queryParams.append(otherSectors)
+                    else:
+                        conditions.append("len(list_intersect(tickers, ?)) <= ?")
+                        queryParams.extend([otherSectors, int(currentMaxOther)])
+
+                if maxReferencedTickers is not None:
+                    # Dynamically scale referenced tickers ceiling with other sector count
+                    effectiveMaxRef = max(int(maxReferencedTickers), currentMaxOther + 5)
+                    conditions.append("array_length(tickers) <= ?")
+                    queryParams.append(effectiveMaxRef)
+
+                if mustHaveContent:
+                    conditions.append("COALESCE(LENGTH(content), 0) > 0")
+
+                sql = f"""
+                    SELECT *
+                    FROM {relationSql}
+                    WHERE {" AND ".join(conditions)}
+                    ORDER BY date DESC, id
+                    LIMIT ?
+                """
+                queryParams.append(int(limit))
+
+                try:
+                    cursor = self.con.cursor()
+                    df = cursor.execute(sql, queryParams).df()
+                except Exception:
+                    df = pd.DataFrame()
+
+                bestDf = df
+                if len(df) >= limit:
+                    break
+
+            # If still fewer than limit at threshold 7 within 6m, and caller didn't pass strict startDate,
+            # query without the 6-month cutoff at maxOther=7 to backfill whatever is there
+            if len(bestDf) < limit and startDate is None:
+                conditions = [
+                    "date <= ?",
+                    "list_contains(tickers, ?)",
+                ]
+                queryParams = [beforeNorm.to_pydatetime(), targetTicker]
+                if otherSectors:
+                    conditions.append("len(list_intersect(tickers, ?)) <= 7")
+                    queryParams.append(otherSectors)
+                if maxReferencedTickers is not None:
+                    conditions.append("array_length(tickers) <= ?")
+                    queryParams.append(max(int(maxReferencedTickers), 14))
+                if mustHaveContent:
+                    conditions.append("COALESCE(LENGTH(content), 0) > 0")
+
+                sql = f"""
+                    SELECT *
+                    FROM {relationSql}
+                    WHERE {" AND ".join(conditions)}
+                    ORDER BY date DESC, id
+                    LIMIT ?
+                """
+                queryParams.append(int(limit))
+                try:
+                    cursor = self.con.cursor()
+                    fallbackDf = cursor.execute(sql, queryParams).df()
+                    if len(fallbackDf) > len(bestDf):
+                        bestDf = fallbackDf
+                except Exception:
+                    pass
+
+            bestDf = self.truncateDfContent(bestDf, summaryMaxChars)
+            self.cache.put(key, bestDf)
+            return bestDf
+
+
+    def getSectorConstituentsNews(self, candidateTickers: list, before: pd.Timestamp, 
+                                  limit: int = 400, 
+                                  startDate: Optional[pd.Timestamp] = None,
+                                  maxReferencedTickers: int = 10,
+                                  summaryMaxChars: int = 500) -> pd.DataFrame:
+        if not candidateTickers or limit < 1:
+            return pd.DataFrame()
+
+        cleanTickers = sorted(list(set(str(t).strip().upper() for t in candidateTickers if str(t).strip())))
+        tickersKey = "_".join(cleanTickers[:8]) + f"_n{len(cleanTickers)}"
+
+        beforeNorm = self.normaliseTimestamp(before)
+        sixMonthsAgo = beforeNorm - pd.DateOffset(months=6)
+        startNorm = self.normaliseTimestamp(startDate) if startDate is not None else sixMonthsAgo
+
+        key = (
+            f"news|sector_const_{tickersKey}_{beforeNorm.strftime('%Y-%m-%dH%H')}_"
+            f"{startNorm.strftime('%Y-%m-%dH%H')}_{limit}_{maxReferencedTickers}"
+        )
+
+        cached = self.cache.get(key)
+        if isinstance(cached, pd.DataFrame):
+            return cached
+
+        with self.keyedLocks.lockKey(key):
+            cached = self.cache.get(key)
+            if isinstance(cached, pd.DataFrame):
+                return cached
+
+            relationSql = self.getQueryRelationSql()
+            if relationSql is None:
+                return pd.DataFrame()
+
+            sql = f"""
+                SELECT id, date, headline, tickers, content
+                FROM {relationSql}
+                WHERE date <= ? 
+                  AND date >= ?
+                  AND list_has_any(tickers, ?)
+                  AND array_length(tickers) <= ?
+                ORDER BY date DESC, id DESC
+                LIMIT ?
+            """
+            queryParams = [
+                beforeNorm.to_pydatetime(),
+                startNorm.to_pydatetime(),
+                cleanTickers,
+                int(maxReferencedTickers),
+                int(limit)
+            ]
+
+            try:
+                cursor = self.con.cursor()
+                df = cursor.execute(sql, queryParams).df()
+            except Exception:
+                df = pd.DataFrame()
+
+            df = self.truncateDfContent(df, summaryMaxChars)
+            self.cache.put(key, df)
+            return df
+
+

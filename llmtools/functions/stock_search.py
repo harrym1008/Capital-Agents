@@ -179,7 +179,7 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
             })
 
         # 2. Filter candidates by market cap threshold (>= 20bn)... fallback to >= 10bn if too few
-        minCapThreshold = 20e9
+        minCapThreshold = 15e9
 
         def filterQualifying(threshold: float) -> List[tuple]:
             qualifying = []

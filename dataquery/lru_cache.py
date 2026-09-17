@@ -81,7 +81,7 @@ class LRUCache:
             self.addEvent.clear()
 
             while not self.stopEvent.is_set():
-                remaining = PERSIST_DEBOUNCE - (time.time() - self._lastAddTime)
+                remaining = PERSIST_DEBOUNCE - (time.time() - self.lastAddTime)
                 if remaining <= 0:
                     break
                 if self.stopEvent.wait(remaining):
@@ -173,7 +173,7 @@ class LRUCache:
             self.currentSizeBytes += sizeBytes
 
         if self.main:
-            self._lastAddTime = now
+            self.lastAddTime = now
             self.addEvent.set()
 
 

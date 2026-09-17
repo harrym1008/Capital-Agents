@@ -6,10 +6,13 @@ from typing import Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from collectors.sector_dl_client import GICS_SECTORS, DB_SECTOR_TO_TICKER
-from collectors.constants import UTC
+from collectors.constants import UTC, NEW_YORK
 from dataquery.macro_provider import MacroSeries
 from llmtools.tool_registry import DataProviders, Tool
-from llmtools.functions.helpers import cleanData
+from llmtools.functions.helpers import cleanData, formatArticleAge, cleanHtmlContent
+from llmtools.functions.stock_search import parseMarketCapValue
+from llmtools.functions.sentiment_main import scoreTextsWithCache, deriveSentimentRating, getSentimentEngine
+from finbert.finbert_engines import TrtCudaInferenceEngine, OnnxCudaInferenceEngine, PytorchCudaInferenceEngine
 
 
 def calculateRsi(series: pd.Series, period: int = 14) -> float:
@@ -308,8 +311,7 @@ def fetchSectorProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp,
         "ticker": info.ticker,
         "name": info.name,
         "category": info.category,
-        "description": info.description,
-        "etfIssuer": "State Street Global Advisors (Select Sector SPDR)"
+        "description": info.description
     }
     if note:
         result["resolutionNote"] = note
@@ -357,8 +359,476 @@ def fetchAllSectorProfiles(tool: Tool, data: DataProviders, timestamp: pd.Timest
             "ticker": info.ticker,
             "name": info.name,
             "category": info.category,
-            "description": info.description,
-            "etfIssuer": "State Street Global Advisors (Select Sector SPDR)"
+            "description": info.description
         })
     profiles.sort(key=lambda x: x.get("ticker", ""))
     return cleanData(profiles)
+
+
+def calculateChannelPercentiles(secClosesDf: pd.DataFrame, spyClosesDf: pd.DataFrame) -> Dict[str, Optional[float]]:
+    if secClosesDf.empty or spyClosesDf.empty:
+        return {"channel1YearPercentile": None, "channel3YearPercentile": None}
+
+    try:
+        secCopy = secClosesDf.copy()
+        spyCopy = spyClosesDf.copy()
+        secCopy["date"] = pd.to_datetime(secCopy["date"], utc=True).dt.tz_localize(None).dt.normalize()
+        spyCopy["date"] = pd.to_datetime(spyCopy["date"], utc=True).dt.tz_localize(None).dt.normalize()
+
+        secCopy = secCopy.drop_duplicates(subset=["date"]).sort_values("date")
+        spyCopy = spyCopy.drop_duplicates(subset=["date"]).sort_values("date")
+
+        merged = pd.merge(
+            secCopy[["date", "close"]].rename(columns={"close": "secClose"}),
+            spyCopy[["date", "close"]].rename(columns={"close": "spyClose"}),
+            on="date"
+        ).sort_values("date").reset_index(drop=True)
+
+        if len(merged) < 20:
+            return {"channel1YearPercentile": None, "channel3YearPercentile": None}
+
+        merged["ratio"] = merged["secClose"] / merged["spyClose"]
+        currentRatio = float(merged["ratio"].iloc[-1])
+
+        # 1-Year percentile (trailing 252 trading days)
+        slice1y = merged["ratio"].tail(min(252, len(merged)))
+        min1y = float(slice1y.min())
+        max1y = float(slice1y.max())
+        pct1y = round(((currentRatio - min1y) / (max1y - min1y) * 100), 1) if max1y > min1y else 50.0
+
+        # 3-Year percentile (trailing 756 trading days)
+        slice3y = merged["ratio"].tail(min(756, len(merged)))
+        min3y = float(slice3y.min())
+        max3y = float(slice3y.max())
+        pct3y = round(((currentRatio - min3y) / (max3y - min3y) * 100), 1) if max3y > min3y else 50.0
+
+        return {
+            "channel1YearPercentile": pct1y,
+            "channel3YearPercentile": pct3y
+        }
+    except Exception:
+        return {"channel1YearPercentile": None, "channel3YearPercentile": None}
+
+
+def calculateTreasuryBeta(secClosesDf: pd.DataFrame, treasDf: pd.DataFrame) -> Dict[str, Any]:
+    if secClosesDf.empty or treasDf.empty:
+        return {"treasury10yBeta": 0.0, "sensitivity": "Insufficient rate history"}
+
+    try:
+        secCopy = secClosesDf.copy()
+        treasCopy = treasDf.copy()
+
+        secCopy["date"] = pd.to_datetime(secCopy["date"], utc=True).dt.tz_localize(None).dt.normalize()
+        treasCopy["date"] = pd.to_datetime(treasCopy["date"], utc=True).dt.tz_localize(None).dt.normalize()
+
+        secCopy = secCopy.drop_duplicates(subset=["date"]).sort_values("date")
+        treasCopy = treasCopy.drop_duplicates(subset=["date"]).sort_values("date")
+
+        secRet = secCopy.set_index("date")["close"].pct_change() * 100.0
+        treasDiff = treasCopy.set_index("date")["value"].diff()
+
+        merged = pd.concat([secRet.rename("ret"), treasDiff.rename("diff")], axis=1).dropna().tail(90)
+        if len(merged) < 20:
+            return {"treasury10yBeta": 0.0, "sensitivity": "Insufficient rate history"}
+
+        varDiff = float(merged["diff"].var())
+        covar = float(merged["ret"].cov(merged["diff"]))
+        beta = round(covar / varDiff, 2) if varDiff > 0 else 0.0
+
+        if beta > 0.15:
+            label = "Positive rate sensitivity (benefits from rising yields)"
+        elif beta < -0.15:
+            label = "Negative rate sensitivity (vulnerable to rising yields)"
+        else:
+            label = "Yield neutral / low rate sensitivity"
+
+        return {
+            "treasury10yBeta": beta,
+            "sensitivity": label
+        }
+    except Exception:
+        return {"treasury10yBeta": 0.0, "sensitivity": "Insufficient rate history"}
+
+
+def subsampleSectorArticles(newsDf: pd.DataFrame) -> pd.DataFrame:
+    if newsDf is None or newsDf.empty:
+        return newsDf
+
+    try:
+        engine = getSentimentEngine()
+        engineType = type(engine)
+
+        if engineType is TrtCudaInferenceEngine:
+            # Keep all for TRT
+            return newsDf
+        elif engineType is OnnxCudaInferenceEngine:
+            # Skip every second article for OnnxCuda (keep 1st, 3rd, 5th...)
+            return newsDf.iloc[::2].reset_index(drop=True)
+        elif engineType is PytorchCudaInferenceEngine:
+            # Skip three in every five for Pytorch (keep 2 in every 5)
+            keepIndices = [i for i in range(len(newsDf)) if i % 5 in (0, 2)]
+            return newsDf.iloc[keepIndices].reset_index(drop=True)
+        else:
+            # Otherwise (CPU engines): skip 7 in every 8 (keep 1 in every 8)
+            return newsDf.iloc[::8].reset_index(drop=True)
+    except Exception:
+        return newsDf.iloc[::2].reset_index(drop=True)
+
+
+def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Timestamp) -> Dict[str, Any]:
+    tsNorm = timestamp.tz_localize(None) if timestamp.tzinfo is not None else timestamp
+    tsNy = timestamp.tz_convert(NEW_YORK) if timestamp.tzinfo is not None else timestamp.tz_localize(NEW_YORK)
+    cacheKey = f"sector|all_analysis_{tsNy.strftime('%Y-%m-%dH%H')}"
+
+    cached = data.cache.get(cacheKey)
+    if cached is not None:
+        if tool is not None:
+            tool.updateProgress(100.0)
+        return cached
+
+    with data.sectors.keyedLocks.lockKey(cacheKey):
+        cached = data.cache.get(cacheKey)
+        if cached is not None:
+            if tool is not None:
+                tool.updateProgress(100.0)
+            return cached
+
+        if tool is not None:
+            tool.updateProgress(3.0)
+
+        # 1. Pre-load benchmark SP500 and Treasury 10Y series
+        spyClosesDf = pd.DataFrame()
+        try:
+            sp500Raw = data.macro.loadSeries(MacroSeries.SP500)
+            if sp500Raw is not None and not sp500Raw.empty:
+                validSpy = sp500Raw.copy()
+                validSpy["date"] = pd.to_datetime(validSpy["date"], utc=True).dt.tz_localize(None)
+                validSpy = validSpy[validSpy["date"] <= tsNorm].sort_values("date").reset_index(drop=True)
+                spyClosesDf = validSpy[["date", "close"]]
+        except Exception:
+            pass
+
+        treasDf = pd.DataFrame()
+        try:
+            treasRaw = data.macro.loadSeries(MacroSeries.TREAS_10Y)
+            if treasRaw is not None and not treasRaw.empty:
+                validTreas = treasRaw.copy()
+                validTreas["date"] = pd.to_datetime(validTreas["date"], utc=True).dt.tz_localize(None)
+                treasDf = validTreas[validTreas["date"] <= tsNorm].sort_values("date").reset_index(drop=True)
+        except Exception:
+            pass
+
+        # Calculate benchmark SP500 trailing returns
+        benchReturns = {}
+        if not spyClosesDf.empty:
+            latestSpyClose = float(spyClosesDf["close"].iloc[-1])
+            spyPastDates = {
+                "1mo": tsNorm - pd.DateOffset(months=1),
+                "3mo": tsNorm - pd.DateOffset(months=3),
+                "6mo": tsNorm - pd.DateOffset(months=6),
+                "12mo": tsNorm - pd.DateOffset(years=1)
+            }
+            for period, pastDate in spyPastDates.items():
+                pastRows = spyClosesDf[spyClosesDf["date"] <= pastDate]
+                if not pastRows.empty:
+                    pastSpyClose = float(pastRows["close"].iloc[-1])
+                    benchReturns[period] = round(((latestSpyClose - pastSpyClose) / pastSpyClose) * 100.0, 2)
+
+        # 2. Extract constituent metrics, market caps, and news per sector
+        oneYearAgo = tsNorm - pd.DateOffset(years=1, weeks=1)
+        threeMoAgo = tsNorm - pd.DateOffset(months=3)
+
+        sectorHoldingsData = {}
+        sectorNewsDfs = {}
+        sectorMarketCapSums = {}
+        allUniqueHeadlines = set()
+
+        totalSectors = len(DB_SECTOR_TO_TICKER)
+        completedInit = 0
+
+        for dbKey, etfTicker in sorted(DB_SECTOR_TO_TICKER.items()):
+            candidateProfiles = [
+                p for p in data.tickers.tickerIndex.values()
+                if p.sector == dbKey
+                and p.industry and p.industry.lower() != "unknown"
+                and data.tickers.isTickerListed(p.ticker, timestamp)
+                and p.ticker in data.ohlcv.tickersPaths
+            ]
+
+            cleanIndustries = sorted(list(set(
+                p.industry for p in candidateProfiles if p.industry and p.industry.lower() != "unknown"
+            )))
+
+            # Step 1: Fast market cap screen across all candidates
+            def getCandidateCap(p):
+                row = data.ohlcv.getSingleDayTickerData(p.ticker, timestamp)
+                if row is None or "marketCap" not in row:
+                    return None
+                capStr = str(row["marketCap"])
+                capNum = parseMarketCapValue(capStr)
+                if 0 < capNum <= 10e12:
+                    return (p, capNum, capStr)
+                return None
+
+            with ThreadPoolExecutor(max_workers=32) as executor:
+                scoredCaps = [r for r in executor.map(getCandidateCap, candidateProfiles) if r is not None]
+
+            scoredCaps.sort(key=lambda x: x[1], reverse=True)
+            sectorCapSum = sum(h[1] for h in scoredCaps)
+            sectorMarketCapSums[etfTicker] = sectorCapSum
+
+            top25Caps = scoredCaps[:25]
+            top20Tickers = [h[0].ticker for h in scoredCaps[:20]]
+
+            # Step 2: Evaluate 1-year OHLCV for top 25 holdings (fast breadth & constituent divergence)
+            def evalTopHolding(item):
+                p, capNum, capStr = item
+                df = data.ohlcv.getPeriodDailyTickerData(p.ticker, startDate=oneYearAgo, endDate=timestamp)
+                ret3mo = 0.0
+                aboveSma50 = False
+                aboveSma200 = False
+                if df is not None and len(df) >= 50:
+                    if "date" in df.columns:
+                        df["date"] = pd.to_datetime(df["date"], utc=True).dt.tz_localize(None)
+                    c = df["close"]
+                    latest = float(c.iloc[-1])
+                    s50 = float(c.rolling(50).mean().iloc[-1])
+                    s200 = float(c.rolling(min(200, len(c))).mean().iloc[-1])
+                    aboveSma50 = latest > s50
+                    aboveSma200 = latest > s200
+
+                    valid3mo = df[df["date"] <= threeMoAgo]["close"]
+                    if not valid3mo.empty:
+                        past3mo = float(valid3mo.iloc[-1])
+                        ret3mo = round(((latest - past3mo) / past3mo) * 100.0, 2)
+
+                return (p.ticker, p.name, p.industry, capNum, capStr, ret3mo, aboveSma50, aboveSma200)
+
+            with ThreadPoolExecutor(max_workers=16) as executor:
+                evaluatedTopHoldings = [r for r in executor.map(evalTopHolding, top25Caps) if r is not None]
+
+            totalEval = len(evaluatedTopHoldings)
+            pctAbove50 = round((sum(1 for h in evaluatedTopHoldings if h[6]) / totalEval) * 100.0, 1) if totalEval else 0.0
+            pctAbove200 = round((sum(1 for h in evaluatedTopHoldings if h[7]) / totalEval) * 100.0, 1) if totalEval else 0.0
+            rets3mo = [h[5] for h in evaluatedTopHoldings]
+            medRet3mo = round(float(np.median(rets3mo)), 2) if rets3mo else 0.0
+            top5 = evaluatedTopHoldings[:5]
+
+            # Step 3: Fetch top 20 recent articles for the agent to inspect directly
+            recentNewsDf = data.news.getRecentSectorNews(etfTicker, timestamp, limit=20, maxOtherSectorTickers=2)
+            agentHeadlines = []
+            if not recentNewsDf.empty and "headline" in recentNewsDf.columns:
+                for _, r in recentNewsDf.iterrows():
+                    hl = cleanHtmlContent(str(r.get("headline", "")).strip())
+                    dtVal = r.get("date")
+                    age = formatArticleAge(dtVal, timestamp)
+                    if hl:
+                        agentHeadlines.append(f"{hl} ({age})")
+
+            # Step 4: Query constituent news for FinBERT sentiment (engine-subsampled)
+            candidateTickers = [etfTicker] + top20Tickers
+            rawNewsDf = data.news.getSectorConstituentsNews(candidateTickers, timestamp, limit=400, maxReferencedTickers=10)
+            newsDf = subsampleSectorArticles(rawNewsDf)
+            sectorNewsDfs[etfTicker] = newsDf
+
+            if not newsDf.empty and "headline" in newsDf.columns:
+                hls = newsDf["headline"].dropna().tolist()
+                allUniqueHeadlines.update(hls)
+
+            sectorHoldingsData[etfTicker] = {
+                "dbKey": dbKey,
+                "cleanIndustries": cleanIndustries,
+                "recentHeadlines": agentHeadlines,
+                "top5": [
+                    {
+                        "ticker": h[0],
+                        "name": h[1],
+                        "industry": h[2],
+                        "marketCap": h[4],
+                        "return3mo": h[5]
+                    } for h in top5
+                ],
+                "pctAboveSma50": pctAbove50,
+                "pctAboveSma200": pctAbove200,
+                "medianConstituentReturn3mo": medRet3mo
+            }
+
+            completedInit += 1
+            if tool is not None:
+                tool.updateProgress(3.0 + (completedInit / totalSectors) * 37.0)
+
+        # 3. Score all unique headlines across all sectors with ModernFinBERT
+        if tool is not None:
+            tool.updateProgress(42.0)
+
+        uniqueHeadlinesList = list(allUniqueHeadlines)
+        totalHeadlinesToScore = len(uniqueHeadlinesList)
+        scoredCount = [0]
+
+        def onFinbertProgress(increment):
+            if tool is not None and totalHeadlinesToScore > 0:
+                scoredCount[0] += increment
+                prog = 42.0 + (scoredCount[0] / totalHeadlinesToScore) * 48.0
+                tool.updateProgress(min(90.0, prog))
+
+        if uniqueHeadlinesList:
+            scoreTextsWithCache(uniqueHeadlinesList, data=data, onProgressCallback=onFinbertProgress)
+
+        if tool is not None:
+            tool.updateProgress(92.0)
+
+        # Total market cap across all 11 sectors for benchmark weighting
+        totalMarketCapAll = sum(sectorMarketCapSums.values()) or 1.0
+
+        # 4. Assemble full 11-sector response bundle
+        sectorsResults = []
+        for dbKey, etfTicker in sorted(DB_SECTOR_TO_TICKER.items()):
+            info = GICS_SECTORS.get(etfTicker)
+            sectorName = info.name if info else etfTicker
+            category = info.category if info else "Unknown"
+
+            holdingsMeta = sectorHoldingsData.get(etfTicker, {})
+            cleanIndustries = holdingsMeta.get("cleanIndustries", [])
+            top5Holdings = holdingsMeta.get("top5", [])
+            pctAbove50 = holdingsMeta.get("pctAboveSma50", 0.0)
+            pctAbove200 = holdingsMeta.get("pctAboveSma200", 0.0)
+            medRet3mo = holdingsMeta.get("medianConstituentReturn3mo", 0.0)
+
+            # Benchmark cap weight %
+            capWeightPct = round((sectorMarketCapSums.get(etfTicker, 0.0) / totalMarketCapAll) * 100.0, 1)
+
+            # Trailing ETF prices & technicals
+            startDate = tsNorm - pd.DateOffset(years=4)
+            secDf = data.sectors.getSectorData(etfTicker, startDate=startDate, endDate=timestamp)
+            if not secDf.empty and "date" in secDf.columns:
+                secDf["date"] = pd.to_datetime(secDf["date"], utc=True).dt.tz_localize(None)
+
+            trailingReturns = {}
+            relativeAlpha = {}
+            technicals = {}
+            channelPercentiles = {"channel1YearPercentile": 50.0, "channel3YearPercentile": 50.0}
+            treasurySensitivity = {"treasury10yBeta": 0.0, "sensitivity": "Neutral"}
+            etfReturn3mo = 0.0
+
+            if not secDf.empty:
+                latestClose = float(secDf["close"].iloc[-1])
+                pastDates = {
+                    "1mo": tsNorm - pd.DateOffset(months=1),
+                    "3mo": tsNorm - pd.DateOffset(months=3),
+                    "6mo": tsNorm - pd.DateOffset(months=6),
+                    "12mo": tsNorm - pd.DateOffset(years=1)
+                }
+                for period, pastDate in pastDates.items():
+                    pastRows = secDf[secDf["date"] <= pastDate]
+                    if not pastRows.empty:
+                        pastClose = float(pastRows["close"].iloc[-1])
+                        retVal = round(((latestClose - pastClose) / pastClose) * 100.0, 2)
+                        trailingReturns[period] = retVal
+                        if period == "3mo":
+                            etfReturn3mo = retVal
+
+                        spyRet = benchReturns.get(period)
+                        if spyRet is not None:
+                            relativeAlpha[period] = round(retVal - spyRet, 2)
+
+                rawTechnicals = calculateSectorTechnicals(secDf, latestClose)
+                range52 = calculateSectorRange52Week(secDf, timestamp, latestClose)
+                technicals = {
+                    "rsi14": rawTechnicals.get("rsi14"),
+                    "distFromSma50Pct": rawTechnicals.get("distFromSma50Pct"),
+                    "distFromSma200Pct": rawTechnicals.get("distFromSma200Pct"),
+                    "drawdownFromHighPct": range52.get("drawdownFromHighPct"),
+                    "trend": rawTechnicals.get("trend")
+                }
+
+                # Channel percentiles & Treasury beta
+                if not spyClosesDf.empty:
+                    channelPercentiles = calculateChannelPercentiles(secDf, spyClosesDf)
+                if not treasDf.empty:
+                    treasurySensitivity = calculateTreasuryBeta(secDf, treasDf)
+
+            # Constituent divergence evaluation
+            divergencePct = round(etfReturn3mo - medRet3mo, 2)
+            if divergencePct > 7.0 and pctAbove50 < 50.0:
+                rallyChar = "Narrow mega-cap rally (low breadth, caution on broad exposure)"
+            elif divergencePct < -5.0:
+                rallyChar = "Broad equal-weight outperformance (improving underlying breadth)"
+            elif pctAbove50 >= 60.0:
+                rallyChar = "Broad healthy participation across constituents"
+            else:
+                rallyChar = "Moderate mixed constituent participation"
+
+            # Sentiment assembly for this sector
+            newsDf = sectorNewsDfs.get(etfTicker, pd.DataFrame())
+            sentimentPayload = {
+                "newsSentimentScore": 0.0,
+                "newsSentimentRating": "Stable neutral sentiment",
+                "articlesAnalysed": 0,
+                "dateSpan": "None"
+            }
+
+            if not newsDf.empty and "headline" in newsDf.columns:
+                hls = newsDf["headline"].dropna().tolist()
+                preds = scoreTextsWithCache(hls, data=data)
+                if preds:
+                    labelWeights = {"bullish": 1.0, "bearish": -1.0, "neutral": 0.0}
+                    netScores = [p["score"] * labelWeights.get(p["label"].lower(), 0.0) for p in preds]
+                    avgScore = round(float(np.mean(netScores)), 4) if netScores else 0.0
+                    rating = deriveSentimentRating(avgScore)
+
+                    dMin = str(newsDf["date"].min())[:10]
+                    dMax = str(newsDf["date"].max())[:10]
+
+                    sentimentPayload = {
+                        "newsSentimentScore": avgScore,
+                        "newsSentimentRating": rating,
+                        "articlesAnalysed": len(hls),
+                        "dateSpan": f"{dMin} to {dMax}"
+                    }
+
+            sectorsResults.append({
+                "sectorKey": dbKey,
+                "ticker": etfTicker,
+                "sectorName": sectorName,
+                "category": category,
+                "benchmarkWeightPct": capWeightPct,
+                "industries": cleanIndustries,
+                "trailingReturns": trailingReturns,
+                "relativeAlphaVsSP500": relativeAlpha,
+                "channelPercentiles": channelPercentiles,
+                "technicals": technicals,
+                "breadth": {
+                    "pctAboveSma50": pctAbove50,
+                    "pctAboveSma200": pctAbove200
+                },
+                "constituentDivergence": {
+                    "etfReturn3mo": etfReturn3mo,
+                    "medianConstituentReturn3mo": medRet3mo,
+                    "divergencePct": divergencePct,
+                    "rallyCharacter": rallyChar
+                },
+                "macroSensitivity": treasurySensitivity,
+                "topHoldings": top5Holdings,
+                "recentHeadlines": holdingsMeta.get("recentHeadlines", []),
+                "newsSentiment": sentimentPayload
+            })
+
+
+        # Sort results by benchmark weight descending for executive clarity
+        sectorsResults.sort(key=lambda s: s.get("benchmarkWeightPct", 0.0), reverse=True)
+
+        finalOutput = {
+            "asOfDate": tsNy.strftime("%Y-%m-%d"),
+            "sectorsCount": len(sectorsResults),
+            "benchmarkSP500Returns": benchReturns,
+            "sectors": sectorsResults
+        }
+
+        cleanedFinal = cleanData(finalOutput)
+        data.cache.put(cacheKey, cleanedFinal)
+
+        if tool is not None:
+            tool.updateProgress(100.0)
+
+        return cleanedFinal
+

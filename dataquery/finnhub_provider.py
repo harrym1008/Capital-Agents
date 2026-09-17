@@ -70,14 +70,14 @@ class FinnhubDataProvider:
         series = raw.get("series", {})
         quarterly = series.get("quarterly", {})
         annual = series.get("annual", {})
-        liveMetrics = raw.get("metric", {})
 
-        def extractLatest(metricKey: str, preferQuarterly: bool = True) -> Optional[float]:
+        def getValidItems(metricKey: str, preferQuarterly: bool = True):
+            """Get all valid (date, value) pairs strictly before asOfDate."""
             primary = quarterly if preferQuarterly else annual
             secondary = annual if preferQuarterly else quarterly
             seriesList = primary.get(metricKey) or secondary.get(metricKey)
             if not seriesList:
-                return None
+                return []
 
             validItems = []
             for item in seriesList:
@@ -88,71 +88,111 @@ class FinnhubDataProvider:
                     pDate = pd.to_datetime(pStr)
                     if pDate.tzinfo is not None:
                         pDate = pDate.tz_localize(None)
-                    if pDate <= asOfNorm:
+                    if pDate < asOfNorm:  # STRICT: before only, no look-ahead
                         validItems.append((pDate, item.get("v")))
                 except Exception:
                     continue
 
-            if not validItems:
-                return None
-
             validItems.sort(key=lambda x: x[0])
-            return validItems[-1][1]
+            return validItems
 
-        # Extract point-in-time metrics
+        def extractLatest(metricKey: str, preferQuarterly: bool = True) -> Optional[float]:
+            items = getValidItems(metricKey, preferQuarterly)
+            if not items:
+                return None
+            return items[-1][1]
+
+        def extractGrowthQoQ(metricKey: str, preferQuarterly: bool = True) -> Optional[float]:
+            """Compute quarter-over-quarter growth from the two most recent values."""
+            items = getValidItems(metricKey, preferQuarterly)
+            if len(items) < 2:
+                return None
+            latest = items[-1][1]
+            prior = items[-2][1]
+            if prior is None or latest is None or prior == 0:
+                return None
+            return ((latest - prior) / abs(prior)) * 100
+
+        def extractGrowthYoY(metricKey: str, preferQuarterly: bool = True) -> Optional[float]:
+            """Compute year-over-year growth by finding the value ~4 quarters back."""
+            items = getValidItems(metricKey, preferQuarterly)
+            if len(items) < 2:
+                return None
+            latestDate = items[-1][0]
+            latestVal = items[-1][1]
+
+            # Find the entry closest to 1 year before the latest (at least 10 months back)
+            targetDate = latestDate - pd.DateOffset(months=10)
+            priorVal = None
+            for date, val in reversed(items[:-1]):
+                if date <= targetDate:
+                    priorVal = val
+                    break
+
+            if priorVal is None or latestVal is None or priorVal == 0:
+                return None
+            return ((latestVal - priorVal) / abs(priorVal)) * 100
+
+        # Extract point-in-time metrics from series ONLY (no live fallbacks)
         peVal = extractLatest("peTTM") or extractLatest("pe", preferQuarterly=False)
         pbVal = extractLatest("pb") or extractLatest("pbQuarterly")
-        psVal = extractLatest("psTTM") or extractLatest("ps", preferQuarterly=False)
+        psTtmVal = extractLatest("psTTM") or extractLatest("ps", preferQuarterly=False)
+        evEbitdaTtmVal = extractLatest("evEbitdaTTM") or extractLatest("evEbitda", preferQuarterly=False)
+
         grossMarginVal = extractLatest("grossMargin")
-        netMarginVal = extractLatest("netMargin")
         operatingMarginVal = extractLatest("operatingMargin")
+        netMarginVal = extractLatest("netMargin")
+        fcfPerShareTtmVal = extractLatest("fcfPerShareTTM")
+        fcfMarginVal = extractLatest("fcfMargin")
+
         roeVal = extractLatest("roeTTM") or extractLatest("roe", preferQuarterly=False)
         roaVal = extractLatest("roaTTM") or extractLatest("roa", preferQuarterly=False)
+        roicTtmVal = extractLatest("roicTTM") or extractLatest("roic", preferQuarterly=False)
+
         currentRatioVal = extractLatest("currentRatio")
         quickRatioVal = extractLatest("quickRatio")
         debtToEquityVal = extractLatest("totalDebtToEquity")
+
         epsVal = extractLatest("eps") or extractLatest("epsTTM")
         ebitdaVal = extractLatest("ebitda")
+        payoutRatioTtmVal = extractLatest("payoutRatioTTM")
 
-        # Fallback to static snapshot metrics if backtest series is empty or before start of series
-        isLiveFallback = False
-        if peVal is None and liveMetrics.get("peTTM") is not None:
-            peVal = liveMetrics.get("peTTM")
-            isLiveFallback = True
-        if pbVal is None and liveMetrics.get("pbQuarterly") is not None:
-            pbVal = liveMetrics.get("pbQuarterly")
-        if grossMarginVal is None and liveMetrics.get("grossMarginTTM") is not None:
-            grossMarginVal = liveMetrics.get("grossMarginTTM") / 100.0 if liveMetrics.get("grossMarginTTM") > 1.0 else liveMetrics.get("grossMarginTTM")
-        if netMarginVal is None and liveMetrics.get("netProfitMarginTTM") is not None:
-            netMarginVal = liveMetrics.get("netProfitMarginTTM") / 100.0 if liveMetrics.get("netProfitMarginTTM") > 1.0 else liveMetrics.get("netProfitMarginTTM")
-        if roeVal is None and liveMetrics.get("roeTTM") is not None:
-            roeVal = liveMetrics.get("roeTTM") / 100.0 if liveMetrics.get("roeTTM") > 1.0 else liveMetrics.get("roeTTM")
-        if betaVal := liveMetrics.get("beta"):
-            pass
-        else:
-            betaVal = None
-
-        divYieldVal = liveMetrics.get("currentDividendYieldTTM")
-        if divYieldVal is not None and divYieldVal > 0:
-            divYieldVal = divYieldVal / 100.0 if divYieldVal > 0.5 else divYieldVal
+        # Growth metrics (computed from series)
+        epsGrowthQoQ = extractGrowthQoQ("eps")
+        epsGrowthYoY = extractGrowthYoY("eps")
+        revenueGrowthQoQ = extractGrowthQoQ("salesPerShare")
+        revenueGrowthYoY = extractGrowthYoY("salesPerShare")
 
         return {
             "ticker": ticker.upper(),
             "asOfDate": asOfNorm.strftime("%Y-%m-%d"),
+            # Valuation
             "peTTM": peVal,
             "pb": pbVal,
-            "psTTM": psVal,
+            "psTTM": psTtmVal,
+            "evEbitdaTTM": evEbitdaTtmVal,
+            # Profitability
             "grossMargin": grossMarginVal,
             "operatingMargin": operatingMarginVal,
             "netMargin": netMarginVal,
+            "fcfPerShareTTM": fcfPerShareTtmVal,
+            "fcfMargin": fcfMarginVal,
+            # Returns & Efficiency
             "roeTTM": roeVal,
             "roaTTM": roaVal,
+            "roicTTM": roicTtmVal,
+            # Leverage
+            "debtToEquity": debtToEquityVal,
             "currentRatio": currentRatioVal,
             "quickRatio": quickRatioVal,
-            "debtToEquity": debtToEquityVal,
+            # Per-share
             "eps": epsVal,
             "ebitda": ebitdaVal,
-            "beta": betaVal,
-            "dividendYield": divYieldVal,
-            "isLiveFallback": isLiveFallback
+            "payoutRatioTTM": payoutRatioTtmVal,
+            # Growth
+            "epsGrowthQoQ": epsGrowthQoQ,
+            "epsGrowthYoY": epsGrowthYoY,
+            "revenueGrowthQoQ": revenueGrowthQoQ,
+            "revenueGrowthYoY": revenueGrowthYoY,
         }
+

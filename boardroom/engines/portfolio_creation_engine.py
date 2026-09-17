@@ -48,11 +48,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         self.bullAnalyst = FinancialAgent(
             agentRole="Bullish Value Analyst",
             tools=[
-                toolMap["fetchAllSectorsPerformance"],
-                toolMap["fetchAllSectorProfiles"],
-                toolMap["fetchAllSectorRankings"],
-                toolMap["fetchSectorPerformance"],
-                # toolMap["fetchSectorProfile"],
+                toolMap["fetchAllSectorsAnalysis"],
                 toolMap["executePythonCalculation"]
             ],
             ansiColor=ANSI.GREEN,
@@ -62,11 +58,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         self.bearAnalyst = FinancialAgent(
             agentRole="Bearish Risk Analyst",
             tools=[
-                toolMap["fetchAllSectorsPerformance"],
-                toolMap["fetchAllSectorProfiles"],
-                toolMap["fetchAllSectorRankings"],
-                toolMap["fetchSectorPerformance"],
-                # toolMap["fetchSectorProfile"],
+                toolMap["fetchAllSectorsAnalysis"],
                 toolMap["executePythonCalculation"]
             ],
             ansiColor=ANSI.RED,
@@ -76,8 +68,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         self.portManager = FinancialAgent(
             agentRole="Impartial Portfolio Manager",
             tools=[
-                toolMap["fetchAllSectorRankings"],
-                toolMap["fetchSectorPerformance"],
+                toolMap["fetchAllSectorsAnalysis"],
                 toolMap["confirmSectorAllocation"],
                 toolMap["confirmPortfolioAllocation"],
                 toolMap["executePythonCalculation"]
@@ -90,10 +81,9 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             agentRole="Growth Stock Hunter",
             tools=[
                 toolMap["fetchStocksInSector"],
-                toolMap["fetchBatchFinnhubMetrics"],
+                toolMap["fetchBatchStockOverviews"],
                 toolMap["fetchCompanyProfile"],
                 toolMap["fetchStockPricePerformance"],
-                toolMap["fetchCompanyValuationMetrics"],
                 toolMap["fetchCompanyRecentNews"],
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
@@ -106,10 +96,9 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             agentRole="Value/Defensive Stock Hunter",
             tools=[
                 toolMap["fetchStocksInSector"],
-                toolMap["fetchBatchFinnhubMetrics"],
+                toolMap["fetchBatchStockOverviews"],
                 toolMap["fetchCompanyProfile"],
                 toolMap["fetchStockPricePerformance"],
-                toolMap["fetchCompanyValuationMetrics"],
                 toolMap["fetchCompanyRecentNews"],
                 toolMap["fetchCashFlowStatement"],
                 toolMap["calculateDistFromCurrPrice"],
@@ -122,9 +111,9 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         self.aggRiskAnalyst = FinancialAgent(
             agentRole="Aggressive Risk Analyst",
             tools=[
-                toolMap["fetchBatchFinnhubMetrics"],
+                toolMap["fetchBatchStockOverviews"],
                 toolMap["fetchStockPricePerformance"],
-                toolMap["fetchCompanyValuationMetrics"],
+                toolMap["fetchCompanyRecentNews"],
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
@@ -135,9 +124,9 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         self.consRiskAnalyst = FinancialAgent(
             agentRole="Conservative Risk Analyst",
             tools=[
-                toolMap["fetchBatchFinnhubMetrics"],
+                toolMap["fetchBatchStockOverviews"],
                 toolMap["fetchStockPricePerformance"],
-                toolMap["fetchCompanyValuationMetrics"],
+                toolMap["fetchCompanyRecentNews"],
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
@@ -235,7 +224,8 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"- {promptArgs['sectorDiversityRule']}\n"
             f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n"
             f"- Allocations must sum to approximately 100.0%.\n\n"
-            f"Execute the 'confirmSectorAllocation' tool with your exact sector dictionary and rationale."
+            f"1. You MUST first call 'fetchAllSectorsAnalysis' to evaluate all 11 GICS sectors. Review market breadth (% > 50 SMA), constituent divergence (median constituent return vs ETF return), relative strength channels (1Y/3Y vs SPY), 10Y Treasury beta, and constituent FinBERT sentiment.\n"
+            f"2. Execute the 'confirmSectorAllocation' tool with your 'sectorAllocations' dictionary (e.g. {{'information_technology': 35, 'financials': 25, 'health_care': 20, 'consumer_discretionary': 20}}) and executive 'rationale'."
         )
         pmSectorRaw, pmSectorUISummary = self.executeMandatedToolStage(
             agent=self.portManager,
@@ -270,7 +260,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"- Sector Boundary: Scout candidate equities ONLY within the confirmed sectors above.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
             f"1. Use 'fetchStocksInSector' with style='growth' for each confirmed sector to screen candidate equities.\n"
-            f"2. Use 'fetchBatchFinnhubMetrics' or 'fetchCompanyValuationMetrics' to retrieve valuation and margins on your top high-conviction picks.\n"
+            f"2. You MUST afterwards use 'fetchBatchStockOverviews' to retrieve much more detailed information on your top high-conviction picks.\n"
             f"3. Present your candidate table with tickers, industry, momentum, and growth catalysts."
         )
 
@@ -285,7 +275,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"- Sector Boundary: Scout candidate equities ONLY within the confirmed sectors above.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
             f"1. Use 'fetchStocksInSector' with style='defensive' for each confirmed sector to screen candidate equities.\n"
-            f"2. Use 'fetchBatchFinnhubMetrics' or 'fetchCompanyValuationMetrics' to evaluate valuation, debt-to-equity, and margins on your top high-conviction picks.\n"
+            f"2. You MUST afterwards use 'fetchBatchStockOverviews' to retrieve much more detailed information on your top high-conviction picks.\n"
             f"3. Present your candidate table with tickers, industry, valuation, and margin of safety rationale."
         )
 
@@ -398,9 +388,9 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"- Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n"
             f"- {promptArgs['sectorDiversityRule']}\n"
             f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n\n"
-            f"1. Use 'fetchAllSectorsPerformance', 'fetchAllSectorProfiles', and 'fetchAllSectorRankings' to comprehensively assess all 11 GICS sectors.\n"
+            f"1. You MUST first call 'fetchAllSectorsAnalysis' to evaluate all 11 GICS sectors. Assess market breadth (% > 50 SMA), constituent divergence (median constituent return vs ETF return), relative strength channels (1Y/3Y vs SPY), 10Y Treasury beta, and constituent FinBERT sentiment.\n"
             f"2. Present a clear table of percentage allocations across your selected sectors summing to 100.0%.\n"
-            f"3. Highlight growth catalysts and upside drivers."
+            f"3. Highlight growth catalysts, healthy breadth participation, and upside drivers."
         )
 
         bearPrompt = (
@@ -411,7 +401,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"- Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n"
             f"- {promptArgs['sectorDiversityRule']}\n"
             f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n\n"
-            f"1. Use 'fetchAllSectorsPerformance', 'fetchAllSectorProfiles', and 'fetchAllSectorRankings' to comprehensively assess all 11 GICS sectors.\n"
+            f"1. You MUST first call 'fetchAllSectorsAnalysis' to evaluate all 11 GICS sectors. Scrutinize narrow rallies (where ETF return >> median constituent return), deteriorating breadth (< 50% above 50 SMA), high channel valuation extremes, 10Y Treasury yield vulnerability, and bearish sentiment.\n"
             f"2. Present a clear table of percentage allocations across your selected sectors summing to 100.0%.\n"
             f"3. Highlight vulnerabilities, drawdown risks, and defensive hedges."
         )
@@ -448,7 +438,8 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"- {promptArgs['sectorDiversityRule']}\n"
             f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n"
             f"- Allocations must sum to approximately 100.0%.\n\n"
-            f"Execute the 'confirmSectorAllocation' tool with your exact sector dictionary and rationale."
+            f"1. You may call 'fetchAllSectorsAnalysis' to inspect or cross-verify the underlying breadth, constituent divergence, and sentiment metrics cited by the Bull and Bear (returns instantly from cache).\n"
+            f"2. Execute the 'confirmSectorAllocation' tool with your 'sectorAllocations' dictionary (e.g. {{'information_technology': 35, 'financials': 25, 'health_care': 20, 'consumer_discretionary': 20}}) and executive 'rationale'."
         )
         pmSectorRaw, pmSectorUISummary = self.executeMandatedToolStage(
             agent=self.portManager,
@@ -483,7 +474,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"- Sector Boundary: Scout candidate equities ONLY within the confirmed sectors above.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
             f"1. Use 'fetchStocksInSector' with style='growth' for each confirmed sector to screen candidate equities.\n"
-            f"2. Use 'fetchBatchFinnhubMetrics' or 'fetchCompanyValuationMetrics' to retrieve valuation and margins on your top high-conviction picks.\n"
+            f"2. You MUST afterwards use 'fetchBatchStockOverviews' to retrieve much more detailed information on your top high-conviction picks.\n"
             f"3. Present your candidate table with tickers, industry, momentum, and growth catalysts."
         )
 
@@ -498,7 +489,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"- Sector Boundary: Scout candidate equities ONLY within the confirmed sectors above.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
             f"1. Use 'fetchStocksInSector' with style='defensive' for each confirmed sector to screen candidate equities.\n"
-            f"2. Use 'fetchBatchFinnhubMetrics' or 'fetchCompanyValuationMetrics' to evaluate valuation, debt-to-equity, and margins on your top high-conviction picks.\n"
+            f"2. You MUST afterwards use 'fetchBatchStockOverviews' to retrieve much more detailed information on your top high-conviction picks.\n"
             f"3. Present your candidate table with tickers, industry, valuation, and margin of safety rationale."
         )
 
@@ -732,7 +723,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Do NOT scout or propose equities from any other sectors, regardless of any general macro commentary.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
             f"1. Use 'fetchStocksInSector' with style='growth' for each confirmed sector to screen candidate equities.\n"
-            f"2. Use 'fetchBatchFinnhubMetrics' or 'fetchCompanyValuationMetrics' to retrieve valuation and margins on your top high-conviction picks.\n"
+            f"2. You MUST afterwards use 'fetchBatchStockOverviews' to retrieve much more detailed information on your top high-conviction picks.\n"
             f"3. Present your candidate table with tickers, industry, momentum, and growth catalysts."
         )
 
@@ -749,7 +740,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"Do NOT scout or propose equities from any other sectors, regardless of any general macro commentary.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
             f"1. Use 'fetchStocksInSector' with style='defensive' for each confirmed sector to screen candidate equities.\n"
-            f"2. Use 'fetchBatchFinnhubMetrics' or 'fetchCompanyValuationMetrics' to evaluate valuation, debt-to-equity, and margins on your top high-conviction picks.\n"
+            f"2. You MUST afterwards use 'fetchBatchStockOverviews' to retrieve much more detailed information on your top high-conviction picks.\n"
             f"3. Present your candidate table with tickers, industry, valuation, and margin of safety rationale."
         )
 
