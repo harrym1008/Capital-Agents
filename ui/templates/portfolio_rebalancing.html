@@ -352,20 +352,13 @@
     }
 
     function attemptCloseCurrentPortfolioModal() {
-        const validation = validateEntirePortfolio();
-        const warningEl = document.getElementById("currentPortfolioModalWarning");
         const overlay = document.getElementById("currentPortfolioModalOverlay");
-
-        if (!validation.valid) {
-            if (warningEl) {
-                warningEl.innerText = validation.error;
-                warningEl.style.display = "block";
-            }
-            return false;
-        }
-
+        const warningEl = document.getElementById("currentPortfolioModalWarning");
         if (warningEl) warningEl.style.display = "none";
-        isPortfolioValidated = true;
+
+        const validation = validateEntirePortfolio();
+        isPortfolioValidated = validation.valid;
+
         if (overlay) overlay.style.display = "none";
         return true;
     }

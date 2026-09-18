@@ -251,11 +251,11 @@ def registerApiRoutes(app):
 
         try:
             from simulation.simulation_api import simulationManager
-            profile = simulationManager.tickerProvider.getTickerProfile(ticker)
+            profile = simulationManager.dataProviders.tickers.getTickerProfile(ticker)
             if not profile:
                 return jsonify({"ok": True, "valid": False, "error": f"Ticker '{ticker}' not found."})
 
-            isListed = simulationManager.tickerProvider.isTickerListed(ticker, simDateTs)
+            isListed = simulationManager.dataProviders.tickers.isTickerListed(ticker, simDateTs)
             if not isListed:
                 return jsonify({
                     "ok": True,
