@@ -311,3 +311,302 @@ class PortfolioCreationConfig(BoardroomConfig):
             generateSummaries=generateSummaries,
             thinkingBudget=thinkingBudget
         )
+
+
+@dataclass(kw_only=True)
+class PortfolioRebalancingConfig(BoardroomConfig):
+    initialCapital: float = 100_000.0
+    timeHorizon: PortfolioTimeHorizon = PortfolioTimeHorizon.ONE_YEAR
+    boardroomPace: BoardroomPace = BoardroomPace.COMPLETE
+    simulatedDateStr: Optional[str] = None
+
+    # Baseline portfolio holdings (pure equity, no cash)
+    currentPositions: Optional[list] = None
+    precalculatedSectorAnalysis: Optional[Dict[str, Any]] = None
+
+    # Configurable rebalancing constraints
+    targetSectorCount: Optional[int] = None
+    maxSectorAllocation: Optional[float] = None
+    maxStockAllocation: Optional[float] = None
+    targetStockCount: Optional[int] = None
+    allocationBias: Optional[int] = None
+    rebalanceAmount: int = 3
+
+    @property
+    def modeName(self) -> str:
+        return "PortfolioRebalancing"
+
+    def getRebalanceAmountLabel(self) -> str:
+        amt = int(self.rebalanceAmount) if self.rebalanceAmount is not None else 3
+        labels = {
+            1: "Level 1: Minimal / Light Rebalance",
+            2: "Level 2: Mild Rebalance",
+            3: "Level 3: Moderate Rebalance",
+            4: "Level 4: Substantial Rebalance",
+            5: "Level 5: Aggressive Rebalance",
+            6: "Level 6: Maximum / Heavy Rebalance"
+        }
+        return labels.get(amt, "Level 3: Moderate Rebalance")
+
+    def getRebalanceAmountGuidance(self) -> str:
+        amt = int(self.rebalanceAmount) if self.rebalanceAmount is not None else 3
+        if amt == 1:
+            return (
+                "MANDATORY MINIMAL / LIGHT REBALANCE MANDATE (Level 1): Strongly preserve the existing portfolio architecture. "
+                "Keep almost all baseline holdings intact and retain their core positions. Only make very minor adjustments, "
+                "subtle percentage re-weightings, or exit a holding only if facing catastrophic fundamental deterioration. "
+                "Preserving existing holdings with minimal rebalancing is your top operational priority."
+            )
+        elif amt == 2:
+            return (
+                "MANDATORY MILD REBALANCE MANDATE (Level 2): Preserve the core foundation of the baseline portfolio. "
+                "Retain the vast majority of existing stock holdings (75-85%+ of capital), trimming slightly from lower-conviction "
+                "or underperforming positions to fund modest, selective additions in favored sectors. Keep overall rebalancing low."
+            )
+        elif amt == 3:
+            return (
+                "MANDATORY MODERATE REBALANCE MANDATE (Level 3): Balanced rebalance strategy. Proactively realign sector weights "
+                "and holdings to adapt to current macro conditions. Maintain high-conviction core baseline holdings (around 50-65% of capital) "
+                "while actively trimming underperformers and introducing high-alpha new equities."
+            )
+        elif amt == 4:
+            return (
+                "MANDATORY SUBSTANTIAL REBALANCE MANDATE (Level 4): Meaningful rebalance and assertive capital reallocation. "
+                "Do not hesitate to rotate 50%+ of the portfolio capital away from stagnant or headwind-facing baseline holdings. "
+                "Retain only the absolute highest-conviction baseline stocks and actively redeploy capital into newly scouted opportunities."
+            )
+        elif amt == 5:
+            return (
+                "MANDATORY AGGRESSIVE REBALANCE MANDATE (Level 5): High rebalance and extensive portfolio remodeling. "
+                "Substantially reconstruct both sector allocations and constituent equities. Aggressively exit or trim any baseline "
+                "holdings that do not display superior forward alpha potential, replacing up to 70-80%+ of baseline exposure."
+            )
+        elif amt == 6:
+            return (
+                "MANDATORY MAXIMUM / HEAVY REBALANCE MANDATE (Level 6): Full portfolio overhaul. Complete freedom to aggressively "
+                "restructure the portfolio from the ground up with maximum rebalance scope. Prioritize optimal forward risk-adjusted return "
+                "regardless of baseline inertia, replace all non-optimal holdings without hesitation."
+            )
+        else:
+            return "Balanced rebalance strategy adapted to prevailing market conditions."
+
+    def getAllocationBiasLabel(self) -> str:
+        if self.allocationBias is None:
+            return "None (Balanced Strategy)"
+        bias = int(self.allocationBias)
+        labels = {
+            1: "Maximum Growth Bias",
+            2: "Moderate Growth Bias",
+            3: "Minor Growth Bias",
+            4: "Minor Defensive Bias",
+            5: "Moderate Defensive Bias",
+            6: "Maximum Defensive Bias"
+        }
+        return labels.get(bias, "Balanced Strategy")
+
+    def getAllocationBiasGuidance(self) -> str:
+        if self.allocationBias is None:
+            return "Balanced portfolio strategy with impartial equilibrium between growth upside and defensive capital preservation."
+        bias = int(self.allocationBias)
+        if bias == 1:
+            return (
+                "MANDATORY MAXIMUM GROWTH BIAS DIRECTIVE: Heavily skew all rebalancing sector distributions and stock selections towards "
+                "high-beta, high-momentum, innovative, and rapid capital appreciation equities in pursuit of maximum upside growth potential."
+            )
+        elif bias == 2:
+            return (
+                "MODERATE GROWTH BIAS DIRECTIVE: Lean towards growth-oriented, cyclical, and innovative leaders with strong "
+                "revenue expansion catalysts while maintaining sensible baseline balance sheet risk controls."
+            )
+        elif bias == 3:
+            return (
+                "MINOR GROWTH BIAS DIRECTIVE: Tilt slightly towards growth and cyclical opportunities while keeping a well-diversified "
+                "foundation across core defensive and stable opportunities."
+            )
+        elif bias == 4:
+            return (
+                "MINOR DEFENSIVE BIAS DIRECTIVE: Tilt slightly towards capital preservation, lower-volatility companies, and dividend "
+                "stability while maintaining modest participation in broad market growth."
+            )
+        elif bias == 5:
+            return (
+                "MODERATE DEFENSIVE BIAS DIRECTIVE: Lean towards defensive, dividend-paying, capital-preserving, and lower-volatility "
+                "allocations to protect against downside market drawdowns."
+            )
+        elif bias == 6:
+            return (
+                "MANDATORY MAXIMUM DEFENSIVE BIAS DIRECTIVE: Heavily skew all rebalancing sector distributions and stock selections towards "
+                "maximum capital preservation, rock-solid balance sheet solvency, high dividend yield, and low-beta defensive assets. "
+                "Strictly minimize speculative, high-multiple, or volatile high-beta equities."
+            )
+        else:
+            return "Balanced portfolio strategy with impartial equilibrium between growth upside and defensive capital preservation."
+
+    def formatCurrentHoldingsText(self) -> str:
+        if not self.currentPositions:
+            return "No existing holdings supplied."
+        lines = []
+        for pos in self.currentPositions:
+            ticker = pos.get("ticker", "UNKNOWN")
+            name = pos.get("companyName", ticker)
+            sector = pos.get("sector", "Unknown Sector")
+            dollarAmount = float(pos.get("dollarAmount", 0.0))
+            weightPct = float(pos.get("weightPct", 0.0))
+            lines.append(f"- {ticker} ({name}) | Sector: {sector} | Value: ${dollarAmount:,.2f} ({weightPct:.1f}%)")
+        return "\n".join(lines)
+
+    def formatPrecalculatedSectorsText(self) -> str:
+        if not self.precalculatedSectorAnalysis:
+            return "No precalculated sector breakdown available."
+        secMap = self.precalculatedSectorAnalysis.get("sectors", {})
+        if not secMap:
+            return "No sector breakdown available."
+        lines = []
+        for secName, secInfo in secMap.items():
+            pct = float(secInfo.get("weightPct", 0.0))
+            dollars = float(secInfo.get("dollarAmount", 0.0))
+            stockCount = int(secInfo.get("stockCount", 0))
+            lines.append(f"- {secName}: {pct:.1f}% (${dollars:,.2f} across {stockCount} stock{'s' if stockCount != 1 else ''})")
+        return "\n".join(lines)
+
+    def getPromptArgs(self) -> Dict[str, str]:
+        if self.targetSectorCount is not None:
+            sectorDiversityRule = f"Aim for around {self.targetSectorCount} distinct GICS sectors in the rebalanced portfolio."
+        else:
+            sectorDiversityRule = "You have full discretion to retain, expand, or prune sectors based on macroeconomic and sector conditions."
+
+        if self.targetStockCount is not None:
+            stockCountRule = f"around {self.targetStockCount} total stocks across the rebalanced portfolio."
+        else:
+            stockCountRule = "optimal discretion (calibrated to manage risk and sector coverage effectively)"
+
+        promptArgs = {
+            "initialCapital": f"${self.initialCapital:,.2f}",
+            "timeHorizon": self.timeHorizon.label,
+            "currentHoldingsList": self.formatCurrentHoldingsText(),
+            "precalculatedSectorsList": self.formatPrecalculatedSectorsText(),
+            "sectorDiversityRule": sectorDiversityRule,
+            "targetStockCount": stockCountRule,
+            "targetSectorCount": str(self.targetSectorCount) if self.targetSectorCount is not None else "Dynamic",
+            "allocationBias": self.getAllocationBiasLabel(),
+            "allocationBiasGuidance": self.getAllocationBiasGuidance(),
+            "rebalanceAmount": self.getRebalanceAmountLabel(),
+            "rebalanceAmountGuidance": self.getRebalanceAmountGuidance()
+        }
+        if self.maxSectorAllocation is not None:
+            promptArgs["maxSectorAllocation"] = f"{min(max(self.maxSectorAllocation, 20.0), 80.0):.1f}%"
+        if self.maxStockAllocation is not None:
+            promptArgs["maxStockAllocation"] = f"{min(max(self.maxStockAllocation, 10.0), 60.0):.1f}%"
+        return promptArgs
+
+    @classmethod
+    def fromDict(cls, data: Dict[str, Any]) -> "PortfolioRebalancingConfig":
+        positions = data.get("currentPositions") or []
+        
+        # Calculate initial capital strictly as sum of positions (pure equity, no cash)
+        totalPosVal = sum(float(p.get("dollarAmount", 0.0) or 0.0) for p in positions)
+        initialCapital = totalPosVal if totalPosVal > 0 else float(data.get("initialCapital", 100_000.0))
+
+        # Re-compute exact weightPct for each position based on total
+        cleanedPositions = []
+        for p in positions:
+            pDollar = float(p.get("dollarAmount", 0.0) or 0.0)
+            pWeight = (pDollar / initialCapital * 100.0) if initialCapital > 0 else 0.0
+            cleanedPositions.append({
+                "ticker": str(p.get("ticker", "")).strip().upper(),
+                "companyName": p.get("companyName") or p.get("name") or p.get("ticker", ""),
+                "sector": p.get("sector") or "Unknown",
+                "sectorTicker": p.get("sectorTicker") or "",
+                "industry": p.get("industry") or "General Equities",
+                "dollarAmount": round(pDollar, 2),
+                "weightPct": round(pWeight, 2),
+                "price": p.get("price")
+            })
+
+        # Precalculate sector breakdown
+        sectorAgg = {}
+        for p in cleanedPositions:
+            sec = p.get("sector") or "Unknown"
+            if sec not in sectorAgg:
+                sectorAgg[sec] = {
+                    "sector": sec,
+                    "dollarAmount": 0.0,
+                    "weightPct": 0.0,
+                    "stockCount": 0,
+                    "tickers": []
+                }
+            sectorAgg[sec]["dollarAmount"] += p["dollarAmount"]
+            sectorAgg[sec]["stockCount"] += 1
+            sectorAgg[sec]["tickers"].append(p["ticker"])
+
+        for sec, sData in sectorAgg.items():
+            sData["dollarAmount"] = round(sData["dollarAmount"], 2)
+            sData["weightPct"] = round((sData["dollarAmount"] / initialCapital * 100.0) if initialCapital > 0 else 0.0, 2)
+
+        precalculatedSectorAnalysis = {
+            "totalCapital": initialCapital,
+            "sectorCount": len(sectorAgg),
+            "sectors": sectorAgg
+        }
+
+        simulatedDateStr = data.get("simulatedDate") or data.get("simulatedDateStr") or None
+        timeHorizon = PortfolioTimeHorizon.fromString(data.get("timeHorizon", "1 year"))
+
+        boardroomPaceStr = data.get("boardroomPace", "complete")
+        if boardroomPaceStr not in ["complete", "fast"]:
+            boardroomPaceStr = "complete"
+        boardroomPace = BoardroomPace(boardroomPaceStr)
+
+        targetSectorCountRaw = data.get("targetSectorCount")
+        targetSectorCount = int(targetSectorCountRaw) if targetSectorCountRaw is not None and str(targetSectorCountRaw).strip() != "" else None
+        if targetSectorCount is not None:
+            targetSectorCount = max(1, min(11, targetSectorCount))
+
+        maxSectorAllocationRaw = data.get("maxSectorAllocation")
+        maxSectorAllocation = float(maxSectorAllocationRaw) if maxSectorAllocationRaw is not None and str(maxSectorAllocationRaw).strip() != "" else None
+        if maxSectorAllocation is not None:
+            maxSectorAllocation = max(20.0, min(80.0, maxSectorAllocation))
+
+        targetStockCountRaw = data.get("targetStockCount")
+        targetStockCount = int(targetStockCountRaw) if targetStockCountRaw is not None and str(targetStockCountRaw).strip() != "" else None
+        if targetStockCount is not None:
+            targetStockCount = max(1, min(30, targetStockCount))
+
+        maxStockAllocationRaw = data.get("maxStockAllocation")
+        maxStockAllocation = float(maxStockAllocationRaw) if maxStockAllocationRaw is not None and str(maxStockAllocationRaw).strip() != "" else None
+        if maxStockAllocation is not None:
+            maxStockAllocation = max(10.0, min(60.0, maxStockAllocation))
+
+        allocationBiasRaw = data.get("allocationBias")
+        allocationBias = int(allocationBiasRaw) if allocationBiasRaw is not None and str(allocationBiasRaw).strip() != "" else None
+        if allocationBias is not None:
+            allocationBias = max(0, min(100, allocationBias))
+
+        rebalanceAmountRaw = data.get("rebalanceAmount")
+        rebalanceAmount = int(rebalanceAmountRaw) if rebalanceAmountRaw is not None and str(rebalanceAmountRaw).strip() != "" else 3
+        rebalanceAmount = max(1, min(6, rebalanceAmount))
+
+        maxIterations = int(data.get("maxIterations", 10))
+        temperature = float(data.get("temperature", 0.5))
+        generateSummaries = bool(data.get("generateSummaries", True))
+        thinkingBudget = int(data.get("thinkingBudget", 2048))
+
+        return cls(
+            initialCapital=initialCapital,
+            timeHorizon=timeHorizon,
+            boardroomPace=boardroomPace,
+            simulatedDateStr=simulatedDateStr,
+            currentPositions=cleanedPositions,
+            precalculatedSectorAnalysis=precalculatedSectorAnalysis,
+            targetSectorCount=targetSectorCount,
+            maxSectorAllocation=maxSectorAllocation,
+            maxStockAllocation=maxStockAllocation,
+            targetStockCount=targetStockCount,
+            allocationBias=allocationBias,
+            rebalanceAmount=rebalanceAmount,
+            maxIterations=maxIterations,
+            temperature=temperature,
+            generateSummaries=generateSummaries,
+            thinkingBudget=thinkingBudget
+        )
+

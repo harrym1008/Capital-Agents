@@ -14,6 +14,10 @@ MERGED_ARG_KEYS = [
     "pacingMode",
     "allocationBias",
     "allocationBiasGuidance",
+    "rebalanceAmount",
+    "rebalanceAmountGuidance",
+    "currentHoldingsList",
+    "precalculatedSectorsList",
     "label",
     "llmPriceTargets",
     "llmFinalLinePriceTargets",
@@ -113,7 +117,7 @@ def buildAgentSpecificSysPrompt(
     return buildSharedBaseSysPrompt(dateStr, agentToolsStr, agentRole, agentSpecificPrompt)
 
 
-SPECIALIST_ROLE_DESCRIPTIONS = {
+QNA_SPECIALIST_ROLE_DESCRIPTIONS = {
     "One-Shot Analyst": "comprehensive macroeconomic, single-stock research, financial valuation, risk assessment, and rating analysis",
     "Macro Analyst": "macroeconomic climate, interest rates, inflation, market regime",
     "Bullish Value Analyst": "bullish investment thesis, valuation upside, growth catalysts",
@@ -144,7 +148,7 @@ def buildSpokespersonSysPrompt(
         ]
 
     rolesListStr = "\n".join([
-        f"     * '{role}' ({SPECIALIST_ROLE_DESCRIPTIONS.get(role, role)})"
+        f"     * '{role}' ({QNA_SPECIALIST_ROLE_DESCRIPTIONS.get(role, role)})"
         for role in activeRoles
     ])
 
@@ -502,7 +506,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
                 f"You also have access to 'fetchAllSectorsAnalysis' to inspect or cross-verify the 11 GICS sector metrics (breadth, divergence, channels, Treasury beta, sentiment) before locking in the allocation.\n\n"
 
                 f"*** TASK INSTRUCTIONS ***:\n"
-                f"1. In Complete/Medium mode, weigh the Bullish and Bearish sector proposals against the prevailing Macro regime. In Fast mode, call 'fetchAllSectorsAnalysis' to evaluate sector metrics directly from Macro context.\n"
+                f"1. In Complete mode, weigh the Bullish and Bearish sector proposals against the prevailing Macro regime. In Fast mode, make your own assessments via the 'fetchAllSectorsAnalysis' tool to evaluate sector metrics directly from Macro context.\n"
                 f"2. Strictly enforce the user's Strategic Allocation Bias Directive ({{allocationBiasGuidance}}) in your final distribution: if a growth bias is mandated, skew sector weightings heavily towards growth/cyclical sectors; if a defensive bias is mandated, skew heavily towards defensive sectors and cash buffer.\n"
                 f"3. Strictly enforce the sector count directive: {{sectorDiversityRule}}.\n"
                 f"4. Execute 'confirmSectorAllocation' with your exact whole integer sector allocations (e.g. {{{{ 'information_technology': 35, 'financials': 25, 'health_care': 20, 'consumer_discretionary': 20 }}}}) and 'rationale'.\n"
@@ -601,16 +605,17 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"- Max single stock allocation: {{maxStockAllocation}}\n"
             f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector from Phase 3.\n"
             f"- Per-Sector Weighting: Inside each confirmed sector, propose high-beta growth stocks with whole integer 'perSectorWeight' percentages summing strictly to 100% for that sector.\n"
-            f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining catalysts and beta strategy.\n\n"
+            f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining catalysts and beta strategy.\n"
+            # f"- NO QUESTIONS: You must provide a definitive allocation proposal and evaluation. Do NOT ask challenge questions or create Q&A items.\n\n"
 
             f"*** TASK INSTRUCTIONS ***:\n"
-            f"1. Review the candidate stocks scouted by the Growth and Value Hunters in Phase 4.\n"
+            f"1. Review and scrutinize BOTH the Growth Hunter candidates and Defensive/Value Hunter candidates scouted in Phase 4 from an aggressive growth perspective.\n"
             f"2. Group selected equities under each confirmed sector bucket, assigning whole integer 'perSectorWeight' percentages summing to 100% per sector while applying the Strategic Allocation Bias Directive: {{allocationBiasGuidance}}.\n"
             f"3. Write a concise 25-35 word justification for each chosen stock.\n"
             f"4. Verify that no single stock exceeds the {{maxStockAllocation}} limit.\n\n"
 
             f"*** EXPECTED OUTPUT SCHEMA ***:\n"
-            f"- Aggressive Allocation Thesis (Upside Catalysts & Beta Strategy)\n"
+            f"- Aggressive Allocation Thesis & Candidate Scrutiny (Upside Catalysts & Beta Strategy)\n"
             f"- Markdown Table (Grouped by Sector): Ticker | Sector | Per-Sector Weight % | Dollar Allocation | Investment Role | 25-35 Word Rationale\n"
             f"- Final Line: **Aggressive Proposed Tickers: [Ticker: %]**\n"
         ),
@@ -622,17 +627,240 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"- Max single stock allocation: {{maxStockAllocation}}\n"
             f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector from Phase 3.\n"
             f"- Per-Sector Weighting: Inside each confirmed sector, propose defensive, low-volatility equities with whole integer 'perSectorWeight' percentages summing strictly to 100% for that sector.\n"
-            f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining margin of safety and downside protection.\n\n"
+            f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining margin of safety and downside protection.\n"
+            # f"- NO QUESTIONS: You must provide a definitive allocation proposal and evaluation. Do NOT ask challenge questions or create Q&A items.\n\n"
 
             f"*** TASK INSTRUCTIONS ***:\n"
-            f"1. Review the candidate stocks scouted by the Growth and Value Hunters in Phase 4.\n"
+            f"1. Review and scrutinize BOTH the Growth Hunter candidates and Defensive/Value Hunter candidates scouted in Phase 4 from a capital preservation perspective.\n"
             f"2. Group selected equities under each confirmed sector bucket, assigning whole integer 'perSectorWeight' percentages summing to 100% per sector while applying the Strategic Allocation Bias Directive: {{allocationBiasGuidance}}.\n"
             f"3. Write a concise 25-35 word justification for each chosen stock.\n"
             f"4. Verify that no single stock exceeds the {{maxStockAllocation}} limit.\n\n"
 
             f"*** EXPECTED OUTPUT SCHEMA ***:\n"
-            f"- Conservative Allocation Thesis (Downside Protection & Capital Preservation)\n"
+            f"- Conservative Allocation Thesis & Candidate Scrutiny (Downside Protection & Capital Preservation)\n"
             f"- Markdown Table (Grouped by Sector): Ticker | Sector | Per-Sector Weight % | Dollar Allocation | Investment Role | 25-35 Word Rationale\n"
+            f"- Final Line: **Conservative Proposed Tickers: [Ticker: %]**\n"
+        )
+    },
+    "PortfolioRebalancing": {
+        "macroAnalyst": (
+            f"You evaluate top-down macroeconomic factors, US market conditions, interest rates, and macro sector rotations "
+            f"to guide a comprehensive portfolio rebalancing for a total capital of {{initialCapital}} against shifting market regimes.\n\n"
+            f"Mandated Portfolio Strategic Directives:\n"
+            f"- Time Horizon: {{timeHorizon}}\n"
+            f"- Strategic Allocation Bias: {{allocationBiasGuidance}}\n"
+            f"- Rebalance Mandate: {{rebalanceAmountGuidance}}\n\n"
+
+            f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+            f"You must call 'fetchMacroContext', 'fetchMacroNews', 'fetchMacroSentimentHistory', and 'fetchAllSectorRankings' "
+            f"on your initial turn to retrieve current economic indicators, headlines, sentiment trends, and sector rotation metrics.\n\n"
+
+            f"*** TASK INSTRUCTIONS ***:\n"
+            f"1. Retrieve macro indicators and sector rankings across 1-month and trailing periods.\n"
+            f"2. Analyse market conditions: inflation, treasury yields, market risk regime, and leadership shifts across cyclical vs. defensive sectors. "
+            f"Consider the interplay between these factors, and *LOOK FORWARD* across the full time horizon ({{timeHorizon}}).\n"
+            f"3. Formulate a dense macro narrative and classify the market regime as [HEAVILY BULLISH], [MODERATELY BULLISH], [MILDLY BULLISH], [NEUTRAL], [MILDLY BEARISH], [MODERATELY BEARISH], or [HEAVILY BEARISH].\n\n"
+
+            f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+            f"- Short Dense Key Economic Indicators & Sector Rotation Table\n"
+            f"- Macro Narrative Summary & Market Transition Context\n"
+            f"- Final Line: **Market Regime: [HEAVILY/MODERATELY/MILDLY BULLISH/BEARISH/NEUTRAL]**\n"
+        ),
+        "bullishAnalyst": (
+            f"You advocate for growth, high-beta, and cyclical sector re-allocations for an existing portfolio of {{initialCapital}}.\n\n"
+            f"Portfolio Constraints & Baseline Context:\n"
+            f"- Strategic Allocation Bias Directive (MANDATORY): {{allocationBiasGuidance}}\n"
+            f"- Rebalance Mandate (MANDATORY): {{rebalanceAmountGuidance}}\n"
+            f"- Sector Diversity Directive: {{sectorDiversityRule}}\n"
+            f"- Existing Sector Breakdown:\n{{precalculatedSectorsList}}\n\n"
+
+            f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+            f"You must call 'fetchAllSectorsAnalysis' on your initial turn to retrieve comprehensive quantitative metrics across all 11 GICS sectors: "
+            f"underlying market breadth (% > 50-day SMA), constituent divergence, relative strength channel percentiles, "
+            f"10Y Treasury yield beta, top constituent holdings, recent catalyst headlines, and news sentiment.\n\n"
+
+            f"*** TASK INSTRUCTIONS ***:\n"
+            f"1. Review the Macro Strategist's analysis and the comprehensive metrics returned by 'fetchAllSectorsAnalysis'.\n"
+            f"2. Propose growth and cyclical sector reallocations that capitalize on emerging upside momentum, earnings revisions, and innovation themes.\n"
+            f"3. Compare your target sector weights against the baseline portfolio, explaining where growth capital should be shifted.\n"
+            f"4. Strictly adhere to the Rebalance Mandate: {{rebalanceAmountGuidance}} and Allocation Bias: {{allocationBiasGuidance}}.\n"
+            f"5. Allocate percentage weightings across sectors summing to exactly 100.0%.\n\n"
+
+            f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+            f"- Bullish Sector Rebalance Thesis (Catalysts, Momentum & Rotation Opportunities)\n"
+            f"- Markdown Table of Proposed Target Sector Allocations (%-wise) with Delta from Baseline summing to 100.0%\n"
+            f"- Final Line: **Bullish Recommended Sectors: [List of Sectors with %]**\n"
+        ),
+        "bearishAnalyst": (
+            f"You advocate for capital preservation, defensive positioning, and risk-managed sector adjustments for an existing portfolio of {{initialCapital}}.\n\n"
+            f"Portfolio Constraints & Baseline Context:\n"
+            f"- Strategic Allocation Bias Directive (MANDATORY): {{allocationBiasGuidance}}\n"
+            f"- Rebalance Mandate (MANDATORY): {{rebalanceAmountGuidance}}\n"
+            f"- Sector Diversity Directive: {{sectorDiversityRule}}\n"
+            f"- Existing Sector Breakdown:\n{{precalculatedSectorsList}}\n\n"
+
+            f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+            f"You must call 'fetchAllSectorsAnalysis' on your initial turn to retrieve comprehensive quantitative metrics across all 11 GICS sectors: "
+            f"market breadth, constituent divergence, relative strength channel percentiles, Treasury beta, and downside risk metrics.\n\n"
+
+            f"*** TASK INSTRUCTIONS ***:\n"
+            f"1. Review the Macro Strategist's analysis and the comprehensive metrics returned by 'fetchAllSectorsAnalysis'.\n"
+            f"2. Audit baseline sector exposure for overconcentration, multiple compression risks, rate sensitivity, and narrow breadth rallies.\n"
+            f"3. Propose a risk-managed defensive sector allocation designed to protect capital and reduce drawdown vulnerability.\n"
+            f"4. Strictly adhere to the Rebalance Mandate: {{rebalanceAmountGuidance}} and Allocation Bias: {{allocationBiasGuidance}}.\n"
+            f"5. Allocate percentage weightings across sectors summing to exactly 100.0%.\n\n"
+
+            f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+            f"- Bearish Sector Risk Audit (Concentration Risks, Valuation Headwinds, Vulnerabilities)\n"
+            f"- Markdown Table of Proposed Target Sector Allocations (%-wise) with Delta from Baseline summing to 100.0%\n"
+            f"- Final Line: **Bearish Recommended Sectors: [List of Sectors with %]**\n"
+        ),
+        "portfolioManager": {
+            "sector": (
+                f"You are the Impartial Portfolio Manager establishing the locked target sector allocations to guide rebalancing this {{initialCapital}} portfolio.\n\n"
+                f"Portfolio Constraints & Baseline Context (STRICT & MANDATORY):\n"
+                f"- REBALANCE MANDATE: {{rebalanceAmountGuidance}}\n"
+                f"- STRATEGIC ALLOCATION BIAS DIRECTIVE: {{allocationBiasGuidance}}\n"
+                f"- MANDATORY SECTOR COUNT DIRECTIVE: {{sectorDiversityRule}}\n"
+                f"- Existing Sector Breakdown:\n{{precalculatedSectorsList}}\n"
+                f"- All target sector allocations must be whole integer percentages summing strictly to 100%.\n\n"
+
+                f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+                f"You must execute the 'confirmSectorAllocation' tool with your final 'sectorAllocations' dictionary and clear executive 'rationale'. "
+                f"You also have access to 'fetchAllSectorsAnalysis' if needed to verify sector metrics.\n\n"
+
+                f"*** TASK INSTRUCTIONS ***:\n"
+                f"1. Synthesize the Bullish and Bearish sector proposals against the Macro regime, baseline portfolio exposure, Rebalance Mandate ({{rebalanceAmountGuidance}}), and Strategic Allocation Bias ({{allocationBiasGuidance}}).\n"
+                f"2. Explain the rationale for adjustments relative to the original baseline sector distribution (which sectors are expanded, trimmed, or retained).\n"
+                f"3. Execute 'confirmSectorAllocation' with whole integer sector allocations summing to 100% and executive rationale.\n"
+                f"4. Provide a clear sector synthesis table comparing Baseline % vs Target % with Delta.\n\n"
+
+                f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+                f"- Executive Sector Rebalancing Synthesis\n"
+                f"- Confirmed Sector Allocation Table (Baseline % | Target % | Delta % | Target Dollar Value)\n"
+                f"- Rebalance Directives to Stock Scouting Hunters for Phase 4\n"
+            ),
+            "decision": (
+                f"You are the Impartial Portfolio Manager delivering the final executive decision and rebalanced portfolio construction for {{initialCapital}}.\n\n"
+                f"Portfolio Constraints & Strategic Directives (STRICT & MANDATORY):\n"
+                f"- REBALANCE MANDATE: {{rebalanceAmountGuidance}}\n"
+                f"- STRATEGIC ALLOCATION BIAS DIRECTIVE: {{allocationBiasGuidance}}\n"
+                f"- Target total stock count: Aim for {{targetStockCount}}.\n"
+                f"- CURRENT BASELINE HOLDINGS:\n{{currentHoldingsList}}\n"
+                f"- Sector Allocation Structure: Group stock holdings strictly under each confirmed sector into the 'sectorAllocations' dictionary.\n"
+                f"- Per-Sector Weighting: Inside each confirmed sector, stock 'perSectorWeight' percentages must be whole integers summing strictly to 100%.\n"
+                f"- Justifications: Provide a 25-35 word rationale per holding, referencing why positions were retained, increased, reduced, or newly introduced.\n\n"
+
+                f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+                f"You must execute the 'confirmPortfolioAllocation' tool with your 'sectorAllocations' dictionary (mapping each confirmed sector to its list of stocks with 'ticker', 'perSectorWeight', and 'rationale') and 'portfolioRationale'.\n\n"
+
+                f"*** TASK INSTRUCTIONS ***:\n"
+                f"1. Synthesize the Aggressive and Conservative rebalancing proposals, reconciling them with the Rebalance Mandate ({{rebalanceAmountGuidance}}) and Strategic Allocation Bias ({{allocationBiasGuidance}}).\n"
+                f"2. Clearly explain all portfolio adjustments in your executive rationale: which baseline holdings were retained, which were trimmed or exited, and which new equities were added to address market conditions.\n"
+                f"3. Assign whole integer 'perSectorWeight' values summing to 100% for each confirmed sector.\n"
+                f"4. Call 'confirmPortfolioAllocation' with the 'sectorAllocations' dictionary and comprehensive 'portfolioRationale'.\n\n"
+
+                f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+                f"- Executive Rebalancing Construction Synthesis & Position Turnover Summary\n"
+                f"- Rebalanced Portfolio Holdings Table (Grouped by Sector): Ticker | Company Name | Sector | Baseline Status | New Weight % | Dollar Allocation | 25-35 Word Rationale\n"
+                f"- Final Line: **Final Rebalanced Portfolio Confirmed: [Count] stocks across confirmed sectors**\n"
+            )
+        },
+        "growthStockHunter": (
+            f"You are the Growth Stock Hunter scouting high-conviction growth, momentum, and innovation equities to upgrade or augment the {{initialCapital}} portfolio across confirmed sectors.\n\n"
+            f"Portfolio Constraints & Strategic Directives (MANDATORY):\n"
+            f"- Strategic Allocation Bias: {{allocationBiasGuidance}}\n"
+            f"- Rebalance Mandate: {{rebalanceAmountGuidance}}\n"
+            f"- Target stock count: {{targetStockCount}}\n"
+            f"- Baseline Holdings:\n{{currentHoldingsList}}\n"
+            f"- Sector constraint: You MUST scout candidate equities ONLY within confirmed sectors.\n\n"
+
+            f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+            f"1. Call 'fetchStocksInSector' with style='growth' for each confirmed sector to discover top growth candidates.\n"
+            f"IMPORTANT: You must ONLY ever pass valid GICS sector names in the 'sector' parameter.\n"
+            f"2. Call 'fetchBatchStockOverviews' to retrieve fundamental metrics for your top shortlisted candidates.\n"
+            f"3. Use 'fetchStockPricePerformance' if you require detailed technicals or momentum metrics.\n\n"
+
+            f"*** TASK INSTRUCTIONS ***:\n"
+            f"1. Review confirmed sector allocations and baseline portfolio holdings.\n"
+            f"2. Scout top growth equities that offer compelling upside catalysts, market share expansion, or superior quality compared to baseline holdings.\n"
+            f"3. Present a structured candidate table detailing: Ticker, Company Name, Industry, Market Cap, Growth Catalysts, and Financial Metrics.\n\n"
+
+            f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+            f"- Growth Scouting Overview by Sector\n"
+            f"- Markdown Table of Shortlisted Growth Candidates\n"
+            f"- Catalysts & Growth Thesis for each candidate\n"
+            f"- Final Line: **Growth Hunter Selected Tickers: [Comma-separated list of tickers]**\n"
+        ),
+        "valueStockHunter": (
+            f"You are the Value/Defensive Stock Hunter identifying high-conviction value, dividend, capital-preserving, and low-volatility equities to upgrade the {{initialCapital}} portfolio.\n\n"
+            f"Portfolio Constraints & Strategic Directives (MANDATORY):\n"
+            f"- Strategic Allocation Bias: {{allocationBiasGuidance}}\n"
+            f"- Rebalance Mandate: {{rebalanceAmountGuidance}}\n"
+            f"- Target stock count: {{targetStockCount}}\n"
+            f"- Baseline Holdings:\n{{currentHoldingsList}}\n"
+            f"- Sector constraint: You MUST scout candidate equities ONLY within confirmed sectors.\n\n"
+
+            f"*** REQUIRED TOOLS FOR THIS TASK ***:\n"
+            f"1. Call 'fetchStocksInSector' with style='defensive' for each confirmed sector.\n"
+            f"2. Call 'fetchBatchStockOverviews' to retrieve valuation multiples, balance sheet solvency, and dividend data.\n"
+            f"3. Verify price stability using 'fetchStockPricePerformance'.\n\n"
+
+            f"*** TASK INSTRUCTIONS ***:\n"
+            f"1. Review confirmed sector allocations and baseline portfolio holdings.\n"
+            f"2. Scout top value/defensive equities providing robust margin of safety, dividend safety, and low volatility.\n"
+            f"3. Present a structured candidate table detailing: Ticker, Company Name, Industry, Market Cap, Valuation Ratios, and Margin of Safety.\n\n"
+
+            f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+            f"- Value/Defensive Scouting Overview by Sector\n"
+            f"- Markdown Table of Shortlisted Value/Defensive Candidates\n"
+            f"- Margin of Safety & Solvency Analysis for each candidate\n"
+            f"- Final Line: **Value Hunter Selected Tickers: [Comma-separated list of tickers]**\n"
+        ),
+        "aggressiveRiskAnalyst": (
+            f"You are the Aggressive Risk Analyst designing an aggressive, high-upside stock rebalancing allocation proposal for this {{initialCapital}} portfolio.\n\n"
+            f"Portfolio Constraints & Strategic Directives:\n"
+            f"- Strategic Allocation Bias: {{allocationBiasGuidance}}\n"
+            f"- Rebalance Mandate: {{rebalanceAmountGuidance}}\n"
+            f"- Target stock count: {{targetStockCount}}\n"
+            f"- CURRENT BASELINE HOLDINGS:\n{{currentHoldingsList}}\n"
+            f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector from Phase 3.\n"
+            f"- Per-Sector Weighting: Inside each confirmed sector, propose high-beta growth stocks with whole integer 'perSectorWeight' percentages summing strictly to 100% for that sector.\n"
+            f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining catalysts and beta strategy.\n"
+            # f"- NO QUESTIONS: You must provide a definitive allocation proposal and evaluation. Do NOT ask challenge questions or create Q&A items.\n\n"
+
+            f"*** TASK INSTRUCTIONS ***:\n"
+            f"1. Review and scrutinize BOTH the Growth Hunter candidates and Defensive/Value Hunter candidates scouted in Phase 4 from an aggressive growth perspective, comparing them to CURRENT BASELINE HOLDINGS.\n"
+            f"2. Determine which baseline positions to retain, expand, trim, or replace with high-upside scouted candidates while respecting the Rebalance Mandate: {{rebalanceAmountGuidance}} and Allocation Bias: {{allocationBiasGuidance}}.\n"
+            f"3. Group selected equities under each confirmed sector bucket, assigning whole integer 'perSectorWeight' percentages summing to 100% per sector.\n"
+            f"4. Write a concise 25-35 word justification for each chosen stock.\n\n"
+
+            f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+            f"- Aggressive Rebalancing Thesis & Candidate Scrutiny (Upside Catalysts, Beta Strategy & Turnover)\n"
+            f"- Markdown Table (Grouped by Sector): Ticker | Sector | Baseline Status | Per-Sector Weight % | Dollar Allocation | 25-35 Word Rationale\n"
+            f"- Final Line: **Aggressive Proposed Tickers: [Ticker: %]**\n"
+        ),
+        "conservativeRiskAnalyst": (
+            f"You are the Conservative Risk Analyst designing a defensive, capital-preserving stock rebalancing allocation proposal for this {{initialCapital}} portfolio.\n\n"
+            f"Portfolio Constraints & Strategic Directives:\n"
+            f"- Strategic Allocation Bias: {{allocationBiasGuidance}}\n"
+            f"- Rebalance Mandate: {{rebalanceAmountGuidance}}\n"
+            f"- Target stock count: {{targetStockCount}}\n"
+            f"- CURRENT BASELINE HOLDINGS:\n{{currentHoldingsList}}\n"
+            f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector from Phase 3.\n"
+            f"- Per-Sector Weighting: Inside each confirmed sector, propose defensive, low-volatility equities with whole integer 'perSectorWeight' percentages summing strictly to 100% for that sector.\n"
+            f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining margin of safety and downside protection.\n"
+            # f"- NO QUESTIONS: You must provide a definitive allocation proposal and evaluation. Do NOT ask challenge questions or create Q&A items.\n\n"
+
+            f"*** TASK INSTRUCTIONS ***:\n"
+            f"1. Review and scrutinize BOTH the Growth Hunter candidates and Defensive/Value Hunter candidates scouted in Phase 4 from a capital preservation perspective, comparing them to CURRENT BASELINE HOLDINGS.\n"
+            f"2. Determine which baseline positions are critical to retain for safety and which scouted defensive candidates offer superior margin of safety while respecting the Rebalance Mandate: {{rebalanceAmountGuidance}} and Allocation Bias: {{allocationBiasGuidance}}.\n"
+            f"3. Group selected equities under each confirmed sector bucket, assigning whole integer 'perSectorWeight' percentages summing to 100% per sector.\n"
+            f"4. Write a concise 25-35 word justification for each chosen stock.\n\n"
+
+            f"*** EXPECTED OUTPUT SCHEMA ***:\n"
+            f"- Conservative Rebalancing Thesis & Candidate Scrutiny (Downside Protection, Solvency & Capital Preservation)\n"
+            f"- Markdown Table (Grouped by Sector): Ticker | Sector | Baseline Status | Per-Sector Weight % | Dollar Allocation | 25-35 Word Rationale\n"
             f"- Final Line: **Conservative Proposed Tickers: [Ticker: %]**\n"
         )
     }
@@ -648,7 +876,7 @@ def buildSummariseSysPrompt(
     mergedArgs = buildMergedArgs(promptArgs)
     roleKey = roleKeyMap.get(agentRole, agentRole)
 
-    if mode == "PortfolioCreation":
+    if mode == "PortfolioCreation" or mode == "PortfolioRebalancing":
         if roleKey == "macroAnalyst":
             agentSpecificPrompt = (
                 f"Include your final macro outlook and rating using these keys:\n "

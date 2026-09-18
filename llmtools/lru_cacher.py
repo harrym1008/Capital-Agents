@@ -1,5 +1,6 @@
 import pandas as pd
 
+import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 

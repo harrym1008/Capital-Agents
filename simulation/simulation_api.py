@@ -13,13 +13,8 @@ from ui.ws_api import registerWsAction, sendWsResponse
 from collectors.constants import END_DATE_STR, ALL_TICKERS_FILE, NYSE_DIRECTORY, NASDAQ_DIRECTORY, NEW_YORK, START_DATE
 from collectors.rate_limiter import GlobalRateLimiters
 
-from dataquery.lru_cache import LRUCache
-from dataquery.price_provider import DailyPriceProvider
-from dataquery.ticker_provider import TickerDataProvider
-from dataquery.macro_provider import MacroDataProvider, MacroSeries
-
-from llmtools.registry_builder import buildToolRegistry
-from llmtools.tool_registry import DataProviders
+from dataquery import (LRUCache, DailyPriceProvider, TickerDataProvider, MacroDataProvider, 
+                       MacroSeries, NewsDataProvider, EdgarDataProvider)
 
 from llmtools.functions.helpers import cleanNumber, NumberType
 from llmtools.functions.edgar import FormType, CompanyRef, calculateHistoricalBeta, calculateDividendYield
@@ -29,15 +24,24 @@ from simulation.market_sim import MarketSimulation
 from simulation.orders import MarketOrder, LimitOrder, StopOrder, StopLimitOrder, OrderSide, OrderStatus
 
 
-class SimulationManager:
-    def __init__(self, cacheSizeBytes=256 * 1024 ** 2):
-        self.simCache = LRUCache(cacheSizeBytes, main=False)  # 256 MB max size of cache in RAM
-        self.tickerProvider = TickerDataProvider()
-        self.rateLimiters = GlobalRateLimiters()
-        self.priceProvider = DailyPriceProvider(self.tickerProvider, self.simCache, self.rateLimiters)
-        self.macroProvider = MacroDataProvider(self.simCache, self.rateLimiters)
-        self.ohlcvChartCache = {}
 
+class SimulationDataProviders:
+    def __init__(self):
+        self.cache = LRUCache(256 * 1024 ** 2, main=False)      # 256 MB max size of cache in RAM
+        self.rateLimiters = GlobalRateLimiters()
+
+        self.tickers = TickerDataProvider()
+        self.macro = MacroDataProvider(self.cache, self.rateLimiters)
+        self.ohlcv = DailyPriceProvider(self.tickers, self.cache, self.rateLimiters, allowOnlineDownloads=False)
+        self.news = NewsDataProvider(self.cache, self.rateLimiters)
+        self.edgar = EdgarDataProvider(self.tickers, self.cache, self.rateLimiters.edgarLimiter)
+
+
+
+class SimulationManager:
+    def __init__(self):
+        self.dataProviders = SimulationDataProviders()
+        self.ohlcvChartCache = {}
         self.userSimulations = {}
         self.userHistory = {}
         self.inspectorExecutor = ThreadPoolExecutor(max_workers=4)
@@ -238,7 +242,7 @@ class SimulationManager:
             if targetEndTs > endDateTs:
                 endDateTs = targetEndTs
         
-        profile = self.tickerProvider.getTickerProfile(ticker)
+        profile = self.dataProviders.tickers.getTickerProfile(ticker)
         if profile and profile.ipoDate is not None:
             ipoTs = pd.Timestamp(profile.ipoDate)
             if ipoTs.tzinfo is None:
@@ -248,13 +252,13 @@ class SimulationManager:
             if ipoTs > startDateTs:
                 startDateTs = ipoTs
 
-        # Uses self.priceProvider (which shares self.simCache and priceProvider.adjustPriceDataSplits)
-        dfHistorical = self.priceProvider.getPeriodDailyTickerData(ticker, startDateTs, simDateTs, referenceDate=simDateTs)
+        # Uses self.dataProviders.ohlcv (which shares self.simCache and priceProvider.adjustPriceDataSplits)
+        dfHistorical = self.dataProviders.ohlcv.getPeriodDailyTickerData(ticker, startDateTs, simDateTs, referenceDate=simDateTs)
         
         dfFuture = pd.DataFrame()
         if targets and simDateTs < todayTs:
             futureEndTs = min(endDateTs, todayTs)
-            dfFuture = self.priceProvider.getPeriodDailyTickerData(ticker, simDateTs, futureEndTs, referenceDate=simDateTs)
+            dfFuture = self.dataProviders.ohlcv.getPeriodDailyTickerData(ticker, simDateTs, futureEndTs, referenceDate=simDateTs)
             
         lastHistoricalClose = None
         allPrices = []
@@ -371,7 +375,7 @@ class SimulationManager:
             return simDateTs + pd.DateOffset(years=num)
         return simDateTs
 
-    def _calculateBacktestSlice(self, simDateTs: pd.Timestamp, maxDateTs: pd.Timestamp, sp500Df: pd.DataFrame, stockDfs: dict, shares: dict, capital: float, cashDollar: float, cashWeightPct: float) -> dict:
+    def _calculateBacktestSlice(self, simDateTs: pd.Timestamp, maxDateTs: pd.Timestamp, sp500Df: pd.DataFrame, stockDfs: dict, shares: dict, capital: float, cashDollar: float, cashWeightPct: float, originalShares: dict = None) -> dict:
         normMax = maxDateTs.tz_localize(None) if maxDateTs.tzinfo is not None else maxDateTs
         spSlice = sp500Df[sp500Df["normDate"] <= normMax].copy()
         if spSlice.empty or len(spSlice) < 2:
@@ -380,8 +384,10 @@ class SimulationManager:
         sp0 = float(spSlice.iloc[0]["close"])
         tradingDates = sorted(list(spSlice["normDate"].unique()))
         portfolioPoints = []
+        originalPoints = []
         sp500Points = []
         dailyValues = []
+        origDailyValues = []
         allPrices = []
 
         lastPrices = {}
@@ -391,6 +397,8 @@ class SimulationManager:
                 lastPrices[ticker] = float(dfSlice.iloc[0]["close"])
 
         spDict = dict(zip(spSlice["normDate"], spSlice["close"]))
+
+        hasOriginal = bool(originalShares and len(originalShares) > 0)
 
         for d in tradingDates:
             dateStr = d.strftime("%Y-%m-%d")
@@ -405,6 +413,17 @@ class SimulationManager:
             dailyValues.append(portVal)
             portfolioPoints.append({"x": dateStr, "y": round(float(portVal), 2)})
             allPrices.append(portVal)
+
+            if hasOriginal:
+                origVal = 0.0
+                for oTicker, oSh in originalShares.items():
+                    df = stockDfs.get(oTicker)
+                    if df is not None and d in df.index:
+                        lastPrices[oTicker] = float(df.loc[d, "close"])
+                    origVal += oSh * lastPrices.get(oTicker, 0.0)
+                origDailyValues.append(origVal)
+                originalPoints.append({"x": dateStr, "y": round(float(origVal), 2)})
+                allPrices.append(origVal)
 
             spClose = spDict.get(d, sp0)
             spVal = capital * (float(spClose) / sp0) if sp0 > 0 else capital
@@ -433,8 +452,31 @@ class SimulationManager:
         spDrawdown = (spSeries / spRunningMax) - 1.0
         spMaxDrawdownPct = float(spDrawdown.min()) * 100.0
 
+        # Original portfolio analytics
+        origReturnPct = None
+        origReturnDollar = None
+        origAlphaPct = None
+        origSharpe = None
+        origMaxDrawdownPct = None
+        if hasOriginal and origDailyValues:
+            origSeries = pd.Series(origDailyValues, index=tradingDates)
+            origFinal = float(origSeries.iloc[-1])
+            origReturnPct = ((origFinal - capital) / capital) * 100.0
+            origReturnDollar = origFinal - capital
+            origAlphaPct = portReturnPct - origReturnPct
+
+            origRunningMax = origSeries.cummax()
+            origDrawdown = (origSeries / origRunningMax) - 1.0
+            origMaxDrawdownPct = float(origDrawdown.min()) * 100.0
+
+            origDailyRet = origSeries.pct_change().dropna()
+            if len(origDailyRet) >= 5 and origDailyRet.std() > 0:
+                origSharpe = float((origDailyRet.mean() / origDailyRet.std()) * np.sqrt(252))
+            else:
+                origSharpe = 0.0
+
         portDfForSharpe = pd.DataFrame({"date": tradingDates, "close": dailyValues})
-        treasDf = self.macroProvider.loadSeries(MacroSeries.TREAS_3MO)
+        treasDf = self.dataProviders.macro.loadSeries(MacroSeries.TREAS_3MO)
         sharpe = 0.0
         if treasDf is not None and not treasDf.empty:
             try:
@@ -461,7 +503,7 @@ class SimulationManager:
                 p0 = float(dfSlice.iloc[0]["close"])
                 pEnd = float(dfSlice.iloc[-1]["close"])
                 retPct = ((pEnd - p0) / p0) * 100.0 if p0 > 0 else 0.0
-                sh = shares.get(ticker, 0.0)
+                sh = shares.get(ticker, originalShares.get(ticker, 0.0) if originalShares else 0.0)
                 retDollar = (pEnd - p0) * sh
                 holdingReturns[ticker] = {
                     "returnPct": round(float(retPct), 2),
@@ -482,27 +524,37 @@ class SimulationManager:
         yMin = max(0.0, minPrice - leeway)
         yMax = maxPrice + leeway
 
+        metricsDict = {
+            "portfolioReturnPct": round(portReturnPct, 2),
+            "portfolioReturnDollar": round(portReturnDollar, 2),
+            "sp500ReturnPct": round(spReturnPct, 2),
+            "sp500ReturnDollar": round(spReturnDollar, 2),
+            "alphaPct": round(alphaPct, 2),
+            "sharpeRatio": round(sharpe, 2) if not pd.isna(sharpe) else 0.0,
+            "maxDrawdownPct": round(abs(maxDrawdownPct), 2),
+            "sp500MaxDrawdownPct": round(abs(spMaxDrawdownPct), 2)
+        }
+
+        if hasOriginal and origReturnPct is not None:
+            metricsDict["originalReturnPct"] = round(origReturnPct, 2)
+            metricsDict["originalReturnDollar"] = round(origReturnDollar, 2)
+            metricsDict["originalAlphaPct"] = round(origAlphaPct, 2)
+            metricsDict["originalSharpeRatio"] = round(origSharpe, 2) if origSharpe is not None and not pd.isna(origSharpe) else 0.0
+            metricsDict["originalMaxDrawdownPct"] = round(abs(origMaxDrawdownPct), 2)
+
         return {
             "startDate": tradingDates[0].strftime("%Y-%m-%d"),
             "endDate": tradingDates[-1].strftime("%Y-%m-%d"),
             "portfolioPoints": portfolioPoints,
+            "originalPoints": originalPoints if hasOriginal else None,
             "sp500Points": sp500Points,
             "holdingReturns": holdingReturns,
             "yMin": round(float(yMin), 2),
             "yMax": round(float(yMax), 2),
-            "metrics": {
-                "portfolioReturnPct": round(portReturnPct, 2),
-                "portfolioReturnDollar": round(portReturnDollar, 2),
-                "sp500ReturnPct": round(spReturnPct, 2),
-                "sp500ReturnDollar": round(spReturnDollar, 2),
-                "alphaPct": round(alphaPct, 2),
-                "sharpeRatio": round(sharpe, 2) if not pd.isna(sharpe) else 0.0,
-                "maxDrawdownPct": round(abs(maxDrawdownPct), 2),
-                "sp500MaxDrawdownPct": round(abs(spMaxDrawdownPct), 2)
-            }
+            "metrics": metricsDict
         }
 
-    def generatePortfolioBacktestData(self, simDate, initialCapital: float = 100_000.0, positions: list = None, cashPosition: dict = None, timeHorizon: str = None) -> dict:
+    def generatePortfolioBacktestData(self, simDate, initialCapital: float = 100_000.0, positions: list = None, cashPosition: dict = None, timeHorizon: str = None, originalPositions: list = None) -> dict:
         todayTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
         simDateTs = pd.Timestamp(simDate)
         if simDateTs.tzinfo is None:
@@ -524,9 +576,9 @@ class SimulationManager:
             cashDollar = capital * (cashWeightPct / 100.0)
 
         # 1. Fetch S&P 500 benchmark series up to today
-        sp500Df = self.macroProvider.getSeries(MacroSeries.SP500, simDateTs, todayTs)
+        sp500Df = self.dataProviders.macro.getSeries(MacroSeries.SP500, simDateTs, todayTs)
         if sp500Df.empty or "close" not in sp500Df.columns:
-            sp500Df = self.macroProvider.loadSeries(MacroSeries.SP500)
+            sp500Df = self.dataProviders.macro.loadSeries(MacroSeries.SP500)
             if not sp500Df.empty and "date" in sp500Df.columns:
                 spDateCol = pd.to_datetime(sp500Df["date"]).dt.tz_localize(None).dt.normalize()
                 simNorm = simDateTs.tz_localize(None)
@@ -545,18 +597,24 @@ class SimulationManager:
         # 2. Fetch stock data for each holding concurrently
         stockDfs = {}
         shares = {}
+        originalShares = {}
         totalStockAlloc = 0.0
+
+        allPositionsToFetch = list(positions)
+        seenTickers = {str(p.get("ticker", "")).strip().upper() for p in positions if p.get("ticker")}
+        if originalPositions:
+            for op in originalPositions:
+                otick = str(op.get("ticker", "")).strip().upper()
+                if otick and otick not in seenTickers:
+                    allPositionsToFetch.append(op)
+                    seenTickers.add(otick)
 
         def fetchStockHolding(pos):
             ticker = str(pos.get("ticker", "")).strip().upper()
             if not ticker:
                 return None
-            dollarAlloc = float(pos.get("dollarAllocation", 0.0) or 0.0)
-            weightPct = float(pos.get("weightPct", 0.0) or 0.0)
-            if dollarAlloc <= 0.0 and weightPct > 0.0:
-                dollarAlloc = capital * (weightPct / 100.0)
 
-            df = self.priceProvider.getPeriodDailyTickerData(ticker, simDateTs, todayTs, referenceDate=simDateTs)
+            df = self.dataProviders.ohlcv.getPeriodDailyTickerData(ticker, simDateTs, todayTs, referenceDate=simDateTs)
             if df.empty or "close" not in df.columns:
                 return None
 
@@ -567,26 +625,49 @@ class SimulationManager:
             if df.empty:
                 return None
 
-            return (ticker, dollarAlloc, df)
+            return (ticker, df)
 
-        numWorkers = min(16, max(len(positions), 1))
+        numWorkers = min(16, max(len(allPositionsToFetch), 1))
         with ThreadPoolExecutor(max_workers=numWorkers) as executor:
-            results = list(executor.map(fetchStockHolding, positions))
+            results = list(executor.map(fetchStockHolding, allPositionsToFetch))
 
         for res in results:
             if res is not None:
-                ticker, dollarAlloc, df = res
-                totalStockAlloc += dollarAlloc
+                ticker, df = res
                 stockDfs[ticker] = df
+
+        for pos in positions:
+            ticker = str(pos.get("ticker", "")).strip().upper()
+            if not ticker or ticker not in stockDfs:
+                continue
+            df = stockDfs[ticker]
+            dollarAlloc = float(pos.get("dollarAllocation", 0.0) or 0.0)
+            weightPct = float(pos.get("weightPct", 0.0) or 0.0)
+            if dollarAlloc <= 0.0 and weightPct > 0.0:
+                dollarAlloc = capital * (weightPct / 100.0)
+            totalStockAlloc += dollarAlloc
+            p0 = float(df.iloc[0]["close"])
+            shares[ticker] = dollarAlloc / p0 if p0 > 0 else 0.0
+
+        if originalPositions:
+            for op in originalPositions:
+                otick = str(op.get("ticker", "")).strip().upper()
+                if not otick or otick not in stockDfs:
+                    continue
+                df = stockDfs[otick]
+                oDollar = float(op.get("dollarAmount", 0.0) or op.get("dollarAllocation", 0.0) or 0.0)
+                oWeight = float(op.get("weightPct", 0.0) or 0.0)
+                if oDollar <= 0.0 and oWeight > 0.0:
+                    oDollar = capital * (oWeight / 100.0)
                 p0 = float(df.iloc[0]["close"])
-                shares[ticker] = dollarAlloc / p0 if p0 > 0 else 0.0
+                originalShares[otick] = oDollar / p0 if p0 > 0 else 0.0
 
         # Adjust cash dollar if remaining capital was unallocated
         if cashDollar <= 0.0 and capital > totalStockAlloc:
             cashDollar = capital - totalStockAlloc
 
         # 3. Calculate full slice (simDate to today)
-        fullSlice = self._calculateBacktestSlice(simDateTs, todayTs, sp500Df, stockDfs, shares, capital, cashDollar, cashWeightPct)
+        fullSlice = self._calculateBacktestSlice(simDateTs, todayTs, sp500Df, stockDfs, shares, capital, cashDollar, cashWeightPct, originalShares=originalShares)
         if not fullSlice:
             return {
                 "ok": False,
@@ -601,7 +682,7 @@ class SimulationManager:
             normHorizon = horizonEndTs.tz_localize(None) if horizonEndTs.tzinfo is not None else horizonEndTs
             normToday = todayTs.tz_localize(None) if todayTs.tzinfo is not None else todayTs
             if normHorizon < normToday:
-                horizonSlice = self._calculateBacktestSlice(simDateTs, horizonEndTs, sp500Df, stockDfs, shares, capital, cashDollar, cashWeightPct)
+                horizonSlice = self._calculateBacktestSlice(simDateTs, horizonEndTs, sp500Df, stockDfs, shares, capital, cashDollar, cashWeightPct, originalShares=originalShares)
                 if horizonSlice and horizonSlice.get("endDate") != fullSlice.get("endDate"):
                     canToggle = True
 
@@ -642,7 +723,8 @@ class SimulationManager:
 
     def createSimulation(self, sessionId, portfolioName, startDate, initialCash):
         activeSim = MarketSimulation(startDate, END_DATE_STR, 
-                                     tickerDataProvider=self.tickerProvider, dailyPriceProvider=self.priceProvider)
+                                     tickerDataProvider=self.dataProviders.tickers, 
+                                     dailyPriceProvider=self.dataProviders.ohlcv)
         activeSim.initialiseUser(portfolioName, initialCash=initialCash)
 
         self.userSimulations[sessionId] = {
@@ -861,7 +943,7 @@ class SimulationManager:
 
         listedTickers = [
             t for t in self.availableTickers
-            if self.tickerProvider.isTickerListed(t, simDate)
+            if self.dataProviders.tickers.isTickerListed(t, simDate)
         ]
         return listedTickers if len(listedTickers) > 0 else self.availableTickers
 
@@ -989,7 +1071,7 @@ class SimulationManager:
         if lastPrice is None and chartData and chartData.get("simAnchor"):
             lastPrice = chartData["simAnchor"].get("y")
 
-        profile = self.tickerProvider.getTickerProfile(ticker)
+        profile = self.dataProviders.tickers.getTickerProfile(ticker)
         profileData = {}
         if profile:
             profileData = {
@@ -1024,12 +1106,12 @@ class SimulationManager:
         else:
             simDateTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
 
-        profile = self.tickerProvider.getTickerProfile(ticker)
+        profile = self.dataProviders.tickers.getTickerProfile(ticker)
         companyName = profile.name if profile and profile.name else ticker
 
         logoUrl = None
         try:
-            logoUrl = self.tickerProvider.getCompanyLogoFromFinnhub(ticker)
+            logoUrl = self.dataProviders.tickers.getCompanyLogoFromFinnhub(ticker)
         except Exception:
             pass
 
@@ -1178,15 +1260,16 @@ class SimulationManager:
         cleanStr = str(rawStr).replace("_", " ").strip()
         return cleanStr.title().replace("And", "and") if cleanStr else "N/A"
 
-    def fetchFastInspectorMetrics(self, dataProviders: DataProviders, ticker, targetTs, timeframeStr="3M"):
-        profile = dataProviders.tickers.getTickerProfile(ticker)
+
+    def fetchFastInspectorMetrics(self, ticker, targetTs, timeframeStr="3M"):
+        profile = self.dataProviders.tickers.getTickerProfile(ticker)
         rawExchange = profile.exchange if profile and profile.exchange else "NASDAQ"
         rawSector = profile.sector if profile and profile.sector else "N/A"
         rawIndustry = profile.industry if profile and profile.industry else "N/A"
         companyName = profile.name if profile and profile.name else ticker
 
         startDate = targetTs - pd.Timedelta(days=365)
-        df = dataProviders.ohlcv.getPeriodDailyTickerData(ticker, startDate, targetTs)
+        df = self.dataProviders.ohlcv.getPeriodDailyTickerData(ticker, startDate, targetTs)
 
         lastPrice = None
         openPrice = None
@@ -1251,8 +1334,8 @@ class SimulationManager:
                 valRes["marketCap"] = "$" + str(lastMarketCap.iloc[-1])
 
         companyRef = CompanyRef(ticker)
-        valRes["beta"] = calculateHistoricalBeta(companyRef, targetTs, dataProviders.ohlcv, dataProviders.macro)
-        valRes["dividendYield"] = calculateDividendYield(companyRef, targetTs, dataProviders.ohlcv)
+        valRes["beta"] = calculateHistoricalBeta(companyRef, targetTs, self.dataProviders.ohlcv, self.dataProviders.macro)
+        valRes["dividendYield"] = calculateDividendYield(companyRef, targetTs, self.dataProviders.ohlcv)
 
         # Find the latest 10-K and 10-Q filings before the target date
         tenKUrl = None
@@ -1260,7 +1343,7 @@ class SimulationManager:
         tenQUrl = None
         tenQDate = None
         try:
-            tenKFiling = dataProviders.edgar.getLatestFilingRef(companyRef, FormType.FORM_10K, before=targetTs)
+            tenKFiling = self.dataProviders.edgar.getLatestFilingRef(companyRef, FormType.FORM_10K, before=targetTs)
             if tenKFiling:
                 tenKUrl = getattr(tenKFiling, "filing_url", None) or getattr(tenKFiling, "url", None)
                 rawFDate = getattr(tenKFiling, "filing_date", None)
@@ -1270,7 +1353,7 @@ class SimulationManager:
                     except Exception:
                         pass
 
-            tenQFiling = dataProviders.edgar.getLatestFilingRef(companyRef, FormType.FORM_10Q, before=targetTs)
+            tenQFiling = self.dataProviders.edgar.getLatestFilingRef(companyRef, FormType.FORM_10Q, before=targetTs)
             if tenQFiling:
                 tenQUrl = getattr(tenQFiling, "filing_url", None) or getattr(tenQFiling, "url", None)
                 rawQDate = getattr(tenQFiling, "filing_date", None)
@@ -1285,7 +1368,7 @@ class SimulationManager:
         # Get news headlines
         newsList = []
         try:
-            rawNews = dataProviders.news.getRecentNewsForTicker(ticker, before=targetTs, limit=50)
+            rawNews = self.dataProviders.news.getRecentNewsForTicker(ticker, before=targetTs, limit=50)
             if rawNews is not None and isinstance(rawNews, pd.DataFrame) and not rawNews.empty:
                 for _, row in rawNews.iterrows():
                     headline = str(row.get("headline", ""))
@@ -1316,6 +1399,7 @@ class SimulationManager:
         # 30-day average volume (from the fetchStockPricePerformance helper)
         avgVolume = None
         try:
+            df = self.dataProviders.ohlcv.getPeriodDailyTickerData(ticker, targetTs - pd.Timedelta(days=30), targetTs)
             avgVolume = calculate30DayAverageVolume(df, targetTs)
             if not avgVolume:
                 avgVolume = None
@@ -1355,17 +1439,9 @@ class SimulationManager:
         except Exception:
             targetTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
 
-        reg = buildToolRegistry()
-        del reg.dataProviders
-        reg.dataProviders = DataProviders(allowOnlineDownloads=False)    # Bad hack but it works
-        dataProviders = reg.dataProviders
-
-        fastData = self.fetchFastInspectorMetrics(dataProviders, ticker, targetTs, timeframeStr)
-
+        fastData = self.fetchFastInspectorMetrics(ticker, targetTs, timeframeStr)
         chartData = self.generateOhlcvChartData(ticker, targetTs, targets=[], horizon=(timeframeStr or "3m").lower())
-        # if fastData["lastPrice"] is None and chartData and chartData.get("simAnchor"):
-        #     fastData["lastPrice"] = chartData["simAnchor"].get("y")
-
+        
 
         def getCompareClass(curr, compareVal):
             if curr is None or compareVal is None:
@@ -1454,7 +1530,7 @@ class SimulationManager:
 
         logoUrl = None
         try:
-            logoUrl = self.tickerProvider.getCompanyLogoFromFinnhub(ticker)
+            logoUrl = self.dataProviders.tickers.getCompanyLogoFromFinnhub(ticker)
         except Exception:
             pass
 

@@ -13,6 +13,7 @@ from llm.llamacpp.llamacpp_init import LlamaCppProcessInitiator, rudimentaryVram
 from llm.llamacpp.llamacpp_client import LlamaCppClient
 from llm.cloud.openrouter_client import OpenRouterClient
 from llm.cloud.openai_compatible_client import OpenAICompatibleClient
+from llm.server_config_store import setSectionValues
 
 from llm.llm_client import BaseLLMClient
 from llm.token_cost_tracker import TokenCostTracker
@@ -236,9 +237,19 @@ class ServerManager:
                         self.loadedModelType = LoadedModelType.OPENAI_COMPATIBLE
                         self.loadedModelName = cleanModel
 
+                        # Remember the OpenAI Compatible form fields
+                        try:
+                            setSectionValues("openaicompatible", {
+                                "baseUrl": cleanBaseUrl,
+                                "apiKey": cleanApiKey,
+                                "modelName": cleanModel
+                            })
+                        except Exception:
+                            pass
+
                         # Preload AutoTokeniser and initialise FinBERT sentiment engine for OpenAI Compatible
                         self.startSentimentEnginePreload()
-                        self.ensureSentimentEngineReady(timeout=35.0)
+                        # self.ensureSentimentEngineReady(timeout=35.0)
 
                         self.broadcastStatus()
                         return True, f"OpenAI Compatible server active and verified (Response: '{result}')."
@@ -266,9 +277,18 @@ class ServerManager:
                         self.loadedModelType = LoadedModelType.OPENROUTER
                         self.loadedModelName = modelName
 
+                        # Remember the last OpenRouter model and chosen provider router
+                        try:
+                            routerValues = {"lastUsedModelId": modelName}
+                            if providerRouter:
+                                routerValues["providerRouter"] = providerRouter
+                            setSectionValues("openrouter", routerValues)
+                        except Exception:
+                            pass
+
                         # Preload AutoTokeniser and initialise FinBERT sentiment engine for OpenRouter
                         self.startSentimentEnginePreload()
-                        self.ensureSentimentEngineReady(timeout=35.0)
+                        # self.ensureSentimentEngineReady(timeout=35.0)
 
                         self.broadcastStatus()
                         return True, f"OpenRouter server active and verified (Response: '{result}')."
@@ -350,7 +370,7 @@ class ServerManager:
                             pass
 
                         # Ensure FinBERT preloading has finished and is verified in VRAM
-                        self.ensureSentimentEngineReady(timeout=35.0)
+                        # self.ensureSentimentEngineReady(timeout=35.0)
 
                         # Start background metrics polling loop for Llama.cpp
                         self._startMetricsPolling()

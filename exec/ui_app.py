@@ -27,7 +27,7 @@ from ui.ui_hooks import setEventCallback, emitEvent, requestStop, resetStop, isS
 from ui.ws_api import registerApiRoutes, registerWsAction, handleWsMessage
 from simulation.simulation_api import registerSimulationWsRoutes
 
-from boardroom.boardroom_config import SingleEquityRatingConfig, PortfolioCreationConfig
+from boardroom.boardroom_config import SingleEquityRatingConfig, PortfolioCreationConfig, PortfolioRebalancingConfig
 from boardroom.boardroom_mgr import boardroomManager
 
 
@@ -82,6 +82,13 @@ def portfolioCreationPage():
 
     return render_template("portfolio_creation.html")
 
+@app.route("/portfolio-rebalancing")
+def portfolioRebalancingPage():
+    if serverManager.loadedModelType == LoadedModelType.NONE:
+        return redirect("/")
+
+    return render_template("portfolio_rebalancing.html")
+
 
 # Track connected websockets and the asyncio event loop
 connectedWebsockets = set()
@@ -116,7 +123,9 @@ def apiBoardroomStop():
 
 def handleBoardroomStart(data, websocket, eventLoop):
     engineType = data.get("engineType") or ("portfolio_creation" if "initialCapital" in data else "single_equity")
-    if engineType == "portfolio_creation":
+    if engineType == "portfolio_rebalancing":
+        config = PortfolioRebalancingConfig.fromDict(data)
+    elif engineType == "portfolio_creation":
         config = PortfolioCreationConfig.fromDict(data)
     else:
         config = SingleEquityRatingConfig.fromDict(data)
@@ -209,19 +218,19 @@ def startWebsocketServer():
     asyncio.run(main())
 
 
-def startServer():
+def startServer(debug: bool = True, useReloader: bool = False):
     # Register global callback for agent simulation events
     setEventCallback(broadcastEvent)
 
-    # Start WebSocket background server thread on the main process, not the reloader
-    if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+    # Start WebSocket background server thread
+    if not useReloader or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
         websocketThread = threading.Thread(
             target=startWebsocketServer,
             daemon=True
         )
         websocketThread.start()
 
-    app.run(debug=True, threaded=True, host="127.0.0.1", port=UI_PORT)
+    app.run(debug=debug, threaded=True, host="127.0.0.1", port=UI_PORT, use_reloader=useReloader)
 
 
 if __name__ == "__main__":

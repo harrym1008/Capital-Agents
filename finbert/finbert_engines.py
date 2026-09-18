@@ -278,7 +278,7 @@ def getBestInferenceEngine() -> BaseInferenceEngine | None:
             except Exception as e:
                 print(f"[FinBERT Engine] TensorRT load failed: {e}. Falling back to next engine...")
 
-    # 2. FP32 ONNX on CUDA (Batch Size = 8 to constrain VRAM)
+    # 2. FP32 ONNX on CUDA (Batch Size = 8)
     if hasCuda and os.path.exists(onnxPath):
         try:
             engine = OnnxCudaInferenceEngine(onnxPath)

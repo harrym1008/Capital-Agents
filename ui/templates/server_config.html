@@ -314,7 +314,10 @@
                 if (res.ok) {
                     const data = await res.json();
                     openRouterModelsList = data.models || data.data || [];
-                    updatePricingBadge();
+                    const savedModelInput = document.getElementById("openrouterModelName");
+                    if (savedModelInput && savedModelInput.value.trim()) {
+                        updatePricingBadge();
+                    }
                 }
             } catch (e) {
                 console.warn("Could not fetch OpenRouter models:", e);
@@ -346,7 +349,6 @@
             if (contextLength && contextLength < 50000) {
                 return `
                     <div style="width: 100%; margin-top: 6px; padding: 7px 12px; background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; color: #dc2626; font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
-                        <span>⚠️</span>
                         <span>Warning: This model has a limited context window, which may lead to processing failures or unexpected crashes.</span>
                     </div>
                 `;
@@ -477,8 +479,8 @@
             if (!matchedModel) {
                 updateOpenRouterRouterGroup("");
                 badge.innerHTML = `
-                    <div style="font-weight:600; color:#dc2626; margin-bottom: 2px;">❌ Model Not Found</div>
-                    <div style="font-size:12px; color:#64748b;">Model '${val}' does not exist on OpenRouter catalog.</div>
+                    <div style="font-weight:600; color:#dc2626; margin-bottom: 2px;">Model Not Found</div>
+                    <div style="font-size:12px; color:#64748b;">Model '${val}' does not exist on OpenRouter.</div>
                 `;
                 return;
             }
@@ -883,7 +885,58 @@
         });
 
         // Listen for provider change
-        document.getElementById("provider").addEventListener("change", updateProviderUI);
+        document.getElementById("provider").addEventListener("change", () => {
+            updateProviderUI();
+            const provider = document.getElementById("provider").value;
+            fetch("/api/server-config", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({lastSelectedProvider: provider})
+            }).catch(() => {});
+        });
+
+
+
+        // Load and prepopulate saved OpenRouter / OpenAI-Compatible form fields
+        function loadSavedServerConfig() {
+            fetch('/api/server-config')
+                .then(r => r.json())
+                .then(data => {
+                    if (!data || !data.ok) return;
+                    const openrouter = data.openrouter || {};
+                    const openai = data.openaicompatible || {};
+
+                    const provider = data.lastSelectedProvider;
+                    const providerSelect = document.getElementById("provider");
+                    if (providerSelect && provider) {
+                        providerSelect.value = provider;
+                        updateProviderUI();
+                    }
+
+                    const modelInput = document.getElementById("openrouterModelName");
+                    if (modelInput && openrouter.lastUsedModelId) {
+                        modelInput.value = openrouter.lastUsedModelId;
+                    }
+                    const routerHidden = document.getElementById("openrouterProviderRouter");
+                    const routerText = document.getElementById("openrouterRouterSelectedText");
+                    if (routerHidden && openrouter.providerRouter) {
+                        selectedOpenRouterRouter = openrouter.providerRouter;
+                        routerHidden.value = openrouter.providerRouter;
+                        if (routerText) {
+                            routerText.textContent = (openrouter.providerRouter === "auto" || !openrouter.providerRouter) ? "Automatic" : openrouter.providerRouter;
+                        }
+                    }
+
+                    if (openai.baseUrl) document.getElementById("openaiBaseUrl").value = openai.baseUrl;
+                    if (openai.apiKey) document.getElementById("openaiApiKey").value = openai.apiKey;
+                    if (openai.modelName) document.getElementById("openaiModelName").value = openai.modelName;
+
+                    if (modelInput && modelInput.value.trim()) {
+                        updatePricingBadge();
+                    }
+                })
+                .catch(e => console.warn("Could not load saved server config:", e));
+        }
 
 
 
@@ -894,6 +947,7 @@
         initOpenRouterAutocomplete();
         updateProviderUI();
         checkExistingServerStatus();
+        loadSavedServerConfig();
 
 
     </script>

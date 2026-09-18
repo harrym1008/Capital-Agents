@@ -1,0 +1,1539 @@
+{% extends "boardroom_base.html" %}
+
+{% block title %}CapitalAgents - Portfolio Rebalancing Boardroom{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Number input styling */
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    input[type=number] {
+        -moz-appearance: textfield;
+    }
+    .portfolio-num-input {
+        width: 50px !important;
+        text-align: center;
+        padding: 5px 6px !important;
+    }
+    .pie-toggle-btn {
+        font-size: 11px;
+        font-weight: 600;
+        padding: 3px 9px;
+        border-radius: 4px;
+        cursor: pointer;
+        border: 1px solid #cbd5e1;
+        background-color: #f8fafc;
+        color: #475569;
+        transition: all 0.15s ease;
+        line-height: 1.3;
+    }
+    .pie-toggle-btn:hover {
+        background-color: #e2e8f0;
+        color: #0f172a;
+    }
+    .pie-toggle-btn.active {
+        background-color: #2563eb;
+        color: #ffffff;
+        border-color: #2563eb;
+    }
+    .backtest-metric-item {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .backtest-metric-label {
+        font-size: 10px;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .backtest-metric-value {
+        font-size: 13.5px;
+        font-weight: 800;
+        color: #0f172a;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+    }
+
+    /* Current Portfolio Modal Table Styling */
+    .positions-entry-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+        font-size: 13px;
+    }
+    .positions-entry-table th {
+        background-color: #f8fafc;
+        color: #475569;
+        font-weight: 700;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding: 8px 10px;
+        border-bottom: 1.5px solid #cbd5e1;
+        text-align: left;
+    }
+    .positions-entry-table td {
+        padding: 7px 10px;
+        border-bottom: 1px solid #e2e8f0;
+        vertical-align: middle;
+    }
+    .positions-entry-table tr:hover {
+        background-color: #f8fafc;
+    }
+    .position-ticker-input {
+        text-transform: uppercase;
+        font-weight: 700;
+        font-family: monospace;
+        letter-spacing: 0.5px;
+        width: 65px !important;
+        padding: 5px 6px !important;
+        font-size: 13px !important;
+        box-sizing: border-box;
+    }
+    .position-dollar-input {
+        width: 70px !important;
+        padding: 5px 6px !important;
+        font-size: 13px !important;
+        font-weight: 600;
+        text-align: right;
+        box-sizing: border-box;
+    }
+    .row-delete-btn {
+        background: transparent !important;
+        border: none !important;
+        color: #94a3b8 !important;
+        cursor: pointer;
+        padding: 4px 6px;
+        font-size: 15px;
+        line-height: 1;
+        transition: color 0.15s;
+    }
+    .row-delete-btn:hover {
+        color: #ef4444 !important;
+    }
+</style>
+{% endblock %}
+
+{% block config_inputs %}
+    <div class="config-group">
+        <button type="button" id="openCurrentPortfolioModalBtn" class="grey-btn" onclick="openCurrentPortfolioModal()">
+            Portfolio Setup
+        </button>
+    </div>
+
+    <div class="config-group" id="targetSectorCountGroup">
+        <label for="targetSectorCountInput">Sectors:</label>
+        <input type="number" id="targetSectorCountInput" class="portfolio-num-input" min="1" max="11" step="1" placeholder="Auto" title="Target sector count (1 to 11, leave empty for dynamic selection)">
+    </div>
+
+    <div class="config-group">
+        <label for="targetStockCountInput">Stocks:</label>
+        <input type="number" id="targetStockCountInput" class="portfolio-num-input" min="1" max="50" step="1" placeholder="Auto" title="Target stock count (1 to 30, leave empty for dynamic selection)">
+    </div>
+
+    <div class="config-group" style="display: flex; align-items: center; gap: 6px;">
+        <label for="rebalanceAmountSlider" style="margin-right: 2px;">Rebalance Amount:</label>
+        <span style="font-size: 11.5px; font-weight: 600; color: #0284c7; user-select: none;">Light</span>
+        <input type="range" id="rebalanceAmountSlider" min="1" max="6" step="1" value="3" oninput="updateRebalanceAmountTooltip()" style="width: 85px; cursor: pointer; accent-color: #2563eb;" title="Level 3: Moderate Rebalance (Balanced rebalance; adjust sector tilts and selective stock replacement)">
+        <span style="font-size: 11.5px; font-weight: 600; color: #ea580c; user-select: none;">Heavy</span>
+    </div>
+
+    <div class="config-group">
+        <label for="allocationBiasCheckbox">Allocation Bias:</label>
+        <input type="checkbox" id="allocationBiasCheckbox" onchange="toggleAllocationBias()">
+    </div>
+    <div class="config-group" id="allocationBiasSliderContainer" style="display: none; align-items: center; gap: 6px;">
+        <span style="font-size: 11.5px; font-weight: 600; color: #16a34a; user-select: none;">Growth</span>
+        <input type="range" id="allocationBiasSlider" min="1" max="6" step="1" value="4" oninput="updateAllocationBiasTooltip()" style="width: 85px; cursor: pointer; accent-color: #2563eb;" title="Maximum Growth Bias">
+        <span style="font-size: 11.5px; font-weight: 600; color: #2563eb; user-select: none;">Defensive</span>
+    </div>
+
+    <div class="config-group">
+        <label for="modeSelect">Mode:</label>
+        <select id="modeSelect">
+            <option value="fast">Fast Evaluation</option>
+            <option value="complete" selected>Complete Evaluation</option>
+        </select>
+    </div>
+
+    <div class="config-group">     
+        <label for="horizonSelect">Time Horizon:</label>
+        <select id="horizonSelect">
+            <option value="1 month">1 month</option>
+            <option value="3 months">3 months</option>
+            <option value="6 months">6 months</option>
+            <option value="1 year" selected>1 year</option>
+            <option value="2 years">2 years</option>
+            <option value="3 years">3 years</option>
+            <option value="5 years">5 years</option>
+            <option value="10 years">10 years</option>
+            <option value="20 years">20 years</option>
+        </select>
+    </div>
+{% endblock %}
+
+{% block custom_modal_overlays %}
+<!-- Current Portfolio Input Modal Overlay -->
+<div id="currentPortfolioModalOverlay" class="setup-overlay" style="display: none;" onmousedown="handlePortfolioOverlayMouseDown(event)">
+    <div class="splash-load-model-window" style="position: relative; width: min(94vw, 880px); max-height: 90vh; padding: 24px 28px; overflow-y: auto;" onmousedown="event.stopPropagation()">
+        <button type="button" class="modal-close-btn" onclick="attemptCloseCurrentPortfolioModal()" title="Close">&times;</button>
+        <h1 style="margin-bottom: 16px; font-size: 1.5rem;">Current Portfolio Holdings</h1>
+
+        <!-- Positions Entry Table -->
+        <div style="overflow-x: auto; max-height: 380px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px;">
+            <table class="positions-entry-table" id="positionsTable">
+                <thead>
+                    <tr>
+                        <th style="width: 80px;">Ticker</th>
+                        <th>Company Name</th>
+                        <th style="width: 140px;">Sector</th>
+                        <th style="width: 140px;">Industry</th>
+                        <th style="width: 85px; text-align: right;">Holding ($)</th>
+                        <th style="width: 65px; text-align: right;">Weight</th>
+                        <th style="width: 35px; text-align: center;"></th>
+                    </tr>
+                </thead>
+                <tbody id="positionsTableBody">
+                    <!-- Rows dynamically generated -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Add Stock Button anchored to right-hand side of table -->
+        <div style="display: flex; justify-content: flex-end; margin-top: 8px; margin-bottom: 14px;">
+            <button type="button" class="grey-btn" onclick="addNewPositionRow()" style="padding: 4px 10px; font-size: 12px; font-weight: 600;">
+                + Add Stock
+            </button>
+        </div>
+
+        <!-- Warning Alert Banner -->
+        <div id="currentPortfolioModalWarning" style="display: none; background-color: #fef2f2; border: 1px solid #fecaca; color: #dc2626; padding: 8px 12px; border-radius: 6px; font-size: 12.5px; font-weight: 600; margin-bottom: 14px; text-align: center;">
+            Please correct the errors in your portfolio before proceeding.
+        </div>
+
+        <!-- Action Buttons Row -->
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border-top: 1px solid #e2e8f0; padding-top: 14px;">
+            <div></div>
+            <div style="display: flex; align-items: center; gap: 14px;">
+                <div style="font-size: 14px; font-weight: 700; color: #0f172a;">
+                    Total Capital: <span id="modalTotalPortfolioValue" style="color: #2563eb; font-weight: 800;">$0.00</span>
+                </div>
+                <button type="button" id="closePortfolioModalBtn" class="primary-btn" onclick="attemptCloseCurrentPortfolioModal()" style="padding: 8px 24px; font-size: 14px; font-weight: 700; background-color: #2563eb; color: #fff;">
+                    Done
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block page_scripts %}
+<script>
+    let currentSimulatedDate = null;
+    let sectorChartInstance = null;
+    let portfolioBacktestChartInstance = null;
+    let cachedBacktestData = null;
+    let currentBacktestHorizonMode = "horizon";
+    let currentCompareBenchmarkMode = "original"; // "original" or "sp500"
+    let confirmedSectorData = null;
+    let confirmedPortfolioData = null;
+
+    // Baseline portfolio positions array: [{ ticker, companyName, sector, sectorTicker, industry, price, dollarAmount, weightPct, valid }]
+    let currentPortfolioPositions = [];
+    let isPortfolioValidated = false;
+
+    // Validation cache to avoid redundant API hits
+    const tickerValidationCache = {};
+
+    function getCleanSimDate() {
+        const simDateVal = BoardroomCore.getSimulatedDate();
+        if (simDateVal) return simDateVal;
+        return new Date().toISOString().split('T')[0];
+    }
+
+    function isDateInPast(dateStr) {
+        if (!dateStr) return false;
+        try {
+            const simTime = new Date(dateStr + "T00:00:00").getTime();
+            const todayTime = new Date().setHours(0, 0, 0, 0);
+            return simTime < todayTime;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function countDecimalPlaces(num) {
+        if (!num || Math.floor(num) === num) return 0;
+        const str = num.toString();
+        if (str.indexOf("e-") !== -1) return parseInt(str.split("e-")[1], 10);
+        if (str.indexOf(".") !== -1) return str.split(".")[1].length;
+        return 0;
+    }
+
+    function formatYAxisLabel(val, stepSize) {
+        if (val === 0) return "$0";
+        const absVal = Math.abs(val);
+        let unit = "";
+        let div = 1;
+
+        if (absVal >= 1e12) { unit = "T"; div = 1e12; }
+        else if (absVal >= 1e9) { unit = "B"; div = 1e9; }
+        else if (absVal >= 1e6) { unit = "M"; div = 1e6; }
+        else if (absVal >= 1e3) { unit = "k"; div = 1e3; }
+
+        const num = val / div;
+        let dp = 0;
+        if (stepSize && stepSize > 0) {
+            dp = countDecimalPlaces(stepSize / div);
+        } else {
+            dp = countDecimalPlaces(num);
+        }
+        dp = Math.max(0, Math.min(6, dp));
+
+        let minDp = (div === 1 && stepSize && stepSize < 1) ? 2 : 0;
+        const formattedStr = num.toLocaleString("en-US", {
+            minimumFractionDigits: minDp,
+            maximumFractionDigits: dp
+        });
+
+        return "$" + formattedStr + unit;
+    }
+
+    // Register custom agent roles for portfolio rebalancing
+    BoardroomCore.registerRole("Growth Stock Hunter", { class: "green", initials: "GH", name: "Growth Stock Hunter" });
+    BoardroomCore.registerRole("Value/Defensive Stock Hunter", { class: "blue", initials: "DH", name: "Defensive Stock Hunter" });
+    BoardroomCore.registerRole("Aggressive Risk Analyst", { class: "yellow", initials: "AR", name: "Aggressive Risk Analyst" });
+    BoardroomCore.registerRole("Conservative Risk Analyst", { class: "blue", initials: "CR", name: "Conservative Risk Analyst" });
+    BoardroomCore.registerRole("Macro Analyst", { class: "cyan", initials: "MS", name: "Macro Strategist" });
+
+    const portfolioRebalancingStages = {
+        "fast": [
+            { num: 1, name: "Macro Environment Analysis" },
+            { num: 3, name: "Sector Rebalancing Decision" },
+            { num: 4, name: "Stock Holdings Audit" },
+            { num: 6, name: "Final Executive Decision" }
+        ],
+        "complete": [
+            { num: 1, name: "Macro Environment Analysis" },
+            { num: 2, name: "Sector Rebalancing Analysis" },
+            { num: 3, name: "Sector Rebalancing Decision" },
+            { num: 4, name: "Stock Holdings Audit" },
+            { num: 5, name: "Stock Reallocation Proposals" },
+            { num: 6, name: "Final Executive Decision" }
+        ]
+    };
+
+    // ==========================================
+    // CURRENT PORTFOLIO MODAL & VALIDATION LOGIC
+    // ==========================================
+
+    function openCurrentPortfolioModal() {
+        const overlay = document.getElementById("currentPortfolioModalOverlay");
+        if (overlay) {
+            overlay.style.display = "flex";
+            if (currentPortfolioPositions.length === 0) {
+                addNewPositionRow();
+            } else {
+                renderPositionsTable();
+            }
+        }
+    }
+
+    function handlePortfolioOverlayMouseDown(event) {
+        if (event.target && event.target.id === "currentPortfolioModalOverlay") {
+            attemptCloseCurrentPortfolioModal();
+        }
+    }
+
+    function attemptCloseCurrentPortfolioModal() {
+        const validation = validateEntirePortfolio();
+        const warningEl = document.getElementById("currentPortfolioModalWarning");
+        const overlay = document.getElementById("currentPortfolioModalOverlay");
+
+        if (!validation.valid) {
+            if (warningEl) {
+                warningEl.innerText = validation.error;
+                warningEl.style.display = "block";
+            }
+            return false;
+        }
+
+        if (warningEl) warningEl.style.display = "none";
+        isPortfolioValidated = true;
+        if (overlay) overlay.style.display = "none";
+        return true;
+    }
+
+    function addNewPositionRow(initialData = null) {
+        const newPos = initialData || {
+            ticker: "",
+            companyName: "--",
+            sector: "Unknown",
+            sectorTicker: "SPY",
+            industry: "--",
+            dollarAmount: 10000,
+            weightPct: 0,
+            valid: false
+        };
+        currentPortfolioPositions.push(newPos);
+        renderPositionsTable();
+        if (initialData && initialData.ticker) {
+            validateTickerRow(currentPortfolioPositions.length - 1, initialData.ticker);
+        }
+    }
+
+    function removePositionRow(index) {
+        if (index >= 0 && index < currentPortfolioPositions.length) {
+            currentPortfolioPositions.splice(index, 1);
+            recalculatePortfolioTotals();
+            renderPositionsTable();
+        }
+    }
+
+    function renderPositionsTable() {
+        const tbody = document.getElementById("positionsTableBody");
+        if (!tbody) return;
+        tbody.innerHTML = "";
+
+        currentPortfolioPositions.forEach((pos, idx) => {
+            const tr = document.createElement("tr");
+            tr.id = `posRow_${idx}`;
+
+            const statusColor = pos.valid ? "#10b981" : (pos.ticker ? "#ef4444" : "#94a3b8");
+
+            tr.innerHTML = `
+                <td>
+                    <div style="position: relative; display: flex; align-items: center;">
+                        <input type="text" class="position-ticker-input" value="${pos.ticker || ''}" 
+                               id="tickerInput_${idx}" placeholder="AAPL"
+                               oninput="onTickerInputChanged(${idx}, this.value)"
+                               onblur="onTickerInputBlur(${idx}, this.value)">
+                        <span id="tickerStatusIcon_${idx}" style="margin-left: 6px; font-size: 13px; color: ${statusColor};">
+                            ${pos.valid ? "✓" : (pos.ticker ? "✗" : "")}
+                        </span>
+                    </div>
+                    <div id="tickerError_${idx}" style="color: #ef4444; font-size: 10.5px; font-weight: 600; display: none; margin-top: 2px;"></div>
+                </td>
+                <td id="nameCell_${idx}" style="font-weight: 600; color: #1e293b; max-width: 190px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" title="${pos.companyName || ''}">
+                    ${pos.companyName || "--"}
+                </td>
+                <td id="sectorCell_${idx}" style="color: #334155; font-size: 12.5px;">
+                    ${pos.sector && pos.sector !== "Unknown" ? pos.sector : `<span style="color: #94a3b8;">--</span>`}
+                </td>
+                <td id="industryCell_${idx}" style="color: #475569; font-size: 12px; max-width: 150px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" title="${pos.industry || ''}">
+                    ${pos.industry || "--"}
+                </td>
+                <td style="text-align: right;">
+                    <input type="number" class="position-dollar-input" value="${pos.dollarAmount || 0}" min="1" step="1000"
+                           id="dollarInput_${idx}" oninput="onDollarAmountChanged(${idx}, this.value)">
+                </td>
+                <td id="weightCell_${idx}" style="text-align: right; font-weight: 700; color: #2563eb;">
+                    ${Number(pos.weightPct || 0).toFixed(1)}%
+                </td>
+                <td style="text-align: center;">
+                    <button type="button" class="row-delete-btn" onclick="removePositionRow(${idx})" title="Remove position">&times;</button>
+                </td>
+            `;
+
+            tbody.appendChild(tr);
+        });
+
+        recalculatePortfolioTotals();
+    }
+
+    let tickerDebounceTimers = {};
+    function onTickerInputChanged(index, val) {
+        const cleanTicker = (val || "").trim().toUpperCase();
+        if (currentPortfolioPositions[index]) {
+            currentPortfolioPositions[index].ticker = cleanTicker;
+            currentPortfolioPositions[index].valid = false;
+        }
+
+        clearTimeout(tickerDebounceTimers[index]);
+        tickerDebounceTimers[index] = setTimeout(() => {
+            if (cleanTicker.length >= 1) {
+                validateTickerRow(index, cleanTicker);
+            }
+        }, 100);
+    }
+
+    function onTickerInputBlur(index, val) {
+        const cleanTicker = (val || "").trim().toUpperCase();
+        if (cleanTicker.length >= 1 && (!currentPortfolioPositions[index] || !currentPortfolioPositions[index].valid)) {
+            validateTickerRow(index, cleanTicker);
+        }
+    }
+
+    function onDollarAmountChanged(index, val) {
+        const amt = parseFloat(val) || 0;
+        if (currentPortfolioPositions[index]) {
+            currentPortfolioPositions[index].dollarAmount = amt;
+        }
+        recalculatePortfolioTotals();
+    }
+
+    function validateTickerRow(index, ticker) {
+        if (!ticker) return;
+        const simDate = getCleanSimDate();
+        const cacheKey = `${ticker}_${simDate}`;
+
+        const iconEl = document.getElementById(`tickerStatusIcon_${index}`);
+        const errEl = document.getElementById(`tickerError_${index}`);
+        const nameEl = document.getElementById(`nameCell_${index}`);
+        const secEl = document.getElementById(`sectorCell_${index}`);
+        const indEl = document.getElementById(`industryCell_${index}`);
+
+        if (iconEl) iconEl.innerText = "…";
+
+        if (tickerValidationCache[cacheKey]) {
+            applyValidationResult(index, tickerValidationCache[cacheKey]);
+            return;
+        }
+
+        fetch(`/api/portfolio/validate-ticker?ticker=${encodeURIComponent(ticker)}&simDate=${encodeURIComponent(simDate)}`)
+            .then(res => res.json())
+            .then(data => {
+                tickerValidationCache[cacheKey] = data;
+                applyValidationResult(index, data);
+            })
+            .catch(err => {
+                applyValidationResult(index, { ok: false, valid: false, error: "Validation server error" });
+            });
+    }
+
+    function applyValidationResult(index, data) {
+        const pos = currentPortfolioPositions[index];
+        if (!pos) return;
+
+        const iconEl = document.getElementById(`tickerStatusIcon_${index}`);
+        const errEl = document.getElementById(`tickerError_${index}`);
+        const nameEl = document.getElementById(`nameCell_${index}`);
+        const secEl = document.getElementById(`sectorCell_${index}`);
+        const indEl = document.getElementById(`industryCell_${index}`);
+
+        if (data && data.valid) {
+            pos.valid = true;
+            pos.companyName = data.companyName;
+            pos.sector = data.sector;
+            pos.sectorTicker = data.sectorTicker;
+            pos.industry = data.industry;
+
+            if (iconEl) { iconEl.innerText = "✓"; iconEl.style.color = "#10b981"; }
+            if (errEl) { errEl.style.display = "none"; errEl.innerText = ""; }
+            if (nameEl) { nameEl.innerText = pos.companyName; nameEl.title = pos.companyName; }
+            if (secEl) { secEl.innerText = pos.sector; }
+            if (indEl) { indEl.innerText = pos.industry; indEl.title = pos.industry; }
+        } else {
+            pos.valid = false;
+            const errMsg = data?.error || "Invalid ticker or unlisted on sim date";
+            if (iconEl) { iconEl.innerText = "✗"; iconEl.style.color = "#ef4444"; }
+            if (errEl) { errEl.innerText = errMsg; errEl.style.display = "block"; }
+            if (nameEl) { nameEl.innerText = "--"; }
+            if (secEl) { secEl.innerHTML = `<span style="color: #94a3b8;">--</span>`; }
+            if (indEl) { indEl.innerText = "--"; }
+        }
+
+        recalculatePortfolioTotals();
+    }
+
+    function recalculatePortfolioTotals() {
+        const totalCapital = currentPortfolioPositions.reduce((sum, p) => sum + (parseFloat(p.dollarAmount) || 0), 0);
+
+        // Update weights
+        currentPortfolioPositions.forEach((p, idx) => {
+            const pDollar = parseFloat(p.dollarAmount) || 0;
+            p.weightPct = totalCapital > 0 ? (pDollar / totalCapital * 100.0) : 0;
+            const weightEl = document.getElementById(`weightCell_${idx}`);
+            if (weightEl) {
+                weightEl.innerText = `${p.weightPct.toFixed(1)}%`;
+            }
+        });
+
+        // Update total value display
+        const totalEl = document.getElementById("modalTotalPortfolioValue");
+        if (totalEl) {
+            totalEl.innerText = `$${totalCapital.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+    }
+
+    function validateEntirePortfolio() {
+        if (currentPortfolioPositions.length === 0) {
+            return { valid: false, error: "Portfolio cannot be empty. Please add at least one stock holding." };
+        }
+
+        let totalVal = 0;
+        for (let i = 0; i < currentPortfolioPositions.length; i++) {
+            const p = currentPortfolioPositions[i];
+            if (!p.ticker || !p.ticker.trim()) {
+                return { valid: false, error: `Row ${i + 1} has an empty ticker symbol.` };
+            }
+            if (!p.valid) {
+                return { valid: false, error: `Stock '${p.ticker}' in row ${i + 1} is invalid or was not active on the simulated date.` };
+            }
+            const amt = parseFloat(p.dollarAmount) || 0;
+            if (amt <= 0) {
+                return { valid: false, error: `Stock '${p.ticker}' must have a positive dollar holding value (> $0).` };
+            }
+            totalVal += amt;
+        }
+
+        if (totalVal <= 0) {
+            return { valid: false, error: "Total portfolio dollar balance must be greater than zero." };
+        }
+
+        return { valid: true, totalCapital: totalVal };
+    }
+
+    /**
+     * Helper to populate an example baseline portfolio from console or dev tools.
+     * Default holdings: NVDA ($15k), ASTS ($18k), SPCX ($12k), NBIS ($20k), NFLX ($12k), UNH ($21k), WMT ($11k), F ($8k).
+     */
+    function setExamplePortfolio(customHoldings = null) {
+        const defaultHoldings = [
+            { ticker: "NVDA", dollarAmount: 15000 },
+            { ticker: "ASTS", dollarAmount: 18000 },
+            { ticker: "SPCX", dollarAmount: 12000 },
+            { ticker: "NBIS", dollarAmount: 20000 },
+            { ticker: "NFLX", dollarAmount: 12000 },
+            { ticker: "UNH",  dollarAmount: 21000 },
+            { ticker: "WMT",  dollarAmount: 11000 },
+            { ticker: "F",    dollarAmount: 8000 }
+        ];
+
+        const holdings = customHoldings || defaultHoldings;
+        currentPortfolioPositions = [];
+        holdings.forEach(item => {
+            addNewPositionRow({
+                ticker: item.ticker,
+                companyName: "--",
+                sector: "Unknown",
+                sectorTicker: "SPY",
+                industry: "--",
+                dollarAmount: item.dollarAmount,
+                weightPct: 0,
+                valid: false
+            });
+        });
+        recalculatePortfolioTotals();
+        const totalCapital = holdings.reduce((sum, h) => sum + (parseFloat(h.dollarAmount) || 0), 0);
+        console.log("Example portfolio populated");
+        return currentPortfolioPositions;
+    }
+
+    window.setExamplePortfolio = setExamplePortfolio;
+
+    // ==========================================
+    // STAGE LAYOUTS & VISUALS (Stages 3 & 6)
+    // ==========================================
+
+    BoardroomCore.setCustomStageLayoutHandler(({ stageNum, stageName, agents, workspace }) => {
+        // Stage 3: Sector Rebalancing Decision
+        if (stageNum === 3 || (stageName && stageName.includes("Sector Rebalancing Decision"))) {
+            const totalBaseCapital = currentPortfolioPositions.reduce((sum, p) => sum + (parseFloat(p.dollarAmount) || 0), 0);
+            const origStockCount = currentPortfolioPositions.filter(p => p.valid).length;
+
+            workspace.innerHTML = `
+                <div class="upload-receipt-container" style="flex: 1; max-width: 460px; min-width: 320px; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 22px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); align-self: stretch; height: 100%; min-height: 0; overflow-y: auto; box-sizing: border-box;">
+                    <h2 style="font-size: 18px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 14px; text-align: center;">SECTOR REBALANCING REPORT</h2>
+
+                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; font-size: 13.5px; margin-bottom: 12px; line-height: 1.3;">
+                        <div style="font-weight: 700; color: #475569;">Total Capital:</div>
+                        <div id="allocation-capital" style="font-weight: 800;">$${totalBaseCapital.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+
+                        <div style="font-weight: 700; color: #475569;">Analysis Date:</div>
+                        <div id="allocation-date" style="font-weight: bold;">${BoardroomCore.formatOrdinalDate(currentSimulatedDate || getCleanSimDate())}</div>
+
+                        <div style="font-weight: 700; color: #475569;">Original Portfolio:</div>
+                        <div style="font-weight: 700; color: #2563eb;">${origStockCount} Equities (${origStockCount > 0 ? '$' + totalBaseCapital.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '--'})</div>
+
+                        <div style="font-weight: 700; color: #475569;">Decision Status:</div>
+                        <div><span id="allocation-status" class="tool-status-badge status-running">PENDING DECISION</span></div>
+                    </div>
+
+                    <div id="sectorChartWrapper" style="width: 100%; height: 210px; position: relative; margin: 10px 0;">
+                        <canvas id="rebalanceSectorPieCanvas" style="display: block; width: 100%; height: 100%;"></canvas>
+                    </div>
+
+                    <div id="sectorComparisonTableContainer" style="margin-top: 12px; border-top: 1px solid #e2e8f0; padding-top: 10px;">
+                        <div style="font-size: 12px; color: #64748b; text-align: center;">Waiting for Portfolio Manager sector decision...</div>
+                    </div>
+                </div>
+            `;
+
+            if (agents && agents.length > 0) {
+                agents.forEach(agent => {
+                    BoardroomCore.createAgentPane(stageNum, agent.role, agent.color, agent.name);
+                });
+            } else {
+                BoardroomCore.createAgentPane(stageNum, "Impartial Portfolio Manager", "magenta", "Portfolio Manager");
+            }
+
+            if (confirmedSectorData) {
+                renderSectorRebalanceVisuals(confirmedSectorData);
+            }
+            return true;
+        }
+
+        // Stage 6: Final Executive Rebalancing Decision
+        if (stageNum === 6 || (stageName && stageName.includes("Final Executive Decision"))) {
+            const totalBaseCapital = currentPortfolioPositions.reduce((sum, p) => sum + (parseFloat(p.dollarAmount) || 0), 0);
+            const origStockCount = currentPortfolioPositions.filter(p => p.valid).length;
+            const horizonStr = document.getElementById("horizonSelect")?.value || "1 year";
+
+            workspace.innerHTML = `
+                <div class="upload-receipt-container" style="flex: 1.35; max-width: 680px; min-width: 360px; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 22px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); align-self: stretch; height: 100%; min-height: 0; overflow-y: auto; box-sizing: border-box;">
+                    <h2 style="font-size: 18px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 14px; text-align: center;">PORTFOLIO REBALANCING REPORT</h2>
+
+                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; font-size: 13.5px; margin-bottom: 12px; line-height: 1.3;">
+                        <div style="font-weight: 700; color: #475569;">Total Capital:</div>
+                        <div id="portfolio-capital" style="font-weight: 800;">$${totalBaseCapital.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+
+                        <div style="font-weight: 700; color: #475569;">Analysis Date:</div>
+                        <div id="portfolio-date" style="font-weight: bold;">${BoardroomCore.formatOrdinalDate(currentSimulatedDate || getCleanSimDate())}</div>
+
+                        <div style="font-weight: 700; color: #475569;">Original Portfolio:</div>
+                        <div style="font-weight: 700; color: #2563eb;">${origStockCount} Equities (${origStockCount > 0 ? '$' + totalBaseCapital.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '--'})</div>
+
+                        <div style="font-weight: 700; color: #475569;">Holdings Count:</div>
+                        <div id="portfolio-stock-count" style="font-weight: bold;">--</div>
+
+                        <div style="font-weight: 700; color: #475569;">Portfolio Status:</div>
+                        <div><span id="portfolio-status" class="tool-status-badge status-running">PENDING REBALANCE</span></div>
+                    </div>
+
+                    <!-- Performance Chart & Comparison Toggles -->
+                    <div id="portfolioChartSection" style="margin: 10px 0;">
+                        <!-- Toggle row: Benchmark comparisons on Left, Horizon on Right -->
+                        <div id="portfolioBacktestToggleContainer" style="display: none; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
+                            <!-- Left: Benchmark comparison toggles -->
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <span style="font-size: 11px; font-weight: 600; color: #64748b; margin-right: 2px;">Compare:</span>
+                                <button type="button" class="pie-toggle-btn active" id="compareToggleOriginal" onclick="switchRebalanceCompareMode('original')">vs Original Portfolio</button>
+                                <button type="button" class="pie-toggle-btn" id="compareToggleSp500" onclick="switchRebalanceCompareMode('sp500')">vs S&amp;P 500</button>
+                            </div>
+
+                            <!-- Right: Horizon toggles -->
+                            <div id="rebalanceHorizonToggleGroup" style="display: none; align-items: center; gap: 5px;">
+                                <span style="font-size: 11px; font-weight: 600; color: #64748b; margin-right: 2px;">Horizon:</span>
+                                <button type="button" class="pie-toggle-btn active" id="backtestToggleHorizon" onclick="switchPortfolioBacktestHorizon('horizon')">Hold for ${horizonStr}</button>
+                                <button type="button" class="pie-toggle-btn" id="backtestToggleNow" onclick="switchPortfolioBacktestHorizon('now')">Hold until Now</button>
+                            </div>
+                        </div>
+
+                        <!-- 3-Series Performance Chart Canvas -->
+                        <div id="portfolioChartWrapper" style="display: none; width: 100%; height: 270px; position: relative;">
+                            <canvas id="portfolioBacktestChartCanvas" style="display: block; width: 100%; height: 100%;"></canvas>
+                        </div>
+
+                        <!-- Dynamic Metrics Cards -->
+                        <div id="rebalanceBacktestMetrics" style="display: none; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; padding: 10px 12px; border-radius: 6px;">
+                            <div class="backtest-metric-item">
+                                <div id="metricReturnLabel" class="backtest-metric-label">Rebalanced Return</div>
+                                <div id="metricPortfolioReturn" class="backtest-metric-value" style="color: #10b981;">--</div>
+                            </div>
+                            <div class="backtest-metric-item">
+                                <div id="metricRelativeLabel" class="backtest-metric-label">Relative vs Original</div>
+                                <div id="metricRelativeVal" class="backtest-metric-value" style="color: #2563eb;">--</div>
+                            </div>
+                            <div class="backtest-metric-item">
+                                <div id="metricSharpeLabel" class="backtest-metric-label">Sharpe Ratio</div>
+                                <div id="metricSharpeRatio" class="backtest-metric-value" style="color: #0f172a;">--</div>
+                            </div>
+                            <div class="backtest-metric-item">
+                                <div id="metricDrawdownLabel" class="backtest-metric-label">Max Drawdown</div>
+                                <div id="metricMaxDrawdown" class="backtest-metric-value" style="color: #ef4444;">--</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Rebalanced Holdings Table -->
+                    <div id="portfolioHoldingsContainer" style="margin-top: 12px; border-top: 1px solid #e2e8f0; padding-top: 10px;">
+                        <div style="font-size: 12px; color: #64748b; text-align: center;">Waiting for Portfolio Manager execution...</div>
+                    </div>
+
+                    <div id="finalTimeReportRow" style="margin-top: 15px; padding-top: 12px; border-top: 1px dashed #cbd5e1; display: none; text-align: center;">
+                        <div style="font-size: 15px; font-weight: 700; color: #10b981; margin-bottom: 5px;">✓ Portfolio Rebalanced Successfully</div>
+                        <div id="finalTimeReportValue" style="font-size: 13px; font-weight: 600; color: #475569;">Time Taken: Running...</div>
+                    </div>
+                </div>
+            `;
+
+            if (agents && agents.length > 0) {
+                agents.forEach(agent => {
+                    BoardroomCore.createAgentPane(stageNum, agent.role, agent.color, agent.name);
+                });
+            } else {
+                BoardroomCore.createAgentPane(stageNum, "Impartial Portfolio Manager", "magenta", "Portfolio Manager");
+            }
+
+            if (confirmedPortfolioData) {
+                renderPortfolioVisuals(confirmedPortfolioData);
+            }
+            return true;
+        }
+
+        return false;
+    });
+
+    // ==========================================
+    // STAGE 3: SECTOR REBALANCING VISUALS
+    // ==========================================
+
+    function renderSectorRebalanceVisuals(allocationData) {
+        confirmedSectorData = allocationData;
+        const statusEl = document.getElementById("allocation-status");
+        if (statusEl) {
+            statusEl.innerText = "CONFIRMED";
+            statusEl.className = "tool-status-badge status-success";
+        }
+
+        let payloadRecord = allocationData;
+        if (allocationData && allocationData.confirmedAllocation) {
+            payloadRecord = allocationData.confirmedAllocation;
+        }
+
+        const secDict = payloadRecord.sectorAllocations || {};
+        const labels = [];
+        const values = [];
+        const targetSectorMap = {};
+
+        for (const [secKey, secObj] of Object.entries(secDict)) {
+            const name = (typeof secObj === "object" && secObj.sector) ? secObj.sector : secKey;
+            const ticker = (typeof secObj === "object" && secObj.ticker) ? secObj.ticker : secKey;
+            const pct = (typeof secObj === "object" && secObj.allocationPct !== undefined) ? Number(secObj.allocationPct) : Number(secObj);
+            if (pct > 0) {
+                labels.push(name);
+                values.push(pct);
+                targetSectorMap[name] = pct;
+                targetSectorMap[name.toLowerCase()] = pct;
+                targetSectorMap[name.toLowerCase().replace(/\s+/g, '_')] = pct;
+                targetSectorMap[ticker] = pct;
+                targetSectorMap[ticker.toLowerCase()] = pct;
+                targetSectorMap[secKey] = pct;
+                targetSectorMap[secKey.toLowerCase()] = pct;
+            }
+        }
+
+        // Render Donut Chart matching portfolio_creation style
+        const canvas = document.getElementById("rebalanceSectorPieCanvas");
+        if (canvas && labels.length > 0) {
+            if (sectorChartInstance) {
+                sectorChartInstance.destroy();
+                sectorChartInstance = null;
+            }
+            const colors = [
+                "#2563eb", "#10b981", "#f59e0b", "#8b5cf6",
+                "#06b6d4", "#ec4899", "#64748b", "#14b8a6",
+                "#f97316", "#a855f7", "#3b82f6"
+            ];
+            sectorChartInstance = new Chart(canvas.getContext("2d"), {
+                type: "doughnut",
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: colors.slice(0, labels.length),
+                        borderWidth: 2,
+                        borderColor: "#ffffff"
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: "bottom",
+                            labels: { boxWidth: 12, font: { size: 11, weight: "600" } }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => `${ctx.label}: ${ctx.parsed}%`
+                            }
+                        }
+                    },
+                    cutout: "58%"
+                }
+            });
+        }
+
+        // Render Comparative Table (Baseline vs Target Rebalanced) with identical table styling
+        const tableContainer = document.getElementById("sectorComparisonTableContainer");
+        if (tableContainer) {
+            // Aggregate baseline sectors
+            const baseSectorAgg = {};
+            const totalBaseCapital = currentPortfolioPositions.reduce((sum, p) => sum + (parseFloat(p.dollarAmount) || 0), 0);
+            currentPortfolioPositions.forEach(p => {
+                if (p.valid && p.sector) {
+                    baseSectorAgg[p.sector] = (baseSectorAgg[p.sector] || 0) + (parseFloat(p.dollarAmount) || 0);
+                }
+            });
+
+            const allSectors = Array.from(new Set([...Object.keys(baseSectorAgg), ...labels]));
+            let rowsHtml = "";
+
+            allSectors.forEach((sec, idx) => {
+                const baseDollar = baseSectorAgg[sec] || 0;
+                const basePct = totalBaseCapital > 0 ? (baseDollar / totalBaseCapital * 100.0) : 0;
+                const secKey = sec.trim();
+                const secKeyLower = secKey.toLowerCase();
+                const secKeySnake = secKeyLower.replace(/\s+/g, '_');
+                const targetPct = targetSectorMap[secKey] ?? targetSectorMap[secKeyLower] ?? targetSectorMap[secKeySnake] ?? 0;
+                const deltaPct = targetPct - basePct;
+                const deltaColor = deltaPct > 0.05 ? "#10b981" : (deltaPct < -0.05 ? "#ef4444" : "#64748b");
+                const deltaSign = deltaPct > 0.05 ? "+" : "";
+                const rowBg = idx % 2 === 0 ? "#ffffff" : "#f8fafc";
+
+                rowsHtml += `
+                    <tr style="background: ${rowBg}; border-bottom: 1px solid #f1f5f9;">
+                        <td style="padding: 5px 8px; font-weight: 600; color: #0f172a;">${sec}</td>
+                        <td style="padding: 5px 8px; text-align: right; color: #64748b;">${basePct.toFixed(1)}%</td>
+                        <td style="padding: 5px 8px; text-align: right; font-weight: 700; color: #2563eb;">${targetPct.toFixed(1)}%</td>
+                        <td style="padding: 5px 8px; text-align: right; font-weight: 700; color: ${deltaColor};">${deltaSign}${deltaPct.toFixed(1)}%</td>
+                    </tr>
+                `;
+            });
+
+            tableContainer.innerHTML = `
+                <table style="width: 100%; border-collapse: collapse; font-size: 12.5px;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid #cbd5e1; background: #f8fafc;">
+                            <th style="text-align: left; padding: 6px 8px;">Sector</th>
+                            <th style="text-align: right; padding: 6px 8px;">Baseline</th>
+                            <th style="text-align: right; padding: 6px 8px;">Target</th>
+                            <th style="text-align: right; padding: 6px 8px;">Delta</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+            `;
+        }
+    }
+
+    // ==========================================
+    // STAGE 6: FINAL SCREEN, BACKTEST & TABLE
+    // ==========================================
+
+    function renderPortfolioVisuals(payload) {
+        confirmedPortfolioData = payload;
+        const statusEl = document.getElementById("portfolio-status");
+        if (statusEl) {
+            statusEl.innerText = "CONFIRMED";
+            statusEl.className = "tool-status-badge status-success";
+        }
+
+        const data = payload.confirmedPortfolio || payload;
+        const positions = data.positions || [];
+        const totalBaseCapital = currentPortfolioPositions.reduce((sum, p) => sum + (parseFloat(p.dollarAmount) || 0), 0);
+        const cleanCapital = totalBaseCapital > 0 ? totalBaseCapital : ((data.initialCapital) ? parseFloat(data.initialCapital) : 100000.0);
+
+        const effectiveSimDate = currentSimulatedDate || (data && data.asOfDate) || BoardroomCore.getSimulatedDate() || getCleanSimDate();
+
+        const capitalEl = document.getElementById("portfolio-capital");
+        const countEl = document.getElementById("portfolio-stock-count");
+        if (capitalEl) capitalEl.innerText = `$${cleanCapital.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+        if (countEl) countEl.innerText = `${positions.length} Equities`;
+
+        const toggleContainer = document.getElementById("portfolioBacktestToggleContainer");
+        const chartWrapper = document.getElementById("portfolioChartWrapper");
+        const metricsContainer = document.getElementById("rebalanceBacktestMetrics");
+
+        // Fetch 3-series multi-benchmark backtest
+        if (effectiveSimDate && isDateInPast(effectiveSimDate)) {
+            const timeHorizonVal = document.getElementById("horizonSelect")?.value || "1 year";
+            fetch("/api/portfolio/backtest", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    simDate: effectiveSimDate,
+                    initialCapital: cleanCapital,
+                    positions: positions,
+                    originalPositions: currentPortfolioPositions,
+                    cashPosition: { weightPct: 0, dollarAllocation: 0 },
+                    timeHorizon: timeHorizonVal
+                })
+            })
+            .then(res => res.json())
+            .then(backtestRes => {
+                if (backtestRes && backtestRes.ok) {
+                    cachedBacktestData = backtestRes;
+                    updateHorizonButtons(backtestRes);
+                    if (toggleContainer) toggleContainer.style.display = "flex";
+                    if (chartWrapper) chartWrapper.style.display = "block";
+                    if (metricsContainer) metricsContainer.style.display = "grid";
+                    const activeSlice = (backtestRes.canToggle && currentBacktestHorizonMode === "horizon" && backtestRes.horizon) ? backtestRes.horizon : (backtestRes.full || backtestRes);
+                    render3SeriesChart(activeSlice);
+                    updateMetricsCards(activeSlice);
+                    renderRebalancedHoldingsTable(positions, cleanCapital, activeSlice);
+                } else {
+                    console.error("Backtest failed:", backtestRes?.error);
+                    if (toggleContainer) toggleContainer.style.display = "none";
+                    if (chartWrapper) chartWrapper.style.display = "none";
+                    if (metricsContainer) metricsContainer.style.display = "none";
+                    renderRebalancedHoldingsTable(positions, cleanCapital, null);
+                }
+            })
+            .catch(err => {
+                console.error("Backtest API error:", err);
+                if (toggleContainer) toggleContainer.style.display = "none";
+                if (chartWrapper) chartWrapper.style.display = "none";
+                if (metricsContainer) metricsContainer.style.display = "none";
+                renderRebalancedHoldingsTable(positions, cleanCapital, null);
+            });
+        } else {
+            if (toggleContainer) toggleContainer.style.display = "none";
+            if (chartWrapper) chartWrapper.style.display = "none";
+            if (metricsContainer) metricsContainer.style.display = "none";
+            renderRebalancedHoldingsTable(positions, cleanCapital, null);
+        }
+    }
+
+    function updateHorizonButtons(backtestRes) {
+        const horizonGroup = document.getElementById("rebalanceHorizonToggleGroup");
+        const btnHorizon = document.getElementById("backtestToggleHorizon");
+        const btnNow = document.getElementById("backtestToggleNow");
+        const horizonStr = backtestRes?.timeHorizon || document.getElementById("horizonSelect")?.value || "1 year";
+
+        if (!horizonGroup) return;
+
+        if (backtestRes && backtestRes.canToggle) {
+            if (btnHorizon) {
+                btnHorizon.innerText = `Hold for ${horizonStr}`;
+                if (currentBacktestHorizonMode === "horizon") {
+                    btnHorizon.classList.add("active");
+                } else {
+                    btnHorizon.classList.remove("active");
+                }
+            }
+            if (btnNow) {
+                btnNow.innerText = "Hold until Now";
+                if (currentBacktestHorizonMode === "now") {
+                    btnNow.classList.add("active");
+                } else {
+                    btnNow.classList.remove("active");
+                }
+            }
+            horizonGroup.style.display = "flex";
+        } else {
+            horizonGroup.style.display = "none";
+        }
+    }
+
+    function switchRebalanceCompareMode(mode) {
+        currentCompareBenchmarkMode = mode;
+        const btnOrig = document.getElementById("compareToggleOriginal");
+        const btnSp = document.getElementById("compareToggleSp500");
+
+        if (mode === "original") {
+            if (btnOrig) btnOrig.classList.add("active");
+            if (btnSp) btnSp.classList.remove("active");
+        } else {
+            if (btnSp) btnSp.classList.add("active");
+            if (btnOrig) btnOrig.classList.remove("active");
+        }
+
+        if (cachedBacktestData) {
+            const activeSlice = (cachedBacktestData.canToggle && currentBacktestHorizonMode === "horizon" && cachedBacktestData.horizon) ? cachedBacktestData.horizon : (cachedBacktestData.full || cachedBacktestData);
+            updateMetricsCards(activeSlice);
+        }
+    }
+
+    function switchPortfolioBacktestHorizon(mode) {
+        currentBacktestHorizonMode = mode;
+        const btnHorizon = document.getElementById("backtestToggleHorizon");
+        const btnNow = document.getElementById("backtestToggleNow");
+
+        if (mode === "horizon") {
+            if (btnHorizon) btnHorizon.classList.add("active");
+            if (btnNow) btnNow.classList.remove("active");
+        } else {
+            if (btnNow) btnNow.classList.add("active");
+            if (btnHorizon) btnHorizon.classList.remove("active");
+        }
+
+        if (cachedBacktestData) {
+            const activeSlice = (cachedBacktestData.canToggle && mode === "horizon" && cachedBacktestData.horizon) ? cachedBacktestData.horizon : (cachedBacktestData.full || cachedBacktestData);
+            render3SeriesChart(activeSlice);
+            updateMetricsCards(activeSlice);
+            if (confirmedPortfolioData) {
+                const positions = confirmedPortfolioData.confirmedPortfolio?.positions || [];
+                const cleanCapital = confirmedPortfolioData.confirmedPortfolio?.initialCapital || 100000;
+                renderRebalancedHoldingsTable(positions, cleanCapital, activeSlice);
+            }
+        }
+    }
+
+    const hoverCrosshairPlugin = {
+        id: "hoverCrosshair",
+        afterDraw: (chart) => {
+            if (chart.tooltip && chart.tooltip._active && chart.tooltip._active.length > 0) {
+                const activePoint = chart.tooltip._active[0];
+                const xPixel = activePoint.element.x;
+                const ctx = chart.ctx;
+                ctx.save();
+                ctx.beginPath();
+                ctx.setLineDash([3, 3]);
+                ctx.strokeStyle = "#94a3b8";
+                ctx.lineWidth = 1.2;
+                ctx.moveTo(xPixel, chart.scales.y.top);
+                ctx.lineTo(xPixel, chart.scales.y.bottom);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+    };
+
+    function render3SeriesChart(sliceData) {
+        const canvas = document.getElementById("portfolioBacktestChartCanvas");
+        if (!canvas) return;
+
+        if (portfolioBacktestChartInstance) {
+            portfolioBacktestChartInstance.destroy();
+            portfolioBacktestChartInstance = null;
+        }
+
+        const datasets = [
+            {
+                label: "Rebalanced Portfolio",
+                data: sliceData.portfolioPoints || [],
+                borderColor: "#2563eb",
+                borderWidth: 2.4,
+                backgroundColor: "rgba(37, 99, 235, 0.08)",
+                fill: "start",
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 3
+            },
+            {
+                label: "Original Portfolio",
+                data: sliceData.originalPoints || [],
+                borderColor: "#f59e0b",
+                borderWidth: 2,
+                backgroundColor: "transparent",
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 3
+            },
+            {
+                label: "S&P 500",
+                data: sliceData.sp500Points || [],
+                borderColor: "#475569",
+                borderWidth: 1.8,
+                borderDash: [5, 4],
+                backgroundColor: "transparent",
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 3
+            }
+        ];
+
+        const ctx = canvas.getContext("2d");
+        portfolioBacktestChartInstance = new Chart(ctx, {
+            type: "line",
+            data: { datasets: datasets },
+            plugins: [hoverCrosshairPlugin],
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                layout: { padding: { left: 5, right: 15, top: 10, bottom: 0 } },
+                interaction: { mode: "index", intersect: false, axis: "x" },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: "top",
+                        align: "end",
+                        labels: { boxWidth: 14, font: { size: 11, weight: "600" }, color: "#475569" }
+                    },
+                    tooltip: {
+                        mode: "index",
+                        intersect: false,
+                        callbacks: {
+                            label: (ctx) => `${ctx.dataset.label}: $${ctx.parsed.y.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: "time",
+                        time: {
+                            tooltipFormat: "yyyy-MM-dd",
+                            displayFormats: { day: "MMM d ''yy", week: "MMM d ''yy", month: "MMM ''yy", quarter: "MMM ''yy", year: "yyyy" }
+                        },
+                        min: sliceData.startDate ? new Date(sliceData.startDate + "T00:00:00").getTime() : undefined,
+                        max: sliceData.endDate ? new Date(sliceData.endDate + "T00:00:00").getTime() : undefined,
+                        grid: { display: false },
+                        ticks: { color: "#64748b", font: { weight: "600", size: 10 }, maxTicksLimit: 7 },
+                        border: { display: false }
+                    },
+                    y: {
+                        suggestedMin: sliceData.yMin,
+                        suggestedMax: sliceData.yMax,
+                        grid: { color: "rgba(226, 232, 240, 0.8)", drawBorder: false, lineWidth: 1 },
+                        ticks: {
+                            color: "#64748b",
+                            font: { weight: "600", size: 10 },
+                            callback: (val) => formatYAxisLabel(val)
+                        },
+                        border: { display: false }
+                    }
+                }
+            }
+        });
+    }
+
+    function updateMetricsCards(sliceData) {
+        if (!sliceData || !sliceData.metrics) return;
+        const m = sliceData.metrics;
+
+        const retLabelEl = document.getElementById("metricReturnLabel");
+        const retEl = document.getElementById("metricPortfolioReturn");
+        const relLabelEl = document.getElementById("metricRelativeLabel");
+        const relValEl = document.getElementById("metricRelativeVal");
+        const srEl = document.getElementById("metricSharpeRatio");
+        const ddEl = document.getElementById("metricMaxDrawdown");
+
+        const horizonStr = cachedBacktestData?.timeHorizon || "Horizon";
+        if (retLabelEl) {
+            retLabelEl.innerText = currentBacktestHorizonMode === "horizon" ? `Return (${horizonStr})` : "Return as of today";
+        }
+
+        if (retEl) {
+            const sign = m.portfolioReturnPct >= 0 ? "+" : "";
+            const dolSign = m.portfolioReturnDollar >= 0 ? "+$" : "-$";
+            const absDol = Math.abs(m.portfolioReturnDollar).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            retEl.innerText = `${sign}${m.portfolioReturnPct.toFixed(2)}% (${dolSign}${absDol})`;
+            retEl.style.color = m.portfolioReturnPct >= 0 ? "#10b981" : "#ef4444";
+        }
+
+        if (currentCompareBenchmarkMode === "original") {
+            if (relLabelEl) relLabelEl.innerText = "Relative vs Original";
+            if (relValEl) {
+                const origAlpha = (m.originalAlphaPct !== undefined && m.originalAlphaPct !== null) ? m.originalAlphaPct : (m.portfolioReturnPct - (m.originalReturnPct || 0));
+                const sign = origAlpha >= 0 ? "+" : "";
+                const label = origAlpha >= 0 ? "outperforming" : "underperforming";
+                relValEl.innerText = `${sign}${origAlpha.toFixed(2)}% (${label})`;
+                relValEl.style.color = origAlpha >= 0 ? "#10b981" : "#ef4444";
+            }
+            if (srEl) {
+                const portSr = m.sharpeRatio.toFixed(2);
+                const origSr = (m.originalSharpeRatio !== undefined && m.originalSharpeRatio !== null) ? m.originalSharpeRatio.toFixed(2) : "--";
+                srEl.innerHTML = `<span style="font-weight: 700;">${portSr}</span> <span style="font-size: 11px; font-weight: 500; color: #64748b;">(vs ${origSr} for Original)</span>`;
+            }
+            if (ddEl) {
+                const portDd = Math.abs(m.maxDrawdownPct || 0).toFixed(2);
+                const origDd = Math.abs(m.originalMaxDrawdownPct || 0).toFixed(2);
+                const color = Number(portDd) <= Number(origDd) ? "#10b981" : "#ef4444";
+                ddEl.innerHTML = `<span style="color: ${color}; font-weight: 700;">${portDd}%</span> <span style="font-size: 11px; font-weight: 500; color: #64748b;">(vs ${origDd}% for Original)</span>`;
+            }
+        } else {
+            // vs S&P 500
+            if (relLabelEl) relLabelEl.innerText = "Relative vs S&P 500";
+            if (relValEl) {
+                const sign = m.alphaPct >= 0 ? "+" : "";
+                const label = m.alphaPct >= 0 ? "outperforming" : "underperforming";
+                relValEl.innerText = `${sign}${m.alphaPct.toFixed(2)}% (${label})`;
+                relValEl.style.color = m.alphaPct >= 0 ? "#10b981" : "#ef4444";
+            }
+            if (srEl) {
+                srEl.innerHTML = `<span style="font-weight: 700;">${m.sharpeRatio.toFixed(2)}</span>`;
+            }
+            if (ddEl) {
+                const portDd = Math.abs(m.maxDrawdownPct || 0).toFixed(2);
+                const spDd = Math.abs(m.sp500MaxDrawdownPct || 0).toFixed(2);
+                const color = Number(portDd) <= Number(spDd) ? "#10b981" : "#ef4444";
+                ddEl.innerHTML = `<span style="color: ${color}; font-weight: 700;">${portDd}%</span> <span style="font-size: 11px; font-weight: 500; color: #64748b;">(vs ${spDd}% for S&P 500)</span>`;
+            }
+        }
+    }
+
+    // Render Holdings Table replicating exact styles from portfolio_creation.html
+    // Includes Original Portfolio comparison column
+    function renderRebalancedHoldingsTable(positions, cleanCapital, backtestData = null) {
+        const container = document.getElementById("portfolioHoldingsContainer");
+        if (!container) return;
+
+        const hasBacktest = Boolean(backtestData && backtestData.holdingReturns);
+        const holdingReturns = hasBacktest ? backtestData.holdingReturns : {};
+        const colCount = hasBacktest ? 7 : 6;
+
+        // Build baseline map
+        const baseMap = {};
+        currentPortfolioPositions.forEach(p => {
+            if (p.ticker) baseMap[p.ticker] = p;
+        });
+
+        let tableHtml = `
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 12px;">
+                <thead>
+                    <tr style="border-bottom: 2px solid #cbd5e1; background: #f8fafc;">
+                        <th style="text-align: left; padding: 5px 6px;">Ticker/Company</th>
+                        <th style="text-align: left; padding: 5px 6px;">Sector</th>
+                        <th style="text-align: left; padding: 5px 6px;">Industry</th>
+                        <th style="text-align: right; padding: 5px 6px;">Old Weight</th>
+                        <th style="text-align: right; padding: 5px 6px;">New Weight</th>
+                        <th style="text-align: right; padding: 5px 6px;">Allocation</th>
+                        ${hasBacktest ? '<th style="text-align: right; padding: 5px 6px;">Return</th>' : ''}
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        positions.forEach((pos, idx) => {
+            const ticker = pos.ticker;
+            const basePos = baseMap[ticker];
+            const baseWeight = basePos ? `${basePos.weightPct.toFixed(0)}%` : `<span style="color: #10b981; font-weight: 700;">New</span>`;
+            const dollarAmt = pos.dollarAllocation !== undefined 
+                ? Number(pos.dollarAllocation).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) 
+                : (cleanCapital * (pos.weightPct / 100)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const compName = pos.companyName 
+                ? `<span style="font-size: 10.5px; color: #64748b; margin-left: 5px; font-weight: 400;">(${pos.companyName})</span>` 
+                : "";
+            const rowBg = idx % 2 === 0 ? "#ffffff" : "#f8fafc";
+            const hasRationale = Boolean(pos.rationale);
+
+            let returnCellHtml = "";
+            if (hasBacktest) {
+                const retInfo = holdingReturns[ticker];
+                if (retInfo && retInfo.returnPct !== undefined) {
+                    const retPct = Number(retInfo.returnPct);
+                    const color = retPct > 0 ? "#10b981" : (retPct < 0 ? "#ef4444" : "#64748b");
+                    const sign = retPct > 0 ? "+" : "";
+                    returnCellHtml = `<td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; text-align: right; font-weight: 700; color: ${color}; font-size: 11.5px;">${sign}${retPct.toFixed(2)}%</td>`;
+                } else {
+                    returnCellHtml = `<td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; text-align: right; color: #94a3b8; font-size: 11px;">--</td>`;
+                }
+            }
+
+            tableHtml += `
+                <tr style="background: ${rowBg};${hasRationale ? '' : ' border-bottom: 1px solid #e2e8f0;'}">
+                    <td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; font-weight: 700; color: #0f172a;">${ticker}${compName}</td>
+                    <td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; color: #475569; font-size: 11px;">${pos.sector || '--'}</td>
+                    <td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; color: #64748b; font-size: 11px;">${pos.industry || '--'}</td>
+                    <td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; text-align: right; color: #64748b; font-size: 11px; font-weight: 600;">${baseWeight}</td>
+                    <td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; text-align: right; font-weight: 700; color: #2563eb;">${Number(pos.weightPct).toFixed(0)}%</td>
+                    <td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; text-align: right; color: #334155;">$${dollarAmt}</td>
+                    ${returnCellHtml}
+                </tr>
+            `;
+
+            if (hasRationale) {
+                tableHtml += `
+                    <tr style="border-bottom: 1px solid #e2e8f0; background: ${rowBg};">
+                        <td colspan="${colCount}" style="padding: 2px 8px 10px 8px; font-size: 11px; color: #475569; line-height: 1.4;">
+                            <span style="font-weight: 700; color: #1e293b; text-transform: uppercase; font-size: 9.5px; letter-spacing: 0.5px;">Rationale: </span>
+                            <span>${pos.rationale}</span>
+                        </td>
+                    </tr>
+                `;
+            }
+        });
+
+        tableHtml += `</tbody></table>`;
+        container.innerHTML = tableHtml;
+    }
+
+    // ==========================================
+    // LIFECYCLE & SSE EVENT LISTENERS (BACKPORTED)
+    // ==========================================
+
+    BoardroomCore.on("simulationStarted", () => {
+        confirmedSectorData = null;
+        confirmedPortfolioData = null;
+        cachedBacktestData = null;
+        currentBacktestHorizonMode = "horizon";
+        currentCompareBenchmarkMode = "original";
+        if (portfolioBacktestChartInstance) {
+            portfolioBacktestChartInstance.destroy();
+            portfolioBacktestChartInstance = null;
+        }
+        if (sectorChartInstance) {
+            sectorChartInstance.destroy();
+            sectorChartInstance = null;
+        }
+        const finalTimeRow = document.getElementById("finalTimeReportRow");
+        if (finalTimeRow) finalTimeRow.style.display = "none";
+        const toggleContainer = document.getElementById("portfolioBacktestToggleContainer");
+        if (toggleContainer) toggleContainer.style.display = "none";
+        const chartWrapper = document.getElementById("portfolioChartWrapper");
+        if (chartWrapper) chartWrapper.style.display = "none";
+        const metricsContainer = document.getElementById("rebalanceBacktestMetrics");
+        if (metricsContainer) metricsContainer.style.display = "none";
+        const horizonGroup = document.getElementById("rebalanceHorizonToggleGroup");
+        if (horizonGroup) horizonGroup.style.display = "none";
+    });
+
+    BoardroomCore.on("sectorAllocationConfirmed", (payload) => {
+        if (payload && payload.confirmedAllocation) {
+            renderSectorRebalanceVisuals(payload.confirmedAllocation);
+        }
+    });
+
+    BoardroomCore.on("portfolioCreated", (payload) => {
+        if (payload && payload.confirmedPortfolio) {
+            renderPortfolioVisuals(payload.confirmedPortfolio);
+        }
+    });
+
+    // Also catch tool confirmation events directly if tool finishes
+    BoardroomCore.on("toolCallEnd", (payload) => {
+        if (payload.toolName === "confirmSectorAllocation" && payload.status === "success") {
+            try {
+                const res = (typeof payload.result === "string") ? JSON.parse(payload.result) : payload.result;
+                if (res) renderSectorRebalanceVisuals(res);
+            } catch (e) {
+                console.error("Error parsing sector toolCallEnd result", e);
+            }
+        }
+        if (payload.toolName === "confirmPortfolioAllocation" && payload.status === "success") {
+            try {
+                const res = (typeof payload.result === "string") ? JSON.parse(payload.result) : payload.result;
+                if (res) renderPortfolioVisuals(res);
+            } catch (e) {
+                console.error("Error parsing portfolio toolCallEnd result", e);
+            }
+        }
+    });
+
+    BoardroomCore.on("simComplete", (payload) => {
+        const finalTimeRow = document.getElementById("finalTimeReportRow");
+        if (finalTimeRow) {
+            finalTimeRow.style.display = "block";
+            const finalTimeVal = document.getElementById("finalTimeReportValue");
+            if (finalTimeVal && payload.totalTime) {
+                finalTimeVal.innerText = "Time Taken: " + payload.totalTime;
+            }
+        }
+    });
+
+    // ==========================================
+    // INITIALIZATION & BOARDROOM CORE HOOKS
+    // ==========================================
+
+    function clampInput(inputEl, minVal, maxVal, allowEmpty = false) {
+        if (!inputEl) return;
+        inputEl.addEventListener("change", function () {
+            const valStr = this.value.trim();
+            if (allowEmpty && valStr === "") return;
+            let num = parseFloat(valStr);
+            if (isNaN(num)) {
+                this.value = allowEmpty ? "" : minVal;
+                return;
+            }
+            if (num < minVal) num = minVal;
+            if (num > maxVal) num = maxVal;
+            this.value = num;
+        });
+    }
+
+    clampInput(document.getElementById("targetSectorCountInput"), 1, 11, true);
+    clampInput(document.getElementById("targetStockCountInput"), 1, 30, true);
+
+    function toggleAllocationBias() {
+        const checkbox = document.getElementById("allocationBiasCheckbox");
+        const container = document.getElementById("allocationBiasSliderContainer");
+        if (container && checkbox) {
+            container.style.display = checkbox.checked ? "flex" : "none";
+        }
+    }
+
+    function updateAllocationBiasTooltip() {
+        const slider = document.getElementById("allocationBiasSlider");
+        if (!slider) return;
+        const tooltips = {
+            1: "Maximum Growth Bias",
+            2: "Moderate Growth Bias",
+            3: "Minor Growth Bias",
+            4: "Minor Defensive Bias",
+            5: "Moderate Defensive Bias",
+            6: "Maximum Defensive Bias"
+        };
+        slider.title = tooltips[slider.value] || "";
+    }
+
+    function updateRebalanceAmountTooltip() {
+        const slider = document.getElementById("rebalanceAmountSlider");
+        if (!slider) return;
+        const tooltips = {
+            1: "Level 1: Minimal / Light Rebalance (Preserve almost all existing holdings, minor adjustments)",
+            2: "Level 2: Mild Rebalance (Trim low-conviction positions, light sector re-weighting)",
+            3: "Level 3: Moderate Rebalance (Balanced rebalance; adjust sector tilts and selective stock replacement)",
+            4: "Level 4: Substantial Rebalance (Significant reallocation towards new opportunities)",
+            5: "Level 5: Aggressive Rebalance (High rebalance amount; extensively remodel sectors and individual stocks)",
+            6: "Level 6: Maximum / Heavy Rebalance (Total portfolio overhaul; aggressively restructure all positions)"
+        };
+        slider.title = tooltips[slider.value] || "";
+    }
+
+    // Initialize BoardroomCore
+    BoardroomCore.init({
+        defaultStages: portfolioRebalancingStages,
+        initialMode: document.getElementById("modeSelect")?.value || "complete",
+        getPayload: () => {
+            if (currentPortfolioPositions.length === 0) {
+                alert("Please configure your baseline portfolio first. The portfolio is currently empty.");
+                openCurrentPortfolioModal();
+                return null;
+            }
+
+            const validation = validateEntirePortfolio();
+            if (!validation.valid) {
+                alert(`Cannot start simulation: ${validation.error}`);
+                openCurrentPortfolioModal();
+                return null;
+            }
+
+            const simDate = BoardroomCore.getSimulatedDate();
+            if (simDate === undefined) {
+                return null;
+            }
+            currentSimulatedDate = simDate;
+
+            const targetSectorsRaw = document.getElementById("targetSectorCountInput")?.value?.trim();
+            let targetSectors = (targetSectorsRaw && targetSectorsRaw !== "") ? parseInt(targetSectorsRaw, 10) : null;
+            if (targetSectors !== null) targetSectors = Math.max(1, Math.min(11, targetSectors));
+
+            const targetStocksRaw = document.getElementById("targetStockCountInput")?.value?.trim();
+            let targetStocks = (targetStocksRaw && targetStocksRaw !== "") ? parseInt(targetStocksRaw, 10) : null;
+            if (targetStocks !== null) targetStocks = Math.max(1, Math.min(30, targetStocks));
+
+            const mode = document.getElementById("modeSelect").value;
+            const horizon = document.getElementById("horizonSelect").value;
+
+            const isBiasEnabled = document.getElementById("allocationBiasCheckbox")?.checked;
+            let allocationBiasVal = null;
+            if (isBiasEnabled) {
+                const sliderVal = parseInt(document.getElementById("allocationBiasSlider")?.value, 10);
+                allocationBiasVal = isNaN(sliderVal) ? 1 : Math.max(1, Math.min(6, sliderVal));
+            }
+
+            const sliderVal = parseInt(document.getElementById("rebalanceAmountSlider")?.value, 10);
+            const rebalanceAmountVal = isNaN(sliderVal) ? 3 : Math.max(1, Math.min(6, sliderVal));
+
+            return {
+                action: "start",
+                engineType: "portfolio_rebalancing",
+                initialCapital: validation.totalCapital,
+                currentPositions: currentPortfolioPositions,
+                targetSectorCount: targetSectors,
+                targetStockCount: targetStocks,
+                boardroomPace: mode,
+                timeHorizon: horizon,
+                allocationBias: allocationBiasVal,
+                rebalanceAmount: rebalanceAmountVal,
+                simulatedDate: simDate,
+                ...BoardroomCore.getGenerationSettings()
+            };
+        }
+    });
+</script>
+{% endblock %}

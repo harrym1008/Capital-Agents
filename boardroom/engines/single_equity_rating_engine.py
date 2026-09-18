@@ -704,16 +704,16 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
             f"{separator}"
 
             f"\n{ANSI.BOLD}{self.bullAnalyst.color}Bullish Analyst Summary:\n{ANSI.RESET}{bullThesisUISummary}\n"
-            f"\nâ‡©\n"
+            f"\n-->\n"
             f"\n{ANSI.BOLD}{self.consRiskAnalyst.color}Conservative Risk Analyst Summary and Questions:\n{ANSI.RESET}{consQuestionsUISummary}\n"
-            f"\nâ‡©\n"
+            f"\n-->\n"
             f"\n{ANSI.BOLD}{self.bullAnalyst.color}Bullish Analyst Defense:\n{ANSI.RESET}{bullDefenseUISummary}\n"
             f"\n{separator}\n"
 
             f"\n{ANSI.BOLD}{self.bearAnalyst.color}Bearish Analyst Summary:\n{ANSI.RESET}{bearThesisUISummary}\n"
-            f"\nâ‡©\n"
+            f"\n-->\n"
             f"\n{ANSI.BOLD}{self.aggRiskAnalyst.color}Aggressive Risk Analyst Summary and Questions:\n{ANSI.RESET}{aggQuestionsUISummary}\n"
-            f"\nâ‡©\n"
+            f"\n-->\n"
             f"\n{ANSI.BOLD}{self.bearAnalyst.color}Bearish Analyst Defense:\n{ANSI.RESET}{bearDefenseUISummary}\n"
             f"\n{separator}\n"
 
@@ -734,16 +734,16 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
             f"{separator}"
 
             f"\n{ANSI.BOLD}{self.bullAnalyst.color}Bullish Analyst Summary:\n{ANSI.RESET}{bullThesisRaw}\n"
-            f"\nâ‡©\n"
+            f"\n-->\n"
             f"\n{ANSI.BOLD}{self.consRiskAnalyst.color}Conservative Risk Analyst Summary and Questions:\n{ANSI.RESET}{consQuestionsRaw}\n"
-            f"\nâ‡©\n"
+            f"\n-->\n"
             f"\n{ANSI.BOLD}{self.bullAnalyst.color}Bullish Analyst Defense:\n{ANSI.RESET}{bullDefenseRaw}\n"
             f"\n{separator}\n"
 
             f"\n{ANSI.BOLD}{self.bearAnalyst.color}Bearish Analyst Summary:\n{ANSI.RESET}{bearThesisRaw}\n"
-            f"\nâ‡©\n"
+            f"\n-->\n"
             f"\n{ANSI.BOLD}{self.aggRiskAnalyst.color}Aggressive Risk Analyst Summary and Questions:\n{ANSI.RESET}{aggQuestionsRaw}\n"
-            f"\nâ‡©\n"
+            f"\n-->\n"
             f"\n{ANSI.BOLD}{self.bearAnalyst.color}Bearish Analyst Defense:\n{ANSI.RESET}{bearDefenseRaw}\n"
             f"\n{separator}\n"
 

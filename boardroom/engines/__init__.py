@@ -1,2 +1,3 @@
 from .single_equity_rating_engine import SingleEquityBoardroomEngine
 from .portfolio_creation_engine import PortfolioCreationBoardroomEngine
+from .portfolio_rebalancing_engine import PortfolioRebalancingBoardroomEngine

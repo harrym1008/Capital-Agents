@@ -9,9 +9,9 @@ from collectors.constants import UTC, NEW_YORK
 from llm.llm_client import BaseLLMClient
 from llm.server_manager import serverManager
 
-from boardroom.boardroom_config import BoardroomConfig, SingleEquityRatingConfig, PortfolioCreationConfig
+from boardroom.boardroom_config import BoardroomConfig, SingleEquityRatingConfig, PortfolioCreationConfig, PortfolioRebalancingConfig
 from boardroom.boardroom_engine import BoardroomEngine
-from boardroom.engines import SingleEquityBoardroomEngine, PortfolioCreationBoardroomEngine
+from boardroom.engines import SingleEquityBoardroomEngine, PortfolioCreationBoardroomEngine, PortfolioRebalancingBoardroomEngine
 
 from llmtools.lru_cacher import startPrecacheThread
 from llmtools.tool_registry import ToolRegistry
@@ -67,7 +67,7 @@ class BoardroomManager:
                 config.simulatedDateStr = time.strftime("%Y-%m-%d", time.localtime())
             timestamp = pd.Timestamp(f"{config.simulatedDateStr} 09:00").tz_localize(NEW_YORK).tz_convert(UTC)
             ticker = config.ticker
-        elif isinstance(config, PortfolioCreationConfig):
+        elif isinstance(config, (PortfolioCreationConfig, PortfolioRebalancingConfig)):
             simDate = config.simulatedDateStr if config.simulatedDateStr else time.strftime("%Y-%m-%d", time.localtime())
             timestamp = pd.Timestamp(f"{simDate} 09:00").tz_localize(NEW_YORK).tz_convert(UTC)
             ticker = None
@@ -92,6 +92,8 @@ class BoardroomManager:
             boardroom = SingleEquityBoardroomEngine(toolRegistry=toolRegistry, timestamp=timestamp)
         elif isinstance(config, PortfolioCreationConfig):
             boardroom = PortfolioCreationBoardroomEngine(toolRegistry=toolRegistry, timestamp=timestamp)
+        elif isinstance(config, PortfolioRebalancingConfig):
+            boardroom = PortfolioRebalancingBoardroomEngine(toolRegistry=toolRegistry, timestamp=timestamp)
         else:
             raise ValueError(f"Unsupported boardroom config type: {type(config).__name__}")
         boardroom.assignClient(llmClient)

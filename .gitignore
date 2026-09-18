@@ -200,5 +200,5 @@ newtooltest.py
 *.engine
 *.onnx
 
-llm/llamacpp/llamacpp_config.json
+llm/server_config.json
 _cache/persist_lru_cache.bin

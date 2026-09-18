@@ -181,7 +181,7 @@ def confirmPortfolioAllocation(
 
     confirmedSectorTool = tool.registry.getTool("confirmSectorAllocation") if getattr(tool, "registry", None) else None
     if not confirmedSectorTool or not confirmedSectorTool.toolLog:
-        return {"error": "No confirmed sector allocation was found in the boardroom session. Sector allocation must be confirmed before finalizing individual stock positions."}
+        return {"error": "No confirmed sector allocation was found in the boardroom session. Sector allocation must be confirmed before finalising individual stock positions."}
 
     lastSectorDecision = confirmedSectorTool.toolLog[-1]
     confirmedSectorMap = lastSectorDecision.get("sectorAllocations", {})

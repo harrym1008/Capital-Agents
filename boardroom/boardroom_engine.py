@@ -114,7 +114,8 @@ class BoardroomEngine(ABC):
         subrole: Optional[str] = None,
         maxRetries: int = 8,
         summarisationOverride: Optional[bool] = None,
-        requireInitialTools: bool = True
+        requireInitialTools: bool = True,
+        confirmationPrompt: Optional[str] = None
     ) -> Tuple[str, str]:
         tool = self.toolRegistry.getTool(mandatedToolName)
         if tool:
@@ -143,14 +144,14 @@ class BoardroomEngine(ABC):
 
             if tool and len(tool.toolLog) > 0:
                 # Notify agent that decision was confirmed and request short justifications & remarks
-                confirmationPrompt = (
+                confPrompt = confirmationPrompt or (
                     f"Your '{mandatedToolName}' submission has been verified, confirmed, and logged in the boardroom system.\n"
                     f"Please now provide short justifications and executive remarks around your decision-making process, "
                     f"key trade-offs considered, and final outcome for the boardroom."
                 )
 
                 remarksRaw, _ = agent.analyseAndReply(
-                    incomingMessage=confirmationPrompt,
+                    incomingMessage=confPrompt,
                     toolRegistry=self.toolRegistry,
                     timestamp=self.timestamp,
                     config=config,

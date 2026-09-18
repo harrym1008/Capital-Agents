@@ -4,10 +4,10 @@ from typing import Optional, Tuple, List, Dict, Any
 from dotenv import load_dotenv
 load_dotenv()
 
+from llm.server_config_store import loadServerConfig, saveServerConfig, SERVER_CONFIG_FILE_PATH as CONFIG_FILE_PATH
+
 LLAMACPP_PORT = 9081
 LLAMACPP_EXECUTABLE = "llama-server.exe"
-
-CONFIG_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "llamacpp_config.json")
 
 LOCKED_ARGS = {
     "--host": "127.0.0.1",
@@ -64,27 +64,19 @@ def getDefaultConfig() -> Dict[str, Any]:
 
 
 def loadConfig() -> Dict[str, Any]:
-    import json
-    if not os.path.exists(CONFIG_FILE_PATH):
-        defaultCfg = getDefaultConfig()
-        saveConfig(defaultCfg)
-        return defaultCfg
-    try:
-        with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-            cfg["lastUsedModelId"] = str(cfg.get("lastUsedModelId", "")).strip()
-            cfg["globalArgs"] = cleanUserArgs(cfg.get("globalArgs", []))
-            if "models" in cfg and isinstance(cfg["models"], list):
-                for m in cfg["models"]:
-                    if isinstance(m, dict):
-                        m["args"] = cleanUserArgs(m.get("args", []))
-            return cfg
-    except Exception:
-        return getDefaultConfig()
+    cfg = loadServerConfig().get("llamacpp", {})
+    if not isinstance(cfg, dict):
+        cfg = getDefaultConfig()
+    cfg["lastUsedModelId"] = str(cfg.get("lastUsedModelId", "")).strip()
+    cfg["globalArgs"] = cleanUserArgs(cfg.get("globalArgs", []))
+    if "models" in cfg and isinstance(cfg["models"], list):
+        for m in cfg["models"]:
+            if isinstance(m, dict):
+                m["args"] = cleanUserArgs(m.get("args", []))
+    return cfg
 
 
 def saveConfig(configData: Dict[str, Any]) -> bool:
-    import json
     try:
         cleanedData = {
             "executablePath": configData.get("executablePath", "llama-server.exe").strip() or "llama-server.exe",
@@ -101,9 +93,9 @@ def saveConfig(configData: Dict[str, Any]) -> bool:
                     "executablePath": m.get("executablePath", "").strip(),
                     "args": cleanUserArgs(m.get("args", []))
                 })
-        with open(CONFIG_FILE_PATH, "w", encoding="utf-8") as f:
-            json.dump(cleanedData, f, indent=2)
-        return True
+        fullConfig = loadServerConfig()
+        fullConfig["llamacpp"] = cleanedData
+        return saveServerConfig(fullConfig)
     except Exception as e:
         print(f"Error saving Llama.cpp config: {e}")
         return False
@@ -111,7 +103,7 @@ def saveConfig(configData: Dict[str, Any]) -> bool:
 
 def findModelConfig(modelIdentifier: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """
-    Finds a model config from llamacpp_config.json by ID, alias, filename, or fallback.
+    Finds a model config from server_config.json by ID, alias, filename, or fallback.
     Returns (modelConfig, None) if found, or (None, errorMessage) if not found.
     """
     if not modelIdentifier:

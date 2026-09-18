@@ -9,6 +9,7 @@ from flask import request, jsonify
 from collectors.constants import NEW_YORK
 from llm.llamacpp.llamacpp_args import LLAMACPP_PORT, loadConfig, saveConfig, validateGGUFPath, getLlamaCppModelsList, openNativeGgufFileDialog, openNativeExecutableFileDialog
 from llm.server_manager import serverManager
+from llm.server_config_store import loadServerConfig, saveServerConfig
 
 
 
@@ -72,6 +73,24 @@ def registerApiRoutes(app):
             "ok": True,
             "cancelled": False,
             "filePath": selectedPath
+        })
+
+    @app.route("/api/server-config", methods=["GET", "POST"])
+    def getServerConfig():
+        if request.method == "POST":
+            data = request.get_json(silent=True) or {}
+            provider = data.get("lastSelectedProvider", "").strip()
+            if provider in ("llamacpp", "openrouter", "openaicompatible"):
+                cfg = loadServerConfig()
+                cfg["lastSelectedProvider"] = provider
+                saveServerConfig(cfg)
+            return jsonify({"ok": True})
+        cfg = loadServerConfig()
+        return jsonify({
+            "ok": True,
+            "lastSelectedProvider": cfg.get("lastSelectedProvider", "llamacpp"),
+            "openrouter": cfg.get("openrouter", {}),
+            "openaicompatible": cfg.get("openaicompatible", {})
         })
 
 
@@ -209,6 +228,65 @@ def registerApiRoutes(app):
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+    @app.route("/api/portfolio/validate-ticker", methods=["GET", "POST"])
+    def apiValidateTicker():
+        if request.method == "POST":
+            data = request.get_json(silent=True) or {}
+            ticker = data.get("ticker", "").strip().upper()
+            simDateStr = data.get("simDate") or data.get("simulatedDate")
+        else:
+            ticker = request.args.get("ticker", "").strip().upper()
+            simDateStr = request.args.get("simDate") or request.args.get("simulatedDate")
+
+        if not ticker:
+            return jsonify({"ok": False, "valid": False, "error": "Ticker symbol is required."})
+
+        if not simDateStr:
+            simDateTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
+        else:
+            try:
+                simDateTs = pd.Timestamp(simDateStr, tz=NEW_YORK).normalize()
+            except Exception:
+                simDateTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
+
+        try:
+            from simulation.simulation_api import simulationManager
+            profile = simulationManager.tickerProvider.getTickerProfile(ticker)
+            if not profile:
+                return jsonify({"ok": True, "valid": False, "error": f"Ticker '{ticker}' not found."})
+
+            isListed = simulationManager.tickerProvider.isTickerListed(ticker, simDateTs)
+            if not isListed:
+                return jsonify({
+                    "ok": True,
+                    "valid": False,
+                    "error": f"'{ticker}' was not active/listed on {simDateTs.strftime('%Y-%m-%d')}."
+                })
+
+            rawSector = profile.sector or "Unknown"
+            from collectors.sector_dl_client import GICS_SECTORS
+            resolvedSector = simulationManager.formatSectorOrIndustry(rawSector)
+            sectorTicker = "SPY"
+            for sTick, sInfo in GICS_SECTORS.items():
+                if sInfo.name.lower() == resolvedSector.lower():
+                    sectorTicker = sTick
+                    break
+
+            companyName = profile.name or ticker
+            industry = simulationManager.formatSectorOrIndustry(profile.industry)
+
+            return jsonify({
+                "ok": True,
+                "valid": True,
+                "ticker": ticker,
+                "companyName": companyName,
+                "sector": resolvedSector or "General Equities",
+                "sectorTicker": sectorTicker or "SPY",
+                "industry": industry or "General Equities"
+            })
+        except Exception as e:
+            return jsonify({"ok": False, "valid": False, "error": str(e)}), 500
+
     @app.route("/api/portfolio/backtest", methods=["POST"])
     def getPortfolioBacktest():
         data = request.get_json(silent=True) or {}
@@ -218,6 +296,7 @@ def registerApiRoutes(app):
 
         initialCapital = data.get("initialCapital", 100_000.0)
         positions = data.get("positions", [])
+        originalPositions = data.get("originalPositions")
         cashPosition = data.get("cashPosition", {})
         timeHorizon = data.get("timeHorizon")
 
@@ -228,7 +307,8 @@ def registerApiRoutes(app):
                 initialCapital=initialCapital,
                 positions=positions,
                 cashPosition=cashPosition,
-                timeHorizon=timeHorizon
+                timeHorizon=timeHorizon,
+                originalPositions=originalPositions
             )
             return jsonify(backtestData)
         except Exception as e:
