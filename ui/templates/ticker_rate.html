@@ -486,6 +486,58 @@
         }
     };
 
+    // Custom Interaction Mode for datasets spanning different time segments
+    if (typeof Chart !== "undefined" && Chart.Interaction && Chart.Interaction.modes) {
+        Chart.Interaction.modes.tickerTimeSync = function(chart, e, options, useFinalPosition) {
+            let position = { x: e.x, y: e.y };
+            if (Chart.helpers && typeof Chart.helpers.getRelativePosition === "function") {
+                try {
+                    position = Chart.helpers.getRelativePosition(e, chart);
+                } catch (err) {
+                    position = { x: e.x, y: e.y };
+                }
+            }
+            if (!position || typeof position.x !== "number") return [];
+
+            const items = [];
+            const datasets = chart.data.datasets;
+            if (!datasets || datasets.length === 0) return items;
+
+            for (let datasetIndex = 0; datasetIndex < datasets.length; datasetIndex++) {
+                const meta = chart.getDatasetMeta(datasetIndex);
+                if (!meta || meta.hidden || !meta.data || meta.data.length === 0) continue;
+
+                const isPointOnly = (datasets[datasetIndex].showLine === false);
+                const threshold = isPointOnly ? 8 : 25;
+
+                let closestElement = null;
+                let closestIndex = -1;
+                let minDistance = Infinity;
+
+                for (let index = 0; index < meta.data.length; index++) {
+                    const el = meta.data[index];
+                    if (!el || typeof el.x !== "number") continue;
+                    const dist = Math.abs(el.x - position.x);
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                        closestElement = el;
+                        closestIndex = index;
+                    }
+                }
+
+                if (closestElement && minDistance <= threshold) {
+                    items.push({
+                        datasetIndex: datasetIndex,
+                        index: closestIndex,
+                        element: closestElement
+                    });
+                }
+            }
+
+            return items;
+        };
+    }
+
     function countDecimalPlaces(num) {
         if (!num || Math.floor(num) === num) return 0;
         const str = num.toString();
@@ -621,11 +673,11 @@
                 animation: false,
                 layout: { padding: { left: 5, right: 25, top: 10, bottom: 0 } },
                 simDate: chartData.simDate,
-                interaction: { mode: "index", intersect: false, axis: "x" },
+                interaction: { mode: "tickerTimeSync", intersect: false, axis: "x" },
                 plugins: {
                     legend: { display: false },
                     tooltip: {
-                        mode: "index",
+                        mode: "tickerTimeSync",
                         intersect: false,
                         callbacks: {
                             label: (context) => `${context.dataset.label}: $${context.parsed.y.toFixed(2)}`

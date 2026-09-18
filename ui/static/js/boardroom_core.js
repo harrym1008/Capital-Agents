@@ -217,11 +217,11 @@ const BoardroomCore = (function () {
 
 
     function parseLatex(text) {
-        if (typeof katex === "undefined") {
+        if (typeof katex === "undefined" || !text) {
             return text;
         }
 
-        // Display math
+        // Display math: $$...$$
         text = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
             try {
                 return katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false });
@@ -230,10 +230,30 @@ const BoardroomCore = (function () {
             }
         });
 
-        // Inline math
-        text = text.replace(/\$([^\$\n]+?)\$/g, (match, formula) => {
-            // Avoid false positives like standalone dollar amounts ($50)
-            if (/^\d+(\.\d+)?$/.test(formula.trim())) {
+        // Display math: \[...\]
+        text = text.replace(/\\\[([\s\S]+?)\\\]/g, (match, formula) => {
+            try {
+                return katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false });
+            } catch (e) {
+                return match;
+            }
+        });
+
+        // Inline math: \(...\)
+        text = text.replace(/\\\(([\s\S]+?)\\\)/g, (match, formula) => {
+            try {
+                return katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false });
+            } catch (e) {
+                return match;
+            }
+        });
+
+        // Inline math: $...$
+        // Protect currency amounts: opening $ cannot be followed by a digit or whitespace;
+        // closing $ cannot be preceded by whitespace or backslash and cannot be followed by a digit;
+        // formula cannot span across markdown/HTML tags (** / __ / < / >) or newlines.
+        text = text.replace(/(?<!\\)\$(?!\s|\d)([^\$\n]+?)(?<!\s|\\)\$(?!\d)/g, (match, formula) => {
+            if (formula.includes('**') || formula.includes('__') || formula.includes('<') || formula.includes('>')) {
                 return match;
             }
             try {
@@ -245,19 +265,13 @@ const BoardroomCore = (function () {
 
         return text;
     }
-
-    function parseMarkdown(text) {
-        if (!text) return "";
-
-        // 1. Parse LaTeX
-        text = parseLatex(text);
-
-        // 2. Parse tables
+    
+    function parseTables(text) {
         const lines = text.split('\n');
         let inTable = false;
         let tableRows = [];
         let resultLines = [];
-
+        
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i].trim();
             if (line.startsWith('|')) {
@@ -275,33 +289,41 @@ const BoardroomCore = (function () {
         if (inTable) {
             resultLines.push(renderHtmlTable(tableRows));
         }
+        return formattedText = resultLines.join('\n');
+    }
 
-        let formattedText = resultLines.join('\n');
+    function parseMarkdown(text) {
+        if (!text) return "";
+
+        // 1. Parse LaTeX
+        text = parseLatex(text);
+
+        // 2. Parse tables
+        formattedText = parseTables(text);
 
         // 3. Parse code blocks (if for some reason the model wants to show the user what they wrote into the Python tool)
         formattedText = formattedText.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
         const cleanCode = escapeHtml(code.replace(/^\n+|\n+$/g, ''));
-        const langBadge = lang ? `<span style="position: absolute; top: 4px; right: 8px; font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700; user-select: none;">${lang}</span>` : '';
+        const langBadge = lang ? `<span style="position: absolute; top: 4px; right: 8px; font-size: 10px; color: #b8c8de; font-weight: 700; user-select: none;">${lang}</span>` : '';
         
-        return `<div style="position: relative; margin: 10px 0;">
+        return `<div style="position: relative; display: flex; flex-direction: column;">
                     ${langBadge}
-                    <pre style="margin: 0; background-color: #0f172a; color: #38bdf8; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 12.5px; line-height: 1.45; overflow-x: auto; white-space: pre;"><code>${cleanCode}</code></pre>
+                    <pre style="margin: 0; background-color: #0f172a; color: #ffffff; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 12.5px; line-height: 1.45; overflow-x: auto; white-space: pre;"><code>${cleanCode}</code></pre>
                 </div>`;
         });
 
         // 4. Parse bullet points before parsing bold/italic to avoid conflicts
-        formattedText = formattedText.replace(/^[\*\-\•]\s+(.*?)$/gm, '<div style="display: flex; gap: 8px; margin: 4px 0 4px 8px;"><span">•</span><div>$1</div></div>');
+        formattedText = formattedText.replace(/^[\*\-\•]\s+(.*?)$/gm, '&bull; $1');
 
-        // 4. Parse bold and italic: **text** or __text__
+        // 5. Parse bold and italic: **text** or __text__
         formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         formattedText = formattedText.replace(/__(.*?)__/g, '<strong>$1</strong>');
 
-
-        // 5. Parse italic: *text* or _text_
+        // 6. Parse italic: *text* or _text_
         formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
         formattedText = formattedText.replace(/_(.*?)_/g, '<em>$1</em>');
 
-        // 5. Parse hashtag headings: # (H2) to ###### (H6)
+        // 7. Parse hashtag headings: # (H2) to ###### (H6)
         formattedText = formattedText.replace(/^######\s+(.*?)$/gm, '<h6 style="font-size: 15px; font-weight: bold;">$1</h6>');
         formattedText = formattedText.replace(/^#####\s+(.*?)$/gm, '<h6 style="font-size: 16px; font-weight: bold;">$1</h6>');
         formattedText = formattedText.replace(/^####\s+(.*?)$/gm, '<h5 style="font-size: 17px; font-weight: bold;">$1</h5>');
@@ -309,13 +331,13 @@ const BoardroomCore = (function () {
         formattedText = formattedText.replace(/^##\s+(.*?)$/gm, '<h3 style="font-size: 21px; font-weight: bold;">$1</h3>');
         formattedText = formattedText.replace(/^#\s+(.*?)$/gm, '<h2 style="font-size: 23px; font-weight: bold; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px;">$1</h2>');
 
-        // 6. Parse horizontal rules: ---
+        // 8. Parse horizontal rules: ---
         formattedText = formattedText.replace(/^---+\s*$/gm, '<hr style="border: none; border-top: 1.5px solid #cbd5e1; margin: 10px 0 3px 0;">');
 
-        // 7. Parse backslash dollar signs: \$ -> $
+        // 9. Parse backslash dollar signs: \$ -> $
         formattedText = formattedText.replace(/\\\$/g, '$');
 
-        // 8. Parse source citations: <citation>X</citation> -> blue underlined superscript button [X]
+        // 10. Parse source citations: <citation>X</citation> -> blue underlined superscript button [X]
         formattedText = replaceCitationTags(formattedText);
 
         return formattedText;
@@ -2047,7 +2069,7 @@ const BoardroomCore = (function () {
                 stageNum: 1,
                 agentRole: "Macro Analyst",
                 phase: "raw",
-                token: `# Heading 1\n## Heading 2\n### Heading 3\n\nHere is **bold**, *italic*, and a table:\n\n| Sector | Conviction | Weight |\n| :--- | :--- | :--- |\n| Technology | **High** | 35% |\n| Healthcare | Medium | 20% |\n| Energy | Defensive | 15% |\n\n--- \nComplete demonstration.`
+                token: `# Heading 1\n## Heading 2\n### Heading 3\n#### Heading 4\n\nHere is **bold**, *italic*, and ***both***:\n\n- First bullet point\n- Second bullet with **bold** inside\n- Third bullet\n\n| Sector | Conviction | Weight |\n| :--- | :--- | :--- |\n| Technology | **High** | 35% |\n| Healthcare | Medium | 20% |\n| Energy | Defensive | 15% |\n\n\`\`\`python\nresult = compute_risk(sectors, weights=0.35)\nprint(f"Risk score: {result}")\n\`\`\`\n\nLaTeX inline: $\\alpha = 0.05$ and display:\n\n$$\\sum_{i=1}^{n} w_i r_i = R_p$$\n\nSource references: <citation>1</citation> and <toolCitation>2</toolCitation> and <newsCitation>3:1</newsCitation>\n\n--- \nComplete demonstration.`
             },
             {
                 type: "contentEnd",

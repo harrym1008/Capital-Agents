@@ -17,14 +17,27 @@
         <div class="splash-load-model-window">
             
             <img src="/static/favicon.png" alt="CapitalAgents Logo" class="landing-logo">
-            <h1 style="margin-bottom: 30px">Welcome to CapitalAgents</h1>
+            <h1 style="margin-bottom: 30px">Welcome to CapitalAgents</span></h1>
 
             <p id="serverErrorMsg" class="landing-error-msg" style="display: none; margin-bottom: 18px;">You need to set up an LLM server first.</p>
             <a href="/server-config" class="aref-button landing-btn">Server Configuration</a>
-            <a href="/single-equity-rating" id="singleEquityBtn" class="aref-button landing-btn disabled">Single Equity Rating</a>
-            <a href="/portfolio-creation" id="portfolioCreateBtn" class="aref-button landing-btn disabled">Portfolio Creation</a>
-            <a href="/portfolio-rebalancing" id="portfolioRebalanceBtn" class="aref-button landing-btn disabled">Portfolio Rebalancing</a>
-            <a href="/market-sim" id="portfolioSimulateBtn" class="aref-button landing-btn">LLM-less Portfolio Simulation</a>
+            
+            <div style="margin: 10px 0"></div>
+
+            <div class="landing-btn-split">
+                <div class="landing-btn-half">
+                    <h3>Boardroom Scenarios</h3>
+                    <a href="/single-equity-rating" id="singleEquityBtn" class="aref-button landing-btn disabled">Single Equity Rating</a>
+                    <a href="/portfolio-creation" id="portfolioCreateBtn" class="aref-button landing-btn disabled">Portfolio Creation</a>
+                    <a href="/portfolio-rebalancing" id="portfolioRebalanceBtn" class="aref-button landing-btn disabled">Portfolio Rebalancing</a>
+                </div>
+
+                <div class="landing-btn-half">
+                    <h3>Portfolio Simulations</h3>
+                    <a href="/market-sim" id="portfolioSimulateBtn" class="aref-button landing-btn">Agent-Driven Portfolio Simulation</a>
+                    <a href="/market-sim" id="portfolioSimulateBtn" class="aref-button landing-btn">User-Driven Portfolio Simulation</a>
+                </div>
+            </div>
         </div>
     </div>
 

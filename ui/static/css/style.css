@@ -121,7 +121,7 @@ header h1 {
 }
 
 .splash-load-model-window {
-    width: min(90vw, 600px);
+    max-width: 90vw;
     background: #ffffff;
     border-radius: 18px;
     padding: 36px;

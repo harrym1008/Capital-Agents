@@ -1,3 +1,9 @@
+h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 20px;
+}
+
 .landing-container {
     display: flex;
     flex-direction: column;
@@ -8,15 +14,24 @@
     padding: 40px;
 }
 
+.landing-btn-split {
+    display: flex;
+    flex-direction: row;
+    gap: 30px;
+}
+
+.landing-btn-half {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+}
+
 .landing-btn {
-    width: 320px;
+    width: 360px;
     font-size: 20px;
     margin-bottom: 10px;
     text-align: center;
-}
-
-.landing-btn:last-child {
-    margin-bottom: 16px;
 }
 
 .splash-load-model-window {
