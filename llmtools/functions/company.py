@@ -307,6 +307,8 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
                     failures.append(ticker)
             except Exception:
                 failures.append(ticker)
+            tool.updateProgress((len(results) + len(failures)) / totalTickers * 100)
+            
 
     output = {
         "asOfDate": timestamp.strftime("%Y-%m-%d"),

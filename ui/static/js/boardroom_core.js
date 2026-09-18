@@ -215,10 +215,44 @@ const BoardroomCore = (function () {
         return text;
     }
 
+
+    function parseLatex(text) {
+        if (typeof katex === "undefined") {
+            return text;
+        }
+
+        // Display math
+        text = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
+            try {
+                return katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false });
+            } catch (e) {
+                return match;
+            }
+        });
+
+        // Inline math
+        text = text.replace(/\$([^\$\n]+?)\$/g, (match, formula) => {
+            // Avoid false positives like standalone dollar amounts ($50)
+            if (/^\d+(\.\d+)?$/.test(formula.trim())) {
+                return match;
+            }
+            try {
+                return katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false });
+            } catch (e) {
+                return match;
+            }
+        });
+
+        return text;
+    }
+
     function parseMarkdown(text) {
         if (!text) return "";
 
-        // 1. Parse tables
+        // 1. Parse LaTeX
+        text = parseLatex(text);
+
+        // 2. Parse tables
         const lines = text.split('\n');
         let inTable = false;
         let tableRows = [];
@@ -244,15 +278,30 @@ const BoardroomCore = (function () {
 
         let formattedText = resultLines.join('\n');
 
-        // 2. Parse bold: **text** or __text__
+        // 3. Parse code blocks (if for some reason the model wants to show the user what they wrote into the Python tool)
+        formattedText = formattedText.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+        const cleanCode = escapeHtml(code.replace(/^\n+|\n+$/g, ''));
+        const langBadge = lang ? `<span style="position: absolute; top: 4px; right: 8px; font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700; user-select: none;">${lang}</span>` : '';
+        
+        return `<div style="position: relative; margin: 10px 0;">
+                    ${langBadge}
+                    <pre style="margin: 0; background-color: #0f172a; color: #38bdf8; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 12.5px; line-height: 1.45; overflow-x: auto; white-space: pre;"><code>${cleanCode}</code></pre>
+                </div>`;
+        });
+
+        // 4. Parse bullet points before parsing bold/italic to avoid conflicts
+        formattedText = formattedText.replace(/^[\*\-\•]\s+(.*?)$/gm, '<div style="display: flex; gap: 8px; margin: 4px 0 4px 8px;"><span">•</span><div>$1</div></div>');
+
+        // 4. Parse bold and italic: **text** or __text__
         formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         formattedText = formattedText.replace(/__(.*?)__/g, '<strong>$1</strong>');
 
-        // 3. Parse italic: *text* or _text_
+
+        // 5. Parse italic: *text* or _text_
         formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
         formattedText = formattedText.replace(/_(.*?)_/g, '<em>$1</em>');
 
-        // 4. Parse hashtag headings: # (H2) to ###### (H6)
+        // 5. Parse hashtag headings: # (H2) to ###### (H6)
         formattedText = formattedText.replace(/^######\s+(.*?)$/gm, '<h6 style="font-size: 15px; font-weight: bold;">$1</h6>');
         formattedText = formattedText.replace(/^#####\s+(.*?)$/gm, '<h6 style="font-size: 16px; font-weight: bold;">$1</h6>');
         formattedText = formattedText.replace(/^####\s+(.*?)$/gm, '<h5 style="font-size: 17px; font-weight: bold;">$1</h5>');
@@ -260,13 +309,13 @@ const BoardroomCore = (function () {
         formattedText = formattedText.replace(/^##\s+(.*?)$/gm, '<h3 style="font-size: 21px; font-weight: bold;">$1</h3>');
         formattedText = formattedText.replace(/^#\s+(.*?)$/gm, '<h2 style="font-size: 23px; font-weight: bold; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px;">$1</h2>');
 
-        // 5. Parse horizontal rules: ---
+        // 6. Parse horizontal rules: ---
         formattedText = formattedText.replace(/^---+\s*$/gm, '<hr style="border: none; border-top: 1.5px solid #cbd5e1; margin: 10px 0 3px 0;">');
 
-        // 6. Parse backslash dollar signs: \$ -> $
+        // 7. Parse backslash dollar signs: \$ -> $
         formattedText = formattedText.replace(/\\\$/g, '$');
 
-        // 7. Parse source citations: <citation>X</citation> -> blue underlined superscript button [X]
+        // 8. Parse source citations: <citation>X</citation> -> blue underlined superscript button [X]
         formattedText = replaceCitationTags(formattedText);
 
         return formattedText;

@@ -69,6 +69,8 @@ def buildSharedBaseSysPrompt(dateStr: str, toolsStr: str, agentRole: str, agentS
         f"- Your initial run of tool calls for gaining information (excluding Python and calculation tools) must ALWAYS be in a single batch.\n"
         f"- In your <think> section, focus purely on raw reasoning, calculation, and quantitative analysis without formatting any citation tags.\n"
         f"- Reason step-by-step with dense, quantitative key observations.\n"
+        f"- Your output can contain LaTeX mathematical expressions if you choose, do not use LaTeX if you do not need it. \n"
+        f"- You can also use code blocks to explain to the user how you extrapolated additional metrics via Python calculations, but use code blocks extremely sparingly.\n"
         f"- Output technical rigor in your *FINAL RESPONSE ONLY* : include exact numbers, ratios, target prices, concise markdown tables, and citations.\n\n"
 
         f"*** YOUR ROLE AND MANDATE: {agentRole.upper()} ***:\n"

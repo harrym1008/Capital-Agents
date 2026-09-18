@@ -339,12 +339,12 @@ class PortfolioRebalancingConfig(BoardroomConfig):
     def getRebalanceAmountLabel(self) -> str:
         amt = int(self.rebalanceAmount) if self.rebalanceAmount is not None else 3
         labels = {
-            1: "Level 1: Minimal / Light Rebalance",
+            1: "Level 1: Very Light Rebalance",
             2: "Level 2: Mild Rebalance",
             3: "Level 3: Moderate Rebalance",
             4: "Level 4: Substantial Rebalance",
             5: "Level 5: Aggressive Rebalance",
-            6: "Level 6: Maximum / Heavy Rebalance"
+            6: "Level 6: Maximum Rebalance"
         }
         return labels.get(amt, "Level 3: Moderate Rebalance")
 
@@ -352,38 +352,38 @@ class PortfolioRebalancingConfig(BoardroomConfig):
         amt = int(self.rebalanceAmount) if self.rebalanceAmount is not None else 3
         if amt == 1:
             return (
-                "MANDATORY MINIMAL / LIGHT REBALANCE MANDATE (Level 1): Strongly preserve the existing portfolio architecture. "
+                "MANDATORY VERY LIGHT REBALANCE MANDATE (Level 1/6): Strongly preserve the existing portfolio architecture. "
                 "Keep almost all baseline holdings intact and retain their core positions. Only make very minor adjustments, "
                 "subtle percentage re-weightings, or exit a holding only if facing catastrophic fundamental deterioration. "
                 "Preserving existing holdings with minimal rebalancing is your top operational priority."
             )
         elif amt == 2:
             return (
-                "MANDATORY MILD REBALANCE MANDATE (Level 2): Preserve the core foundation of the baseline portfolio. "
-                "Retain the vast majority of existing stock holdings (75-85%+ of capital), trimming slightly from lower-conviction "
+                "MANDATORY MILD REBALANCE MANDATE (Level 2/6): Preserve the core foundation of the baseline portfolio. "
+                "Retain the vast majority of existing stock holdings, trimming slightly from lower-conviction "
                 "or underperforming positions to fund modest, selective additions in favored sectors. Keep overall rebalancing low."
             )
         elif amt == 3:
             return (
-                "MANDATORY MODERATE REBALANCE MANDATE (Level 3): Balanced rebalance strategy. Proactively realign sector weights "
-                "and holdings to adapt to current macro conditions. Maintain high-conviction core baseline holdings (around 50-65% of capital) "
+                "MANDATORY MODERATE REBALANCE MANDATE (Level 3/6): Balanced rebalance strategy. Proactively realign sector weights "
+                "and holdings to adapt to current macro conditions. Maintain high-conviction core baseline holdings (around 60-70% of capital) "
                 "while actively trimming underperformers and introducing high-alpha new equities."
             )
         elif amt == 4:
             return (
-                "MANDATORY SUBSTANTIAL REBALANCE MANDATE (Level 4): Meaningful rebalance and assertive capital reallocation. "
+                "MANDATORY SUBSTANTIAL REBALANCE MANDATE (Level 4/6): Meaningful rebalance and assertive capital reallocation. "
                 "Do not hesitate to rotate 50%+ of the portfolio capital away from stagnant or headwind-facing baseline holdings. "
                 "Retain only the absolute highest-conviction baseline stocks and actively redeploy capital into newly scouted opportunities."
             )
         elif amt == 5:
             return (
-                "MANDATORY AGGRESSIVE REBALANCE MANDATE (Level 5): High rebalance and extensive portfolio remodeling. "
+                "MANDATORY AGGRESSIVE REBALANCE MANDATE (Level 5/6): High rebalance and extensive portfolio remodeling. "
                 "Substantially reconstruct both sector allocations and constituent equities. Aggressively exit or trim any baseline "
                 "holdings that do not display superior forward alpha potential, replacing up to 70-80%+ of baseline exposure."
             )
         elif amt == 6:
             return (
-                "MANDATORY MAXIMUM / HEAVY REBALANCE MANDATE (Level 6): Full portfolio overhaul. Complete freedom to aggressively "
+                "MANDATORY MAXIMUM REBALANCE MANDATE (Level 6/6): Full portfolio overhaul. Complete freedom to aggressively "
                 "restructure the portfolio from the ground up with maximum rebalance scope. Prioritize optimal forward risk-adjusted return "
                 "regardless of baseline inertia, replace all non-optimal holdings without hesitation."
             )
