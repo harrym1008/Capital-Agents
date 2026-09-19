@@ -655,6 +655,7 @@ class AgentPortfolioSimulationConfig(BoardroomConfig):
             "startDate": self.startDateStr,
             "endDate": self.endDateStr,
             "timestep": self.timestep.label,
+            "timeHorizon": self.timestep.label,
             "sectorDiversityRule": sectorDiversityRule,
             "targetStockCount": stockCountRule,
             "targetSectorCount": str(self.targetSectorCount) if self.targetSectorCount is not None else "Dynamic",

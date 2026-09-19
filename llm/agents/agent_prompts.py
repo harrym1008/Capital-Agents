@@ -104,7 +104,11 @@ def buildAgentSpecificSysPrompt(
     mergedArgs = buildMergedArgs(promptArgs)
 
     roleKey = roleKeyMap.get(agentRole, agentRole)
-    modeDict = AGENT_SPECIFIC_SYS_PROMPTS.get(mode, AGENT_SPECIFIC_SYS_PROMPTS.get("SingleEquityRating", {}))
+    resolvedMode = mode
+    if resolvedMode == "AgentPortfolioSimulation":
+        resolvedMode = "PortfolioRebalancing"
+    fallbackMode = "PortfolioRebalancing" if "Portfolio" in str(mode) else "SingleEquityRating"
+    modeDict = AGENT_SPECIFIC_SYS_PROMPTS.get(resolvedMode, AGENT_SPECIFIC_SYS_PROMPTS.get(fallbackMode, {}))
     roleEntry = modeDict.get(roleKey, "")
 
     if isinstance(roleEntry, dict):
@@ -608,7 +612,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector from Phase 3.\n"
             f"- Per-Sector Weighting: Inside each confirmed sector, propose high-beta growth stocks with whole integer 'perSectorWeight' percentages summing strictly to 100% for that sector.\n"
             f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining catalysts and beta strategy.\n"
-            # f"- NO QUESTIONS: You must provide a definitive allocation proposal and evaluation. Do NOT ask challenge questions or create Q&A items.\n\n"
+            f"- NO QUESTIONS: You must provide a definitive allocation proposal and evaluation. Do NOT ask challenge questions or create Q&A items.\n\n"
 
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Review and scrutinize BOTH the Growth Hunter candidates and Defensive/Value Hunter candidates scouted in Phase 4 from an aggressive growth perspective.\n"
@@ -630,7 +634,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector from Phase 3.\n"
             f"- Per-Sector Weighting: Inside each confirmed sector, propose defensive, low-volatility equities with whole integer 'perSectorWeight' percentages summing strictly to 100% for that sector.\n"
             f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining margin of safety and downside protection.\n"
-            # f"- NO QUESTIONS: You must provide a definitive allocation proposal and evaluation. Do NOT ask challenge questions or create Q&A items.\n\n"
+            f"- NO QUESTIONS: You must provide a definitive allocation proposal and evaluation. Do NOT ask challenge questions or create Q&A items.\n\n"
 
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Review and scrutinize BOTH the Growth Hunter candidates and Defensive/Value Hunter candidates scouted in Phase 4 from a capital preservation perspective.\n"
@@ -841,7 +845,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector from Phase 3.\n"
             f"- Per-Sector Weighting: Inside each confirmed sector, propose high-beta growth stocks with whole integer 'perSectorWeight' percentages summing strictly to 100% for that sector.\n"
             f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining catalysts and beta strategy.\n"
-            # f"- NO QUESTIONS: You must provide a definitive allocation proposal and evaluation. Do NOT ask challenge questions or create Q&A items.\n\n"
+            f"- NO QUESTIONS: You must provide a definitive allocation proposal and evaluation. Do NOT ask challenge questions or create Q&A items.\n\n"
 
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Review and scrutinize BOTH the Growth Hunter candidates and Defensive/Value Hunter candidates scouted in Phase 4 from an aggressive growth perspective, comparing them to CURRENT BASELINE HOLDINGS.\n"
@@ -864,7 +868,7 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"- Sector Alignment: Group your stock proposals strictly under each confirmed sector from Phase 3.\n"
             f"- Per-Sector Weighting: Inside each confirmed sector, propose defensive, low-volatility equities with whole integer 'perSectorWeight' percentages summing strictly to 100% for that sector.\n"
             f"- Stock Justifications: Include a concise 25-35 word rationale per stock explaining margin of safety and downside protection.\n"
-            # f"- NO QUESTIONS: You must provide a definitive allocation proposal and evaluation. Do NOT ask challenge questions or create Q&A items.\n\n"
+            f"- NO QUESTIONS: You must provide a definitive allocation proposal and evaluation. Do NOT ask challenge questions or create Q&A items.\n\n"
 
             f"*** TASK INSTRUCTIONS ***:\n"
             f"1. Review and scrutinize BOTH the Growth Hunter candidates and Defensive/Value Hunter candidates scouted in Phase 4 from a capital preservation perspective, comparing them to CURRENT BASELINE HOLDINGS.\n"
@@ -880,6 +884,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
     }
 }
 
+AGENT_SPECIFIC_SYS_PROMPTS["AgentPortfolioSimulation"] = AGENT_SPECIFIC_SYS_PROMPTS["PortfolioRebalancing"]
+
 
 def buildSummariseSysPrompt(
     agentRole: str, 
@@ -890,7 +896,11 @@ def buildSummariseSysPrompt(
     mergedArgs = buildMergedArgs(promptArgs)
     roleKey = roleKeyMap.get(agentRole, agentRole)
 
-    if mode == "PortfolioCreation" or mode == "PortfolioRebalancing":
+    resolvedMode = mode
+    if resolvedMode == "AgentPortfolioSimulation":
+        resolvedMode = "PortfolioRebalancing"
+
+    if resolvedMode == "PortfolioCreation" or resolvedMode == "PortfolioRebalancing":
         if roleKey == "macroAnalyst":
             agentSpecificPrompt = (
                 f"Include your final macro outlook and rating using these keys:\n "

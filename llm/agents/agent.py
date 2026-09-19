@@ -144,6 +144,7 @@ class FinancialAgent:
         requireInitialTools: bool = False,
         summarisationOverride: Optional[bool] = None,
         sysPromptOverride: Optional[str] = None,
+        modeOverride: Optional[str] = None,
     ):
         generateSummary = config.generateSummaries if summarisationOverride is None else summarisationOverride
         
@@ -152,7 +153,7 @@ class FinancialAgent:
         setAgentPhase("raw")
         emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.colorName, "phase": "raw"})
         
-        mode = config.modeName if hasattr(config, "modeName") else "SingleEquityRating"
+        mode = modeOverride or (config.modeName if hasattr(config, "modeName") else "SingleEquityRating")
 
         if sysPromptOverride is not None:
             sysPrompt = sysPromptOverride

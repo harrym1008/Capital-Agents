@@ -1523,19 +1523,15 @@
                         if (!bp.ticker || activeTickers.has(bp.ticker)) return;
                         const oldWeight = parseFloat(bp.weightPct) || (bp.dollarAllocation ? (parseFloat(bp.dollarAllocation) / cleanCapital * 100) : 0);
                         tableHtml += `
-                            <tr style="border-bottom: 1px solid #fecdd3; background: #fff1f2;">
-                                <td style="padding: 4px 5px; font-weight: 600; color: #991b1b;">
-                                    <div>
-                                        <span style="text-decoration: line-through; color: #94a3b8; margin-right: 4px;">${bp.ticker}</span>
-                                        <span style="font-size: 10px; color: #94a3b8;">(${bp.companyName || bp.sector || ''})</span>
-                                        <span style="font-size: 9px; font-weight: 700; color: #ef4444; background: #fee2e2; border: 1px solid #fca5a5; padding: 0.5px 3px; border-radius: 3px; margin-left: 3px;">REMOVED</span>
-                                    </div>
+                            <tr style="border-bottom: 1px solid #f1f5f9;">
+                                <td style="padding: 4px 5px; font-weight: 600; color: #0f172a;">
+                                    <div>${bp.ticker} <span style="font-size: 10px; color: #64748b;">(${bp.companyName || bp.sector || ''})</span></div>
                                 </td>
-                                <td style="padding: 4px 5px; color: #94a3b8; font-size: 10.5px;">${bp.industry || bp.sector || '--'}</td>
+                                <td style="padding: 4px 5px; color: #64748b; font-size: 10.5px;">${bp.industry || bp.sector || '--'}</td>
                                 <td style="padding: 4px 5px; text-align: right; color: #64748b; font-size: 11px;">${oldWeight.toFixed(1)}%</td>
                                 <td style="padding: 4px 5px; text-align: right; font-weight: 700; color: #ef4444;">0.0%</td>
                                 <td style="padding: 4px 5px; text-align: right; font-size: 11px;"><span style="color: #ef4444; font-weight: 700;">-${oldWeight.toFixed(1)}%</span></td>
-                                <td style="padding: 4px 5px; text-align: right; color: #94a3b8; font-size: 11px;">$0.00</td>
+                                <td style="padding: 4px 5px; text-align: right; color: #334155; font-size: 11px;">$0.00</td>
                             </tr>
                         `;
                     });
@@ -2292,7 +2288,7 @@
                 const typeDisplay = ev.type === 'inception' ? 'INCEPTION' : (ev.type === 'skipped' ? 'SKIPPED' : 'REBALANCED');
                 return `
                     <div class="timeline-item ${ev.type}">
-                        <span class="timeline-date">${ev.dateFormatted} &bull; ${typeDisplay}</span>
+                        <span class="timeline-date">${ev.dateFormatted} (${typeDisplay})</span>
                         <span class="timeline-summary">${escapeHtml(ev.summary || 'Milestone review processed.')}</span>
                     </div>
                 `;

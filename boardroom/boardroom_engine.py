@@ -115,7 +115,8 @@ class BoardroomEngine(ABC):
         maxRetries: int = 8,
         summarisationOverride: Optional[bool] = None,
         requireInitialTools: bool = True,
-        confirmationPrompt: Optional[str] = None
+        confirmationPrompt: Optional[str] = None,
+        modeOverride: Optional[str] = None
     ) -> Tuple[str, str]:
         tool = self.toolRegistry.getTool(mandatedToolName)
         if tool:
@@ -139,7 +140,8 @@ class BoardroomEngine(ABC):
                 config=config,
                 subrole=subrole,
                 requireInitialTools=requireInitialTools or (attempt > 0),
-                summarisationOverride=attemptSummaryOverride
+                summarisationOverride=attemptSummaryOverride,
+                modeOverride=modeOverride
             )
 
             if tool and len(tool.toolLog) > 0:
@@ -157,7 +159,8 @@ class BoardroomEngine(ABC):
                     config=config,
                     subrole=subrole,
                     requireInitialTools=False,
-                    summarisationOverride=False
+                    summarisationOverride=False,
+                    modeOverride=modeOverride
                 )
 
                 combinedRaw = f"{rawAnalysis}\n\n{remarksRaw}".strip()
@@ -174,6 +177,7 @@ class BoardroomEngine(ABC):
                 if attempted:
                     currentPrompt = (
                         f"The '{mandatedToolName}' tool call you submitted was invalid or resulted in an error. "
+                        f"Read the error message above and correct your tool call parameters. "
                         f"You must provide a valid '{mandatedToolName}' tool call with corrected parameters to complete this boardroom stage."
                     )
                 else:

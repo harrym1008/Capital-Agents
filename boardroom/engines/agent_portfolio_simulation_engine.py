@@ -687,7 +687,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             toolRegistry=self.toolRegistry,
             timestamp=self.timestamp,
             config=config,
-            requireInitialTools=True
+            requireInitialTools=True,
+            modeOverride="PortfolioCreation"
         )
 
         if isStopRequested(): raise SimulationStoppedException()
@@ -717,8 +718,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"2. Propose sector percentage weights totaling 100%."
         )
         (bullSectorRaw, _), (bearSectorRaw, _) = self._runAgentsConcurrently(
-            lambda: self.bullAnalyst.analyseAndReply(bullPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True),
-            lambda: self.bearAnalyst.analyseAndReply(bearPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True)
+            lambda: self.bullAnalyst.analyseAndReply(bullPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioCreation"),
+            lambda: self.bearAnalyst.analyseAndReply(bearPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioCreation")
         )
 
         if isStopRequested(): raise SimulationStoppedException()
@@ -748,7 +749,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             config=config,
             subrole="sector",
             maxRetries=8,
-            requireInitialTools=True
+            requireInitialTools=True,
+            modeOverride="PortfolioCreation"
         )
 
         if confirmSectorTool and confirmSectorTool.toolLog:
@@ -785,8 +787,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"2. Use 'fetchBatchStockOverviews' on top conviction candidates."
         )
         (growthRaw, _), (valueRaw, _) = self._runAgentsConcurrently(
-            lambda: self.growthHunter.analyseAndReply(growthPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True),
-            lambda: self.valueHunter.analyseAndReply(valuePrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True)
+            lambda: self.growthHunter.analyseAndReply(growthPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioCreation"),
+            lambda: self.valueHunter.analyseAndReply(valuePrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioCreation")
         )
 
         if isStopRequested(): raise SimulationStoppedException()
@@ -810,8 +812,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"Group stock proposals under confirmed sectors, assigning whole integer weights summing to 100% per sector."
         )
         (aggProposalRaw, _), (consProposalRaw, _) = self._runAgentsConcurrently(
-            lambda: self.aggRiskAnalyst.analyseAndReply(aggProposalPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=False),
-            lambda: self.consRiskAnalyst.analyseAndReply(consProposalPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=False)
+            lambda: self.aggRiskAnalyst.analyseAndReply(aggProposalPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=False, modeOverride="PortfolioCreation"),
+            lambda: self.consRiskAnalyst.analyseAndReply(consProposalPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=False, modeOverride="PortfolioCreation")
         )
 
         if isStopRequested(): raise SimulationStoppedException()
@@ -840,7 +842,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             config=config,
             subrole="decision",
             maxRetries=8,
-            requireInitialTools=True
+            requireInitialTools=True,
+            modeOverride="PortfolioCreation"
         )
 
         if confirmPortTool and confirmPortTool.toolLog:
@@ -1040,7 +1043,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 toolRegistry=self.toolRegistry,
                 timestamp=self.timestamp,
                 config=config,
-                requireInitialTools=True
+                requireInitialTools=True,
+                modeOverride="PortfolioRebalancing"
             )
 
             if isStopRequested(): raise SimulationStoppedException()
@@ -1069,7 +1073,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                     config=config,
                     subrole="decision",
                     maxRetries=6,
-                    requireInitialTools=True
+                    requireInitialTools=True,
+                    modeOverride="PortfolioRebalancing"
                 )
 
                 if decideTool and decideTool.toolLog:
@@ -1149,8 +1154,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 bullSectorPrompt = f"Macro Context:\n{macroRaw}\n\nTask: As the Bullish Analyst, identify leading growth and expansion sectors."
                 bearSectorPrompt = f"Macro Context:\n{macroRaw}\n\nTask: As the Bearish Analyst, identify vulnerable sectors facing headwinds."
                 (bullRaw, _), (bearRaw, _) = self._runAgentsConcurrently(
-                    lambda: self.bullAnalyst.analyseAndReply(bullSectorPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True),
-                    lambda: self.bearAnalyst.analyseAndReply(bearSectorPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True)
+                    lambda: self.bullAnalyst.analyseAndReply(bullSectorPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioRebalancing"),
+                    lambda: self.bearAnalyst.analyseAndReply(bearSectorPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioRebalancing")
                 )
                 sectorContextForPM = f"Bullish Analysis:\n{bullRaw}\n\nBearish Analysis:\n{bearRaw}"
             else:
@@ -1180,7 +1185,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 config=config,
                 subrole="sector",
                 maxRetries=8,
-                requireInitialTools=True
+                requireInitialTools=True,
+                modeOverride="PortfolioRebalancing"
             )
 
             if confirmSectorTool and confirmSectorTool.toolLog:
@@ -1215,8 +1221,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 f"Constraints: Target stock count: {promptArgs['targetStockCount']}. Max stock allocation: {promptArgs['maxStockAllocation']}."
             )
             (growthRaw, _), (valueRaw, _) = self._runAgentsConcurrently(
-                lambda: self.growthHunter.analyseAndReply(growthPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True),
-                lambda: self.valueHunter.analyseAndReply(valuePrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True)
+                lambda: self.growthHunter.analyseAndReply(growthPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioRebalancing"),
+                lambda: self.valueHunter.analyseAndReply(valuePrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioRebalancing")
             )
 
             if isExtended:
@@ -1224,11 +1230,25 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 self.currentSimStatus = f"{friendlyDate} (Review): Stage 5"
                 self._emitSimulationState(config, sp500Df)
                 self._newPhaseHeader(5, "Stock Allocation Proposals", pace)
-                aggPrompt = f"Candidates from Hunters:\nGrowth:\n{growthRaw}\nValue:\n{valueRaw}\n\nTask: Propose assertive alpha-maximizing weights."
-                consPrompt = f"Candidates from Hunters:\nGrowth:\n{growthRaw}\nValue:\n{valueRaw}\n\nTask: Propose risk-controlled defensive weights."
+                aggPrompt = (
+                    f"Target Rebalanced Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
+                    f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
+                    f"Growth Candidates from Hunter:\n{growthRaw}\n\n"
+                    f"Defensive Candidates from Hunter:\n{valueRaw}\n\n"
+                    f"Task: Review current holdings and scouted candidates from both hunters, then construct an assertive alpha-maximizing stock allocation proposal.\n"
+                    f"Group stock proposals under confirmed sectors, assigning whole integer weights summing to 100% per sector."
+                )
+                consPrompt = (
+                    f"Target Rebalanced Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
+                    f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
+                    f"Growth Candidates from Hunter:\n{growthRaw}\n\n"
+                    f"Defensive Candidates from Hunter:\n{valueRaw}\n\n"
+                    f"Task: Review current holdings and scouted candidates from both hunters, then construct a risk-controlled defensive stock allocation proposal.\n"
+                    f"Group stock proposals under confirmed sectors, assigning whole integer weights summing to 100% per sector."
+                )
                 (aggRaw, _), (consRaw, _) = self._runAgentsConcurrently(
-                    lambda: self.aggRiskAnalyst.analyseAndReply(aggPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True),
-                    lambda: self.consRiskAnalyst.analyseAndReply(consPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True)
+                    lambda: self.aggRiskAnalyst.analyseAndReply(aggPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=False, modeOverride="PortfolioRebalancing"),
+                    lambda: self.consRiskAnalyst.analyseAndReply(consPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=False, modeOverride="PortfolioRebalancing")
                 )
                 scoutContextForPM = f"Growth Scouting:\n{growthRaw}\n\nValue Scouting:\n{valueRaw}\n\nAggressive Proposal:\n{aggRaw}\n\nConservative Proposal:\n{consRaw}"
             else:
@@ -1261,7 +1281,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 config=config,
                 subrole="decision",
                 maxRetries=8,
-                requireInitialTools=True
+                requireInitialTools=True,
+                modeOverride="PortfolioRebalancing"
             )
 
             if confirmPortTool and confirmPortTool.toolLog:
