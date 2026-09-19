@@ -1,6 +1,7 @@
 import os
 from datetime import datetime, timezone, timedelta
 import threading
+import concurrent.futures
 
 # Alpaca's direct Python SDK has issues with pagination, so I will use raw requests
 import requests
@@ -8,6 +9,7 @@ import re
 import html
 from dotenv import load_dotenv
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -19,11 +21,10 @@ from collectors.constants import (
     NEWS_PARQUET_PATH,
     NEWS_BATCH_SIZE,
     NEWS_ROW_GROUP_SIZE,
-    ALL_TICKERS_FILE,
 )
 from collectors.news_cleaner import (
-    cleanHtmlContent, removeDuplicateHeadline, removeBenzingaFooter, filterEmpty, filterAutomated,
-    filterTranscripts, filterOptions, filterIfYouInvested, filterBadTicker
+    cleanHtmlContent, removeDuplicateHeadline, removeBenzingaFooter,
+    FILTER_PIPELINE
 )
 
 
@@ -47,34 +48,46 @@ def splitDateRange(startDate, endDate, threadCount):
 
 
 
+def _processChunk(chunk):
+    """
+    Worker for ProcessPoolExecutor. Cleans and filters one chunk of the
+    dataframe. Must be a module-level function so it is picklable.
+    """
+    chunk = chunk.copy()
+
+    chunk["wordCount"] = chunk["content"].apply(lambda x: len(str(x).split()))
+    chunk["content"] = chunk["content"].apply(cleanHtmlContent)
+    chunk["content"] = chunk.apply(
+        lambda row: removeDuplicateHeadline(row["headline"], row["content"]), axis=1
+    )
+    chunk["content"] = chunk["content"].apply(removeBenzingaFooter)
+
+    chunk["removeReason"] = None
+    for filterFunc, _reason in FILTER_PIPELINE:
+        mask = chunk["removeReason"].isna()
+        chunk.loc[mask, "removeReason"] = chunk[mask].apply(filterFunc, axis=1)
+
+    return chunk
+
+
 def cleanAndFilterArticlesDf(df):
-    tickersDf = pd.read_parquet(ALL_TICKERS_FILE, engine="pyarrow")
-    validTickers = set(tickersDf["ticker"].tolist())
-    validTickers.update(["SPY", "QQQ", "DIA", "GLD", "SLV", "VIX", "USO", "TLT"])
+    # Parallelise the CPU-bound cleaning + filtering across every core.
+    numWorkers = os.cpu_count() or 1
+    if len(df) < numWorkers * 2:
+        # Too small to bother spawning processes.
+        results = [_processChunk(df)]
+    else:
+        chunks = np.array_split(df, numWorkers)
+        with concurrent.futures.ProcessPoolExecutor(max_workers=numWorkers) as executor:
+            results = list(executor.map(_processChunk, chunks))
 
-    df["removeReason"] = None
-    df["wordCount"] = df["content"].apply(lambda x: len(str(x).split()))
+    processed = pd.concat(results, ignore_index=True)
 
-    df["content"] = df["content"].apply(cleanHtmlContent)
-    df["content"] = df.apply(lambda row: removeDuplicateHeadline(row["headline"], row["content"]), axis=1)
-    df["content"] = df["content"].apply(removeBenzingaFooter)
+    # Drop duplicate headlines (keep the earliest occurrence).
+    processed = processed.drop_duplicates(subset=["headline"], keep="first")
 
-    for filterFunc, reason in [
-        # (filterEmpty, "EMPTY"),
-        (filterAutomated, "AUTOMATED"),
-        (filterTranscripts, "TRANSCRIPT"),
-        (filterOptions, "OPTIONS"),
-        (filterIfYouInvested, "IF_YOU_INVESTED")
-    ]:
-        mask = df["removeReason"].isna()
-        df.loc[mask, "removeReason"] = df[mask].apply(filterFunc, axis=1)
-
-    if not df["removeReason"].all():  # Only apply if there are still articles to check
-        mask = df["removeReason"].isna()
-        df.loc[mask, "removeReason"] = df[mask].apply(lambda row: filterBadTicker(row, validTickers), axis=1)
-
-    badDf = df[df["removeReason"].notna()].copy()
-    goodDf = df[df["removeReason"].isna()].copy()
+    badDf = processed[processed["removeReason"].notna()].copy()
+    goodDf = processed[processed["removeReason"].isna()].copy()
 
     badDf.to_parquet("data/newsfiltered.parquet", engine="pyarrow", index=False)
     return goodDf.drop(columns=["removeReason", "wordCount"])
