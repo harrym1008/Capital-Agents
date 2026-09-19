@@ -1,5 +1,4 @@
 import re
-import json
 import traceback
 from datetime import datetime
 from typing import Dict, Any, Optional, List
@@ -10,9 +9,30 @@ from cli.ansi import ANSI
 from llmtools.tool_registry import ToolRegistry
 from llm.agents.agent import FinancialAgent
 from llm.agents.agent_prompts import buildSpokespersonSysPrompt, buildSpecialistQnASysPrompt
-from boardroom.boardroom_config import SingleEquityRatingConfig, BoardroomConfig, SingleEquityTimeHorizon, TimeHorizon, BoardroomPace
+from boardroom.boardroom_config import SingleEquityRatingConfig, SingleEquityTimeHorizon, BoardroomPace
 from boardroom.boardroom_engine import BoardroomEngine
-from ui.ui_hooks import getCurrentStage, isStopRequested, setCurrentStage, setCurrentAgent, setAgentPhase, emitEvent, SimulationStoppedException
+from ui.ui_hooks import isStopRequested, setCurrentStage, emitEvent, SimulationStoppedException
+
+
+def getActiveSpecialistRoles(pace: BoardroomPace) -> List[str]:
+    if pace == BoardroomPace.ONE_SHOT:
+        return ["One-Shot Analyst"]
+    elif pace == BoardroomPace.FAST:
+        return [
+            "Macro Analyst",
+            "Bullish Value Analyst",
+            "Bearish Risk Analyst",
+            "Impartial Portfolio Manager"
+        ]
+    else:
+        return [
+            "Macro Analyst",
+            "Bullish Value Analyst",
+            "Bearish Risk Analyst",
+            "Aggressive Risk Analyst",
+            "Conservative Risk Analyst",
+            "Impartial Portfolio Manager"
+        ]
 
 
 class SingleEquityBoardroomEngine(BoardroomEngine):
@@ -226,30 +246,8 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         return False
 
 
-    @staticmethod
-    def getActiveSpecialistRoles(pace: BoardroomPace) -> List[str]:
-        if pace == BoardroomPace.ONE_SHOT:
-            return ["One-Shot Analyst"]
-        elif pace == BoardroomPace.FAST:
-            return [
-                "Macro Analyst",
-                "Bullish Value Analyst",
-                "Bearish Risk Analyst",
-                "Impartial Portfolio Manager"
-            ]
-        else:
-            return [
-                "Macro Analyst",
-                "Bullish Value Analyst",
-                "Bearish Risk Analyst",
-                "Aggressive Risk Analyst",
-                "Conservative Risk Analyst",
-                "Impartial Portfolio Manager"
-            ]
-
-
     def configureTransferToolSchema(self, pace: BoardroomPace = BoardroomPace.COMPLETE) -> None:
-        activeRoles = self.getActiveSpecialistRoles(pace)
+        activeRoles = getActiveSpecialistRoles(pace)
         transferTool = self.toolRegistry.getTool("transferToAgent") if self.toolRegistry else None
         if transferTool:
             transferTool.paramSchema = {
@@ -903,7 +901,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
                 boardroomPace=BoardroomPace.FAST
             )
 
-        activeRoles = self.getActiveSpecialistRoles(config.boardroomPace)
+        activeRoles = getActiveSpecialistRoles(config.boardroomPace)
         self.configureTransferToolSchema(config.boardroomPace)
 
         setCurrentStage("qa")

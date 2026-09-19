@@ -1,6 +1,5 @@
 import os
 import re
-import traceback
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
@@ -9,10 +8,9 @@ import pandas as pd
 from cli.ansi import ANSI
 from llmtools.tool_registry import ToolRegistry
 from llm.agents.agent import FinancialAgent
-from boardroom.boardroom_config import PortfolioRebalancingConfig, BoardroomConfig, BoardroomPace
+from boardroom.boardroom_config import PortfolioRebalancingConfig, BoardroomPace
 from boardroom.boardroom_engine import BoardroomEngine
-from ui.ui_hooks import setCurrentStage, setCurrentAgent, setAgentPhase, emitEvent, SimulationStoppedException
-from collectors.sector_dl_client import GICS_SECTORS
+from ui.ui_hooks import setCurrentStage, emitEvent, SimulationStoppedException
 
 
 

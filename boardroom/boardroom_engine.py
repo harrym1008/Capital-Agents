@@ -193,21 +193,4 @@ class BoardroomEngine(ABC):
         )
         print(f"\n{ANSI.RED}{ANSI.BOLD}[Boardroom Error] {errorMsg}{ANSI.RESET}\n")
         raise BoardroomModelLoopException(errorMsg)
-
-
-def __getattr__(name: str):
-    if name == "SingleEquityBoardroomEngine":
-        from boardroom.engines.single_equity_rating_engine import SingleEquityBoardroomEngine
-        return SingleEquityBoardroomEngine
-    elif name == "PortfolioCreationBoardroomEngine":
-        from boardroom.engines.portfolio_creation_engine import PortfolioCreationBoardroomEngine
-        return PortfolioCreationBoardroomEngine
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
-
-
-__all__ = [
-    "BoardroomEngine",
-    "BoardroomModelLoopException",
-    "SingleEquityBoardroomEngine",
-    "PortfolioCreationBoardroomEngine"
-]
+    

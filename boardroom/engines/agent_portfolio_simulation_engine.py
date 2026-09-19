@@ -1,31 +1,74 @@
 import os
-import re
-import math
-import traceback
-from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List, Tuple
 
 import pandas as pd
 import numpy as np
 
 from cli.ansi import ANSI
-from collectors.constants import NEW_YORK, UTC
-from collectors.sector_dl_client import GICS_SECTORS
+from collectors.constants import NEW_YORK
 from dataquery.macro_provider import MacroSeries
 from llmtools.tool_registry import ToolRegistry, Tool
+from llmtools.functions.confirmation import (
+    confirmSectorAllocation,
+    confirmPortfolioAllocation,
+    decideRebalanceNecessity
+)
 from llm.agents.agent import FinancialAgent
 from boardroom.boardroom_config import (
     AgentPortfolioSimulationConfig, 
     SimulationTimestep, 
-    BoardroomConfig, 
-    BoardroomPace,
-    PortfolioCreationConfig,
-    PortfolioRebalancingConfig
+    BoardroomPace
 )
 from boardroom.boardroom_engine import BoardroomEngine
 from simulation.market_sim import MarketSimulation
-from simulation.orders import MarketOrder, OrderSide, OrderStatus
-from ui.ui_hooks import setCurrentStage, setCurrentMilestoneId, setCurrentAgent, setAgentPhase, emitEvent, SimulationStoppedException, isStopRequested
+from simulation.orders import MarketOrder, OrderSide
+from ui.ui_hooks import setCurrentStage,  setCurrentMilestoneId, emitEvent, SimulationStoppedException, isStopRequested
+
+
+# Formats a datetime as Day DD Mon YYYY
+def formatDateFriendly(dt: Any) -> str:
+    if dt is None or pd.isna(dt):
+        return "--"
+    if isinstance(dt, str):
+        dt = pd.Timestamp(dt)
+    return f"{dt:%a} {dt.day} {dt:%b} {dt:%Y}"
+
+
+# Formats a datetime as DD-MM-YYYY
+def formatDateDdMmYyyy(dt: Any) -> str:
+    """Formats a datetime or timestamp as 'DD-MM-YYYY'."""
+    if dt is None or pd.isna(dt):
+        return "--"
+    if isinstance(dt, str):
+        dt = pd.Timestamp(dt)
+    return dt.strftime("%d-%m-%Y")
+
+
+# Returns S&P 500 nearest closing price in the past for a given timestamp 
+def getSp500PriceOnDate(dateTs: pd.Timestamp, sp500Df: pd.DataFrame) -> float:
+    if sp500Df is None or sp500Df.empty or "close" not in sp500Df.columns:
+        return 1.0
+    normDate = dateTs.tz_localize(None).normalize() if dateTs.tzinfo is not None else dateTs.normalize()
+    dateCol = "normDate" if "normDate" in sp500Df.columns else "date"
+    sub = sp500Df[sp500Df[dateCol] <= normDate]
+    if not sub.empty:
+        return float(sub.iloc[-1]["close"])
+    return float(sp500Df.iloc[0]["close"])
+
+
+# Calculate the next milestone date
+def computeNextMilestoneDate(currentTs: pd.Timestamp, timestep: SimulationTimestep) -> pd.Timestamp:
+    """Calculates the target timestamp for the subsequent simulation review milestone."""
+    if timestep == SimulationTimestep.ONE_WEEK:
+        return currentTs + pd.Timedelta(weeks=1)
+    elif timestep == SimulationTimestep.TWO_WEEKS:
+        return currentTs + pd.Timedelta(weeks=2)
+    elif timestep == SimulationTimestep.TWO_MONTHS:
+        return currentTs + pd.DateOffset(months=2)
+    elif timestep == SimulationTimestep.THREE_MONTHS:
+        return currentTs + pd.DateOffset(months=3)
+    else:  # ONE_MONTH default
+        return currentTs + pd.DateOffset(months=1)
 
 
 class AgentPortfolioSimulationEngine(BoardroomEngine):
@@ -35,7 +78,6 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         self.confirmedSectorAllocation: Optional[Dict[str, Any]] = None
         self.confirmedPortfolioAllocation: Optional[Dict[str, Any]] = None
         self.lastConfig: Optional[AgentPortfolioSimulationConfig] = None
-        self.fullConvSummary: str = ""
 
         # Instance-bound simulation journal
         self.journal: List[Dict[str, Any]] = []
@@ -51,21 +93,13 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         self.currentSimStatus: str = "Idle"
         self.sp500InitialPrice: float = 1.0
 
-    def _formatDateFriendly(self, dt: Any) -> str:
-        if dt is None or pd.isna(dt):
-            return "--"
-        if isinstance(dt, str):
-            dt = pd.Timestamp(dt)
-        return f"{dt:%a} {dt.day} {dt:%b} {dt:%Y}"
-
-    def _formatDateDdMmYyyy(self, dt: Any) -> str:
-        if dt is None or pd.isna(dt):
-            return "--"
-        if isinstance(dt, str):
-            dt = pd.Timestamp(dt)
-        return dt.strftime("%d-%m-%Y")
-
-    def _newPhaseHeader(self, phaseNumber: int, phaseName: str, pace: BoardroomPace = BoardroomPace.COMPLETE, customAgents: Optional[List[Dict[str, str]]] = None):
+    def _newPhaseHeader(
+        self, 
+        phaseNumber: int, 
+        phaseName: str, 
+        pace: BoardroomPace = BoardroomPace.COMPLETE, 
+        customAgents: Optional[List[Dict[str, str]]] = None
+    ):
         setCurrentStage(phaseNumber)
         setCurrentMilestoneId(self.currentMilestoneId)
         
@@ -119,7 +153,15 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             "entries": entries
         }
 
-    def _recordJournalEntry(self, tool: Tool, data: Any, timestamp: pd.Timestamp, entryText: str, strategicOutlook: str = "", actionTaken: str = "") -> Dict[str, Any]:
+    def _recordJournalEntry(
+        self, 
+        tool: Tool, 
+        data: Any, 
+        timestamp: pd.Timestamp, 
+        entryText: str, 
+        strategicOutlook: str = "", 
+        actionTaken: str = ""
+    ) -> Dict[str, Any]:
         currentDateStr = timestamp.strftime("%Y-%m-%d")
         entryIndex = len(self.journal) + 1
         entry = {
@@ -139,8 +181,14 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             "recordedEntry": entry
         }
 
-    def _wrappedConfirmSectorAllocation(self, tool: Tool, data: Any, timestamp: pd.Timestamp, sectorAllocations: Dict[str, float], rationale: str) -> Dict[str, Any]:
-        from llmtools.functions.confirmation import confirmSectorAllocation
+    def _wrappedConfirmSectorAllocation(
+        self, 
+        tool: Tool, 
+        data: Any, 
+        timestamp: pd.Timestamp, 
+        sectorAllocations: Dict[str, float], 
+        rationale: str
+    ) -> Dict[str, Any]:
         res = confirmSectorAllocation(tool, data, timestamp, sectorAllocations, rationale)
         if isinstance(res, dict) and (res.get("status") == "success" or "confirmedAllocation" in res):
             if tool.toolLog:
@@ -152,8 +200,15 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             })
         return res
 
-    def _wrappedConfirmPortfolioAllocation(self, tool: Tool, data: Any, timestamp: pd.Timestamp, sectorAllocations: Any, portfolioRationale: str, initialCapital: float = 100000.0) -> Dict[str, Any]:
-        from llmtools.functions.confirmation import confirmPortfolioAllocation
+    def _wrappedConfirmPortfolioAllocation(
+        self, 
+        tool: Tool, 
+        data: Any, 
+        timestamp: pd.Timestamp, 
+        sectorAllocations: Any, 
+        portfolioRationale: str, 
+        initialCapital: float = 100000.0
+    ) -> Dict[str, Any]:
         res = confirmPortfolioAllocation(tool, data, timestamp, sectorAllocations, portfolioRationale, initialCapital)
         if isinstance(res, dict) and (res.get("status") == "success" or "confirmedPortfolio" in res):
             if tool.toolLog:
@@ -166,8 +221,16 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             })
         return res
 
-    def _wrappedDecideRebalanceNecessity(self, tool: Tool, data: Any, timestamp: pd.Timestamp, decision: str, reasoning: str, macroShiftDetected: bool = False, urgency: str = "none") -> Dict[str, Any]:
-        from llmtools.functions.confirmation import decideRebalanceNecessity
+    def _wrappedDecideRebalanceNecessity(
+        self, 
+        tool: Tool, 
+        data: Any, 
+        timestamp: pd.Timestamp, 
+        decision: str, 
+        reasoning: str, 
+        macroShiftDetected: bool = False, 
+        urgency: str = "none"
+    ) -> Dict[str, Any]:
         res = decideRebalanceNecessity(tool, data, timestamp, decision, reasoning, macroShiftDetected, urgency)
         if isinstance(res, dict) and (res.get("status") == "success" or "decisionRecord" in res):
             record = res.get("decisionRecord") or (tool.toolLog[-1] if tool.toolLog else {})
@@ -428,33 +491,6 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             agent.dateStr = dateStr
             agent.messageHistory.clear()
 
-    def _formatDateDdMmYyyy(self, dt: Any) -> str:
-        if isinstance(dt, str):
-            dt = pd.Timestamp(dt)
-        return dt.strftime("%d-%m-%Y")
-
-    def _getSp500PriceOnDate(self, dateTs: pd.Timestamp, sp500Df: pd.DataFrame) -> float:
-        if sp500Df is None or sp500Df.empty or "close" not in sp500Df.columns:
-            return 1.0
-        normDate = dateTs.tz_localize(None).normalize() if dateTs.tzinfo is not None else dateTs.normalize()
-        dateCol = "normDate" if "normDate" in sp500Df.columns else "date"
-        sub = sp500Df[sp500Df[dateCol] <= normDate]
-        if not sub.empty:
-            return float(sub.iloc[-1]["close"])
-        return float(sp500Df.iloc[0]["close"])
-
-    def _computeNextMilestoneDate(self, currentTs: pd.Timestamp, timestep: SimulationTimestep) -> pd.Timestamp:
-        if timestep == SimulationTimestep.ONE_WEEK:
-            return currentTs + pd.Timedelta(weeks=1)
-        elif timestep == SimulationTimestep.TWO_WEEKS:
-            return currentTs + pd.Timedelta(weeks=2)
-        elif timestep == SimulationTimestep.TWO_MONTHS:
-            return currentTs + pd.DateOffset(months=2)
-        elif timestep == SimulationTimestep.THREE_MONTHS:
-            return currentTs + pd.DateOffset(months=3)
-        else: # ONE_MONTH default
-            return currentTs + pd.DateOffset(months=1)
-
     def _getSimulationMetrics(self, config: AgentPortfolioSimulationConfig, sp500Df: pd.DataFrame) -> Dict[str, Any]:
         if not self.marketSim:
             return {}
@@ -473,7 +509,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         totalReturnDollar = totalVal - capital
         totalReturnPct = ((totalVal / capital) - 1.0) * 100.0 if capital > 0 else 0.0
 
-        spCurrentPrice = self._getSp500PriceOnDate(currentDateTs, sp500Df)
+        spCurrentPrice = getSp500PriceOnDate(currentDateTs, sp500Df)
         sp500Val = capital * (spCurrentPrice / self.sp500InitialPrice) if self.sp500InitialPrice > 0 else capital
         sp500ReturnDollar = sp500Val - capital
         sp500ReturnPct = ((sp500Val / capital) - 1.0) * 100.0 if capital > 0 else 0.0
@@ -530,13 +566,14 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         if portfolioObj and hasattr(portfolioObj, "mainLog"):
             systemLogs = [entry.toDict() if hasattr(entry, "toDict") else entry for entry in portfolioObj.mainLog]
 
+        friendlyDate = formatDateFriendly(currentDateTs)
         return {
             "simStatus": self.currentSimStatus,
             "currentMilestoneId": self.currentMilestoneId,
             "currentMilestoneLabel": self.currentMilestoneLabel,
             "currentDate": currentDateStr,
-            "currentDateFormatted": self._formatDateFriendly(currentDateTs),
-            "currentDateFriendly": self._formatDateFriendly(currentDateTs),
+            "currentDateFormatted": friendlyDate,
+            "currentDateFriendly": friendlyDate,
             "totalValue": round(totalVal, 2),
             "cashValue": round(cashVal, 2),
             "stockValue": round(stockVal, 2),
@@ -631,7 +668,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         self.consecutiveSkippedSteps = 0
 
         # Record inception chart point
-        startFormatted = self._formatDateFriendly(startDateTs)
+        startFormatted = formatDateFriendly(startDateTs)
         self.portfolioHistoryPoints.append({"x": config.startDateStr, "y": float(config.initialCapital)})
         self.sp500HistoryPoints.append({"x": config.startDateStr, "y": float(config.initialCapital)})
 
@@ -932,7 +969,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             if isStopRequested():
                 raise SimulationStoppedException()
 
-            nextMilestoneDateTs = self._computeNextMilestoneDate(currentSimDateTs, config.timestep)
+            nextMilestoneDateTs = computeNextMilestoneDate(currentSimDateTs, config.timestep)
             if nextMilestoneDateTs > endDateTs:
                 nextMilestoneDateTs = endDateTs
 
@@ -944,7 +981,9 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             # Advance Market Simulator day-by-day
             stepCount = 0
             while self.marketSim.currentDate < nextMilestoneDateTs:
-                if isStopRequested(): raise SimulationStoppedException()
+                if isStopRequested(): 
+                    raise SimulationStoppedException()
+                
                 success = self.marketSim.runNextDay()
                 if not success:
                     break
@@ -952,7 +991,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 stepCount += 1
                 currDateStr = self.marketSim.currentDate.strftime("%Y-%m-%d")
                 currVal = float(self.marketSim.getPortfolioValueAtCurrentDate(username)["totalValue"])
-                currSpPrice = self._getSp500PriceOnDate(self.marketSim.currentDate, sp500Df)
+                currSpPrice = getSp500PriceOnDate(self.marketSim.currentDate, sp500Df)
                 currSpVal = config.initialCapital * (currSpPrice / self.sp500InitialPrice) if self.sp500InitialPrice > 0 else config.initialCapital
 
                 self.portfolioHistoryPoints.append({"x": currDateStr, "y": round(currVal, 2)})
@@ -969,7 +1008,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
 
             currentSimDateTs = self.marketSim.currentDate
             currentDateStr = currentSimDateTs.strftime("%Y-%m-%d")
-            currentDateFormatted = self._formatDateFriendly(currentSimDateTs)
+            currentDateFormatted = formatDateFriendly(currentSimDateTs)
             friendlyDate = currentDateFormatted
 
             # ---------------------------------------------------------
