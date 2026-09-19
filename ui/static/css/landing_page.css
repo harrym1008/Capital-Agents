@@ -35,6 +35,8 @@ h3 {
 }
 
 .splash-load-model-window {
+    width: unset;
+    max-width: 90vw;
     align-items: center;
     gap: 8px;
     margin-bottom: -2vh;

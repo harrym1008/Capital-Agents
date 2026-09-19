@@ -271,9 +271,14 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
             f"- Rebalance Mandate: {promptArgs['rebalanceAmountGuidance']}\n"
             f"- Target stock count across entire portfolio: {promptArgs['targetStockCount']}.\n"
             f"- Sector Boundary: Focus strictly on confirmed target sectors.\n\n"
+            f"CRITICAL MULTI-STEP EXECUTION MANDATE (STRICTLY REQUIRED):\n"
             f"1. Audit existing baseline growth holdings: recommend which to KEEP vs. REPLACE or TRIM based on current growth catalysts and the rebalance mandate.\n"
-            f"2. Use 'fetchStocksInSector' with style='growth' for confirmed sectors to screen replacement or expansion candidates.\n"
-            f"3. Use 'fetchBatchStockOverviews' on top conviction picks and present your candidate table."
+            f"2. STEP 1 (Screening): Call 'fetchStocksInSector' with style='growth' for confirmed sectors to screen replacement or expansion candidate equities.\n"
+            f"3. STEP 2 (MANDATORY IMMEDIATE TOOL CALL): Immediately after calling 'fetchStocksInSector', you MUST call 'fetchBatchStockOverviews' "
+            f"with a list of your shortlisted candidate tickers. DO NOT finalize or output your candidate table after Step 1 alone! 'fetchStocksInSector' only provides heuristic scores. "
+            f"You MUST inspect real financial metrics (valuation multiples like P/E, P/B, EV/EBITDA, profitability margins, revenue/EPS growth, leverage, news sentiment, and company summary) "
+            f"via 'fetchBatchStockOverviews' before making any final recommendations.\n"
+            f"4. STEP 3: Present your structured candidate table with tickers, company name, industry, real quantitative valuation/growth metrics, momentum, and growth catalysts."
         )
 
         valuePrompt = (
@@ -287,9 +292,14 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
             f"- Rebalance Mandate: {promptArgs['rebalanceAmountGuidance']}\n"
             f"- Target stock count across entire portfolio: {promptArgs['targetStockCount']}.\n"
             f"- Sector Boundary: Focus strictly on confirmed target sectors.\n\n"
+            f"CRITICAL MULTI-STEP EXECUTION MANDATE (STRICTLY REQUIRED):\n"
             f"1. Audit existing baseline defensive/value holdings: recommend which to KEEP vs. REPLACE or TRIM based on margin of safety and the rebalance mandate.\n"
-            f"2. Use 'fetchStocksInSector' with style='defensive' for confirmed sectors to screen candidate equities.\n"
-            f"3. Use 'fetchBatchStockOverviews' on top conviction picks and present your candidate table."
+            f"2. STEP 1 (Screening): Call 'fetchStocksInSector' with style='defensive' for confirmed sectors to screen candidate equities.\n"
+            f"3. STEP 2 (MANDATORY IMMEDIATE TOOL CALL): Immediately after calling 'fetchStocksInSector', you MUST call 'fetchBatchStockOverviews' "
+            f"with a list of your shortlisted candidate tickers. DO NOT finalize or output your candidate table after Step 1 alone! 'fetchStocksInSector' only provides heuristic scores. "
+            f"You MUST inspect real financial metrics (valuation multiples like P/E, P/B, debt-to-equity, current/quick ratios, profitability margins, dividend yield, and company summary) "
+            f"via 'fetchBatchStockOverviews' to verify solvency and true margin of safety.\n"
+            f"4. STEP 3: Present your structured candidate table with tickers, company name, industry, real quantitative valuation/solvency metrics, and margin of safety rationale."
         )
 
         (growthRaw, growthUISummary), (valueRaw, valueUISummary) = self._runAgentsConcurrently(
@@ -524,9 +534,14 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
             f"- Rebalance Mandate: {promptArgs['rebalanceAmountGuidance']}\n"
             f"- Target stock count: {promptArgs['targetStockCount']}.\n"
             f"- Sector Boundary: Focus strictly on confirmed target sectors.\n\n"
+            f"CRITICAL MULTI-STEP EXECUTION MANDATE (STRICTLY REQUIRED):\n"
             f"1. Audit existing baseline growth holdings: recommend which to KEEP vs. REPLACE or TRIM based on current growth catalysts and the rebalance mandate.\n"
-            f"2. Use 'fetchStocksInSector' with style='growth' for confirmed sectors to screen candidate equities.\n"
-            f"3. Use 'fetchBatchStockOverviews' on top conviction picks and present your candidate table."
+            f"2. STEP 1 (Screening): Call 'fetchStocksInSector' with style='growth' for confirmed sectors to screen candidate equities.\n"
+            f"3. STEP 2 (MANDATORY IMMEDIATE TOOL CALL): Immediately after calling 'fetchStocksInSector', you MUST call 'fetchBatchStockOverviews' "
+            f"with a list of your shortlisted candidate tickers. DO NOT finalize or output your candidate table after Step 1 alone! 'fetchStocksInSector' only provides heuristic scores. "
+            f"You MUST inspect real financial metrics (valuation multiples like P/E, P/B, EV/EBITDA, profitability margins, revenue/EPS growth, leverage, news sentiment, and company summary) "
+            f"via 'fetchBatchStockOverviews' before making any final recommendations.\n"
+            f"4. STEP 3: Present your structured candidate table with tickers, company name, industry, real quantitative valuation/growth metrics, momentum, and growth catalysts."
         )
 
         valuePrompt = (
@@ -540,9 +555,14 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
             f"- Rebalance Mandate: {promptArgs['rebalanceAmountGuidance']}\n"
             f"- Target stock count: {promptArgs['targetStockCount']}.\n"
             f"- Sector Boundary: Focus strictly on confirmed target sectors.\n\n"
+            f"CRITICAL MULTI-STEP EXECUTION MANDATE (STRICTLY REQUIRED):\n"
             f"1. Audit existing baseline defensive/value holdings: recommend which to KEEP vs. REPLACE or TRIM based on margin of safety and the rebalance mandate.\n"
-            f"2. Use 'fetchStocksInSector' with style='defensive' for confirmed sectors to screen candidate equities.\n"
-            f"3. Use 'fetchBatchStockOverviews' on top conviction picks and present your candidate table."
+            f"2. STEP 1 (Screening): Call 'fetchStocksInSector' with style='defensive' for confirmed sectors to screen candidate equities.\n"
+            f"3. STEP 2 (MANDATORY IMMEDIATE TOOL CALL): Immediately after calling 'fetchStocksInSector', you MUST call 'fetchBatchStockOverviews' "
+            f"with a list of your shortlisted candidate tickers. DO NOT finalize or output your candidate table after Step 1 alone! 'fetchStocksInSector' only provides heuristic scores. "
+            f"You MUST inspect real financial metrics (valuation multiples like P/E, P/B, debt-to-equity, current/quick ratios, profitability margins, dividend yield, and company summary) "
+            f"via 'fetchBatchStockOverviews' to verify solvency and true margin of safety.\n"
+            f"4. STEP 3: Present your structured candidate table with tickers, company name, industry, real quantitative valuation/solvency metrics, and margin of safety rationale."
         )
 
         (growthRaw, growthUISummary), (valueRaw, valueUISummary) = self._runAgentsConcurrently(

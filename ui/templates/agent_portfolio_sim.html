@@ -1,0 +1,2923 @@
+{% extends "boardroom_base.html" %}
+
+{% block title %}CapitalAgents - Agent-Driven Portfolio Simulation{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/market_sim.css">
+<link rel="stylesheet" href="/static/css/agent_portfolio_sim.css">
+<style>
+    .portfolio-num-input {
+        width: 60px !important;
+        text-align: center;
+        padding: 5px 6px !important;
+    }
+    /* Hide Generate Per-Agent Summaries setting */
+    label[for="generateSummariesCheckbox"],
+    .model-select-form-group:has(#generateSummariesCheckbox) {
+        display: none !important;
+    }
+    .stage-item.completed {
+        color: #10b981 !important;
+    }
+    .stage-item.active {
+        color: #d97706 !important;
+    }
+    .stage-item.viewing {
+        color: #2563eb !important;
+    }
+    .stage-item.completed.viewing {
+        color: #10b981 !important;
+    }
+    .stage-item.completed.viewing::after {
+        background-color: #10b981 !important;
+    }
+    .stage-item.active.viewing {
+        color: #d97706 !important;
+    }
+    .stage-item.active.viewing::after {
+        background-color: #d97706 !important;
+    }
+    .stage-item.disabled {
+        opacity: 0.45;
+        cursor: not-allowed !important;
+    }
+</style>
+{% endblock %}
+
+{% block config_inputs %}
+    <div class="config-group">
+        <label for="initialCapitalInput">Initial Capital ($):</label>
+        <input type="number" id="initialCapitalInput" min="1000" step="5000" value="100000" style="width: 85px;">
+    </div>
+
+    <div class="config-group">
+        <label for="setupStartDate">Start Date:</label>
+        <input type="date" id="setupStartDate" value="2024-09-01" min="2016-02-01" max="2026-09-12" style="width: 125px;">
+    </div>
+
+    <div class="config-group">
+        <label for="setupEndDate">End Date:</label>
+        <input type="date" id="setupEndDate" value="2026-09-01" min="2016-02-01" max="2026-09-12" style="width: 125px;">
+    </div>
+
+    <div class="config-group" id="targetSectorCountGroup">
+        <label for="targetSectorCountInput">Sectors:</label>
+        <input type="number" id="targetSectorCountInput" class="portfolio-num-input" min="1" max="11" step="1" placeholder="Auto" title="Target sector count (1 to 11, leave empty for dynamic selection)">
+    </div>
+
+    <div class="config-group" id="targetStockCountGroup">
+        <label for="targetStockCountInput">Stocks:</label>
+        <input type="number" id="targetStockCountInput" class="portfolio-num-input" min="1" max="50" step="1" placeholder="Auto" title="Target stock count (1 to 30, leave empty for dynamic selection)">
+    </div>
+
+    <div class="config-group">
+        <label for="timestepSelect">Timestep:</label>
+        <select id="timestepSelect">
+            <option value="1 week">1 week</option>
+            <option value="2 weeks">2 weeks</option>
+            <option value="1 month" selected>1 month</option>
+            <option value="2 months">2 months</option>
+            <option value="3 months">3 months</option>
+        </select>
+    </div>
+
+    <div class="config-group" style="display: flex; align-items: center; gap: 6px;">
+        <label for="rebalanceAmountSlider" style="margin-right: 2px;">Rebalance Amount:</label>
+        <span style="font-size: 11px; font-weight: 600; color: #0284c7; user-select: none;">Light</span>
+        <input type="range" id="rebalanceAmountSlider" min="1" max="6" step="1" value="3" oninput="updateRebalanceAmountTooltip()" style="width: 75px; cursor: pointer; accent-color: #2563eb;" title="Level 3: Moderate Rebalance">
+        <span style="font-size: 11px; font-weight: 600; color: #ea580c; user-select: none;">Heavy</span>
+    </div>
+
+    <div class="config-group">
+        <label for="allocationBiasCheckbox">Allocation Bias:</label>
+        <input type="checkbox" id="allocationBiasCheckbox" onchange="toggleAllocationBias()">
+    </div>
+    <div class="config-group" id="allocationBiasSliderContainer" style="display: none; align-items: center; gap: 6px;">
+        <span style="font-size: 11px; font-weight: 600; color: #16a34a; user-select: none;">Growth</span>
+        <input type="range" id="allocationBiasSlider" min="1" max="6" step="1" value="4" oninput="updateAllocationBiasTooltip()" style="width: 75px; cursor: pointer; accent-color: #2563eb;" title="Maximum Growth Bias">
+        <span style="font-size: 11px; font-weight: 600; color: #2563eb; user-select: none;">Defensive</span>
+    </div>
+{% endblock %}
+
+{% block sim_date_control %}
+    <!-- Date controls are customized above -->
+{% endblock %}
+
+{% block custom_workspace_widgets %}
+<!-- LEFT SIDEBAR: 23% Width (Reparented to .main-layout on initialization) -->
+<aside class="agent-sim-sidebar" id="agentSimSidebar">
+    
+    <!-- Section 1: Status, Date & Balances Header -->
+    <div class="report-section">
+        <div class="sim-metrics-summary">
+            <div class="metric-group">
+                <div class="metric-line">
+                    <span class="metric-label">Status:</span>
+                    <span class="status-highlight" id="currentSimStatusDisplay">Idle</span>
+                </div>
+            </div>
+            <div class="metric-group">
+                <div class="metric-line">
+                    <span class="metric-label">Date:</span>
+                    <span class="date-highlight" id="currentSimDateDisplay">--</span>
+                </div>
+            </div>
+            <div class="metric-group">
+                <div class="metric-line">
+                    <span class="metric-label">Cash:</span>
+                    <span class="metric-value" id="metricCashVal">$100,000.00</span>
+                </div>
+            </div>
+            <div class="metric-group">
+                <div class="metric-line">
+                    <span class="metric-label">Stock:</span>
+                    <span class="metric-value" id="metricStockVal">$0.00</span>
+                </div>
+            </div>
+            <div class="metric-group">
+                <div class="metric-line">
+                    <span class="metric-label">Assets:</span>
+                    <span class="metric-value" id="metricTotalVal">$100,000.00</span>
+                </div>
+                <div class="metric-change" id="metricFundReturn">+0.00% ($0.00)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 2: Portfolio vs S&P 500 Performance Chart -->
+    <div class="report-section">
+        <div class="report-section-header">
+            <span class="report-section-title">Portfolio vs S&amp;P 500 Performance</span>
+        </div>
+        <div class="chart-timeframe-controls">
+            <button type="button" class="tf-btn" onclick="setChartTimeframe('1m', this)">1M</button>
+            <button type="button" class="tf-btn" onclick="setChartTimeframe('3m', this)">3M</button>
+            <button type="button" class="tf-btn" onclick="setChartTimeframe('1y', this)">1Y</button>
+            <button type="button" class="tf-btn" onclick="setChartTimeframe('3y', this)">3Y</button>
+            <button type="button" class="tf-btn active" onclick="setChartTimeframe('all', this)">ALL</button>
+        </div>
+        <div class="sim-chart-wrapper">
+            <canvas id="agentSimChartCanvas"></canvas>
+        </div>
+    </div>
+
+    <!-- Section 3: Key Performance Metrics -->
+    <div class="report-section">
+        <div class="report-section-header">
+            <span class="report-section-title">Key Performance Metrics</span>
+        </div>
+        <div class="backtest-metrics-container">
+            <div class="backtest-metric-item">
+                <div class="backtest-metric-label">Portfolio Return</div>
+                <div id="metricFundReturnPct" class="backtest-metric-value" style="color: #10b981;">+0.00%</div>
+            </div>
+            <div class="backtest-metric-item">
+                <div class="backtest-metric-label">Relative vs S&amp;P 500</div>
+                <div id="metricAlpha" class="backtest-metric-value" style="color: #ef4444;">0.00% (0.00%)</div>
+            </div>
+            <div class="backtest-metric-item">
+                <div class="backtest-metric-label">Sharpe Ratio</div>
+                <div id="metricSharpe" class="backtest-metric-value" style="color: #0f172a;">0.00</div>
+            </div>
+            <div class="backtest-metric-item">
+                <div class="backtest-metric-label">Max Drawdown</div>
+                <div id="metricDrawdown" class="backtest-metric-value" style="color: #ef4444;">0.00%</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 4: Active Holdings Table -->
+    <div class="report-section">
+        <div class="report-section-header">
+            <span class="report-section-title">Active Holdings</span>
+            <span id="holdingsCountBadge" style="font-size: 11px; font-weight: 600; color: #64748b;">0 stocks</span>
+        </div>
+        <div style="overflow-y: auto; overflow-x: hidden; max-height: 240px; border: 1px solid #e2e8f0; border-radius: 6px;">
+            <table class="sim-positions-table" id="holdingsTable">
+                <thead>
+                    <tr>
+                        <th style="text-align: left; padding: 4px 2px;">Ticker/Company</th>
+                        <th style="text-align: right; padding: 4px 2px;">Shares</th>
+                        <th style="text-align: right; padding: 4px 2px;">Avg Cost</th>
+                        <th style="text-align: right; padding: 4px 2px;">Mkt Price</th>
+                        <th style="text-align: right; padding: 4px 2px;">Mkt Value</th>
+                        <th style="text-align: right; padding: 4px 2px;">Weight</th>
+                        <th style="text-align: right; padding: 4px 2px;">Return</th>
+                    </tr>
+                </thead>
+                <tbody id="holdingsTableBody">
+                    <tr>
+                        <td colspan="7" style="text-align: center; color: #94a3b8; padding: 16px 0; font-size: 12px;">No positions yet</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Section 5: Rebalance History & System Logs -->
+    <div class="report-section">
+        <div class="report-section-header">
+            <span class="report-section-title">Rebalance History &amp; Decisions</span>
+        </div>
+        <div class="timeline-list" id="rebalanceTimelineList">
+            <div style="text-align: center; color: #94a3b8; padding: 12px 0; font-size: 11px;">Logs are empty</div>
+        </div>
+    </div>
+
+</aside>
+{% endblock %}
+
+{% block page_scripts %}
+<script>
+    // =========================================================================
+    // STANDALONE MULTI-SESSION CLIENT ENGINE FOR AGENT PORTFOLIO SIMULATION
+    // =========================================================================
+
+    // --- State Storage ---
+    let chartInstance = null;
+    let fullPortfolioPoints = [];
+    let fullSp500Points = [];
+    let currentChartTf = 'all';
+
+    let simTimerInterval = null;
+    let simStartTime = 0;
+    let isSimRunning = false;
+
+    const chartInstances = {}; // canvasId -> ChartInstance
+
+    const roleConfigs = {
+        "Macro Analyst": { class: "cyan", initials: "MS", name: "Macro Strategist" },
+        "Bullish Value Analyst": { class: "green", initials: "BL", name: "Bullish Analyst" },
+        "Bearish Risk Analyst": { class: "red", initials: "BR", name: "Bearish Analyst" },
+        "Growth Stock Hunter": { class: "green", initials: "GH", name: "Growth Stock Hunter" },
+        "Value/Defensive Stock Hunter": { class: "blue", initials: "DH", name: "Defensive Stock Hunter" },
+        "Aggressive Risk Analyst": { class: "yellow", initials: "AR", name: "Aggressive Risk Analyst" },
+        "Conservative Risk Analyst": { class: "blue", initials: "CR", name: "Conservative Risk Analyst" },
+        "Impartial Portfolio Manager": { class: "magenta", initials: "PM", name: "Portfolio Manager" }
+    };
+
+    const defaultInceptionStages = [
+        { num: 1, name: "Macro Environment Analysis" },
+        { num: 2, name: "Sector Allocation Analysis" },
+        { num: 3, name: "Sector Allocation Decision" },
+        { num: 4, name: "Stock Scouting" },
+        { num: 5, name: "Stock Allocation Proposals" },
+        { num: 6, name: "Final Executive Decision" }
+    ];
+
+    const fastRebalanceStages = [
+        { num: 1, name: "Macro Environment Analysis" },
+        { num: 3, name: "Sector Rebalancing Decision" },
+        { num: 4, name: "Stock Holdings Audit & Scouting" },
+        { num: 6, name: "Final Executive Decision" }
+    ];
+
+    const completeRebalanceStages = [
+        { num: 1, name: "Macro Environment Analysis" },
+        { num: 2, name: "Sector Allocation Analysis" },
+        { num: 3, name: "Sector Rebalancing Decision" },
+        { num: 4, name: "Stock Holdings Audit & Scouting" },
+        { num: 5, name: "Stock Allocation Proposals" },
+        { num: 6, name: "Final Executive Decision" }
+    ];
+
+    function getCleanInitialCapital() {
+        const val = document.getElementById("initialCapitalInput")?.value;
+        const num = parseFloat(String(val).replace(/[^0-9.]/g, ""));
+        return isNaN(num) || num <= 0 ? 100000 : num;
+    }
+
+    function formatFriendlyDate(dateInput) {
+        if (!dateInput) return "--";
+        if (typeof dateInput === 'string') {
+            const clean = dateInput.trim();
+            if (/^[A-Za-z]{3}\s+\d{2}\s+[A-Za-z]{3}\s+\d{4}$/.test(clean)) {
+                return clean;
+            }
+            const ddmmyyyy = clean.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+            if (ddmmyyyy) {
+                dateInput = `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`;
+            }
+        }
+        const d = new Date(dateInput);
+        if (isNaN(d.getTime())) return String(dateInput);
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const dayStr = String(d.getUTCDate()).padStart(2, '0');
+        return `${days[d.getUTCDay()]} ${dayStr} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+    }
+
+    function formatMilestoneLabel(dateInput, type = "review") {
+        const friendly = formatFriendlyDate(dateInput);
+        const tag = (String(type).toLowerCase() === "inception") ? "(Inception)" : "(Review)";
+        return `${friendly} ${tag}`;
+    }
+
+    function formatOrdinalDate(dateInput) {
+        if (!dateInput) dateInput = new Date().toISOString().split('T')[0];
+        const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        
+        if (typeof dateInput === "string" && /^\d{4}-\d{2}-\d{2}/.test(dateInput)) {
+            const parts = dateInput.split('T')[0].split('-');
+            const year = parseInt(parts[0], 10);
+            const monthIdx = parseInt(parts[1], 10) - 1;
+            const day = parseInt(parts[2], 10);
+            let suffix = "th";
+            const lastTwo = day % 100;
+            if (lastTwo < 11 || lastTwo > 13) {
+                const lastDigit = day % 10;
+                if (lastDigit === 1) suffix = "st";
+                else if (lastDigit === 2) suffix = "nd";
+                else if (lastDigit === 3) suffix = "rd";
+            }
+            return `${day}${suffix} ${months[monthIdx] || ""} ${year}`;
+        }
+
+        try {
+            const d = new Date(dateInput);
+            if (!isNaN(d.getTime())) {
+                const year = d.getUTCFullYear();
+                const monthIdx = d.getUTCMonth();
+                const day = d.getUTCDate();
+                let suffix = "th";
+                const lastTwo = day % 100;
+                if (lastTwo < 11 || lastTwo > 13) {
+                    const lastDigit = day % 10;
+                    if (lastDigit === 1) suffix = "st";
+                    else if (lastDigit === 2) suffix = "nd";
+                    else if (lastDigit === 3) suffix = "rd";
+                }
+                return `${day}${suffix} ${months[monthIdx] || ""} ${year}`;
+            }
+        } catch(e) {}
+
+        return String(dateInput);
+    }
+
+    // --- Identical Markdown & LaTeX Parser Matching Boardroom Base ---
+    function escapeHtml(str) {
+        if (!str) return "";
+        return String(str)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function parseLatex(text) {
+        if (typeof katex === "undefined" || !text) return text;
+        text = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
+            try { return katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false }); } catch (e) { return match; }
+        });
+        text = text.replace(/\\\[([\s\S]+?)\\\]/g, (match, formula) => {
+            try { return katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false }); } catch (e) { return match; }
+        });
+        text = text.replace(/\\\(([\s\S]+?)\\\)/g, (match, formula) => {
+            try { return katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false }); } catch (e) { return match; }
+        });
+        text = text.replace(/(?<!\\)\$(?!\s|\d)([^\$\n]+?)(?<!\s|\\)\$(?!\d)/g, (match, formula) => {
+            if (formula.includes('**') || formula.includes('__') || formula.includes('<') || formula.includes('>')) return match;
+            try { return katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false }); } catch (e) { return match; }
+        });
+        return text;
+    }
+
+    function extractTableColumns(rowStr) {
+        if (!rowStr) return [];
+        let content = rowStr.trim();
+        if (content.startsWith('|')) content = content.slice(1);
+        if (content.endsWith('|')) content = content.slice(0, -1);
+        return content.split('|').map(c => c.trim());
+    }
+
+    function isTableSeparatorRow(rowStr) {
+        if (!rowStr) return false;
+        let content = rowStr.trim();
+        if (content.startsWith('|')) content = content.slice(1);
+        if (content.endsWith('|')) content = content.slice(0, -1);
+        return content.length > 0 && /^[\s\-:|]+$/.test(content) && content.includes('-');
+    }
+
+    function renderHtmlTable(rows) {
+        if (!rows || rows.length === 0) return "";
+        const firstRowCols = extractTableColumns(rows[0]);
+        if (firstRowCols.length === 0) return "";
+        const numCols = firstRowCols.length;
+
+        let html = '<table style="border-collapse: collapse; width: 100%; margin: 10px 0; border: 2px solid #cbd5e1;">';
+        html += '<thead><tr style="background-color: #f1f5f9; border-bottom: 2px solid #cbd5e1; font-weight: bold;">';
+        firstRowCols.forEach(col => {
+            html += `<th style="padding: 8px; border: 1px solid #cbd5e1; text-align: left; font-weight: bold; font-size: 13px;">${col}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+
+        const startIdx = (rows.length > 1 && isTableSeparatorRow(rows[1])) ? 2 : 1;
+        for (let i = startIdx; i < rows.length; i++) {
+            if (isTableSeparatorRow(rows[i])) continue;
+            const cols = extractTableColumns(rows[i]);
+            html += '<tr style="border-bottom: 1px solid #cbd5e1;">';
+            const totalCols = Math.max(numCols, cols.length);
+            for (let c = 0; c < totalCols; c++) {
+                const colVal = c < cols.length ? cols[c] : "";
+                html += `<td style="padding: 8px; border: 1px solid #cbd5e1; font-size: 13px;">${colVal}</td>`;
+            }
+            html += '</tr>';
+        }
+        html += '</tbody></table>';
+        return html;
+    }
+
+    function parseTables(text) {
+        const lines = text.split('\n');
+        let inTable = false;
+        let tableRows = [];
+        let resultLines = [];
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (line.startsWith('|')) {
+                inTable = true;
+                tableRows.push(line);
+            } else {
+                if (inTable) {
+                    resultLines.push(renderHtmlTable(tableRows));
+                    tableRows = [];
+                    inTable = false;
+                }
+                resultLines.push(line);
+            }
+        }
+        if (inTable) {
+            resultLines.push(renderHtmlTable(tableRows));
+        }
+        return resultLines.join('\n');
+    }
+
+    function parseMarkdown(text) {
+        if (!text) return "";
+        let formattedText = parseLatex(text);
+        formattedText = parseTables(formattedText);
+
+        formattedText = formattedText.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+            const cleanCode = escapeHtml(code.replace(/^\n+|\n+$/g, ''));
+            const langBadge = lang ? `<span style="position: absolute; top: 4px; right: 8px; font-size: 10px; color: #b8c8de; font-weight: 700; user-select: none;">${lang}</span>` : '';
+            return `<div style="position: relative; display: flex; flex-direction: column;">
+                        ${langBadge}
+                        <pre style="margin: 0; background-color: #0f172a; color: #ffffff; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 12.5px; line-height: 1.45; overflow-x: auto; white-space: pre;"><code>${cleanCode}</code></pre>
+                    </div>`;
+        });
+
+        formattedText = formattedText.replace(/^[\*\-\•]\s+(.*?)$/gm, '&bull; $1');
+        formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        formattedText = formattedText.replace(/__(.*?)__/g, '<strong>$1</strong>');
+        formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        formattedText = formattedText.replace(/_(.*?)_/g, '<em>$1</em>');
+        formattedText = formattedText.replace(/`([^`]+)`/g, '<code style="background-color: #f1f5f9; padding: 2px 4px; border-radius: 3px; font-size: 11.5px; font-family: monospace;">$1</code>');
+
+        formattedText = formattedText.replace(/^######\s+(.*?)$/gm, '<h6 style="font-size: 15px; font-weight: bold;">$1</h6>');
+        formattedText = formattedText.replace(/^#####\s+(.*?)$/gm, '<h6 style="font-size: 16px; font-weight: bold;">$1</h6>');
+        formattedText = formattedText.replace(/^####\s+(.*?)$/gm, '<h5 style="font-size: 17px; font-weight: bold;">$1</h5>');
+        formattedText = formattedText.replace(/^###\s+(.*?)$/gm, '<h4 style="font-size: 19px; font-weight: bold;">$1</h4>');
+        formattedText = formattedText.replace(/^##\s+(.*?)$/gm, '<h3 style="font-size: 21px; font-weight: bold;">$1</h3>');
+        formattedText = formattedText.replace(/^#\s+(.*?)$/gm, '<h2 style="font-size: 23px; font-weight: bold; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px;">$1</h2>');
+
+        formattedText = formattedText.replace(/^---+\s*$/gm, '<hr style="border: none; border-top: 1.5px solid #cbd5e1; margin: 10px 0 3px 0;">');
+        formattedText = formattedText.replace(/\\\$/g, '$');
+
+        return formattedText;
+    }
+
+    function tryFormatJson(str) {
+        try {
+            const trimmed = String(str).trim();
+            if ((trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+                (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+                const parsed = JSON.parse(trimmed);
+                return JSON.stringify(parsed, null, 2);
+            }
+        } catch (e) {}
+        return str;
+    }
+
+    function extractPartialCode(rawJson) {
+        const match = rawJson.match(/"code"\s*:\s*"((?:[^"\\]|\\.)*)/);
+        if (match) {
+            return match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+        }
+        return rawJson;
+    }
+
+    // =========================================================================
+    // OBJECT-ORIENTED SESSION & WORKSPACE ISOLATION ARCHITECTURE
+    // =========================================================================
+
+    class Session {
+        constructor({ id, label, date, dateFormatted, type, pace, stages }) {
+            this.id = id;
+            const isInc = (id === "milestone_0" || type === "inception");
+            const rawDate = date || dateFormatted;
+            this.date = date;
+            this.dateFormatted = dateFormatted || (date ? formatFriendlyDate(date) : date);
+            this.type = type || (isInc ? "inception" : "review");
+            this.pace = pace || "fast";
+            this.stages = stages || [];
+            this.label = (label && label.includes("(")) ? label : (rawDate ? formatMilestoneLabel(rawDate, this.type) : `Session ${id}`);
+            this.isCompleted = false;
+            this.currentStageNum = 1;
+            this.baselinePositions = [];
+
+            this.workspaceEl = null;
+            this.stagesMap = {}; // stageNum -> { stageNum, stageName, stageEl, agentPanes: {} }
+            this.activeBlocks = {}; // `${stageNum}_${agentRole}` -> { type, element, block, rawText }
+            this.streamingArgs = {}; // `${stageNum}_${toolIndex}` -> raw string
+
+            this.confirmedSector = null;
+            this.confirmedPortfolio = null;
+
+            this._initWorkspaceDOM();
+        }
+
+        updateReceiptDatesAndCapital(dateStr = null, capital = null) {
+            const effectiveDate = dateStr || this.date || this.dateFormatted;
+            if (effectiveDate) {
+                if (typeof dateStr === "string" && dateStr.includes("-")) {
+                    this.date = dateStr;
+                }
+                this.dateFormatted = formatFriendlyDate(effectiveDate);
+                const ordDate = formatOrdinalDate(effectiveDate);
+                const el3 = document.getElementById(`receipt-date-${this.id}-3`);
+                const el6 = document.getElementById(`receipt-date-${this.id}-6`);
+                if (el3) el3.innerText = ordDate;
+                if (el6) el6.innerText = ordDate;
+            }
+            if (capital !== null && capital !== undefined) {
+                const cleanCap = parseFloat(capital) || getCleanInitialCapital();
+                const capStr = `$${cleanCap.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+                const capEl3 = document.getElementById(`receipt-cap-${this.id}-3`);
+                const capEl6 = document.getElementById(`receipt-cap-${this.id}-6`);
+                if (capEl3) capEl3.innerText = capStr;
+                if (capEl6) capEl6.innerText = capStr;
+            }
+        }
+
+        _initWorkspaceDOM() {
+            const container = document.getElementById("panesContainer");
+            if (!container) return;
+
+            let el = document.getElementById(`sessionWorkspace-${this.id}`);
+            if (!el) {
+                el = document.createElement("div");
+                el.id = `sessionWorkspace-${this.id}`;
+                el.className = "milestone-workspace";
+                el.style.cssText = "display: none; width: 100%; height: 100%; flex: 1; min-height: 0; min-width: 0; overflow: hidden; align-items: stretch;";
+                container.appendChild(el);
+            }
+            this.workspaceEl = el;
+        }
+
+        setupAutoScroll(el, threshold = 30) {
+            if (!el || el._autoScrollReady) return;
+            el._autoScrollReady = true;
+            el._userScrolledAway = false;
+            el._lastScrollTop = el.scrollTop;
+
+            el.addEventListener('scroll', () => {
+                const currentScrollTop = el.scrollTop;
+                const scrollDelta = currentScrollTop - (el._lastScrollTop !== undefined ? el._lastScrollTop : currentScrollTop);
+                el._lastScrollTop = currentScrollTop;
+
+                const distanceToBottom = el.scrollHeight - el.clientHeight - currentScrollTop;
+                if (distanceToBottom > threshold) {
+                    if (scrollDelta < 0) {
+                        el._userScrolledAway = true;
+                    }
+                } else {
+                    el._userScrolledAway = false;
+                }
+            });
+        }
+
+        autoScroll(el) {
+            if (!el || el._userScrolledAway) return;
+            el.scrollTop = el.scrollHeight;
+            el._lastScrollTop = el.scrollTop;
+        }
+
+        autoScrollFeed(stageNum, agentRole) {
+            const compoundKey = `${stageNum}_${agentRole}`;
+            const sData = this.stagesMap[stageNum];
+            if (sData && sData.agentPanes[agentRole]) {
+                this.autoScroll(sData.agentPanes[agentRole].feedEl);
+            }
+        }
+
+        getOrCreateStageWorkspace(stageNum, stageName = "", agents = []) {
+            if (!this.workspaceEl) this._initWorkspaceDOM();
+            if (this.stagesMap[stageNum]) return this.stagesMap[stageNum].stageEl;
+
+            const isMilestone0 = (this.id === "milestone_0");
+            const cleanCap = getCleanInitialCapital();
+            const sessionDateStr = this.date || this.dateFormatted || (isMilestone0 ? document.getElementById("setupStartDate")?.value : document.getElementById("currentSimDateDisplay")?.innerText);
+            const sessionDateDisplay = formatOrdinalDate(sessionDateStr);
+
+            const sWs = document.createElement("div");
+            sWs.id = `session-${this.id}-stage-${stageNum}`;
+            sWs.className = "stage-workspace";
+            sWs.style.cssText = "display: none; gap: 20px; width: 100%; height: 100%; flex: 1; min-height: 0; overflow: hidden; align-items: stretch; justify-content: stretch; box-sizing: border-box;";
+            this.workspaceEl.appendChild(sWs);
+
+            const stageData = {
+                stageNum: stageNum,
+                stageName: stageName,
+                stageEl: sWs,
+                agentPanes: {}
+            };
+            this.stagesMap[stageNum] = stageData;
+
+            if (stageNum === 3) {
+                // Stage 3 Visual Report + PM Agent Pane
+                const receiptHtml = `
+                    <div class="upload-receipt-container" id="receipt-${this.id}-stage-3" style="flex: 0 0 460px; max-width: 480px; min-width: 320px; height: 100%; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow-y: auto; box-sizing: border-box;">
+                        <h2 style="font-size: 16px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 10px; text-align: center;">${isMilestone0 ? 'CONFIRMED SECTOR ALLOCATION' : 'SECTOR REBALANCING REPORT'}</h2>
+                        <div style="display: grid; grid-template-columns: 120px 1fr; gap: 6px; font-size: 12.5px; margin-bottom: 8px; line-height: 1.3;">
+                            <div style="font-weight: 700; color: #475569;">Target Capital:</div>
+                            <div id="receipt-cap-${this.id}-3" style="font-weight: 800;">$${cleanCap.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                            <div style="font-weight: 700; color: #475569;">Analysis Date:</div>
+                            <div id="receipt-date-${this.id}-3" style="font-weight: bold;">${sessionDateDisplay}</div>
+                            <div style="font-weight: 700; color: #475569;">Decision Status:</div>
+                            <div><span id="receipt-status-${this.id}-3" class="tool-status-badge status-running">PENDING DECISION</span></div>
+                        </div>
+                        <div style="width: 100%; height: 210px; position: relative; margin: 8px 0;">
+                            <canvas id="sectorChartCanvas-${this.id}"></canvas>
+                        </div>
+                        <div id="sectorTableContainer-${this.id}" style="margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
+                            <div style="font-size: 12px; color: #64748b; text-align: center;">Waiting for Portfolio Manager sector decision...</div>
+                        </div>
+                    </div>
+                `;
+                sWs.innerHTML = receiptHtml;
+                this.getOrCreateAgentPane(stageNum, "Impartial Portfolio Manager", "magenta", "Portfolio Manager");
+            } else if (stageNum === 6) {
+                // Stage 6 Visual Report + PM Agent Pane
+                const receiptHtml = `
+                    <div class="upload-receipt-container" id="receipt-${this.id}-stage-6" style="flex: 0 0 520px; max-width: 550px; min-width: 340px; height: 100%; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow-y: auto; box-sizing: border-box;">
+                        <h2 style="font-size: 16px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 10px; text-align: center;">${isMilestone0 ? 'PORTFOLIO CONSTRUCTION REPORT' : 'PORTFOLIO REBALANCING REPORT'}</h2>
+                        <div style="display: grid; grid-template-columns: 120px 1fr; gap: 6px; font-size: 12.5px; margin-bottom: 8px; line-height: 1.3;">
+                            <div style="font-weight: 700; color: #475569;">Total Capital:</div>
+                            <div id="receipt-cap-${this.id}-6" style="font-weight: 800;">$${cleanCap.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                            <div style="font-weight: 700; color: #475569;">Analysis Date:</div>
+                            <div id="receipt-date-${this.id}-6" style="font-weight: bold;">${sessionDateDisplay}</div>
+                            <div style="font-weight: 700; color: #475569;">Holdings Count:</div>
+                            <div id="receipt-count-${this.id}-6" style="font-weight: bold;">--</div>
+                            <div style="font-weight: 700; color: #475569;">Portfolio Status:</div>
+                            <div><span id="receipt-status-${this.id}-6" class="tool-status-badge status-running">PENDING CONSTRUCTION</span></div>
+                        </div>
+                        <div style="width: 100%; height: 210px; position: relative; margin: 8px 0;">
+                            <canvas id="portChartCanvas-${this.id}"></canvas>
+                        </div>
+                        <div id="portHoldingsContainer-${this.id}" style="margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
+                            <div style="font-size: 12px; color: #64748b; text-align: center;">Waiting for Portfolio Manager execution...</div>
+                        </div>
+                    </div>
+                `;
+                sWs.innerHTML = receiptHtml;
+                this.getOrCreateAgentPane(stageNum, "Impartial Portfolio Manager", "magenta", "Portfolio Manager");
+            } else {
+                if (agents && agents.length > 0) {
+                    agents.forEach(ag => {
+                        this.getOrCreateAgentPane(stageNum, ag.role, ag.color || "cyan", ag.name || ag.role);
+                    });
+                }
+            }
+
+            return sWs;
+        }
+
+        getOrCreateAgentPane(stageNum, agentRole, colorClass = "cyan", displayName = "") {
+            const stageData = this.stagesMap[stageNum];
+            if (!stageData) {
+                this.getOrCreateStageWorkspace(stageNum);
+            }
+            const sData = this.stagesMap[stageNum];
+            if (sData.agentPanes[agentRole]) {
+                return sData.agentPanes[agentRole];
+            }
+
+            const rConf = roleConfigs[agentRole] || {
+                class: colorClass || "cyan",
+                initials: (agentRole || "AG").slice(0, 2).toUpperCase(),
+                name: displayName || agentRole
+            };
+            const cClass = rConf.class || colorClass || "cyan";
+            const initials = rConf.initials || (agentRole || "AG").slice(0, 2).toUpperCase();
+            const roleName = displayName || rConf.name || agentRole;
+
+            const pane = document.createElement("div");
+            pane.className = "agent-pane";
+            pane.id = `pane-${this.id}-${stageNum}-${agentRole.replace(/\s+/g, '')}`;
+
+            const header = document.createElement("div");
+            header.className = "agent-header";
+
+            const avatar = document.createElement("div");
+            avatar.className = `agent-avatar agent-${cClass}`;
+            avatar.innerText = initials;
+
+            const name = document.createElement("div");
+            name.className = "agent-role-name";
+            name.innerText = roleName;
+
+            header.appendChild(avatar);
+            header.appendChild(name);
+            pane.appendChild(header);
+
+            const feed = document.createElement("div");
+            feed.className = "agent-feed";
+            this.setupAutoScroll(feed);
+            pane.appendChild(feed);
+
+            sData.stageEl.appendChild(pane);
+
+            const paneObj = {
+                pane: pane,
+                feedEl: feed
+            };
+            sData.agentPanes[agentRole] = paneObj;
+            return paneObj;
+        }
+
+        startReasoningBlock(stageNum, agentRole) {
+            const paneObj = this.getOrCreateAgentPane(stageNum, agentRole);
+            if (!paneObj || !paneObj.feedEl) return;
+            const compoundKey = `${stageNum}_${agentRole}`;
+
+            // Collapse any active tool call blocks
+            const toolBlocks = paneObj.feedEl.querySelectorAll(`.tool-call-block`);
+            toolBlocks.forEach(tb => tb.classList.add("collapsed"));
+
+            const block = document.createElement("div");
+            block.className = "collapsible-block";
+
+            const header = document.createElement("div");
+            header.className = "collapsible-header";
+            header.innerText = "Thinking";
+            header.onclick = () => block.classList.toggle("collapsed");
+
+            const content = document.createElement("div");
+            content.className = "collapsible-content";
+            this.setupAutoScroll(content, 35);
+
+            block.appendChild(header);
+            block.appendChild(content);
+            paneObj.feedEl.appendChild(block);
+
+            this.autoScrollFeed(stageNum, agentRole);
+            this.activeBlocks[compoundKey] = {
+                type: 'thinking',
+                element: content,
+                block: block,
+                rawText: ""
+            };
+        }
+
+        appendReasoningToken(stageNum, agentRole, token) {
+            const compoundKey = `${stageNum}_${agentRole}`;
+            let active = this.activeBlocks[compoundKey];
+            if (!active || active.type !== 'thinking') {
+                this.startReasoningBlock(stageNum, agentRole);
+                active = this.activeBlocks[compoundKey];
+            }
+            if (active && active.type === 'thinking') {
+                active.rawText = (active.rawText || "") + token;
+
+                const el = active.element;
+                const savedTop = el.scrollTop;
+                const scrolledAway = el._userScrolledAway;
+
+                el.innerHTML = parseMarkdown(active.rawText);
+
+                if (scrolledAway) {
+                    el.scrollTop = savedTop;
+                    el._lastScrollTop = savedTop;
+                } else {
+                    this.autoScroll(el);
+                }
+
+                this.autoScrollFeed(stageNum, agentRole);
+            }
+        }
+
+        endReasoningBlock(stageNum, agentRole) {
+            const compoundKey = `${stageNum}_${agentRole}`;
+            const active = this.activeBlocks[compoundKey];
+            if (active && active.type === 'thinking' && active.block) {
+                active.block.classList.add("collapsed");
+                delete this.activeBlocks[compoundKey];
+            }
+        }
+
+        startContentBlock(stageNum, agentRole, phase) {
+            const paneObj = this.getOrCreateAgentPane(stageNum, agentRole);
+            if (!paneObj || !paneObj.feedEl) return;
+            const compoundKey = `${stageNum}_${agentRole}`;
+
+            // Collapse previous thinking block if open
+            const active = this.activeBlocks[compoundKey];
+            if (active && active.type === 'thinking' && active.block) {
+                active.block.classList.add("collapsed");
+            }
+
+            // Collapse tool blocks
+            const toolBlocks = paneObj.feedEl.querySelectorAll(`.tool-call-block`);
+            toolBlocks.forEach(tb => tb.classList.add("collapsed"));
+
+            const div = document.createElement("div");
+            div.className = "raw-output-area";
+            paneObj.feedEl.appendChild(div);
+
+            this.autoScrollFeed(stageNum, agentRole);
+            this.activeBlocks[compoundKey] = {
+                type: 'content',
+                element: div,
+                block: div,
+                rawText: ""
+            };
+        }
+
+        appendContentToken(stageNum, agentRole, token, phase) {
+            const compoundKey = `${stageNum}_${agentRole}`;
+            let active = this.activeBlocks[compoundKey];
+            if (!active || active.type !== 'content') {
+                this.startContentBlock(stageNum, agentRole, phase);
+                active = this.activeBlocks[compoundKey];
+            }
+            if (active && active.type === 'content') {
+                active.rawText = (active.rawText || "") + token;
+                active.element.innerHTML = parseMarkdown(active.rawText);
+                this.autoScrollFeed(stageNum, agentRole);
+            }
+        }
+
+        endContentBlock(stageNum, agentRole) {
+            const compoundKey = `${stageNum}_${agentRole}`;
+            const active = this.activeBlocks[compoundKey];
+            if (active && active.type === 'content') {
+                delete this.activeBlocks[compoundKey];
+            }
+        }
+
+        startToolCallStream(stageNum, agentRole, index, toolName) {
+            const paneObj = this.getOrCreateAgentPane(stageNum, agentRole);
+            if (!paneObj || !paneObj.feedEl) return;
+            const compoundKey = `${stageNum}_${agentRole}`;
+            const streamId = `streamToolCall-${this.id}-${stageNum}-${index}`;
+
+            // Only match an existing ACTIVE streaming block
+            let toolBlock = paneObj.feedEl.querySelector(`.tool-call-block.is-streaming#${CSS.escape(streamId)}`);
+            if (!toolBlock) {
+                const el = document.getElementById(streamId);
+                if (el && paneObj.feedEl.contains(el) && el.classList.contains("is-streaming")) {
+                    toolBlock = el;
+                }
+            }
+
+            if (!toolBlock) {
+                // Collapse any active thinking block for this agent
+                const active = this.activeBlocks[compoundKey];
+                if (active && active.type === 'thinking' && active.block) {
+                    active.block.classList.add("collapsed");
+                }
+
+                // Collapse previous tool call blocks in this pane
+                const toolBlocks = paneObj.feedEl.querySelectorAll(`.tool-call-block`);
+                toolBlocks.forEach(tb => tb.classList.add("collapsed"));
+
+                toolBlock = document.createElement("div");
+                toolBlock.className = "collapsible-block tool-call-block is-streaming";
+                toolBlock.id = streamId;
+
+                const header = document.createElement("div");
+                header.className = "collapsible-header tool-call-header";
+                header.onclick = () => toolBlock.classList.toggle("collapsed");
+
+                const label = document.createElement("span");
+                label.className = "tool-call-label";
+                label.innerHTML = `Tool: <strong class="tool-call-name">${escapeHtml(toolName || "Tool")}</strong>`;
+                header.appendChild(label);
+
+                const badge = document.createElement("span");
+                badge.className = "tool-status-badge status-running";
+                badge.innerText = "generating";
+                header.appendChild(badge);
+
+                const argsPreview = document.createElement("span");
+                argsPreview.className = "tool-call-args-preview";
+                header.appendChild(argsPreview);
+
+                const content = document.createElement("div");
+                content.className = "collapsible-content tool-call-content";
+
+                const sectionTitle = document.createElement("div");
+                sectionTitle.className = "tool-section-title";
+                sectionTitle.style.fontWeight = "bold";
+                sectionTitle.style.fontSize = "12px";
+                sectionTitle.style.color = "#475569";
+                sectionTitle.style.marginBottom = "4px";
+                sectionTitle.innerText = (toolName === "executePythonCalculation") ? "Python Code:" : "Arguments:";
+                content.appendChild(sectionTitle);
+
+                const pre = document.createElement("pre");
+                pre.className = "tool-stream-pre";
+                pre.style.margin = "0";
+                if (toolName === "executePythonCalculation") {
+                    pre.style.backgroundColor = "#0f172a";
+                    pre.style.color = "#38bdf8";
+                    pre.style.padding = "10px";
+                } else {
+                    pre.style.backgroundColor = "#f1f5f9";
+                    pre.style.color = "#0f172a";
+                    pre.style.padding = "8px";
+                }
+                pre.style.borderRadius = "4px";
+                pre.style.fontFamily = "monospace";
+                pre.style.fontSize = "12px";
+                pre.style.overflowX = "auto";
+                pre.style.whiteSpace = "pre-wrap";
+                content.appendChild(pre);
+
+                toolBlock.appendChild(header);
+                toolBlock.appendChild(content);
+                paneObj.feedEl.appendChild(toolBlock);
+
+                this.autoScrollFeed(stageNum, agentRole);
+                this.activeBlocks[compoundKey] = { type: 'tool', element: content, block: toolBlock };
+            } else {
+                const label = toolBlock.querySelector(".tool-call-name");
+                if (label && toolName) label.innerText = toolName;
+                const sectionTitle = toolBlock.querySelector(".tool-section-title");
+                if (sectionTitle && toolName) {
+                    sectionTitle.innerText = (toolName === "executePythonCalculation") ? "Python Code:" : "Arguments:";
+                }
+            }
+        }
+
+        appendToolCallStreamToken(stageNum, agentRole, index, token) {
+            const paneObj = this.getOrCreateAgentPane(stageNum, agentRole);
+            if (!paneObj || !paneObj.feedEl) return;
+
+            const streamId = `streamToolCall-${this.id}-${stageNum}-${index}`;
+            const key = `${stageNum}_${index}`;
+
+            this.streamingArgs[key] = (this.streamingArgs[key] || "") + token;
+            const raw = this.streamingArgs[key];
+
+            let toolBlock = paneObj.feedEl.querySelector(`.tool-call-block.is-streaming#${CSS.escape(streamId)}`);
+            if (!toolBlock) {
+                const el = document.getElementById(streamId);
+                if (el && paneObj.feedEl.contains(el)) toolBlock = el;
+            }
+
+            if (toolBlock) {
+                const nameEl = toolBlock.querySelector(".tool-call-name");
+                const toolName = nameEl ? nameEl.innerText : "";
+
+                const argsPreview = toolBlock.querySelector(".tool-call-args-preview");
+                if (argsPreview) {
+                    if (toolName === "executePythonCalculation") {
+                        argsPreview.innerText = "";
+                    } else {
+                        argsPreview.innerText = `Arguments: ${raw.trim()}`;
+                    }
+                }
+
+                const pre = toolBlock.querySelector(".tool-stream-pre");
+                if (pre) {
+                    if (toolName === "executePythonCalculation") {
+                        pre.innerText = extractPartialCode(raw);
+                    } else {
+                        pre.innerText = raw.trim();
+                    }
+                }
+
+                this.autoScrollFeed(stageNum, agentRole);
+            }
+        }
+
+        startToolCall(stageNum, agentRole, toolName, args, callId, toolIndex) {
+            const paneObj = this.getOrCreateAgentPane(stageNum, agentRole);
+            if (!paneObj || !paneObj.feedEl) return;
+            const compoundKey = `${stageNum}_${agentRole}`;
+            const streamId = (toolIndex !== undefined && toolIndex !== null) ? `streamToolCall-${this.id}-${stageNum}-${toolIndex}` : null;
+            const callBlockId = callId ? `toolCall-${this.id}-${stageNum}-${callId}` : null;
+
+            let toolBlock = null;
+            if (callId) {
+                toolBlock = paneObj.feedEl.querySelector(`[data-call-id="${CSS.escape(callId)}"]`);
+                if (!toolBlock && callBlockId) {
+                    const el = document.getElementById(callBlockId);
+                    if (el && paneObj.feedEl.contains(el)) toolBlock = el;
+                }
+            }
+            if (!toolBlock && streamId) {
+                const el = paneObj.feedEl.querySelector(`.tool-call-block.is-streaming#${CSS.escape(streamId)}`);
+                if (el) {
+                    toolBlock = el;
+                } else {
+                    const docEl = document.getElementById(streamId);
+                    if (docEl && paneObj.feedEl.contains(docEl) && docEl.classList.contains("is-streaming")) {
+                        toolBlock = docEl;
+                    }
+                }
+            }
+
+            if (!toolBlock) {
+                const toolBlocks = paneObj.feedEl.querySelectorAll(`.tool-call-block`);
+                toolBlocks.forEach(tb => tb.classList.add("collapsed"));
+
+                toolBlock = document.createElement("div");
+                toolBlock.className = "collapsible-block tool-call-block";
+                paneObj.feedEl.appendChild(toolBlock);
+            }
+
+            // Remove streaming class so future turns never match this block
+            toolBlock.classList.remove("is-streaming");
+            if (callBlockId) {
+                toolBlock.id = callBlockId;
+            }
+            if (callId) {
+                toolBlock.setAttribute("data-call-id", callId);
+            }
+            toolBlock.removeAttribute("data-tool-stream-id");
+
+            toolBlock.innerHTML = "";
+
+            const header = document.createElement("div");
+            header.className = "collapsible-header tool-call-header";
+            header.onclick = () => toolBlock.classList.toggle("collapsed");
+
+            const label = document.createElement("span");
+            label.className = "tool-call-label";
+            label.innerHTML = `Tool: <strong class="tool-call-name">${escapeHtml(toolName)}</strong>`;
+            header.appendChild(label);
+
+            const badge = document.createElement("span");
+            badge.className = "tool-status-badge status-running";
+            badge.innerText = "running";
+            header.appendChild(badge);
+
+            const trimmedArgs = typeof args === 'object' ? JSON.stringify(args) : String(args || "").trim();
+            const prettyArgs = tryFormatJson(trimmedArgs);
+
+            const argsPreview = document.createElement("span");
+            argsPreview.className = "tool-call-args-preview";
+            if (toolName === "executePythonCalculation") {
+                argsPreview.innerText = "";
+            } else {
+                argsPreview.innerText = `Arguments: ${trimmedArgs}`;
+            }
+            header.appendChild(argsPreview);
+
+            const content = document.createElement("div");
+            content.className = "collapsible-content tool-call-content";
+
+            if (toolName === "executePythonCalculation") {
+                let codeVal = "";
+                try {
+                    const parsed = typeof args === 'object' ? args : JSON.parse(args);
+                    codeVal = String(parsed.code || "").trim();
+                } catch(e) {
+                    codeVal = trimmedArgs;
+                }
+                const codeDiv = document.createElement("div");
+                codeDiv.style.marginBottom = "10px";
+                codeDiv.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: #475569; margin-bottom: 4px;">Python Code:</div>
+                                     <pre style="margin: 0; background-color: #0f172a; color: #38bdf8; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; overflow-x: auto; white-space: pre-wrap;">${escapeHtml(codeVal)}</pre>`;
+                content.appendChild(codeDiv);
+            } else {
+                const argsDiv = document.createElement("div");
+                argsDiv.style.marginBottom = "10px";
+                argsDiv.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: #475569; margin-bottom: 4px;">Arguments:</div>
+                                     <pre style="margin: 0; background-color: #f1f5f9; padding: 8px; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; color: #0f172a;">${escapeHtml(prettyArgs)}</pre>`;
+                content.appendChild(argsDiv);
+            }
+
+            toolBlock.appendChild(header);
+            toolBlock.appendChild(content);
+
+            this.autoScrollFeed(stageNum, agentRole);
+            this.activeBlocks[compoundKey] = { type: 'tool', element: content, block: toolBlock };
+        }
+
+        updateToolCallProgress(stageNum, agentRole, callId, progress) {
+            const paneObj = this.getOrCreateAgentPane(stageNum, agentRole);
+            if (!paneObj || !paneObj.feedEl) return;
+
+            let toolBlock = null;
+            if (callId) {
+                toolBlock = paneObj.feedEl.querySelector(`[data-call-id="${CSS.escape(callId)}"]`);
+                if (!toolBlock) {
+                    const el = document.getElementById(`toolCall-${this.id}-${stageNum}-${callId}`);
+                    if (el && paneObj.feedEl.contains(el)) toolBlock = el;
+                }
+            }
+
+            if (toolBlock) {
+                const badge = toolBlock.querySelector(".tool-status-badge");
+                if (badge) {
+                    badge.className = "tool-status-badge status-running";
+                    badge.innerText = String(progress).toUpperCase();
+                }
+            }
+        }
+
+        endToolCall(stageNum, agentRole, toolName, callId, status, result, stdout, variables, toolIndex, isError) {
+            const paneObj = this.getOrCreateAgentPane(stageNum, agentRole);
+            if (!paneObj || !paneObj.feedEl) return;
+            const compoundKey = `${stageNum}_${agentRole}`;
+
+            let toolBlock = null;
+            if (callId) {
+                toolBlock = paneObj.feedEl.querySelector(`[data-call-id="${CSS.escape(callId)}"]`);
+                if (!toolBlock) {
+                    const el = document.getElementById(`toolCall-${this.id}-${stageNum}-${callId}`);
+                    if (el && paneObj.feedEl.contains(el)) toolBlock = el;
+                }
+            }
+            if (!toolBlock && toolIndex !== undefined && toolIndex !== null) {
+                const streamId = `streamToolCall-${this.id}-${stageNum}-${toolIndex}`;
+                const el = paneObj.feedEl.querySelector(`.tool-call-block.is-streaming#${CSS.escape(streamId)}`);
+                if (el) {
+                    toolBlock = el;
+                } else {
+                    const docEl = document.getElementById(streamId);
+                    if (docEl && paneObj.feedEl.contains(docEl)) toolBlock = docEl;
+                }
+            }
+
+            if (!toolBlock) {
+                const active = this.activeBlocks[compoundKey];
+                if (active && active.type === 'tool' && active.block && paneObj.feedEl.contains(active.block)) {
+                    toolBlock = active.block;
+                }
+            }
+
+            if (toolBlock) {
+                toolBlock.classList.remove("is-streaming");
+                if (callId) {
+                    toolBlock.id = `toolCall-${this.id}-${stageNum}-${callId}`;
+                    toolBlock.setAttribute("data-call-id", callId);
+                }
+                toolBlock.removeAttribute("data-tool-stream-id");
+
+                const badge = toolBlock.querySelector(".tool-status-badge");
+                if (badge) {
+                    const finalStatus = isError ? "error" : (status || "success");
+                    badge.className = `tool-status-badge status-${finalStatus}`;
+                    const displayStatus = finalStatus === "success" ? "COMPLETE" : (finalStatus === "error" ? "ERROR" : finalStatus.toUpperCase());
+                    badge.innerText = displayStatus;
+                }
+
+                let content = toolBlock.querySelector(".collapsible-content");
+                if (!content) {
+                    content = document.createElement("div");
+                    content.className = "collapsible-content tool-call-content";
+                    toolBlock.appendChild(content);
+                }
+
+                if (result !== undefined && result !== null) {
+                    const trimmedResult = typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result).trim();
+                    const prettyResult = tryFormatJson(trimmedResult);
+
+                    const resDiv = document.createElement("div");
+                    resDiv.style.marginTop = "10px";
+                    resDiv.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: #475569; margin-bottom: 4px;">Result:</div>
+                                         <pre style="margin: 0; background-color: #f8fafc; border: 1.5px solid #e2e8f0; padding: 8px; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; color: #0f172a;">${escapeHtml(prettyResult)}</pre>`;
+                    content.appendChild(resDiv);
+
+                    if (stdout && String(stdout).trim()) {
+                        const trimmedStdout = String(stdout).trim();
+                        const stdoutDiv = document.createElement("div");
+                        stdoutDiv.style.marginTop = "10px";
+                        stdoutDiv.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: #475569; margin-bottom: 4px;">STDOUT:</div>
+                                               <pre style="margin: 0; background-color: #0f172a; color: #38bdf8; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; overflow-x: auto; white-space: pre-wrap;">${escapeHtml(trimmedStdout)}</pre>`;
+                        content.appendChild(stdoutDiv);
+                    }
+
+                    if (variables && typeof variables === 'object' && Object.keys(variables).length > 0) {
+                        const varDiv = document.createElement("div");
+                        varDiv.style.marginTop = "10px";
+                        let varRows = "";
+                        for (const [k, v] of Object.entries(variables)) {
+                            const prettyVal = tryFormatJson(typeof v === 'object' ? JSON.stringify(v) : String(v));
+                            varRows += `<tr><td style="padding: 4px 8px; font-weight: bold; font-family: monospace; border: 1px solid #cbd5e1; vertical-align: top;">${escapeHtml(k)}</td><td style="padding: 4px 8px; font-family: monospace; border: 1px solid #cbd5e1; vertical-align: top; white-space: pre-wrap;">${escapeHtml(prettyVal)}</td></tr>`;
+                        }
+                        varDiv.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: #475569; margin-bottom: 4px;">Variables:</div>
+                                             <table style="border-collapse: collapse; width: 100%; border: 1px solid #cbd5e1; font-size: 12px; background-color: #ffffff;">${varRows}</table>`;
+                        content.appendChild(varDiv);
+                    }
+                }
+
+                // Collapse after completion
+                toolBlock.classList.add("collapsed");
+
+                if (toolIndex !== undefined && toolIndex !== null) {
+                    const key = `${stageNum}_${toolIndex}`;
+                    delete this.streamingArgs[key];
+                }
+                delete this.activeBlocks[compoundKey];
+
+                this.autoScrollFeed(stageNum, agentRole);
+            }
+        }
+
+        appendRateLimit(stageNum, agentRole, payload) {
+            const paneObj = this.getOrCreateAgentPane(stageNum, agentRole, payload.agentColor);
+            if (!paneObj || !paneObj.feedEl) return;
+
+            const el = document.createElement("div");
+            el.className = "rate-limit-feed-item";
+            el.innerText = payload.message || `Received 429 "Too Many Requests". Waiting for ${payload.waitTime || payload.waitSeconds}s...`;
+            paneObj.feedEl.appendChild(el);
+            this.autoScroll(paneObj.feedEl);
+        }
+
+        renderSectorReceipt(allocationData) {
+            this.confirmedSector = allocationData;
+            const isMilestone0 = (this.id === "milestone_0");
+
+            let payloadRecord = allocationData;
+            if (allocationData && allocationData.confirmedAllocation) {
+                payloadRecord = allocationData.confirmedAllocation;
+            }
+
+            const cleanCapital = (payloadRecord && payloadRecord.initialCapital) ? parseFloat(payloadRecord.initialCapital) : getCleanInitialCapital();
+            this.updateReceiptDatesAndCapital(this.date, cleanCapital);
+
+            const capitalEl = document.getElementById(`receipt-cap-${this.id}-3`);
+            const statusEl = document.getElementById(`receipt-status-${this.id}-3`);
+            if (capitalEl) capitalEl.innerText = `$${cleanCapital.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+            if (statusEl) {
+                statusEl.innerText = "CONFIRMED";
+                statusEl.className = "tool-status-badge status-success";
+            }
+
+            let labels = [];
+            let values = [];
+            const targetSectorMap = {};
+
+            if (payloadRecord && payloadRecord.sectorAllocations) {
+                const secDict = payloadRecord.sectorAllocations;
+                for (const [secKey, secObj] of Object.entries(secDict)) {
+                    const name = (typeof secObj === "object" && secObj.sector) ? secObj.sector : secKey;
+                    const ticker = (typeof secObj === "object" && secObj.ticker) ? secObj.ticker : secKey;
+                    const pct = (typeof secObj === "object" && secObj.allocationPct !== undefined) ? parseFloat(secObj.allocationPct) : parseFloat(secObj);
+                    if (pct > 0) {
+                        labels.push(name);
+                        values.push(pct);
+                        targetSectorMap[name] = pct;
+                        targetSectorMap[name.toLowerCase()] = pct;
+                        targetSectorMap[ticker] = pct;
+                        targetSectorMap[ticker.toLowerCase()] = pct;
+                        targetSectorMap[secKey] = pct;
+                        targetSectorMap[secKey.toLowerCase()] = pct;
+                    }
+                }
+            }
+
+            const tableContainer = document.getElementById(`sectorTableContainer-${this.id}`);
+            if (tableContainer && labels.length > 0) {
+                if (isMilestone0) {
+                    let tableHtml = `
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                            <thead>
+                                <tr style="border-bottom: 2px solid #cbd5e1; background: #f8fafc;">
+                                    <th style="text-align: left; padding: 4px 6px;">Sector</th>
+                                    <th style="text-align: right; padding: 4px 6px;">Weight</th>
+                                    <th style="text-align: right; padding: 4px 6px;">Allocation</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+                    labels.forEach((sector, idx) => {
+                        const pct = values[idx];
+                        const amt = (cleanCapital * (pct / 100)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        tableHtml += `
+                            <tr style="border-bottom: 1px solid #f1f5f9;">
+                                <td style="padding: 4px 6px; font-weight: 600; color: #0f172a;">${sector}</td>
+                                <td style="padding: 4px 6px; text-align: right; font-weight: 700; color: #2563eb;">${pct.toFixed(1)}%</td>
+                                <td style="padding: 4px 6px; text-align: right; color: #334155;">$${amt}</td>
+                            </tr>
+                        `;
+                    });
+                    tableHtml += `</tbody></table>`;
+                    tableContainer.innerHTML = tableHtml;
+                } else {
+                    // Review Milestone: Comparative Sector Baseline vs Target with Delta %
+                    const baseSectorAgg = {};
+                    (this.baselinePositions || []).forEach(p => {
+                        const sec = p.sector || "General";
+                        const wt = parseFloat(p.weightPct) || 0;
+                        baseSectorAgg[sec] = (baseSectorAgg[sec] || 0) + wt;
+                    });
+
+                    const allSectors = Array.from(new Set([...Object.keys(baseSectorAgg), ...labels]));
+                    let tableHtml = `
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                            <thead>
+                                <tr style="border-bottom: 2px solid #cbd5e1; background: #f8fafc;">
+                                    <th style="text-align: left; padding: 4px 6px;">Sector</th>
+                                    <th style="text-align: right; padding: 4px 6px;">Baseline</th>
+                                    <th style="text-align: right; padding: 4px 6px;">Target</th>
+                                    <th style="text-align: right; padding: 4px 6px;">Delta</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+                    allSectors.forEach(sec => {
+                        const basePct = baseSectorAgg[sec] || 0;
+                        const targetPct = targetSectorMap[sec] ?? targetSectorMap[sec.toLowerCase()] ?? 0;
+                        const deltaPct = targetPct - basePct;
+                        const deltaColor = deltaPct > 0.05 ? "#10b981" : (deltaPct < -0.05 ? "#ef4444" : "#64748b");
+                        const deltaSign = deltaPct > 0.05 ? "+" : "";
+                        tableHtml += `
+                            <tr style="border-bottom: 1px solid #f1f5f9;">
+                                <td style="padding: 4px 6px; font-weight: 600; color: #0f172a;">${sec}</td>
+                                <td style="padding: 4px 6px; text-align: right; color: #64748b;">${basePct.toFixed(1)}%</td>
+                                <td style="padding: 4px 6px; text-align: right; font-weight: 700; color: #2563eb;">${targetPct.toFixed(1)}%</td>
+                                <td style="padding: 4px 6px; text-align: right; font-weight: 700; color: ${deltaColor};">${deltaSign}${deltaPct.toFixed(1)}%</td>
+                            </tr>
+                        `;
+                    });
+                    tableHtml += `</tbody></table>`;
+                    tableContainer.innerHTML = tableHtml;
+                }
+            }
+
+            const canvas = document.getElementById(`sectorChartCanvas-${this.id}`);
+            if (!canvas || labels.length === 0) return;
+
+            const chartKey = `sector_${this.id}`;
+            if (chartInstances[chartKey]) {
+                chartInstances[chartKey].destroy();
+                chartInstances[chartKey] = null;
+            }
+
+            const colors = ["#2563eb", "#10b981", "#f59e0b", "#8b5cf6", "#06b6d4", "#ec4899", "#64748b", "#14b8a6", "#f97316", "#a855f7", "#3b82f6"];
+
+            chartInstances[chartKey] = new Chart(canvas.getContext("2d"), {
+                type: "doughnut",
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: colors.slice(0, labels.length),
+                        borderWidth: 2,
+                        borderColor: "#ffffff"
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: "bottom",
+                            labels: { boxWidth: 10, font: { size: 10.5, weight: "600" } }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => `${ctx.label}: ${ctx.parsed}% ($${(cleanCapital * ctx.parsed / 100).toLocaleString()})`
+                            }
+                        }
+                    },
+                    cutout: "58%"
+                }
+            });
+        }
+
+        renderPortfolioReceipt(portfolioData, baselinePositions = null) {
+            this.confirmedPortfolio = portfolioData;
+            if (baselinePositions && baselinePositions.length > 0) {
+                this.baselinePositions = baselinePositions;
+            } else if (!this.baselinePositions || this.baselinePositions.length === 0) {
+                const prevSession = sessionMgr ? sessionMgr.getPreviousSession(this.id) : null;
+                if (prevSession && prevSession.confirmedPortfolio) {
+                    const prevPort = prevSession.confirmedPortfolio.confirmedPortfolio || prevSession.confirmedPortfolio;
+                    if (prevPort && prevPort.positions) {
+                        this.baselinePositions = prevPort.positions;
+                    }
+                }
+            }
+
+            const isMilestone0 = (this.id === "milestone_0");
+
+            let confirmedPort = portfolioData;
+            if (portfolioData && portfolioData.confirmedPortfolio) {
+                confirmedPort = portfolioData.confirmedPortfolio;
+            }
+
+            const cleanCapital = (confirmedPort && confirmedPort.initialCapital) ? parseFloat(confirmedPort.initialCapital) : getCleanInitialCapital();
+            this.updateReceiptDatesAndCapital(this.date, cleanCapital);
+
+            const capitalEl = document.getElementById(`receipt-cap-${this.id}-6`);
+            const countEl = document.getElementById(`receipt-count-${this.id}-6`);
+            const statusEl = document.getElementById(`receipt-status-${this.id}-6`);
+
+            const positions = confirmedPort.positions || [];
+
+            if (capitalEl) capitalEl.innerText = `$${cleanCapital.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+            if (countEl) countEl.innerText = `${positions.length} Equities`;
+            if (statusEl) {
+                statusEl.innerText = "CONFIRMED";
+                statusEl.className = "tool-status-badge status-success";
+            }
+
+            const holdingsContainer = document.getElementById(`portHoldingsContainer-${this.id}`);
+            if (holdingsContainer && (positions.length > 0 || (this.baselinePositions && this.baselinePositions.length > 0))) {
+                if (isMilestone0) {
+                    let tableHtml = `
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                            <thead>
+                                <tr style="border-bottom: 2px solid #cbd5e1; background: #f8fafc;">
+                                    <th style="text-align: left; padding: 4px 6px;">Holding</th>
+                                    <th style="text-align: left; padding: 4px 6px;">Industry</th>
+                                    <th style="text-align: right; padding: 4px 6px;">Weight</th>
+                                    <th style="text-align: right; padding: 4px 6px;">Allocation</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+                    positions.forEach(p => {
+                        const dollarVal = p.dollarAllocation ? Number(p.dollarAllocation).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "--";
+                        const totalWeight = p.weightPct ? Number(p.weightPct) : (p.dollarAllocation ? (Number(p.dollarAllocation) / cleanCapital * 100) : 0);
+                        tableHtml += `
+                            <tr style="border-bottom: 1px solid #f1f5f9;">
+                                <td style="padding: 4px 6px; font-weight: 600; color: #0f172a;">
+                                    <div>${p.ticker} <span style="font-size: 10.5px; color: #64748b;">(${p.companyName || p.sector})</span></div>
+                                </td>
+                                <td style="padding: 4px 6px; color: #64748b; font-size: 11px;">${p.industry || p.sector || 'General'}</td>
+                                <td style="padding: 4px 6px; text-align: right; font-weight: 700; color: #2563eb;">${totalWeight.toFixed(1)}%</td>
+                                <td style="padding: 4px 6px; text-align: right; color: #334155;">$${dollarVal}</td>
+                            </tr>
+                        `;
+                    });
+                    tableHtml += `</tbody></table>`;
+                    holdingsContainer.innerHTML = tableHtml;
+                } else {
+                    // Review Milestone: Rebalanced Holdings Table with Changes Column
+                    const baseMap = {};
+                    (this.baselinePositions || []).forEach(bp => {
+                        if (bp.ticker) baseMap[bp.ticker] = bp;
+                    });
+
+                    const activeTickers = new Set(positions.map(p => p.ticker));
+
+                    let tableHtml = `
+                        <table style="width: 100%; border-collapse: collapse; font-size: 11.5px;">
+                            <thead>
+                                <tr style="border-bottom: 2px solid #cbd5e1; background: #f8fafc;">
+                                    <th style="text-align: left; padding: 4px 5px;">Holding</th>
+                                    <th style="text-align: left; padding: 4px 5px;">Industry</th>
+                                    <th style="text-align: right; padding: 4px 5px;">Old %</th>
+                                    <th style="text-align: right; padding: 4px 5px;">New %</th>
+                                    <th style="text-align: right; padding: 4px 5px;">Delta</th>
+                                    <th style="text-align: right; padding: 4px 5px;">Allocation</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+                    // 1. Active / newly rebalanced positions
+                    positions.forEach(p => {
+                        const ticker = p.ticker;
+                        const basePos = baseMap[ticker];
+                        const oldWeight = basePos ? (parseFloat(basePos.weightPct) || (basePos.dollarAllocation ? (parseFloat(basePos.dollarAllocation) / cleanCapital * 100) : 0)) : null;
+                        const newWeight = p.weightPct ? parseFloat(p.weightPct) : (p.dollarAllocation ? (parseFloat(p.dollarAllocation) / cleanCapital * 100) : 0);
+                        const dollarVal = p.dollarAllocation ? Number(p.dollarAllocation).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "--";
+                        
+                        let oldWeightText = (oldWeight !== null) ? `${oldWeight.toFixed(1)}%` : `<span style="color: #10b981; font-weight: 700;">New</span>`;
+                        let deltaText = "";
+                        if (oldWeight !== null) {
+                            const delta = newWeight - oldWeight;
+                            const dSign = delta > 0.05 ? "+" : "";
+                            const dColor = delta > 0.05 ? "#10b981" : (delta < -0.05 ? "#ef4444" : "#64748b");
+                            deltaText = `<span style="color: ${dColor}; font-weight: 700;">${dSign}${delta.toFixed(1)}%</span>`;
+                        } else {
+                            deltaText = `<span style="color: #10b981; font-weight: 700;">+${newWeight.toFixed(1)}%</span>`;
+                        }
+
+                        tableHtml += `
+                            <tr style="border-bottom: 1px solid #f1f5f9;">
+                                <td style="padding: 4px 5px; font-weight: 600; color: #0f172a;">
+                                    <div>${p.ticker} <span style="font-size: 10px; color: #64748b;">(${p.companyName || p.sector})</span></div>
+                                </td>
+                                <td style="padding: 4px 5px; color: #64748b; font-size: 10.5px;">${p.industry || p.sector || '--'}</td>
+                                <td style="padding: 4px 5px; text-align: right; color: #64748b; font-size: 11px;">${oldWeightText}</td>
+                                <td style="padding: 4px 5px; text-align: right; font-weight: 700; color: #2563eb;">${newWeight.toFixed(1)}%</td>
+                                <td style="padding: 4px 5px; text-align: right; font-size: 11px;">${deltaText}</td>
+                                <td style="padding: 4px 5px; text-align: right; color: #334155; font-size: 11px;">$${dollarVal}</td>
+                            </tr>
+                        `;
+                    });
+
+                    // 2. Previously held positions that got removed (liquidated to 0%)
+                    (this.baselinePositions || []).forEach(bp => {
+                        if (!bp.ticker || activeTickers.has(bp.ticker)) return;
+                        const oldWeight = parseFloat(bp.weightPct) || (bp.dollarAllocation ? (parseFloat(bp.dollarAllocation) / cleanCapital * 100) : 0);
+                        tableHtml += `
+                            <tr style="border-bottom: 1px solid #fecdd3; background: #fff1f2;">
+                                <td style="padding: 4px 5px; font-weight: 600; color: #991b1b;">
+                                    <div>
+                                        <span style="text-decoration: line-through; color: #94a3b8; margin-right: 4px;">${bp.ticker}</span>
+                                        <span style="font-size: 10px; color: #94a3b8;">(${bp.companyName || bp.sector || ''})</span>
+                                        <span style="font-size: 9px; font-weight: 700; color: #ef4444; background: #fee2e2; border: 1px solid #fca5a5; padding: 0.5px 3px; border-radius: 3px; margin-left: 3px;">REMOVED</span>
+                                    </div>
+                                </td>
+                                <td style="padding: 4px 5px; color: #94a3b8; font-size: 10.5px;">${bp.industry || bp.sector || '--'}</td>
+                                <td style="padding: 4px 5px; text-align: right; color: #64748b; font-size: 11px;">${oldWeight.toFixed(1)}%</td>
+                                <td style="padding: 4px 5px; text-align: right; font-weight: 700; color: #ef4444;">0.0%</td>
+                                <td style="padding: 4px 5px; text-align: right; font-size: 11px;"><span style="color: #ef4444; font-weight: 700;">-${oldWeight.toFixed(1)}%</span></td>
+                                <td style="padding: 4px 5px; text-align: right; color: #94a3b8; font-size: 11px;">$0.00</td>
+                            </tr>
+                        `;
+                    });
+
+                    tableHtml += `</tbody></table>`;
+                    holdingsContainer.innerHTML = tableHtml;
+                }
+            }
+
+            const canvas = document.getElementById(`portChartCanvas-${this.id}`);
+            if (!canvas || positions.length === 0) return;
+
+            const chartKey = `port_${this.id}`;
+            if (chartInstances[chartKey]) {
+                chartInstances[chartKey].destroy();
+                chartInstances[chartKey] = null;
+            }
+
+            // Group pie chart per-industry for Stage 6
+            const industryAgg = {};
+            positions.forEach(p => {
+                const ind = p.industry || p.sector || "General";
+                industryAgg[ind] = (industryAgg[ind] || 0) + (p.dollarAllocation ? (p.dollarAllocation / cleanCapital * 100) : (p.weightPct || 0));
+            });
+
+            const labels = Object.keys(industryAgg);
+            const values = Object.values(industryAgg);
+            const colors = ["#2563eb", "#10b981", "#f59e0b", "#8b5cf6", "#06b6d4", "#ec4899", "#64748b", "#14b8a6", "#f97316", "#a855f7", "#3b82f6", "#e11d48", "#0284c7", "#16a34a", "#ca8a04", "#9333ea"];
+
+            chartInstances[chartKey] = new Chart(canvas.getContext("2d"), {
+                type: "doughnut",
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: colors.slice(0, labels.length),
+                        borderWidth: 2,
+                        borderColor: "#ffffff"
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: "bottom",
+                            labels: { boxWidth: 10, font: { size: 10.5, weight: "600" } }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => `${ctx.label}: ${Number(ctx.parsed).toFixed(1)}% ($${(cleanCapital * ctx.parsed / 100).toLocaleString()})`
+                            }
+                        }
+                    },
+                    cutout: "58%"
+                }
+            });
+        }
+    }
+
+    class SessionManager {
+        constructor() {
+            this.sessions = {};
+            this.liveSessionId = null;
+            this.activeViewingSessionId = "none";
+            this.activeViewingStageNum = 1;
+        }
+
+        reset() {
+            const container = document.getElementById("panesContainer");
+            if (container) {
+                container.innerHTML = `<div id="emptySimPlaceholder" style="padding: 10px 0;">
+                    <p style="color: #7c899b; font-size: 14px; margin: 68px 0 20px 0; line-height: 2.0;">
+                        This mode makes heavy usage out of pre-downloaded data. It will use the data from the <span style="font-family:monospace;">data/</span> folder if it exists.
+                        <br />
+                        For the most up-to-date information, consider a global re-download of all data by running
+                        <span style="font-family:monospace;"> mass_downloader.py</span>.
+                    </p>
+                    <p style="color: #7c899b; font-size: 14px; line-height: 1.8; margin: 0;">
+                        Note: Depending on the selected date span and timestep, this mode can take many hours to complete.
+                    </p>
+                </div>`;
+            }
+            this.sessions = {};
+            this.liveSessionId = null;
+            this.activeViewingSessionId = "none";
+            this.activeViewingStageNum = 1;
+            this._updateSessionSelectorHighlight(false);
+
+            const select = document.getElementById("milestoneSelect");
+            if (select) {
+                select.innerHTML = '<option value="none">None yet</option>';
+                select.value = "none";
+            }
+
+            const stagesContainer = document.getElementById("stagesScrollContainer");
+            if (stagesContainer) stagesContainer.innerHTML = "";
+        }
+
+        getOrCreateSession(id, initialData = {}) {
+            if (!id) return null;
+            if (!this.sessions[id]) {
+                this.sessions[id] = new Session({ id, ...initialData });
+            } else if (initialData && Object.keys(initialData).length > 0) {
+                if (initialData.label && (!this.sessions[id].label || this.sessions[id].label === id)) {
+                    this.sessions[id].label = initialData.label;
+                }
+                if (initialData.stages && (!this.sessions[id].stages || this.sessions[id].stages.length === 0)) {
+                    this.sessions[id].stages = initialData.stages;
+                }
+                if (initialData.date) this.sessions[id].date = initialData.date;
+                if (initialData.dateFormatted) this.sessions[id].dateFormatted = initialData.dateFormatted;
+                if (initialData.type) this.sessions[id].type = initialData.type;
+                if (initialData.pace) this.sessions[id].pace = initialData.pace;
+                this.sessions[id].updateReceiptDatesAndCapital(initialData.date || initialData.dateFormatted);
+            }
+            return this.sessions[id];
+        }
+
+        getLiveSession() {
+            if (!this.liveSessionId) return null;
+            return this.getOrCreateSession(this.liveSessionId);
+        }
+
+        getActiveViewingSession() {
+            if (this.activeViewingSessionId === "none") return null;
+            const targetId = (this.activeViewingSessionId === "current") ? this.liveSessionId : this.activeViewingSessionId;
+            if (!targetId) return null;
+            return this.getOrCreateSession(targetId);
+        }
+
+        getPreviousSession(currentId) {
+            const sortedKeys = Object.keys(this.sessions).sort((a, b) => {
+                const numA = parseInt(a.replace(/\D/g, "") || "0", 10);
+                const numB = parseInt(b.replace(/\D/g, "") || "0", 10);
+                return numA - numB;
+            });
+            const idx = sortedKeys.indexOf(currentId);
+            if (idx > 0) {
+                return this.sessions[sortedKeys[idx - 1]];
+            }
+            return null;
+        }
+
+        setLiveSessionId(mId, label = null, extraData = {}) {
+            if (!mId) return;
+            const placeholder = document.getElementById("emptySimPlaceholder");
+            if (placeholder) placeholder.remove();
+
+            if (this.liveSessionId && this.liveSessionId !== mId) {
+                const prevSession = this.sessions[this.liveSessionId];
+                if (prevSession) {
+                    prevSession.isCompleted = true;
+                }
+            }
+            this.liveSessionId = mId;
+
+            const isInc = (mId === "milestone_0" || extraData.type === "inception");
+            const rawDate = extraData.date || extraData.dateFormatted;
+            const cleanLabel = (label && label.includes("("))
+                ? label 
+                : (rawDate ? formatMilestoneLabel(rawDate, isInc ? "inception" : "review") : mId);
+
+            const session = this.getOrCreateSession(mId, {
+                id: mId,
+                label: cleanLabel,
+                ...extraData
+            });
+            if (cleanLabel) {
+                session.label = cleanLabel;
+            }
+
+            // Inherit baseline holdings from previous milestone if available
+            if (!session.baselinePositions || session.baselinePositions.length === 0) {
+                const prevMilestones = Object.values(this.sessions).filter(s => s.id !== mId && s.confirmedPortfolio);
+                if (prevMilestones.length > 0) {
+                    const lastM = prevMilestones[prevMilestones.length - 1];
+                    const portObj = lastM.confirmedPortfolio.confirmedPortfolio || lastM.confirmedPortfolio;
+                    session.baselinePositions = portObj.positions || [];
+                }
+            }
+
+            // Refresh / add option in milestone dropdown
+            const select = document.getElementById("milestoneSelect");
+            if (select) {
+                let liveOpt = select.querySelector('option[value="current"]');
+                if (!liveOpt) {
+                    const noneOpt = select.querySelector('option[value="none"]');
+                    if (noneOpt) noneOpt.remove();
+                    liveOpt = document.createElement("option");
+                    liveOpt.value = "current";
+                    select.appendChild(liveOpt);
+                }
+                liveOpt.textContent = `Current: ${session.label || cleanLabel || mId}`;
+                select.value = "current";
+            }
+
+            this.switchSession("current");
+        }
+
+        switchSession(selectedId) {
+            if (!selectedId || selectedId === "none") return;
+            this.activeViewingSessionId = selectedId;
+            const targetId = (selectedId === "current") ? this.liveSessionId : selectedId;
+            if (!targetId) return;
+            const session = this.getOrCreateSession(targetId);
+            if (!session) return;
+
+            // 1. Hide ALL session workspaces
+            document.querySelectorAll(".milestone-workspace").forEach(ws => {
+                ws.style.display = "none";
+            });
+
+            // 2. Show ONLY target session workspace
+            if (session.workspaceEl) {
+                session.workspaceEl.style.display = "flex";
+            }
+
+            // 3. Highlight session selector in red if viewing a past historical session
+            const isPast = (selectedId !== "current" && selectedId !== this.liveSessionId);
+            this._updateSessionSelectorHighlight(isPast);
+
+            // 4. Render Stage Tabs for this session
+            const stages = (session.stages && session.stages.length > 0) 
+                ? session.stages 
+                : ((targetId === "milestone_0") 
+                    ? defaultInceptionStages 
+                    : ((session.pace === "complete") ? completeRebalanceStages : fastRebalanceStages));
+            renderStagesBarTabs(stages, targetId);
+
+            // 5. Switch to target stage
+            const stageNumToView = (selectedId === "current" && this.activeViewingStageNum) ? this.activeViewingStageNum : (stages[0]?.num || 1);
+            this.switchStage(stageNumToView, targetId);
+            this.updateStageTabsState(targetId);
+        }
+
+        switchStage(stageNum, sessionId = null) {
+            const targetId = sessionId || ((this.activeViewingSessionId === "current") ? this.liveSessionId : this.activeViewingSessionId);
+            if (!targetId) return;
+            const session = this.getOrCreateSession(targetId);
+            if (!session) return;
+
+            const isPastOrDone = session.isCompleted || (targetId !== this.liveSessionId);
+            const currentStage = session.currentStageNum || 1;
+            if (!isPastOrDone && stageNum > currentStage) {
+                return; // Disallow moving forward to stages that have not yet started
+            }
+
+            this.activeViewingStageNum = stageNum;
+
+            if (session.workspaceEl) {
+                session.workspaceEl.querySelectorAll(".stage-workspace").forEach(ws => {
+                    ws.style.display = "none";
+                });
+            }
+
+            const stageEl = session.getOrCreateStageWorkspace(stageNum);
+            if (stageEl) {
+                stageEl.style.display = "flex";
+            }
+
+            this.updateStageTabsState(targetId);
+        }
+
+        updateStageTabsState(sessionId = null) {
+            const targetId = sessionId || ((this.activeViewingSessionId === "current") ? this.liveSessionId : this.activeViewingSessionId);
+            if (!targetId) return;
+            const session = this.getOrCreateSession(targetId);
+            if (!session) return;
+            const isPastOrDone = session.isCompleted || (targetId !== this.liveSessionId);
+
+            document.querySelectorAll(".stage-item").forEach(item => {
+                const num = parseInt(item.getAttribute("data-stage-num"), 10);
+                item.classList.remove("completed", "active", "viewing", "disabled");
+
+                if (isPastOrDone) {
+                    item.classList.add("completed");
+                } else {
+                    const currentStage = session.currentStageNum || 1;
+                    if (num < currentStage) {
+                        item.classList.add("completed");
+                    } else if (num === currentStage) {
+                        item.classList.add("active");
+                    } else {
+                        item.classList.add("disabled");
+                    }
+                }
+
+                if (num === this.activeViewingStageNum) {
+                    item.classList.add("viewing");
+                }
+            });
+        }
+
+        _updateSessionSelectorHighlight(isPast) {
+            const select = document.getElementById("milestoneSelect");
+            if (select) {
+                if (isPast) {
+                    select.style.borderColor = "#dc2626";
+                    select.style.color = "#b91c1c";
+                    select.style.backgroundColor = "#fef2f2";
+                    select.style.fontWeight = "700";
+                } else {
+                    select.style.borderColor = "#cbd5e1";
+                    select.style.color = "#0f172a";
+                    select.style.backgroundColor = "#ffffff";
+                    select.style.fontWeight = "600";
+                }
+            }
+        }
+
+        updateDropdownOptions(milestones) {
+            const select = document.getElementById("milestoneSelect");
+            if (!select || !milestones) return;
+
+            if (!this.liveSessionId) {
+                select.innerHTML = '<option value="none">None yet</option>';
+                select.value = "none";
+                return;
+            }
+
+            const currentVal = select.value;
+            select.innerHTML = "";
+
+            // 1. Current Live Option
+            const liveSession = this.getLiveSession();
+            const liveOpt = document.createElement("option");
+            liveOpt.value = "current";
+            liveOpt.textContent = `Current: ${liveSession?.label || this.liveSessionId}`;
+            select.appendChild(liveOpt);
+
+            // 2. Sort past milestones consistently in chronological order (Milestone 0, 1, 2...)
+            const sortedMilestones = [...milestones].sort((a, b) => {
+                const idA = String(a.milestoneId || a.id || "");
+                const idB = String(b.milestoneId || b.id || "");
+                const numA = parseInt(idA.replace(/\D/g, ""), 10);
+                const numB = parseInt(idB.replace(/\D/g, ""), 10);
+                if (!isNaN(numA) && !isNaN(numB) && numA !== numB) {
+                    return numA - numB;
+                }
+                const timeA = a.date ? new Date(a.date).getTime() : 0;
+                const timeB = b.date ? new Date(b.date).getTime() : 0;
+                return timeA - timeB;
+            });
+
+            // 3. Add ONLY past milestones (excluding the active live session)
+            sortedMilestones.forEach((m) => {
+                const mId = m.milestoneId || m.id;
+                if (mId && mId !== this.liveSessionId) {
+                    const opt = document.createElement("option");
+                    opt.value = mId;
+                    const isInc = (mId === "milestone_0" || m.type === "inception");
+                    const dateRaw = m.date || m.dateFormatted;
+                    const label = (m.label && m.label.includes("("))
+                        ? m.label 
+                        : (dateRaw ? formatMilestoneLabel(dateRaw, isInc ? "inception" : "review") : mId);
+                    opt.textContent = label;
+                    select.appendChild(opt);
+                }
+            });
+
+            if (Array.from(select.options).some(o => o.value === currentVal)) {
+                select.value = currentVal;
+            } else {
+                select.value = "current";
+            }
+
+            const isPast = (select.value !== "current" && select.value !== this.liveSessionId);
+            this._updateSessionSelectorHighlight(isPast);
+        }
+    }
+
+    const sessionMgr = new SessionManager();
+
+    function renderStagesBarTabs(stages, milestoneId) {
+        const bar = document.getElementById("stagesScrollContainer");
+        if (!bar) return;
+        bar.innerHTML = "";
+
+        stages.forEach((stage, idx) => {
+            const div = document.createElement("div");
+            div.className = "stage-item";
+            div.setAttribute("data-stage-num", stage.num);
+            div.id = `stageTab-${milestoneId}-${stage.num}`;
+            div.innerText = `Stage ${stage.num}: ${stage.name}`;
+
+            div.onclick = () => {
+                const currentSession = sessionMgr.getOrCreateSession(milestoneId);
+                const isPastOrDone = currentSession?.isCompleted || (milestoneId !== sessionMgr.liveSessionId);
+                const currentStage = currentSession?.currentStageNum || 1;
+                if (!isPastOrDone && stage.num > currentStage) {
+                    return; // Disallow moving forward to stages that have not started yet
+                }
+                sessionMgr.switchStage(stage.num, milestoneId);
+            };
+            bar.appendChild(div);
+        });
+
+        sessionMgr.updateStageTabsState(milestoneId);
+    }
+
+    function injectMilestoneDropdown() {
+        const stagesBar = document.getElementById("stagesBar");
+        if (!stagesBar) return;
+
+        let container = document.getElementById("milestoneDropdownContainer");
+        if (!container) {
+            container = document.createElement("div");
+            container.id = "milestoneDropdownContainer";
+            container.className = "milestone-selector-container";
+            container.innerHTML = `
+                <label for="milestoneSelect" style="font-size: 12px; font-weight: 700; color: #475569; white-space: nowrap;">Session:</label>
+                <select id="milestoneSelect" class="milestone-select" onchange="sessionMgr.switchSession(this.value)">
+                    <option value="none">None yet</option>
+                </select>
+            `;
+            const scrollContainer = document.getElementById("stagesScrollContainer");
+            if (scrollContainer) {
+                stagesBar.insertBefore(container, scrollContainer);
+            } else {
+                stagesBar.insertBefore(container, stagesBar.firstChild);
+            }
+        }
+    }
+
+    // =========================================================================
+    // PERFORMANCE CHART & SIDEBAR UPDATES
+    // =========================================================================
+
+    function initPerformanceChart() {
+        const ctx = document.getElementById('agentSimChartCanvas');
+        if (!ctx || typeof Chart === 'undefined') return;
+
+        chartInstance = new Chart(ctx.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Agent Portfolio',
+                        data: [],
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.08)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.25,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        pointHoverBackgroundColor: '#2563eb'
+                    },
+                    {
+                        label: 'S&P 500 Benchmark',
+                        data: [],
+                        borderColor: '#f59e0b',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0.25,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        pointHoverBackgroundColor: '#f59e0b'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                layout: { padding: { left: 0, right: 10, top: 5, bottom: 0 } },
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: { boxWidth: 12, font: { size: 10, weight: 'bold' }, padding: 8 }
+                    },
+                    tooltip: {
+                        enabled: true,
+                        callbacks: {
+                            label: (ctx) => ` ${ctx.dataset.label}: $${Number(ctx.raw).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { maxTicksLimit: 5, font: { size: 9 }, color: '#94a3b8' }
+                    },
+                    y: {
+                        grid: { color: '#f1f5f9' },
+                        ticks: {
+                            font: { size: 9 },
+                            color: '#94a3b8',
+                            callback: (v) => '$' + (v >= 1e6 ? (v/1e6).toFixed(1)+'M' : (v >= 1e3 ? (v/1e3).toFixed(0)+'k' : v))
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function setChartTimeframe(tf, btn) {
+        currentChartTf = tf.toLowerCase();
+        document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+        refreshChartData();
+    }
+
+    function refreshChartData() {
+        if (!chartInstance || fullPortfolioPoints.length === 0) return;
+
+        let filteredPort = [...fullPortfolioPoints];
+        let filteredSp = [...fullSp500Points];
+
+        if (currentChartTf !== 'all') {
+            const lastDate = new Date(filteredPort[filteredPort.length - 1].x);
+            let cutoff = new Date(lastDate);
+            if (currentChartTf === '1m') cutoff.setMonth(cutoff.getMonth() - 1);
+            else if (currentChartTf === '3m') cutoff.setMonth(cutoff.getMonth() - 3);
+            else if (currentChartTf === '1y') cutoff.setFullYear(cutoff.getFullYear() - 1);
+            else if (currentChartTf === '3y') cutoff.setFullYear(cutoff.getFullYear() - 3);
+
+            const cutoffStr = cutoff.toISOString().split('T')[0];
+            filteredPort = filteredPort.filter(p => p.x >= cutoffStr);
+            filteredSp = filteredSp.filter(p => p.x >= cutoffStr);
+        }
+
+        chartInstance.data.labels = filteredPort.map(p => p.x);
+        chartInstance.data.datasets[0].data = filteredPort.map(p => p.y);
+        chartInstance.data.datasets[1].data = filteredSp.map(p => p.y);
+        chartInstance.update();
+    }
+
+    function updateSimulationUI(data) {
+        if (!data) return;
+
+        // Status row
+        if (data.simStatus) {
+            const statusDisplay = document.getElementById("currentSimStatusDisplay");
+            if (statusDisplay) statusDisplay.textContent = data.simStatus;
+        }
+
+        // Date row
+        const dateDisplay = document.getElementById("currentSimDateDisplay");
+        if (dateDisplay) {
+            if (data.currentDateFriendly) {
+                dateDisplay.textContent = data.currentDateFriendly;
+            } else if (data.currentDate) {
+                dateDisplay.textContent = formatFriendlyDate(data.currentDate);
+            } else if (data.currentDateFormatted) {
+                dateDisplay.textContent = data.currentDateFormatted;
+            }
+        }
+
+        // Cash, Stock, Assets Balances
+        if (data.cashValue !== undefined) {
+            document.getElementById("metricCashVal").textContent = `$${Number(data.cashValue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+        if (data.stockValue !== undefined) {
+            document.getElementById("metricStockVal").textContent = `$${Number(data.stockValue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+        if (data.totalValue !== undefined) {
+            document.getElementById("metricTotalVal").textContent = `$${Number(data.totalValue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+
+        // Total Return under Assets
+        const fundRetEl = document.getElementById("metricFundReturn");
+        if (fundRetEl && data.totalReturnPct !== undefined) {
+            const ret = Number(data.totalReturnPct);
+            const retDollar = Number(data.totalReturnDollar || 0);
+            const sign = ret >= 0 ? '+' : '';
+            fundRetEl.textContent = `${sign}${ret.toFixed(2)}% ($${Math.abs(retDollar).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
+            fundRetEl.className = `metric-change ${ret >= 0 ? 'positive' : 'negative'}`;
+        }
+
+        // Key Performance Metrics Grid
+        const fundRetPctEl = document.getElementById("metricFundReturnPct");
+        if (fundRetPctEl && data.totalReturnPct !== undefined) {
+            const ret = Number(data.totalReturnPct);
+            fundRetPctEl.textContent = `${ret >= 0 ? '+' : ''}${ret.toFixed(2)}%`;
+            fundRetPctEl.style.color = ret >= 0 ? '#10b981' : '#dc2626';
+        }
+
+        const alphaEl = document.getElementById("metricAlpha");
+        if (alphaEl && data.alphaPct !== undefined) {
+            const alpha = Number(data.alphaPct);
+            const spRet = Number(data.sp500ReturnPct || 0);
+            alphaEl.innerHTML = `<span style="font-weight: 800;">${alpha >= 0 ? '+' : ''}${alpha.toFixed(2)}%</span> <span style="font-size: 11px; font-weight: 500; color: #64748b;">(${spRet >= 0 ? '+' : ''}${spRet.toFixed(2)}%)</span>`;
+            alphaEl.style.color = alpha >= 0 ? '#10b981' : '#dc2626';
+        }
+
+        if (data.sharpeRatio !== undefined) {
+            const sharpeEl = document.getElementById("metricSharpe");
+            if (sharpeEl) {
+                const sr = Number(data.sharpeRatio).toFixed(2);
+                const spSr = (data.sp500SharpeRatio !== undefined && data.sp500SharpeRatio !== null) ? Number(data.sp500SharpeRatio).toFixed(2) : null;
+                if (spSr !== null) {
+                    sharpeEl.innerHTML = `<span style="font-weight: 800;">${sr}</span> <span style="font-size: 11px; font-weight: 500; color: #64748b;">(vs ${spSr} for S&P 500)</span>`;
+                } else {
+                    sharpeEl.textContent = sr;
+                }
+            }
+        }
+
+        if (data.maxDrawdownPct !== undefined) {
+            const ddEl = document.getElementById("metricDrawdown");
+            if (ddEl) {
+                const dd = Number(data.maxDrawdownPct);
+                const spDd = (data.sp500MaxDrawdownPct !== undefined && data.sp500MaxDrawdownPct !== null) ? Number(data.sp500MaxDrawdownPct) : null;
+                if (spDd !== null) {
+                    ddEl.innerHTML = `<span style="font-weight: 800; color: ${dd <= spDd ? '#10b981' : '#dc2626'};">${dd.toFixed(2)}%</span> <span style="font-size: 11px; font-weight: 500; color: #64748b;">(vs ${spDd.toFixed(2)}% for S&P 500)</span>`;
+                } else {
+                    ddEl.textContent = `${dd.toFixed(2)}%`;
+                    ddEl.style.color = dd > 0 ? '#dc2626' : '#10b981';
+                }
+            }
+        }
+
+        // Chart points
+        if (data.portfolioPoints && data.sp500Points) {
+            fullPortfolioPoints = data.portfolioPoints;
+            fullSp500Points = data.sp500Points;
+            refreshChartData();
+        }
+
+        // Active Holdings Table
+        if (data.positions) {
+            renderHoldingsTable(data.positions);
+        }
+
+        // Timeline & System Activity Logs
+        renderActivityFeed(data.rebalanceHistory, data.systemLogs);
+
+        // Current Milestone & Dropdown options
+        if (data.currentMilestoneId) {
+            const isInc = (data.currentMilestoneId === "milestone_0" || data.type === "inception");
+            const dateRaw = data.currentDateFriendly || data.currentDate || data.date;
+            const label = (data.currentMilestoneLabel && data.currentMilestoneLabel.includes("("))
+                ? data.currentMilestoneLabel
+                : (dateRaw ? formatMilestoneLabel(dateRaw, isInc ? "inception" : "review") : data.currentMilestoneId);
+
+            if (sessionMgr.liveSessionId !== data.currentMilestoneId) {
+                sessionMgr.setLiveSessionId(data.currentMilestoneId, label, {
+                    date: data.currentDate,
+                    dateFormatted: formatFriendlyDate(dateRaw),
+                    type: isInc ? "inception" : "review"
+                });
+            } else {
+                const liveSession = sessionMgr.getLiveSession();
+                if (liveSession) {
+                    liveSession.label = label;
+                    const select = document.getElementById("milestoneSelect");
+                    const liveOpt = select ? select.querySelector('option[value="current"]') : null;
+                    if (liveOpt) {
+                        liveOpt.textContent = `Current: ${label}`;
+                    }
+                }
+            }
+        }
+
+        if (data.milestones) {
+            sessionMgr.updateDropdownOptions(data.milestones);
+        }
+    }
+
+    function renderHoldingsTable(positions) {
+        const tbody = document.getElementById("holdingsTableBody");
+        const countBadge = document.getElementById("holdingsCountBadge");
+        if (!tbody) return;
+
+        if (countBadge) countBadge.textContent = `${positions.length} stock${positions.length === 1 ? '' : 's'}`;
+
+        if (!positions || positions.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #94a3b8; padding: 16px 0; font-size: 12px;">No positions yet</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = positions.map((p, idx) => {
+            const rowBg = idx % 2 === 0 ? "#ffffff" : "#f8fafc";
+            const isPos = p.pnlPct >= 0;
+            const pnlColor = isPos ? "#10b981" : "#dc2626";
+            const sign = isPos ? "+" : "";
+            const sharesStr = Number(p.shares) % 1 === 0 ? Number(p.shares).toFixed(0) : Number(p.shares).toFixed(1);
+            const compName = p.companyName ? p.companyName : "";
+
+            return `
+                <tr style="background: ${rowBg}; border-bottom: 1px solid #f1f5f9;">
+                    <td style="padding: 5px 3px; text-align: left;">
+                        <div class="pos-ticker">${p.ticker}</div>
+                        <div class="pos-company-sub" title="${escapeHtml(compName)}">${escapeHtml(compName)}</div>
+                    </td>
+                    <td style="padding: 5px 3px; text-align: right; font-weight: 600; font-size: 0.52vw; color: #334155; white-space: nowrap;">${sharesStr}</td>
+                    <td style="padding: 5px 3px; text-align: right; font-size: 0.52vw; color: #475569; white-space: nowrap;">$${Number(p.avgPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style="padding: 5px 3px; text-align: right; font-weight: 600; font-size: 0.52vw; color: #0f172a; white-space: nowrap;">$${Number(p.currentPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style="padding: 5px 3px; text-align: right; font-weight: 700; font-size: 0.52vw; color: #0f172a; white-space: nowrap;">$${Number(p.currentValue).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                    <td style="padding: 5px 3px; text-align: right; font-weight: 600; font-size: 0.52vw; color: #2563eb; white-space: nowrap;">${p.weightPct.toFixed(1)}%</td>
+                    <td style="padding: 5px 3px; text-align: right; white-space: nowrap;">
+                        <div style="font-weight: 700; font-size: 0.48vw; color: ${pnlColor}; line-height: 1.15;">${sign}${p.pnlPct.toFixed(1)}%</div>
+                        <div style="font-weight: 600; font-size: 0.4vw; color: ${pnlColor}; line-height: 1.1;">${sign}$${Math.abs(p.pnlDollar).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function renderActivityFeed(history, systemLogs) {
+        const container = document.getElementById("rebalanceTimelineList") || document.getElementById("rebalanceTimeline");
+        if (!container) return;
+
+        const events = [];
+
+        if (history && history.length > 0) {
+            history.forEach(item => {
+                const dateRaw = item.dateFormatted || item.date;
+                const formattedD = formatFriendlyDate(dateRaw);
+                events.push({
+                    kind: 'rebalance',
+                    date: item.date,
+                    dateFormatted: formattedD,
+                    type: item.type,
+                    summary: item.summary
+                });
+            });
+        }
+
+        if (systemLogs && systemLogs.length > 0) {
+            systemLogs.forEach(log => {
+                const dateRaw = log.dateStr || log.date;
+                const formattedD = formatFriendlyDate(dateRaw);
+                events.push({
+                    kind: 'systemLog',
+                    date: log.dateStr || log.date,
+                    dateFormatted: formattedD,
+                    title: log.title || 'System Log',
+                    ticker: log.ticker || '',
+                    message: log.message || ''
+                });
+            });
+        }
+
+        if (events.length === 0) {
+            container.innerHTML = `<div style="text-align: center; color: #94a3b8; padding: 12px 0; font-size: 11px;">Logs are empty</div>`;
+            return;
+        }
+
+        events.sort((a, b) => {
+            const timeA = a.date ? new Date(a.date).getTime() : 0;
+            const timeB = b.date ? new Date(b.date).getTime() : 0;
+            return timeB - timeA;
+        });
+
+        container.innerHTML = events.map(ev => {
+            if (ev.kind === 'rebalance') {
+                const typeDisplay = ev.type === 'inception' ? 'INCEPTION' : (ev.type === 'skipped' ? 'SKIPPED' : 'REBALANCED');
+                return `
+                    <div class="timeline-item ${ev.type}">
+                        <span class="timeline-date">${ev.dateFormatted} &bull; ${typeDisplay}</span>
+                        <span class="timeline-summary">${escapeHtml(ev.summary || 'Milestone review processed.')}</span>
+                    </div>
+                `;
+            } else {
+                let badgeClass = 'badge-action-log';
+                const titleLower = (ev.title || "").toLowerCase();
+                if (titleLower.includes('buy')) badgeClass = 'badge-action-buy';
+                else if (titleLower.includes('sell')) badgeClass = 'badge-action-sell';
+                else if (titleLower.includes('fail') || titleLower.includes('error') || titleLower.includes('cancel')) badgeClass = 'badge-action-cancel';
+
+                return `
+                    <div class="log-pill">
+                        <div>
+                            <span class="log-date-tag">${ev.dateFormatted}</span>
+                            <span class="${badgeClass}">${escapeHtml(ev.title)}</span>
+                            ${ev.ticker ? `<span class="log-ticker-tag">${escapeHtml(ev.ticker)}</span>` : ''}
+                            <span class="log-message-body">${escapeHtml(ev.message)}</span>
+                        </div>
+                    </div>
+                `;
+            }
+        }).join('');
+    }
+
+    // --- Helpers for Configuration Sliders ---
+    function updateRebalanceAmountTooltip() {
+        const slider = document.getElementById("rebalanceAmountSlider");
+        if (!slider) return;
+        const labels = {
+            1: "Level 1: Very Light Rebalance",
+            2: "Level 2: Mild Rebalance",
+            3: "Level 3: Moderate Rebalance",
+            4: "Level 4: Substantial Rebalance",
+            5: "Level 5: Aggressive Rebalance",
+            6: "Level 6: Maximum Rebalance"
+        };
+        slider.title = labels[slider.value] || "Level 3: Moderate Rebalance";
+    }
+
+    function toggleAllocationBias() {
+        const cb = document.getElementById("allocationBiasCheckbox");
+        const container = document.getElementById("allocationBiasSliderContainer");
+        if (container) container.style.display = cb && cb.checked ? "flex" : "none";
+    }
+
+    function updateAllocationBiasTooltip() {
+        const slider = document.getElementById("allocationBiasSlider");
+        if (!slider) return;
+        const labels = {
+            1: "Maximum Growth Bias",
+            2: "Moderate Growth Bias",
+            3: "Minor Growth Bias",
+            4: "Minor Defensive Bias",
+            5: "Moderate Defensive Bias",
+            6: "Maximum Defensive Bias"
+        };
+        slider.title = labels[slider.value] || "Balanced Strategy";
+    }
+
+    // --- Execution Timer ---
+    function startSimTimer() {
+        simStartTime = Date.now();
+        const timerEl = document.getElementById("simulationTimer");
+        if (timerEl) {
+            timerEl.style.display = "flex";
+            timerEl.innerText = "0 mins 0.00 secs";
+        }
+        if (simTimerInterval) clearInterval(simTimerInterval);
+        simTimerInterval = setInterval(() => {
+            const elapsedMs = Date.now() - simStartTime;
+            const elapsedSec = elapsedMs / 1000;
+            const mins = Math.floor(elapsedSec / 60);
+            const secs = elapsedSec % 60;
+            if (timerEl) {
+                timerEl.innerText = `${mins} mins ${secs.toFixed(2)} secs`;
+            }
+        }, 10);
+    }
+
+    function stopSimTimer() {
+        if (simTimerInterval) {
+            clearInterval(simTimerInterval);
+            simTimerInterval = null;
+        }
+        const timerEl = document.getElementById("simulationTimer");
+        if (timerEl) {
+            timerEl.style.display = "none";
+        }
+    }
+
+    // =========================================================================
+    // RUN / STOP CONTROLS & STATE SYNCHRONIZATION
+    // =========================================================================
+
+    function setControlsRunningState(isRunning) {
+        isSimRunning = isRunning;
+        const runBtn = document.getElementById("runBtn");
+        const stopBtn = document.getElementById("stopBtn");
+
+        if (runBtn) {
+            if (isRunning) {
+                runBtn.disabled = true;
+                runBtn.classList.add("disabled");
+                runBtn.style.display = "none";
+            } else {
+                runBtn.disabled = false;
+                runBtn.classList.remove("disabled");
+                runBtn.style.display = "inline-block";
+            }
+        }
+        if (stopBtn) {
+            if (isRunning) {
+                stopBtn.style.display = "inline-block";
+                stopBtn.disabled = false;
+            } else {
+                stopBtn.style.display = "none";
+                stopBtn.disabled = true;
+            }
+        }
+
+        const configIds = [
+            "setupStartDate", "setupEndDate", "initialCapitalInput",
+            "targetSectorCountInput", "targetStockCountInput",
+            "timestepSelect", "rebalanceAmountSlider", "allocationBiasCheckbox",
+            "allocationBiasSlider", "openSettingsBtn"
+        ];
+        configIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.disabled = isRunning;
+        });
+    }
+
+    function setServerConnectedState(isConnected) {
+        if (!isSimRunning) {
+            const runBtn = document.getElementById("runBtn");
+            if (runBtn) {
+                runBtn.disabled = !isConnected;
+                if (!isConnected) {
+                    runBtn.classList.add("disabled");
+                } else {
+                    runBtn.classList.remove("disabled");
+                }
+                runBtn.style.display = "inline-block";
+            }
+        }
+    }
+
+    // =========================================================================
+    // START / STOP SIMULATION ACTIONS
+    // =========================================================================
+
+    function startSimulation() {
+        if (!window.serverIsLoaded && (typeof serverIsLoaded !== 'undefined' && !serverIsLoaded)) {
+            alert("Server not connected. Please load and connect to a server first.");
+            return;
+        }
+
+        const startDate = document.getElementById("setupStartDate")?.value || "2024-09-01";
+        const endDate = document.getElementById("setupEndDate")?.value || "2026-09-01";
+        const capital = parseFloat(document.getElementById("initialCapitalInput")?.value || "100000");
+        const timestep = document.getElementById("timestepSelect")?.value || "1 month";
+        const rebalanceAmount = parseInt(document.getElementById("rebalanceAmountSlider")?.value || "3");
+
+        const targetSectorsRaw = document.getElementById("targetSectorCountInput")?.value?.trim();
+        let targetSectors = (targetSectorsRaw && targetSectorsRaw !== "") ? parseInt(targetSectorsRaw, 10) : null;
+        if (targetSectors !== null) targetSectors = Math.max(1, Math.min(11, targetSectors));
+
+        const targetStocksRaw = document.getElementById("targetStockCountInput")?.value?.trim();
+        let targetStocks = (targetStocksRaw && targetStocksRaw !== "") ? parseInt(targetStocksRaw, 10) : null;
+        if (targetStocks !== null) targetStocks = Math.max(1, Math.min(50, targetStocks));
+
+        let bias = null;
+        const biasCb = document.getElementById("allocationBiasCheckbox");
+        if (biasCb && biasCb.checked) {
+            bias = parseInt(document.getElementById("allocationBiasSlider")?.value || "4");
+        }
+
+        // Immediately populate Left Sidebar values
+        const statusDisplay = document.getElementById("currentSimStatusDisplay");
+        if (statusDisplay) statusDisplay.textContent = `${formatFriendlyDate(startDate)} (Inception): Stage 1`;
+        const dateDisplay = document.getElementById("currentSimDateDisplay");
+        if (dateDisplay) dateDisplay.textContent = formatFriendlyDate(startDate);
+        document.getElementById("metricCashVal").textContent = `$${capital.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        document.getElementById("metricStockVal").textContent = "$0.00";
+        document.getElementById("metricTotalVal").textContent = `$${capital.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        document.getElementById("metricFundReturn").textContent = "+0.00% ($0.00)";
+        document.getElementById("metricFundReturn").className = "metric-change";
+
+        // Reset workspace containers and session manager
+        sessionMgr.reset();
+
+        // Initialize Milestone 0 session
+        sessionMgr.setLiveSessionId("milestone_0", formatMilestoneLabel(startDate, "inception"), {
+            date: startDate,
+            dateFormatted: formatFriendlyDate(startDate),
+            type: "inception",
+            pace: "complete",
+            stages: defaultInceptionStages
+        });
+        sessionMgr.switchSession("current");
+
+        setControlsRunningState(true);
+        startSimTimer();
+
+        const payload = {
+            action: "start",
+            engineType: "agent_portfolio_simulation",
+            startDate: startDate,
+            endDate: endDate,
+            initialCapital: capital,
+            timestep: timestep,
+            boardroomPace: "fast",
+            targetSectorCount: targetSectors,
+            targetStockCount: targetStocks,
+            rebalanceAmount: rebalanceAmount,
+            allocationBias: bias,
+            maxIters: parseInt(document.getElementById("maxItersInput")?.value || "6"),
+            thinkingBudget: parseInt(document.getElementById("thinkingBudgetInput")?.value || "2048"),
+            temperature: parseFloat(document.getElementById("temperatureInput")?.value || "0.5"),
+            generateSummaries: false
+        };
+
+        if (typeof window.sendWsMessage === "function") {
+            window.sendWsMessage(payload);
+        } else {
+            console.error("sendWsMessage is not available on window.");
+        }
+    }
+
+    function stopSimulation() {
+        const stopBtn = document.getElementById("stopBtn");
+        if (stopBtn) stopBtn.disabled = true;
+        if (typeof window.sendWsMessage === "function") {
+            window.sendWsMessage({ action: "stop" });
+        }
+        fetch('/api/boardroom/stop', { method: 'POST' }).catch(() => {});
+        onSimulationCompleted();
+    }
+
+    function onSimulationCompleted() {
+        setControlsRunningState(false);
+        stopSimTimer();
+    }
+
+    // =========================================================================
+    // WEBSOCKET EVENT HANDLER & ROUTER
+    // =========================================================================
+
+    function handleWebSocketEvent(payload) {
+        if (!payload || !payload.type) return;
+
+        const mId = payload.milestoneId || sessionMgr.liveSessionId;
+        const stageNum = (payload.stageNum !== undefined && payload.stageNum !== null) ? payload.stageNum : (sessionMgr.activeViewingStageNum || 1);
+        const agentRole = payload.agentRole || payload.role;
+
+        switch (payload.type) {
+            case "milestoneStarted": {
+                let stages = payload.stages;
+                if (!stages || stages.length === 0) {
+                    stages = (payload.type === "inception" || payload.pace === "complete") ? defaultInceptionStages : fastRebalanceStages;
+                }
+                const isInc = (mId === "milestone_0" || payload.type === "inception");
+                const dateRaw = payload.date || payload.dateFormatted;
+                const label = (payload.label && payload.label.includes("("))
+                    ? payload.label 
+                    : (dateRaw ? formatMilestoneLabel(dateRaw, isInc ? "inception" : "review") : mId);
+
+                sessionMgr.setLiveSessionId(mId, label, {
+                    date: payload.date,
+                    dateFormatted: payload.dateFormatted ? formatFriendlyDate(payload.dateFormatted) : (payload.date ? formatFriendlyDate(payload.date) : null),
+                    type: isInc ? "inception" : "review",
+                    pace: payload.pace,
+                    stages: stages
+                });
+
+                const session = sessionMgr.getOrCreateSession(mId);
+                if (payload.baselinePositions && payload.baselinePositions.length > 0) {
+                    session.baselinePositions = payload.baselinePositions;
+                }
+                session.updateReceiptDatesAndCapital(payload.date || payload.dateFormatted);
+                break;
+            }
+
+            case "milestoneUpdated": {
+                const session = sessionMgr.getOrCreateSession(mId);
+                if (session) {
+                    session.pace = payload.pace;
+                    if (payload.stages && payload.stages.length > 0) {
+                        session.stages = payload.stages;
+                    } else if (payload.pace === "complete") {
+                        session.stages = completeRebalanceStages;
+                    } else {
+                        session.stages = fastRebalanceStages;
+                    }
+                    session.updateReceiptDatesAndCapital(payload.date || payload.dateFormatted);
+                    if (sessionMgr.activeViewingSessionId === "current" || sessionMgr.activeViewingSessionId === mId) {
+                        renderStagesBarTabs(session.stages, mId);
+                        sessionMgr.updateStageTabsState(mId);
+                    }
+                }
+                break;
+            }
+
+            case "stageStart": {
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.currentStageNum = payload.stageNum;
+
+                // Auto-upgrade to 6 complete stages if extended stage (e.g. 2 or 5) starts
+                if (session.stages && !session.stages.some(s => s.num === payload.stageNum)) {
+                    session.stages = (mId === "milestone_0") ? defaultInceptionStages : completeRebalanceStages;
+                    session.pace = "complete";
+                    if (sessionMgr.activeViewingSessionId === "current" || sessionMgr.activeViewingSessionId === mId) {
+                        renderStagesBarTabs(session.stages, mId);
+                    }
+                }
+
+                session.getOrCreateStageWorkspace(payload.stageNum, payload.stageName, payload.agents);
+                if (sessionMgr.activeViewingSessionId === "current" || sessionMgr.activeViewingSessionId === mId) {
+                    sessionMgr.switchStage(payload.stageNum, mId);
+                }
+                sessionMgr.updateStageTabsState(mId);
+                break;
+            }
+
+            case "agentRunStart":
+            case "agentStart": {
+                if (!agentRole) break;
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.getOrCreateAgentPane(stageNum, agentRole, payload.color || payload.agentColor, payload.displayName || payload.name);
+                break;
+            }
+
+            case "reasoningStart": {
+                if (!agentRole) break;
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.startReasoningBlock(stageNum, agentRole);
+                break;
+            }
+
+            case "reasoningToken":
+            case "reasoningChunk": {
+                if (!agentRole) break;
+                const token = payload.token !== undefined ? payload.token : (payload.chunk || "");
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.appendReasoningToken(stageNum, agentRole, token);
+                break;
+            }
+
+            case "reasoningEnd": {
+                if (!agentRole) break;
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.endReasoningBlock(stageNum, agentRole);
+                break;
+            }
+
+            case "contentStart": {
+                if (!agentRole) break;
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.startContentBlock(stageNum, agentRole, payload.phase);
+                break;
+            }
+
+            case "contentToken":
+            case "agentChunk": {
+                if (!agentRole) break;
+                const token = payload.token !== undefined ? payload.token : (payload.chunk || "");
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.appendContentToken(stageNum, agentRole, token, payload.phase);
+                break;
+            }
+
+            case "contentEnd": {
+                if (!agentRole) break;
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.endContentBlock(stageNum, agentRole);
+                break;
+            }
+
+            case "toolCallStreamStart": {
+                if (!agentRole) break;
+                const tIndex = (payload.index !== undefined) ? payload.index : payload.toolIndex;
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.startToolCallStream(stageNum, agentRole, tIndex, payload.toolName);
+                break;
+            }
+
+            case "toolCallStreamToken": {
+                if (!agentRole) break;
+                const tIndex = (payload.index !== undefined) ? payload.index : payload.toolIndex;
+                const token = payload.token !== undefined ? payload.token : (payload.chunk || "");
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.appendToolCallStreamToken(stageNum, agentRole, tIndex, token);
+                break;
+            }
+
+            case "toolCallStart": {
+                if (!agentRole) break;
+                const tIndex = (payload.toolIndex !== undefined) ? payload.toolIndex : payload.index;
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.startToolCall(stageNum, agentRole, payload.toolName, payload.args, payload.callId, tIndex);
+                break;
+            }
+
+            case "toolCallProgress": {
+                if (!agentRole) break;
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.updateToolCallProgress(stageNum, agentRole, payload.callId, payload.progress);
+                break;
+            }
+
+            case "toolCallEnd": {
+                if (!agentRole) break;
+                const tIndex = (payload.toolIndex !== undefined) ? payload.toolIndex : payload.index;
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.endToolCall(
+                    stageNum,
+                    agentRole,
+                    payload.toolName,
+                    payload.callId,
+                    payload.status || (payload.isError ? "error" : "success"),
+                    payload.result,
+                    payload.stdout,
+                    payload.variables,
+                    tIndex,
+                    payload.isError
+                );
+                break;
+            }
+
+            case "agentRunEnd": {
+                if (!agentRole) break;
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.endContentBlock(stageNum, agentRole);
+                break;
+            }
+
+            case "rateLimit": {
+                if (!agentRole) break;
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.appendRateLimit(stageNum, agentRole, payload);
+                break;
+            }
+
+            case "sectorAllocationConfirmed": {
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.renderSectorReceipt(payload.confirmedAllocation);
+                break;
+            }
+
+            case "portfolioCreated":
+            case "portfolioRebalanced": {
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.renderPortfolioReceipt(payload.confirmedPortfolio, payload.baselinePositions);
+                break;
+            }
+
+            case "milestoneCompleted": {
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.isCompleted = true;
+                sessionMgr.updateStageTabsState(mId);
+                break;
+            }
+
+            case "agentSimStateUpdate":
+            case "agentSimCompleted": {
+                updateSimulationUI(payload);
+                if (payload.type === "agentSimCompleted") {
+                    onSimulationCompleted();
+                }
+                break;
+            }
+
+            case "simComplete":
+            case "simulationFinished": {
+                onSimulationCompleted();
+                break;
+            }
+
+            case "simStopped": {
+                onSimulationCompleted();
+                break;
+            }
+
+            case "error": {
+                console.error("Engine simulation error event:", payload);
+                alert(`Simulation Error: ${payload.message || payload.error || "Unknown error"}`);
+                onSimulationCompleted();
+                break;
+            }
+        }
+    }
+
+    function openSettingsModal() {
+        const modal = document.getElementById("settingsOverlay");
+        if (modal) modal.style.display = "flex";
+    }
+
+    function closeSettingsModal() {
+        const modal = document.getElementById("settingsOverlay");
+        if (modal) modal.style.display = "none";
+    }
+
+    function handleSettingsOverlayMouseDown(e) {
+        if (e.target && e.target.id === "settingsOverlay") {
+            closeSettingsModal();
+        }
+    }
+
+    // Overwrite global simulation handlers so boardroom_core.js does not interfere
+    window.handleSimulationEvent = handleWebSocketEvent;
+    window.setControlsRunningState = setControlsRunningState;
+    window.setServerConnectedState = setServerConnectedState;
+    window.BoardroomCore = window.BoardroomCore || {};
+    window.BoardroomCore.openSettingsModal = openSettingsModal;
+    window.BoardroomCore.closeSettingsModal = closeSettingsModal;
+    window.BoardroomCore.handleSettingsOverlayMouseDown = handleSettingsOverlayMouseDown;
+    window.BoardroomCore.handleSimulationEvent = handleWebSocketEvent;
+    window.BoardroomCore.setControlsRunningState = setControlsRunningState;
+    window.BoardroomCore.setServerConnectedState = setServerConnectedState;
+    window.BoardroomCore.startSimulation = startSimulation;
+    window.BoardroomCore.stopSimulation = stopSimulation;
+
+    // =========================================================================
+    // INITIALIZATION & EVENT BINDINGS
+    // =========================================================================
+
+    function clampInput(el, min, max, allowEmpty = true) {
+        if (!el) return;
+        el.addEventListener("change", () => {
+            const val = el.value.trim();
+            if (val === "" && allowEmpty) return;
+            let num = parseInt(val, 10);
+            if (isNaN(num)) num = min;
+            num = Math.max(min, Math.min(max, num));
+            el.value = num;
+        });
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        // Mount Left Sidebar to the left of .workspace
+        const sidebar = document.getElementById("agentSimSidebar");
+        const mainLayout = document.querySelector(".main-layout");
+        const workspace = document.querySelector(".workspace");
+        if (sidebar && mainLayout && workspace) {
+            mainLayout.insertBefore(sidebar, workspace);
+        }
+
+        // Hide Generate Summaries Checkbox in settings modal
+        const summariesCheckbox = document.getElementById("generateSummariesCheckbox");
+        if (summariesCheckbox) {
+            summariesCheckbox.checked = false;
+            const parentGroup = summariesCheckbox.closest(".model-select-form-group");
+            if (parentGroup) parentGroup.style.display = "none";
+        }
+
+        // Wire generation settings modal controls and temperature slider
+        const openSettingsBtn = document.getElementById("openSettingsBtn");
+        if (openSettingsBtn) openSettingsBtn.onclick = openSettingsModal;
+
+        const closeSettingsBtn = document.getElementById("closeSettingsBtn");
+        if (closeSettingsBtn) closeSettingsBtn.onclick = closeSettingsModal;
+
+        const tempInput = document.getElementById("temperatureInput");
+        const tempText = document.getElementById("temperatureInputText");
+        if (tempInput && tempText) {
+            tempText.textContent = parseFloat(tempInput.value).toFixed(2);
+            tempInput.addEventListener("input", (e) => {
+                tempText.textContent = parseFloat(e.target.value).toFixed(2);
+            });
+        }
+
+        clampInput(document.getElementById("targetSectorCountInput"), 1, 11, true);
+        clampInput(document.getElementById("targetStockCountInput"), 1, 50, true);
+
+        initPerformanceChart();
+        injectMilestoneDropdown();
+        updateRebalanceAmountTooltip();
+
+        const startDateInput = document.getElementById("setupStartDate");
+        const capitalInput = document.getElementById("initialCapitalInput");
+        if (startDateInput && startDateInput.value) {
+            document.getElementById("currentSimDateDisplay").textContent = formatFriendlyDate(startDateInput.value);
+        }
+        if (capitalInput && capitalInput.value) {
+            const capVal = parseFloat(capitalInput.value) || 100000;
+            document.getElementById("metricCashVal").textContent = `$${capVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            document.getElementById("metricTotalVal").textContent = `$${capVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+
+        // Fetch collectors constants to dynamically set maximum Sim/End Date bounds
+        fetch("/api/constants")
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.endDate) {
+                    if (startDateInput) startDateInput.setAttribute("max", data.endDate);
+                    const endDateInput = document.getElementById("setupEndDate");
+                    if (endDateInput) endDateInput.setAttribute("max", data.endDate);
+                }
+                if (data && data.startDate) {
+                    if (startDateInput) startDateInput.setAttribute("min", data.startDate);
+                    const endDateInput = document.getElementById("setupEndDate");
+                    if (endDateInput) endDateInput.setAttribute("min", data.startDate);
+                }
+            })
+            .catch(() => {});
+
+        // Initialize Idle Session State ('None yet')
+        sessionMgr.reset();
+
+        // Re-bind Universal Run / Stop Buttons directly
+        const runBtn = document.getElementById("runBtn");
+        const stopBtn = document.getElementById("stopBtn");
+        if (runBtn) {
+            runBtn.onclick = (e) => {
+                e.preventDefault();
+                startSimulation();
+            };
+        }
+        if (stopBtn) {
+            stopBtn.onclick = (e) => {
+                e.preventDefault();
+                stopSimulation();
+            };
+        }
+    });
+</script>
+{% endblock %}
+

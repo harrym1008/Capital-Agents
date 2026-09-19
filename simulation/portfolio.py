@@ -119,10 +119,21 @@ class Portfolio:
 
 
         if order.side == OrderSide.BUY:
-            self.cash -= cost
-            if self.cash < 0:
-                self.cash += cost  # Revert cash deduction
-                raise ValueError("Insufficient cash to execute trade")
+            if self.cash < cost:
+                diff = cost - self.cash
+                if diff <= 0.05:
+                    # Floating point roundoff: clamp cost to exact available cash
+                    cost = self.cash
+                    if not order.isQuantityBased:
+                        order.cashValue = cost
+                        quantity = cost / order.fillPrice if order.fillPrice else quantity
+                else:
+                    # Genuinely insufficient cash: fail order gracefully without crashing simulation
+                    order.setOrderStatus(OrderStatus.FAILED)
+                    self.addToLog(order.fillTimestamp, order.ticker, "Order Failed", f"Insufficient cash to execute BUY (Required: ${cost:,.2f}, Available: ${self.cash:,.2f})")
+                    return
+
+            self.cash = max(0.0, self.cash - cost)
             
             if order.ticker not in self.positions:
                 self.positions[order.ticker] = Position(order.ticker, 0, 0)

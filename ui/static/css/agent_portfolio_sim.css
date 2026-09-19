@@ -1,0 +1,444 @@
+/* Agent-Driven Portfolio Simulation Stylesheet */
+
+/* Main Container Layout Split */
+.main-layout {
+    display: flex !important;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    position: relative;
+    background-color: #f8fafc;
+}
+
+/* Left Sidebar (23% Width) */
+.agent-sim-sidebar {
+    flex: 0 0 23%;
+    width: 23%;
+    min-width: 270px;
+    height: 100%;
+    background-color: #ffffff;
+    border-right: 1px solid #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    padding: 16px 18px;
+    gap: 14px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    box-sizing: border-box;
+}
+
+/* Right Main Workspace */
+.workspace {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-sizing: border-box;
+    background-color: #f8fafc;
+}
+
+.panes-container {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    position: relative;
+    overflow: hidden;
+}
+
+.stage-workspace {
+    display: none;
+    width: 100%;
+    height: 100%;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    gap: 16px;
+    align-items: stretch;
+    justify-content: stretch;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.stage-workspace .agent-pane {
+    flex: 1;
+    min-width: 0;
+    max-width: none;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.stage-workspace .upload-receipt-container {
+    flex: 0 0 420px;
+    max-width: 450px;
+    min-width: 300px;
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    border: 3px solid #000;
+    border-radius: 8px;
+    background-color: #fff;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+/* Report Section Styling (Cohesive Company Report Structure, Not Floating Bubbles) */
+.report-section {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e2e8f0;
+    box-sizing: border-box;
+}
+
+.report-section:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.report-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.report-section-title {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
+}
+
+/* Header Date & Metrics Summary (Identical to market_sim.html) */
+.sim-metrics-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.metric-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.metric-line {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+}
+
+.metric-label {
+    width: 66px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #475569;
+    flex-shrink: 0;
+}
+
+.metric-value {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.date-highlight {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.status-highlight {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #2563eb;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.metric-change {
+    padding-left: 76px;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.metric-change.positive, .val-positive {
+    color: #16a34a !important;
+}
+
+.metric-change.negative, .val-negative {
+    color: #dc2626 !important;
+}
+
+/* Timeframe Selector Buttons (Horizontal Row) */
+.chart-timeframe-controls {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 4px;
+    width: 100%;
+    margin-bottom: 4px;
+}
+
+.tf-btn {
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 4px;
+    border: 1px solid #cbd5e1;
+    background-color: #f8fafc;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.tf-btn:hover {
+    background-color: #e2e8f0;
+    color: #0f172a;
+}
+
+.tf-btn.active {
+    background-color: #2563eb;
+    color: #ffffff;
+    border-color: #2563eb;
+}
+
+/* Chart Canvas Wrapper (Taller) */
+.sim-chart-wrapper {
+    width: 100%;
+    height: 25vh;
+    position: relative;
+    margin-top: 2px;
+}
+
+/* Key Performance Metrics Grid (Transparent Background, No Card Border) */
+.backtest-metrics-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 4px 0 6px 0;
+    background: transparent;
+    border: none;
+    box-sizing: border-box;
+}
+
+.backtest-metric-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.backtest-metric-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.backtest-metric-value {
+    font-size: 14px;
+    font-weight: 800;
+    color: #0f172a;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+/* Active Holdings Table */
+.sim-positions-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.42vw;
+    table-layout: auto;
+}
+
+.sim-positions-table th {
+    background-color: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    font-size: 0.42vw;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 5px 3px;
+    border-bottom: 1.5px solid #cbd5e1;
+    white-space: nowrap;
+}
+
+.sim-positions-table td {
+    padding: 5px 3px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+
+.sim-positions-table tbody tr:hover {
+    background-color: #f1f5f9;
+}
+
+.pos-ticker {
+    font-weight: 700;
+    color: #0f172a;
+    font-size: 0.465vw;
+    line-height: 1.2;
+}
+
+.pos-company-sub {
+    font-size: 0.42vw;
+    color: #64748b;
+    line-height: 1.1;
+    max-width: 4.5vw;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pos-val-primary {
+    font-weight: 700;
+    color: #0f172a;
+    font-size: 12px;
+    line-height: 1.2;
+}
+
+.pos-val-sub {
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+/* Rebalance History & System Logs Feed */
+.timeline-list {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.timeline-item {
+    border-left: 3px solid #cbd5e1;
+    padding: 6px 10px 6px 12px;
+    font-size: 12.5px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    background: #f8fafc;
+    border-radius: 0 4px 4px 0;
+}
+
+.timeline-item.rebalanced {
+    border-left-color: #2563eb;
+    background-color: rgba(37, 99, 235, 0.04);
+}
+
+.timeline-item.skipped {
+    border-left-color: #94a3b8;
+}
+
+.timeline-item.inception {
+    border-left-color: #10b981;
+    background-color: rgba(16, 185, 129, 0.04);
+}
+
+.timeline-date {
+    font-weight: 700;
+    color: #0f172a;
+    font-size: 12px;
+}
+
+.timeline-summary {
+    color: #475569;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+/* System Log Pills (Matching market_sim.css) */
+.log-pill {
+    padding: 6px 9px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    color: #0f172a;
+    font-size: 12px;
+}
+
+.log-date-tag {
+    color: #64748b;
+    font-weight: 600;
+    font-size: 11px;
+    margin-right: 4px;
+}
+
+.log-ticker-tag {
+    font-weight: 800;
+    font-size: 12.5px;
+    color: #000000;
+    margin: 0 4px;
+}
+
+.log-message-body {
+    color: #334155;
+    font-size: 12px;
+    line-height: 1.35;
+    word-break: break-word;
+}
+
+.badge-action-buy {
+    color: #16a34a;
+    font-weight: 800;
+    font-size: 11.5px;
+}
+
+.badge-action-sell {
+    color: #dc2626;
+    font-weight: 800;
+    font-size: 11.5px;
+}
+
+.badge-action-log {
+    color: #2563eb;
+    font-weight: 800;
+    font-size: 11.5px;
+}
+
+.badge-action-cancel {
+    background-color: #fee2e2;
+    color: #b91c1c;
+    font-weight: 800;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+/* Milestone Selector Dropdown in Stages Bar (Left Aligned) */
+.milestone-selector-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 16px 0 0;
+    border-right: 1px solid #e2e8f0;
+    flex-shrink: 0;
+}
+
+.milestone-select {
+    padding: 6px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #1e293b;
+    background-color: #ffffff;
+    cursor: pointer;
+}

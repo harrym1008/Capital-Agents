@@ -61,6 +61,16 @@ def setCurrentStage(stageNum):
 def getCurrentStage():
     return getattr(_local, "stageNum", 0)
 
+_globalMilestoneId = None
+
+def setCurrentMilestoneId(milestoneId):
+    global _globalMilestoneId
+    _local.milestoneId = milestoneId
+    _globalMilestoneId = milestoneId
+
+def getCurrentMilestoneId():
+    return getattr(_local, "milestoneId", None) or _globalMilestoneId
+
 def setCurrentCallId(callId):
     _local.currentCallId = callId
 
@@ -89,6 +99,9 @@ def emitEvent(eventType, data=None):
             "stageNum": getCurrentStage(),
             "threadId": threading.get_ident()
         }
+        currentMilestoneId = getCurrentMilestoneId()
+        if currentMilestoneId:
+            payload["milestoneId"] = currentMilestoneId
         currentCallId = getCurrentCallId()
         if currentCallId:
             payload["callId"] = currentCallId

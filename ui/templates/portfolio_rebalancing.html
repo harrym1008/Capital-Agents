@@ -1281,6 +1281,8 @@
                 <tbody>
         `;
 
+        const activeTickers = new Set(positions.map(p => p.ticker));
+
         positions.forEach((pos, idx) => {
             const ticker = pos.ticker;
             const basePos = baseMap[ticker];
@@ -1329,6 +1331,34 @@
                     </tr>
                 `;
             }
+        });
+
+        // 2. Render previously held positions that got removed (liquidated to 0%)
+        currentPortfolioPositions.forEach((basePos) => {
+            if (!basePos.valid || !basePos.ticker || activeTickers.has(basePos.ticker)) return;
+            const ticker = basePos.ticker;
+            const baseWeight = `${basePos.weightPct.toFixed(0)}%`;
+            const compName = basePos.companyName 
+                ? `<span style="font-size: 10.5px; color: #94a3b8; margin-left: 5px; font-weight: 400;">(${basePos.companyName})</span>` 
+                : "";
+            const rowBg = "#fff1f2";
+
+            let returnCellHtml = hasBacktest ? `<td style="padding: 6px 6px; text-align: right; color: #94a3b8; font-size: 11px;">--</td>` : "";
+
+            tableHtml += `
+                <tr style="background: ${rowBg}; border-bottom: 1px solid #fecdd3;">
+                    <td style="padding: 6px 6px; font-weight: 700; color: #991b1b;">
+                        <span style="text-decoration: line-through; color: #94a3b8; margin-right: 4px;">${ticker}</span>${compName}
+                        <span style="font-size: 9.5px; font-weight: 700; color: #ef4444; background: #fee2e2; border: 1px solid #fca5a5; padding: 1px 4px; border-radius: 3px; margin-left: 4px;">REMOVED</span>
+                    </td>
+                    <td style="padding: 6px 6px; color: #64748b; font-size: 11px;">${basePos.sector || '--'}</td>
+                    <td style="padding: 6px 6px; color: #94a3b8; font-size: 11px;">${basePos.industry || '--'}</td>
+                    <td style="padding: 6px 6px; text-align: right; color: #64748b; font-size: 11px; font-weight: 600;">${baseWeight}</td>
+                    <td style="padding: 6px 6px; text-align: right; font-weight: 700; color: #ef4444;">0%</td>
+                    <td style="padding: 6px 6px; text-align: right; color: #94a3b8; font-size: 11px;">$0.00</td>
+                    ${returnCellHtml}
+                </tr>
+            `;
         });
 
         tableHtml += `</tbody></table>`;

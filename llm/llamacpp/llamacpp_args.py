@@ -2,20 +2,20 @@ import os
 import time
 from typing import Optional, Tuple, List, Dict, Any
 from dotenv import load_dotenv
+
 load_dotenv()
 
-from llm.server_config_store import loadServerConfig, saveServerConfig, SERVER_CONFIG_FILE_PATH as CONFIG_FILE_PATH
+from llm.server_config_store import loadServerConfig, saveServerConfig
 
 LLAMACPP_PORT = 9081
 LLAMACPP_EXECUTABLE = "llama-server.exe"
 
-LOCKED_ARGS = {
-    "--host": "127.0.0.1",
-    "--port": "9081",
-    "--log-verbosity": "4"
+DISALLOWED_USER_KEYS = {
+    "--host", "-h",
+    "--port", "-p",
+    "--log-verbosity", "-lv",
+    "-m", "--model"
 }
-
-DISALLOWED_USER_KEYS = {"--host", "-h", "--port", "-p", "--log-verbosity", "-lv"}
 
 SAMPLING_FLAGS = {
     "--temp",
@@ -39,24 +39,24 @@ def cleanUserArgs(rawArgs: Any) -> List[Dict[str, Any]]:
     if isinstance(rawArgs, list):
         for item in rawArgs:
             if isinstance(item, dict):
-                k = str(item.get("key", "")).strip()
-                if not k or isDisallowedKey(k):
+                key = str(item.get("key", "")).strip()
+                if not key or isDisallowedKey(key):
                     continue
-                v = str(item.get("value", ""))
+                val = str(item.get("value", ""))
                 enabled = bool(item.get("enabled", True))
-                cleaned.append({"key": k, "value": v, "enabled": enabled})
+                cleaned.append({"key": key, "value": val, "enabled": enabled})
     elif isinstance(rawArgs, dict):
-        for k, v in rawArgs.items():
-            kClean = str(k).strip()
-            if not kClean or isDisallowedKey(kClean):
+        for key, val in rawArgs.items():
+            keyClean = str(key).strip()
+            if not keyClean or isDisallowedKey(keyClean):
                 continue
-            cleaned.append({"key": kClean, "value": str(v), "enabled": True})
+            cleaned.append({"key": keyClean, "value": str(val), "enabled": True})
     return cleaned
 
 
 def getDefaultConfig() -> Dict[str, Any]:
     return {
-        "executablePath": "llama-server.exe",
+        "executablePath": LLAMACPP_EXECUTABLE,
         "lastUsedModelId": "",
         "globalArgs": [],
         "models": []
@@ -70,34 +70,34 @@ def loadConfig() -> Dict[str, Any]:
     cfg["lastUsedModelId"] = str(cfg.get("lastUsedModelId", "")).strip()
     cfg["globalArgs"] = cleanUserArgs(cfg.get("globalArgs", []))
     if "models" in cfg and isinstance(cfg["models"], list):
-        for m in cfg["models"]:
-            if isinstance(m, dict):
-                m["args"] = cleanUserArgs(m.get("args", []))
+        for model in cfg["models"]:
+            if isinstance(model, dict):
+                model["args"] = cleanUserArgs(model.get("args", []))
     return cfg
 
 
 def saveConfig(configData: Dict[str, Any]) -> bool:
     try:
         cleanedData = {
-            "executablePath": configData.get("executablePath", "llama-server.exe").strip() or "llama-server.exe",
+            "executablePath": configData.get("executablePath", LLAMACPP_EXECUTABLE).strip() or LLAMACPP_EXECUTABLE,
             "lastUsedModelId": str(configData.get("lastUsedModelId", "")).strip(),
             "globalArgs": cleanUserArgs(configData.get("globalArgs", [])),
             "models": []
         }
-        for m in configData.get("models", []):
-            if isinstance(m, dict):
+        for model in configData.get("models", []):
+            if isinstance(model, dict):
                 cleanedData["models"].append({
-                    "id": m.get("id", f"model_{int(time.time()*1000)}"),
-                    "alias": m.get("alias", "").strip(),
-                    "modelPath": m.get("modelPath", "").strip(),
-                    "executablePath": m.get("executablePath", "").strip(),
-                    "args": cleanUserArgs(m.get("args", []))
+                    "id": model.get("id", f"model_{int(time.time() * 1000)}"),
+                    "alias": model.get("alias", "").strip(),
+                    "modelPath": model.get("modelPath", "").strip(),
+                    "executablePath": model.get("executablePath", "").strip(),
+                    "args": cleanUserArgs(model.get("args", []))
                 })
         fullConfig = loadServerConfig()
         fullConfig["llamacpp"] = cleanedData
         return saveServerConfig(fullConfig)
-    except Exception as e:
-        print(f"Error saving Llama.cpp config: {e}")
+    except Exception as err:
+        print(f"Error saving Llama.cpp config: {err}")
         return False
 
 
@@ -117,22 +117,22 @@ def findModelConfig(modelIdentifier: str) -> Tuple[Optional[Dict[str, Any]], Opt
     cleanIdent = str(modelIdentifier).strip()
     
     # 1. Match by exact ID
-    for m in models:
-        if m.get("id") == cleanIdent:
-            return m, None
+    for model in models:
+        if model.get("id") == cleanIdent:
+            return model, None
             
     # 2. Match by exact alias (case-insensitive)
-    for m in models:
-        if m.get("alias", "").strip().lower() == cleanIdent.lower():
-            return m, None
+    for model in models:
+        if model.get("alias", "").strip().lower() == cleanIdent.lower():
+            return model, None
             
     # 3. Match by filename (with or without .gguf)
-    for m in models:
-        mPath = m.get("modelPath", "")
-        fName = os.path.basename(mPath)
-        fNameWithoutExt = fName[:-5] if fName.lower().endswith(".gguf") else fName
-        if fName.lower() == cleanIdent.lower() or fNameWithoutExt.lower() == cleanIdent.lower():
-            return m, None
+    for model in models:
+        modelPath = model.get("modelPath", "")
+        fileName = os.path.basename(modelPath)
+        fileNameWithoutExt = fileName[:-5] if fileName.lower().endswith(".gguf") else fileName
+        if fileName.lower() == cleanIdent.lower() or fileNameWithoutExt.lower() == cleanIdent.lower():
+            return model, None
 
     # 4. Fallback: If only 1 model configured, use it
     if len(models) == 1:
@@ -141,7 +141,11 @@ def findModelConfig(modelIdentifier: str) -> Tuple[Optional[Dict[str, Any]], Opt
     return None, f"Model '{cleanIdent}' was not found in Llama.cpp configuration."
 
 
-def buildLlamaCppCommandLine(modelIdentifier: str, allowParallel: bool = True, argOverrides: Optional[dict] = None) -> Tuple[str, List[str], Dict[str, Any]]:
+def buildLlamaCppCommandLine(
+    modelIdentifier: str, 
+    allowParallel: bool = True, 
+    argOverrides: Optional[Dict[str, Any]] = None
+) -> Tuple[str, List[str], Dict[str, Any]]:
     modelConfig, error = findModelConfig(modelIdentifier)
     if error:
         raise ValueError(error)
@@ -162,61 +166,61 @@ def buildLlamaCppCommandLine(modelIdentifier: str, allowParallel: bool = True, a
     modelArgsList = cleanUserArgs(modelConfig.get("args", []))
     
     # Active per-model keys (that are enabled)
-    activeModelKeys = {a["key"].strip().lower() for a in modelArgsList if a.get("enabled", True)}
+    activeModelKeys = {arg["key"].strip().lower() for arg in modelArgsList if arg.get("enabled", True)}
     
     commandArgs = [executablePath]
     
-    # 1. Enforce forced/locked flags
+    # 1. Enforce locked system flags
     commandArgs.extend(["--host", "127.0.0.1"])
     commandArgs.extend(["--port", str(LLAMACPP_PORT)])
     commandArgs.extend(["-lv", "4"])
+    commandArgs.append("--context-shift")
     
     # 2. Add -m <modelPath>
     commandArgs.extend(["-m", modelPath])
     
     # 3. Add enabled global arguments (unless overridden by active model arg)
-    for gArg in globalArgsList:
-        if not gArg.get("enabled", True):
+    for globalArg in globalArgsList:
+        if not globalArg.get("enabled", True):
             continue
-        k = gArg.get("key", "").strip()
-        v = str(gArg.get("value", "")).strip()
-        if not k or isDisallowedKey(k):
+        key = globalArg.get("key", "").strip()
+        val = str(globalArg.get("value", "")).strip()
+        if not key or isDisallowedKey(key) or key.lower() in activeModelKeys:
             continue
-        if k.lower() in activeModelKeys:
-            # Overridden by model
+        # Skip empty sampling flags
+        if key.lower() in SAMPLING_FLAGS and val == "":
             continue
-        # Check if empty sampling param
-        if k.lower() in SAMPLING_FLAGS and v == "":
-            continue
-        commandArgs.append(k)
-        if v != "":
-            commandArgs.append(v)
+        commandArgs.append(key)
+        if val != "":
+            commandArgs.append(val)
             
     # 4. Add enabled per-model arguments
-    for mArg in modelArgsList:
-        if not mArg.get("enabled", True):
+    for modelArg in modelArgsList:
+        if not modelArg.get("enabled", True):
             continue
-        k = mArg.get("key", "").strip()
-        v = str(mArg.get("value", "")).strip()
-        if not k or isDisallowedKey(k):
+        key = modelArg.get("key", "").strip()
+        val = str(modelArg.get("value", "")).strip()
+        if not key or isDisallowedKey(key):
             continue
-        # Check if empty sampling param
-        if k.lower() in SAMPLING_FLAGS and v == "":
+        # Skip empty sampling flags
+        if key.lower() in SAMPLING_FLAGS and val == "":
             continue
-        commandArgs.append(k)
-        if v != "":
-            commandArgs.append(v)
+        commandArgs.append(key)
+        if val != "":
+            commandArgs.append(val)
             
     # 5. Apply any programmatic argOverrides
     if argOverrides and isinstance(argOverrides, dict):
-        for k, v in argOverrides.items():
-            if isDisallowedKey(str(k)):
+        for overrideKey, overrideVal in argOverrides.items():
+            keyClean = str(overrideKey).strip()
+            if isDisallowedKey(keyClean):
                 continue
-            commandArgs.append(str(k))
-            if str(v) != "":
-                commandArgs.append(str(v))
+            commandArgs.append(keyClean)
+            valStr = str(overrideVal).strip()
+            if valStr != "":
+                commandArgs.append(valStr)
                 
-    # 6. If allowParallel is False, ensure -np 1
+    # 6. If allowParallel is False, ensure single parallel slot
     if not allowParallel:
         hasParallelArg = any(arg in ("-np", "--parallel") for arg in commandArgs)
         if not hasParallelArg:
@@ -236,12 +240,12 @@ def validateGGUFPath(filePath: str) -> Tuple[bool, Any]:
     if not cleanPath.lower().endswith(".gguf"):
         return False, "File does not have a .gguf extension."
     try:
-        with open(cleanPath, "rb") as f:
-            header = f.read(4)
+        with open(cleanPath, "rb") as fileHandle:
+            header = fileHandle.read(4)
             if header != b"GGUF":
                 return False, f"Invalid GGUF header magic. Expected 'GGUF', got '{header}'."
-    except Exception as e:
-        return False, f"Error reading file header: {str(e)}"
+    except Exception as err:
+        return False, f"Error reading file header: {str(err)}"
     
     fileSize = os.path.getsize(cleanPath)
     fileName = os.path.basename(cleanPath)
@@ -272,7 +276,10 @@ def getLlamaCppModelsList() -> List[Dict[str, Any]]:
 
     # Hoist last used model to index 0 if specified
     if lastUsedId:
-        matchingIdx = next((i for i, m in enumerate(modelsList) if m["id"] == lastUsedId or m["alias"].lower() == lastUsedId.lower()), None)
+        matchingIdx = next(
+            (i for i, m in enumerate(modelsList) if m["id"] == lastUsedId or m["alias"].lower() == lastUsedId.lower()), 
+            None
+        )
         if matchingIdx is not None and matchingIdx > 0:
             lastUsedModel = modelsList.pop(matchingIdx)
             modelsList.insert(0, lastUsedModel)
@@ -293,8 +300,8 @@ def openNativeGgufFileDialog() -> str:
         )
         root.destroy()
         return selectedPath or ""
-    except Exception as e:
-        print(f"Error opening native GGUF file dialog: {e}")
+    except Exception as err:
+        print(f"Error opening native GGUF file dialog: {err}")
         return ""
 
 
@@ -311,6 +318,6 @@ def openNativeExecutableFileDialog() -> str:
         )
         root.destroy()
         return selectedPath or ""
-    except Exception as e:
-        print(f"Error opening native executable file dialog: {e}")
+    except Exception as err:
+        print(f"Error opening native executable file dialog: {err}")
         return ""

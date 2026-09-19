@@ -259,9 +259,14 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"- Target stock count across entire portfolio: {promptArgs['targetStockCount']}. Keep candidate selections focused and calibrated to this target.\n"
             f"- Sector Boundary: Scout candidate equities ONLY within the confirmed sectors above.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
-            f"1. Use 'fetchStocksInSector' with style='growth' for each confirmed sector to screen candidate equities.\n"
-            f"2. You MUST afterwards use 'fetchBatchStockOverviews' to retrieve much more detailed information on your top high-conviction picks.\n"
-            f"3. Present your candidate table with tickers, industry, momentum, and growth catalysts."
+            f"CRITICAL MULTI-STEP TOOL EXECUTION MANDATE (STRICTLY REQUIRED):\n"
+            f"1. STEP 1 (Screening): Call 'fetchStocksInSector' with style='growth' for each confirmed sector to screen candidate equities.\n"
+            f"2. STEP 2 (MANDATORY IMMEDIATE TOOL CALL): Immediately after obtaining sector candidates from 'fetchStocksInSector', "
+            f"you MUST call 'fetchBatchStockOverviews' with a list of your shortlisted candidate tickers (e.g. top 5-10 stocks across sectors). "
+            f"DO NOT finalize or output your candidate table after Step 1 alone! 'fetchStocksInSector' only provides heuristic scores. "
+            f"You MUST inspect real financial metrics (valuation multiples like P/E, P/B, EV/EBITDA, profitability margins, revenue/EPS growth, leverage, news sentiment, and company summary) "
+            f"via 'fetchBatchStockOverviews' to assess business quality and upside catalysts.\n"
+            f"3. STEP 3: Present your structured candidate table with tickers, company name, industry, real quantitative valuation/growth metrics, momentum, and growth catalysts."
         )
 
         valuePrompt = (
@@ -274,9 +279,14 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"- Target stock count across entire portfolio: {promptArgs['targetStockCount']}. Keep candidate selections focused and calibrated to this target.\n"
             f"- Sector Boundary: Scout candidate equities ONLY within the confirmed sectors above.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
-            f"1. Use 'fetchStocksInSector' with style='defensive' for each confirmed sector to screen candidate equities.\n"
-            f"2. You MUST afterwards use 'fetchBatchStockOverviews' to retrieve much more detailed information on your top high-conviction picks.\n"
-            f"3. Present your candidate table with tickers, industry, valuation, and margin of safety rationale."
+            f"CRITICAL MULTI-STEP TOOL EXECUTION MANDATE (STRICTLY REQUIRED):\n"
+            f"1. STEP 1 (Screening): Call 'fetchStocksInSector' with style='defensive' for each confirmed sector to screen candidate equities.\n"
+            f"2. STEP 2 (MANDATORY IMMEDIATE TOOL CALL): Immediately after obtaining sector candidates from 'fetchStocksInSector', "
+            f"you MUST call 'fetchBatchStockOverviews' with a list of your shortlisted candidate tickers (e.g. top 5-10 stocks across sectors). "
+            f"DO NOT finalize or output your candidate table after Step 1 alone! 'fetchStocksInSector' only provides heuristic scores. "
+            f"You MUST inspect real financial metrics (valuation multiples like P/E, P/B, debt-to-equity, current/quick ratios, profitability margins, dividend yield, and company summary) "
+            f"via 'fetchBatchStockOverviews' to verify solvency and true margin of safety.\n"
+            f"3. STEP 3: Present your structured candidate table with tickers, company name, industry, real quantitative valuation/solvency metrics, and margin of safety rationale."
         )
 
         (growthRaw, growthUISummary), (valueRaw, valueUISummary) = self._runAgentsConcurrently(
@@ -312,7 +322,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n"
             f"- Target stock count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
-            f"- Sector Allocation Structure: Group stocks by confirmed sector into the 'sectorAllocations' dictionary. Every confirmed non-cash sector must contain stock holdings.\n"
+            f"- Sector Allocation Structure: Group stocks by confirmed sector into the 'sectorAllocations' dictionary. Every confirmed sector must contain stock holdings.\n"
             f"- Per-Sector Weighting: Inside each sector, assign whole integer 'perSectorWeight' percentages (e.g. 60, 40, not decimals) to chosen stocks such that they strictly sum to 100% of that sector.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
             f"- Stock Justifications: Provide a 25-35 word rationale for each equity holding.\n"
@@ -473,9 +483,14 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"- Target stock count across entire portfolio: {promptArgs['targetStockCount']}. Keep candidate selections focused and calibrated to this target.\n"
             f"- Sector Boundary: Scout candidate equities ONLY within the confirmed sectors above.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
-            f"1. Use 'fetchStocksInSector' with style='growth' for each confirmed sector to screen candidate equities.\n"
-            f"2. You MUST afterwards use 'fetchBatchStockOverviews' to retrieve much more detailed information on your top high-conviction picks.\n"
-            f"3. Present your candidate table with tickers, industry, momentum, and growth catalysts."
+            f"CRITICAL MULTI-STEP TOOL EXECUTION MANDATE (STRICTLY REQUIRED):\n"
+            f"1. STEP 1 (Screening): Call 'fetchStocksInSector' with style='growth' for each confirmed sector to screen candidate equities.\n"
+            f"2. STEP 2 (MANDATORY IMMEDIATE TOOL CALL): Immediately after obtaining sector candidates from 'fetchStocksInSector', "
+            f"you MUST call 'fetchBatchStockOverviews' with a list of your shortlisted candidate tickers (e.g. top 5-10 stocks across sectors). "
+            f"DO NOT finalize or output your candidate table after Step 1 alone! 'fetchStocksInSector' only provides heuristic scores. "
+            f"You MUST inspect real financial metrics (valuation multiples like P/E, P/B, EV/EBITDA, profitability margins, revenue/EPS growth, leverage, news sentiment, and company summary) "
+            f"via 'fetchBatchStockOverviews' to assess business quality and upside catalysts.\n"
+            f"3. STEP 3: Present your structured candidate table with tickers, company name, industry, real quantitative valuation/growth metrics, momentum, and growth catalysts."
         )
 
         valuePrompt = (
@@ -488,9 +503,14 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"- Target stock count across entire portfolio: {promptArgs['targetStockCount']}. Keep candidate selections focused and calibrated to this target.\n"
             f"- Sector Boundary: Scout candidate equities ONLY within the confirmed sectors above.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
-            f"1. Use 'fetchStocksInSector' with style='defensive' for each confirmed sector to screen candidate equities.\n"
-            f"2. You MUST afterwards use 'fetchBatchStockOverviews' to retrieve much more detailed information on your top high-conviction picks.\n"
-            f"3. Present your candidate table with tickers, industry, valuation, and margin of safety rationale."
+            f"CRITICAL MULTI-STEP TOOL EXECUTION MANDATE (STRICTLY REQUIRED):\n"
+            f"1. STEP 1 (Screening): Call 'fetchStocksInSector' with style='defensive' for each confirmed sector to screen candidate equities.\n"
+            f"2. STEP 2 (MANDATORY IMMEDIATE TOOL CALL): Immediately after obtaining sector candidates from 'fetchStocksInSector', "
+            f"you MUST call 'fetchBatchStockOverviews' with a list of your shortlisted candidate tickers (e.g. top 5-10 stocks across sectors). "
+            f"DO NOT finalize or output your candidate table after Step 1 alone! 'fetchStocksInSector' only provides heuristic scores. "
+            f"You MUST inspect real financial metrics (valuation multiples like P/E, P/B, debt-to-equity, current/quick ratios, profitability margins, dividend yield, and company summary) "
+            f"via 'fetchBatchStockOverviews' to verify solvency and true margin of safety.\n"
+            f"3. STEP 3: Present your structured candidate table with tickers, company name, industry, real quantitative valuation/solvency metrics, and margin of safety rationale."
         )
 
         (growthRaw, growthUISummary), (valueRaw, valueUISummary) = self._runAgentsConcurrently(
@@ -585,7 +605,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
             f"- Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n"
             f"- Target stock count: Aim for around {promptArgs['targetStockCount']} stocks across the confirmed sectors.\n"
-            f"- Sector Allocation Structure: Group stocks by confirmed sector into the 'sectorAllocations' dictionary. Every confirmed non-cash sector must contain stock holdings.\n"
+            f"- Sector Allocation Structure: Group stocks by confirmed sector into the 'sectorAllocations' dictionary. Every confirmed sector must contain stock holdings.\n"
             f"- Per-Sector Weighting: Inside each sector, assign whole integer 'perSectorWeight' percentages (e.g. 60, 40, not decimals) to chosen stocks such that they strictly sum to 100% of that sector.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n"
             f"- Stock Justifications: Provide a 25-35 word rationale for each equity holding.\n"
@@ -730,9 +750,14 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"- STRICT SECTOR BOUNDARY: You MUST ONLY scout candidate equities belonging to the confirmed sectors ({activeSectorsSummary}). "
             f"Do NOT scout or propose equities from any other sectors, regardless of any general macro commentary.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
-            f"1. Use 'fetchStocksInSector' with style='growth' for each confirmed sector to screen candidate equities.\n"
-            f"2. You MUST afterwards use 'fetchBatchStockOverviews' to retrieve much more detailed information on your top high-conviction picks.\n"
-            f"3. Present your candidate table with tickers, industry, momentum, and growth catalysts."
+            f"CRITICAL MULTI-STEP TOOL EXECUTION MANDATE (STRICTLY REQUIRED):\n"
+            f"1. STEP 1 (Screening): Call 'fetchStocksInSector' with style='growth' for each confirmed sector to screen candidate equities.\n"
+            f"2. STEP 2 (MANDATORY IMMEDIATE TOOL CALL): Immediately after obtaining sector candidates from 'fetchStocksInSector', "
+            f"you MUST call 'fetchBatchStockOverviews' with a list of your shortlisted candidate tickers (e.g. top 5-10 stocks across sectors). "
+            f"DO NOT finalize or output your candidate table after Step 1 alone! 'fetchStocksInSector' only provides heuristic scores. "
+            f"You MUST inspect real financial metrics (valuation multiples like P/E, P/B, EV/EBITDA, profitability margins, revenue/EPS growth, leverage, news sentiment, and company summary) "
+            f"via 'fetchBatchStockOverviews' to assess business quality and upside catalysts.\n"
+            f"3. STEP 3: Present your structured candidate table with tickers, company name, industry, real quantitative valuation/growth metrics, momentum, and growth catalysts."
         )
 
         valuePrompt = (
@@ -747,9 +772,14 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
             f"- STRICT SECTOR BOUNDARY: You MUST ONLY scout candidate equities belonging to the confirmed sectors ({activeSectorsSummary}). "
             f"Do NOT scout or propose equities from any other sectors, regardless of any general macro commentary.\n"
             f"- Max single stock allocation: {promptArgs['maxStockAllocation']}.\n\n"
-            f"1. Use 'fetchStocksInSector' with style='defensive' for each confirmed sector to screen candidate equities.\n"
-            f"2. You MUST afterwards use 'fetchBatchStockOverviews' to retrieve much more detailed information on your top high-conviction picks.\n"
-            f"3. Present your candidate table with tickers, industry, valuation, and margin of safety rationale."
+            f"CRITICAL MULTI-STEP TOOL EXECUTION MANDATE (STRICTLY REQUIRED):\n"
+            f"1. STEP 1 (Screening): Call 'fetchStocksInSector' with style='defensive' for each confirmed sector to screen candidate equities.\n"
+            f"2. STEP 2 (MANDATORY IMMEDIATE TOOL CALL): Immediately after obtaining sector candidates from 'fetchStocksInSector', "
+            f"you MUST call 'fetchBatchStockOverviews' with a list of your shortlisted candidate tickers (e.g. top 5-10 stocks across sectors). "
+            f"DO NOT finalize or output your candidate table after Step 1 alone! 'fetchStocksInSector' only provides heuristic scores. "
+            f"You MUST inspect real financial metrics (valuation multiples like P/E, P/B, debt-to-equity, current/quick ratios, profitability margins, dividend yield, and company summary) "
+            f"via 'fetchBatchStockOverviews' to verify solvency and true margin of safety.\n"
+            f"3. STEP 3: Present your structured candidate table with tickers, company name, industry, real quantitative valuation/solvency metrics, and margin of safety rationale."
         )
 
         (growthRaw, growthUISummary), (valueRaw, valueUISummary) = self._runAgentsConcurrently(

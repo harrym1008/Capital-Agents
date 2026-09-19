@@ -1965,14 +1965,26 @@ const BoardroomCore = (function () {
         const container = document.getElementById("simulatedDateContainer");
 
         if (dateInput) {
-            const yesterdayStr = (typeof window.getYesterdayDateString === 'function')
-                ? window.getYesterdayDateString()
-                : (() => {
-                    const d = new Date();
-                    d.setDate(d.getDate() - 1);
-                    return d.toISOString().split('T')[0];
-                })();
-            dateInput.setAttribute("max", yesterdayStr);
+            const isSingleEquity = window.location.pathname.includes("single-equity-rating");
+            if (!isSingleEquity) {
+                fetch("/api/constants")
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data && data.endDate) {
+                            dateInput.setAttribute("max", data.endDate);
+                        }
+                    })
+                    .catch(() => {});
+            } else {
+                const yesterdayStr = (typeof window.getYesterdayDateString === 'function')
+                    ? window.getYesterdayDateString()
+                    : (() => {
+                        const d = new Date();
+                        d.setDate(d.getDate() - 1);
+                        return d.toISOString().split('T')[0];
+                    })();
+                dateInput.setAttribute("max", yesterdayStr);
+            }
         }
 
         if (checkbox && container) {

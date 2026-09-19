@@ -47,7 +47,8 @@ from llmtools.functions.confirmation import (
     confirmBoardroomDecisionLongTerm, 
     confirmBoardroomDecisionDistantTerm,
     confirmSectorAllocation,
-    confirmPortfolioAllocation
+    confirmPortfolioAllocation,
+    decideRebalanceNecessity
 )
 
 from llmtools.lru_cacher import startPrecacheThread
@@ -58,12 +59,42 @@ ALL_SECTORS_STRING = ", ".join([k for k in DB_SECTOR_TO_TICKER.keys()])
 SCHEMAS = {
     "empty": {"type": "object", "properties": {}, "required": []},
 
+    "decideRebalanceNecessity": {
+        "type": "object",
+        "properties": {
+            "decision": {
+                "type": "string",
+                "enum": ["noBalanceRequired", "balanceRequired", "extendedBalanceRequired"],
+                "description": (
+                    "The executive rebalance determination: "
+                    "'noBalanceRequired' if macroeconomic conditions are stable and existing portfolio performance remains sound (immediately advances to next timestep); "
+                    "'balanceRequired' if targeted re-weighting or selective stock adjustments are needed via a standard 4-stage fast rebalance; "
+                    "'extendedBalanceRequired' if major macroeconomic shifts or structural headwinds warrant an extensive 6-stage full rebalance."
+                )
+            },
+            "reasoning": {
+                "type": "string",
+                "description": "A 30-50 word executive rationale explaining why rebalancing is or is not required at this milestone."
+            },
+            "macroShiftDetected": {
+                "type": "boolean",
+                "description": "Whether a significant macroeconomic regime, inflation, interest rate, or sector rotation shift was identified since the last review."
+            },
+            "urgency": {
+                "type": "string",
+                "enum": ["none", "low", "medium", "high"],
+                "description": "Urgency level of this rebalancing determination."
+            }
+        },
+        "required": ["decision", "reasoning", "macroShiftDetected", "urgency"]
+    },
+
     "confirmSectorAllocation": {
         "type": "object",
         "properties": {
             "sectorAllocations": {
                 "type": "object",
-                "description": "Mapping of sector names (or ETF tickers) to percentage numbers summing to 100% (e.g. {'example_sector_1': 35.0, 'example_sector_2': 25.0, 'example_sector_3': 20.0, 'cash': 20.0})."
+                "description": "Mapping of sector names (or ETF tickers) to percentage numbers summing to 100% (e.g. {'example_sector_1': 40.0, 'example_sector_2': 35.0, 'example_sector_3': 25.0})."
             },
             "rationale": {
                 "type": "string",
@@ -80,7 +111,7 @@ SCHEMAS = {
                 "type": "object",
                 "description": (
                     "Dictionary mapping each confirmed GICS sector name or ETF ticker (e.g. 'example_sector_1', 'example_sector_2') "
-                    "to a list of allocated stock objects within that sector. All confirmed non-cash sectors must be present. "
+                    "to a list of allocated stock objects within that sector. All confirmed sectors must be present. "
                     "The 'perSectorWeight' values within each sector list must sum to 100.0%."
                 ),
                 "additionalProperties": {
@@ -486,7 +517,13 @@ def buildToolRegistry(initMacroThread=False):
     toolReg.registerTool(Tool(
         toolFunction=fetchStocksInSector,
         toolName="fetchStocksInSector",
-        toolDescription="Screens and returns equity candidates within a specified GICS sector, sorted by market capitalisation or style (value, defensive, or all).",
+        toolDescription=(
+            "Screens and returns equity candidates within a specified GICS sector, sorted by market capitalisation or style (value, defensive, or all). "
+            "MANDATORY WORKFLOW RULE: This tool only provides preliminary screening indicators without deep financial metrics. "
+            "Immediately after conducting 'fetchStocksInSector', you MUST ALWAYS run 'fetchBatchStockOverviews' on your shortlisted candidate stocks "
+            "to retrieve real financial metrics (valuation multiples, profitability margins, revenue/EPS growth, leverage, news sentiment, and company summary) "
+            "before presenting your candidate table or making any selection decisions."
+        ),
         parameterSchema=SCHEMAS["fetchStocksInSector"],
         storeIntoSources=True
     ))
@@ -528,7 +565,13 @@ def buildToolRegistry(initMacroThread=False):
     toolReg.registerTool(Tool(
         toolFunction=fetchBatchStockOverviews,
         toolName="fetchBatchStockOverviews",
-        toolDescription="Comprehensive point-in-time stock screening for multiple candidates in a single call. Returns valuation multiples, profitability margins, growth rates (EPS/revenue QoQ and YoY), leverage ratios, price returns (1mo/3mo/6mo/1y), beta, 30-day volatility, recent news headlines with sentiment scoring, and short interest data for fast cross-stock comparison.",
+        toolDescription=(
+            "Comprehensive point-in-time fundamental and financial overview for multiple candidates in a single batch call. "
+            "Returns company summary, valuation multiples (P/E, P/B, P/S, EV/EBITDA), profitability margins, growth rates (EPS/revenue QoQ and YoY), "
+            "leverage ratios, price returns (1mo/3mo/6mo/1y), beta, 30-day volatility, recent news headlines with sentiment scoring, and short interest data. "
+            "MANDATORY WORKFLOW RULE: Must ALWAYS be executed immediately after running 'fetchStocksInSector' with your candidate tickers "
+            "to ground stock selection in real quantitative financial metrics."
+        ),
         parameterSchema=SCHEMAS["batchTickers"],
         storeIntoSources=True
     ))
@@ -690,9 +733,17 @@ def buildToolRegistry(initMacroThread=False):
     toolReg.registerTool(Tool(
         toolFunction=confirmPortfolioAllocation,
         toolName="confirmPortfolioAllocation",
-        toolDescription="Confirms and records the executive portfolio creation verdict with individual stock positions, % weightings, dollar amounts, and cash buffer.",
+        toolDescription="Confirms and records the executive portfolio creation verdict with individual stock positions, % weightings, and dollar amounts.",
         parameterSchema=SCHEMAS["confirmPortfolioAllocation"],
         storeIntoSources=False
+    ))
+
+    toolReg.registerTool(Tool(
+        toolFunction=decideRebalanceNecessity,
+        toolName="decideRebalanceNecessity",
+        toolDescription="Evaluates whether the portfolio requires rebalancing based on current macro regime shifts and portfolio health.",
+        parameterSchema=SCHEMAS["decideRebalanceNecessity"],
+        storeIntoSources=True
     ))
 
     toolReg.registerTool(Tool(

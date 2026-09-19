@@ -115,7 +115,7 @@
                             
                             <!-- Custom Date Picker Advance Button -->
                             <div class="advance-date-picker-btn">
-                                <input type="date" id="advanceToDateInput" class="advance-date-input" min="2016-01-03" max="2026-08-07">
+                                <input type="date" id="advanceToDateInput" class="advance-date-input" min="2016-01-03" max="2026-09-12">
                                 <button class="advance-chip-btn primary" onclick="advanceToTargetDate()">Advance</button>
                             </div>
                         </div>
@@ -590,6 +590,20 @@
             initCharts();
             fetchAvailableTickersList();
             fetchTickerInfo("NVDA");
+
+            // Fetch collectors constants to dynamically set maximum Sim/End Date bounds
+            fetch("/api/constants")
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.endDate) {
+                        const startInp = document.getElementById("setupStartDate");
+                        const advInp = document.getElementById("advanceToDateInput");
+                        if (startInp) startInp.setAttribute("max", data.endDate);
+                        if (advInp) advInp.setAttribute("max", data.endDate);
+                    }
+                })
+                .catch(() => {});
+
             await resetSimulationSession(true);
         });
 

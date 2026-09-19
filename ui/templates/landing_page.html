@@ -34,8 +34,8 @@
 
                 <div class="landing-btn-half">
                     <h3>Portfolio Simulations</h3>
-                    <a href="/market-sim" id="portfolioSimulateBtn" class="aref-button landing-btn">Agent-Driven Portfolio Simulation</a>
-                    <a href="/market-sim" id="portfolioSimulateBtn" class="aref-button landing-btn">User-Driven Portfolio Simulation</a>
+                    <a href="/agent-portfolio-sim" id="agentSimBtn" class="aref-button landing-btn disabled">Agent-Driven Portfolio Simulation</a>
+                    <a href="/user-portfolio-sim" id="userSimBtn" class="aref-button landing-btn">User-Driven Portfolio Simulation</a>
                 </div>
             </div>
         </div>
@@ -46,7 +46,8 @@
             const singleEquityBtn = document.getElementById('singleEquityBtn');
             const portfolioCreateBtn = document.getElementById('portfolioCreateBtn');
             const portfolioRebalanceBtn = document.getElementById('portfolioRebalanceBtn');
-            const serverDependentButtons = [singleEquityBtn, portfolioCreateBtn, portfolioRebalanceBtn];
+            const agentSimBtn = document.getElementById('agentSimBtn');
+            const serverDependentButtons = [singleEquityBtn, portfolioCreateBtn, portfolioRebalanceBtn, agentSimBtn];
             
             const errorMsg = document.getElementById('serverErrorMsg');
             if (isConnected) {

@@ -112,13 +112,7 @@ def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Times
 
         rawLower = str(rawSector).strip().lower()
         if rawLower in ["cash", "usd"]:
-            cleanedAllocations["CASH"] = {
-                "sector": "Cash",
-                "ticker": "CASH",
-                "allocationPct": pctVal
-            }
-            totalAllocated += pctVal
-            continue
+            return {"error": f"Sector '{rawSector}' could not be resolved to a valid GICS sector."}
 
         ticker, resolvedName, note = data.sectors.resolveSector(rawSector)
         if resolvedName == "Unknown" or not ticker:
@@ -133,7 +127,7 @@ def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Times
 
     # Check if total sums to ~100%
     totalAllocated = round(totalAllocated, 2)
-    if totalAllocated < 95.0 or totalAllocated > 105.0:
+    if totalAllocated < 88.0 or totalAllocated > 112.0:
         return {
             "error": f"Total sector allocations must sum to approximately 100.0%. Current sum: {totalAllocated}%. Please rebalance and retry.",
             "currentSum": totalAllocated,
@@ -150,9 +144,13 @@ def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Times
     decisionRecord = {
         "sectorAllocations": cleanedAllocations,
         "totalAllocatedPct": 100,
-        "sectorCount": len([k for k in cleanedAllocations if k != "CASH"]),
+        "sectorCount": len(cleanedAllocations),
         "rationale": str(rationale).strip()
     }
+
+    if totalAllocated != 100.0:
+        decisionRecord["note"] = f"Sector allocations were normalised to sum to 100%... your original upload summed to a total of {totalAllocated}%. "  \
+                                 f"It has been redistributed to fit 100% accordingly."
 
     tool.toolLog.append(decisionRecord)
     return cleanData({
@@ -186,7 +184,6 @@ def confirmPortfolioAllocation(
     lastSectorDecision = confirmedSectorTool.toolLog[-1]
     confirmedSectorMap = lastSectorDecision.get("sectorAllocations", {})
 
-    confirmedCashPct = 0.0
     expectedSectors: Dict[str, Dict[str, Any]] = {}
 
     for secKey, secVal in confirmedSectorMap.items():
@@ -198,10 +195,6 @@ def confirmPortfolioAllocation(
             allocPct = round(float(secVal.get("allocationPct", 0.0)), 2)
         except (ValueError, TypeError):
             allocPct = 0.0
-
-        if secTicker in ["CASH", "USD"] or secName.lower() in ["cash", "usd"]:
-            confirmedCashPct = round(confirmedCashPct + allocPct, 2)
-            continue
 
         if allocPct > 0:
             expectedSectors[secTicker] = {
@@ -215,6 +208,10 @@ def confirmPortfolioAllocation(
     for rawSecKey, stockList in sectorAllocations.items():
         if not isinstance(stockList, list):
             return {"error": f"Allocation for sector '{rawSecKey}' must be a list of stock objects, got {type(stockList).__name__}."}
+
+        rawLower = str(rawSecKey).strip().lower()
+        if rawLower in ["cash", "usd"]:
+            return {"error": f"Sector key '{rawSecKey}' is not a recognized GICS sector."}
 
         secTicker, resolvedName, note = data.sectors.resolveSector(str(rawSecKey).strip())
         if secTicker == "Unknown" or not secTicker:
@@ -233,7 +230,7 @@ def confirmPortfolioAllocation(
 
     portfolioRationaleStr = str(portfolioRationale or "").strip()
     portfolioWordCount = len(portfolioRationaleStr.split())
-    if portfolioWordCount < 35:
+    if portfolioWordCount < 25:
         return {"error": f"Portfolio rationale is too brief ({portfolioWordCount} words). Please provide an executive rationale of approximately 100 words explaining portfolio construction and risk management."}
 
     cleanedPositions = []
@@ -294,7 +291,7 @@ def confirmPortfolioAllocation(
             })
 
         sectorSumWeight = round(sectorSumWeight, 2)
-        if sectorSumWeight < 98.0 or sectorSumWeight > 102.0:
+        if sectorSumWeight < 88.0 or sectorSumWeight > 112.0:
             return {
                 "error": f"The perSectorWeight values for sector '{sectorName}' sum to {sectorSumWeight}%, but must sum to 100.0%. Please rebalance the stocks within '{sectorName}' to total 100%."
             }
@@ -330,16 +327,7 @@ def confirmPortfolioAllocation(
 
         sectorSubtotals[sectorName] = sectorIntTarget
 
-    confirmedCashInt = int(round(confirmedCashPct))
-    cashDollar = round(float(initialCapital) * (confirmedCashInt / 100.0), 2)
-    cashPositionRecord = {
-        "weightPct": confirmedCashInt,
-        "dollarAllocation": cashDollar,
-        "etfSubstitute": "SPY"
-    }
-
-    totalStockPct = sum(p["weightPct"] for p in cleanedPositions)
-    totalAllocated = totalStockPct + confirmedCashInt
+    totalAllocated = sum(p["weightPct"] for p in cleanedPositions)
 
     portfolioRecord = {
         "asOfDate": timestamp.strftime("%Y-%m-%d"),
@@ -347,7 +335,10 @@ def confirmPortfolioAllocation(
         "totalAllocatedPct": totalAllocated,
         "stockCount": len(cleanedPositions),
         "positions": cleanedPositions,
-        "cashPosition": cashPositionRecord,
+        "cashPosition": {
+            "weightPct": 0,
+            "dollarAllocation": 0.0
+        },
         "sectorBreakdown": sectorSubtotals,
         "portfolioRationale": portfolioRationaleStr,
         "rawSectorAllocations": sectorAllocations
@@ -356,6 +347,48 @@ def confirmPortfolioAllocation(
     tool.toolLog.append(portfolioRecord)
     return cleanData({
         "status": "success",
-        "message": f"Portfolio creation confirmed: {len(cleanedPositions)} stocks across {len(expectedSectors)} sectors ({totalStockPct}%) and cash ({confirmedCashInt}%) totaling {totalAllocated}%.",
+        "message": f"Portfolio creation confirmed: {len(cleanedPositions)} stocks across {len(expectedSectors)} sectors totaling {totalAllocated}%.",
         "confirmedPortfolio": portfolioRecord
     })
+
+
+def decideRebalanceNecessity(
+    tool: Tool,
+    data: DataProviders,
+    timestamp: pd.Timestamp,
+    decision: str,
+    reasoning: str,
+    macroShiftDetected: bool = False,
+    urgency: str = "none"
+) -> Dict[str, Any]:
+    """
+    Evaluates whether the portfolio requires rebalancing based on current macro regime shifts and portfolio health.
+    Valid decision values:
+    - 'noBalanceRequired': Macro regime and portfolio are stable; advance immediately to the next timestep without rebalancing.
+    - 'balanceRequired': Standard 4-stage fast rebalance (Macro -> Sector Decision -> Stock Scouting -> PM Decision).
+    - 'extendedBalanceRequired': Full 6-stage rebalance (Macro -> Bull/Bear Analysis -> Sector Decision -> Growth/Defensive Hunters -> Risk Proposals -> PM Decision).
+    """
+    validDecisions = ["noBalanceRequired", "balanceRequired", "extendedBalanceRequired"]
+    if decision not in validDecisions:
+        return {"error": f"Invalid decision value '{decision}'. Must be one of: {validDecisions}"}
+
+    record = {
+        "status": "success",
+        "asOfDate": timestamp.strftime("%Y-%m-%d"),
+        "decision": decision,
+        "rebalanceRequired": decision != "noBalanceRequired",
+        "isExtended": decision == "extendedBalanceRequired",
+        "macroShiftDetected": bool(macroShiftDetected),
+        "urgency": urgency,
+        "reasoning": reasoning
+    }
+
+    summaryMsg = f"Macro Analyst Decision: {decision} (Urgency: {urgency.upper()}). Reasoning: {reasoning}"
+    tool.toolLog.append(record | {"summary": summaryMsg})
+
+    return cleanData({
+        "status": "success",
+        "message": summaryMsg,
+        "decisionRecord": record
+    })
+

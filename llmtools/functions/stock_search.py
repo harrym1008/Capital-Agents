@@ -178,8 +178,8 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
                 "message": f"No listed equities with known industries found for sector '{resolvedName}' as of {effectiveTs.strftime('%Y-%m-%d')}."
             })
 
-        # 2. Filter candidates by market cap threshold (>= 20bn)... fallback to >= 10bn if too few
-        minCapThreshold = 15e9
+        # 2. Filter candidates by market cap threshold (>= 36bn)... fallback to >= 18bn if too few, then as low as 9bn
+        minCapThreshold = 36e9
 
         def filterQualifying(threshold: float) -> List[tuple]:
             qualifying = []
@@ -210,11 +210,11 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
 
         qualifyingProfiles = filterQualifying(minCapThreshold)
         if len(qualifyingProfiles) < 8:
-            minCapThreshold = 10e9
+            minCapThreshold = 18e9
             qualifyingProfiles = filterQualifying(minCapThreshold)
 
             if len(qualifyingProfiles) < 8:
-                minCapThreshold = 5e9
+                minCapThreshold = 9e9
                 qualifyingProfiles = filterQualifying(minCapThreshold)
 
         if not qualifyingProfiles:

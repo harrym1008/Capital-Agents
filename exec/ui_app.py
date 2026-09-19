@@ -27,7 +27,7 @@ from ui.ui_hooks import setEventCallback, emitEvent, requestStop, resetStop, isS
 from ui.ws_api import registerApiRoutes, registerWsAction, handleWsMessage
 from simulation.simulation_api import registerSimulationWsRoutes
 
-from boardroom.boardroom_config import SingleEquityRatingConfig, PortfolioCreationConfig, PortfolioRebalancingConfig
+from boardroom.boardroom_config import SingleEquityRatingConfig, PortfolioCreationConfig, PortfolioRebalancingConfig, AgentPortfolioSimulationConfig
 from boardroom.boardroom_mgr import boardroomManager
 
 
@@ -42,7 +42,7 @@ app = Flask(
     template_folder=os.path.join(ROOT, "ui/templates"),
     static_folder=os.path.join(ROOT, "ui/static")
 )
-app.secret_key = "capital_agents_sim_secret_key"
+app.secret_key = "capital_agents_secret_key"
 registerApiRoutes(app)
 registerSimulationWsRoutes()
 
@@ -59,35 +59,35 @@ def llamacppSetupPage():
     return render_template("llamacpp_setup.html")
 
 @app.route("/llamacpp-logs")
-@app.route("/server-logs")
 def llamacppLogsPage():
     return render_template("llamacpp_logs.html")
 
-@app.route("/market-sim")
-def marketSimPage():
+@app.route("/user-portfolio-sim")
+def userMarketSimPage():
     return render_template("market_sim.html")
+
+
+def routeOnlyIfModelLoaded(location):
+    if serverManager.loadedModelType == LoadedModelType.NONE:
+        return redirect("/")
+    return render_template(location) 
+
+@app.route("/agent-portfolio-sim")
+def agentPortfolioSimPage():
+    return routeOnlyIfModelLoaded("agent_portfolio_sim.html")
 
 @app.route("/single-equity-rating")
 def singleEquityRatingPage():
-    if serverManager.loadedModelType == LoadedModelType.NONE:
-        return redirect("/")
-
-    # serverManager.getToolRegistry()       
-    return render_template("ticker_rate.html")
+    return routeOnlyIfModelLoaded("single_equity_rating.html")
 
 @app.route("/portfolio-creation")
 def portfolioCreationPage():
-    if serverManager.loadedModelType == LoadedModelType.NONE:
-        return redirect("/")
-
-    return render_template("portfolio_creation.html")
+    return routeOnlyIfModelLoaded("portfolio_creation.html")
 
 @app.route("/portfolio-rebalancing")
 def portfolioRebalancingPage():
-    if serverManager.loadedModelType == LoadedModelType.NONE:
-        return redirect("/")
+    return routeOnlyIfModelLoaded("portfolio_rebalancing.html")
 
-    return render_template("portfolio_rebalancing.html")
 
 
 # Track connected websockets and the asyncio event loop
@@ -122,15 +122,18 @@ def apiBoardroomStop():
 
 
 def handleBoardroomStart(data, websocket, eventLoop):
-    engineType = data.get("engineType") or ("portfolio_creation" if "initialCapital" in data else "single_equity")
+    engineType = data.get("engineType")
     if engineType == "portfolio_rebalancing":
         config = PortfolioRebalancingConfig.fromDict(data)
     elif engineType == "portfolio_creation":
         config = PortfolioCreationConfig.fromDict(data)
+    elif engineType == "agent_portfolio_simulation":
+        config = AgentPortfolioSimulationConfig.fromDict(data)
     else:
         config = SingleEquityRatingConfig.fromDict(data)
     ok, msg = boardroomManager.startBoardroom(config)
     return {"ok": ok, "message": msg}
+
 
 def handleBoardroomStop(data, websocket, eventLoop):
     stopped = boardroomManager.stopBoardroom(timeout=5.0)

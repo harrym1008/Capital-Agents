@@ -39,20 +39,29 @@
         color: #ffffff;
         border-color: #2563eb;
     }
+    .backtest-metrics-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        padding: 4px 0 6px 0;
+        background: transparent;
+        border: none;
+        box-sizing: border-box;
+    }
     .backtest-metric-item {
         display: flex;
         flex-direction: column;
         gap: 2px;
     }
     .backtest-metric-label {
-        font-size: 10px;
+        font-size: 10.5px;
         font-weight: 700;
         color: #64748b;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
     .backtest-metric-value {
-        font-size: 13.5px;
+        font-size: 14px;
         font-weight: 800;
         color: #0f172a;
         white-space: nowrap;
@@ -573,14 +582,14 @@
                             <canvas id="portfolioBacktestChartCanvas" style="display: none; width: 100%; height: 100%;"></canvas>
                         </div>
 
-                        <div id="portfolioBacktestMetrics" style="display: none; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; padding: 10px 12px; border-radius: 6px;">
+                        <div id="portfolioBacktestMetrics" class="backtest-metrics-container" style="display: none;">
                             <div class="backtest-metric-item">
                                 <div id="metricPortfolioReturnLabel" class="backtest-metric-label">Return as of today</div>
                                 <div id="metricPortfolioReturn" class="backtest-metric-value" style="color: #10b981;">--</div>
                             </div>
                             <div class="backtest-metric-item">
                                 <div class="backtest-metric-label">Relative vs S&amp;P 500</div>
-                                <div id="metricSp500Comparison" class="backtest-metric-value" style="color: rgb(239, 68, 68);">--</div>
+                                <div id="metricSp500Comparison" class="backtest-metric-value" style="color: #ef4444;">--</div>
                             </div>
                             <div class="backtest-metric-item">
                                 <div class="backtest-metric-label">Sharpe Ratio</div>
@@ -1025,26 +1034,31 @@
                 retEl.style.color = m.portfolioReturnPct >= 0 ? "#10b981" : "#ef4444";
             }
             if (spEl) {
-                const sign = m.alphaPct >= 0 ? "+" : "";
-                const label = m.alphaPct >= 0 ? "outperforming" : "underperforming";
-                spEl.innerText = `${sign}${m.alphaPct.toFixed(2)}% (${label})`;
-                spEl.title = `S&P 500 Return: ${m.sp500ReturnPct >= 0 ? '+' : ''}${m.sp500ReturnPct.toFixed(2)}%`;
-                spEl.style.color = m.alphaPct >= 0 ? "#10b981" : "#ef4444";
+                const alpha = Number(m.alphaPct || 0);
+                const spRet = Number(m.sp500ReturnPct || 0);
+                spEl.innerHTML = `<span style="font-weight: 800;">${alpha >= 0 ? '+' : ''}${alpha.toFixed(2)}%</span> <span style="font-size: 11px; font-weight: 500; color: #64748b;">(${spRet >= 0 ? '+' : ''}${spRet.toFixed(2)}%)</span>`;
+                spEl.title = `S&P 500 Return: ${spRet >= 0 ? '+' : ''}${spRet.toFixed(2)}%`;
+                spEl.style.color = alpha >= 0 ? "#10b981" : "#ef4444";
             }
             if (srEl) {
-                srEl.innerText = m.sharpeRatio.toFixed(2);
-                srEl.style.color = m.sharpeRatio >= 1.0 ? "#10b981" : (m.sharpeRatio >= 0 ? "#0f172a" : "#ef4444");
+                const sr = Number(m.sharpeRatio || 0).toFixed(2);
+                const spSr = (m.sp500SharpeRatio !== undefined && m.sp500SharpeRatio !== null) ? Number(m.sp500SharpeRatio).toFixed(2) : null;
+                if (spSr !== null) {
+                    srEl.innerHTML = `<span style="font-weight: 800;">${sr}</span> <span style="font-size: 11px; font-weight: 500; color: #64748b;">(vs ${spSr} for S&P 500)</span>`;
+                } else {
+                    srEl.innerText = sr;
+                }
+                srEl.style.color = Number(m.sharpeRatio || 0) >= 1.0 ? "#10b981" : (Number(m.sharpeRatio || 0) >= 0 ? "#0f172a" : "#ef4444");
             }
             if (ddEl) {
                 const portDd = Math.abs(m.maxDrawdownPct !== undefined ? m.maxDrawdownPct : 0);
-                const spDd = Math.abs(m.sp500MaxDrawdownPct !== undefined ? m.sp500MaxDrawdownPct : 0);
-                let color = "#0f172a";
-                if (portDd < spDd) {
-                    color = "#10b981";
-                } else if (portDd > spDd) {
-                    color = "#ef4444";
+                const spDd = (m.sp500MaxDrawdownPct !== undefined && m.sp500MaxDrawdownPct !== null) ? Math.abs(m.sp500MaxDrawdownPct) : null;
+                if (spDd !== null) {
+                    ddEl.innerHTML = `<span style="font-weight: 800; color: ${portDd <= spDd ? '#10b981' : '#ef4444'};">${portDd.toFixed(2)}%</span> <span style="font-size: 11px; font-weight: 500; color: #64748b;">(vs ${spDd.toFixed(2)}% for S&P 500)</span>`;
+                } else {
+                    ddEl.innerHTML = `<span style="font-weight: 800;">${portDd.toFixed(2)}%</span>`;
+                    ddEl.style.color = portDd > 0 ? "#ef4444" : "#10b981";
                 }
-                ddEl.innerHTML = `<span style="color: ${color}; font-weight: 700;">${portDd.toFixed(2)}%</span> <span style="font-size: 11px; font-weight: 500; color: #0f172a;">(vs ${spDd.toFixed(2)}% for S&P 500)</span>`;
             }
         }
     }

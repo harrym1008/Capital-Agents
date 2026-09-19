@@ -76,6 +76,21 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
     def processStock(ticker):
         stockResult = {"ticker": ticker}
 
+        # Company profile info & summary (truncated up to 50 words)
+        try:
+            tickerProfile = data.tickers.getTickerProfile(ticker)
+            if tickerProfile:
+                stockResult["companyName"] = tickerProfile.name
+                stockResult["industry"] = tickerProfile.industry
+                summaryWords = tickerProfile.summary.strip().split()
+                if len(summaryWords) > 50:
+                    stockResult["companySummary"] = " ".join(summaryWords[:50]) + "..."
+                else:
+                    stockResult["companySummary"] = tickerProfile.summary.strip()
+                    
+        except Exception:
+            pass
+
         # ===== STAGE 1: Fundamentals + Price =====
         m = data.finnhub.getPointInTimeMetrics(ticker, timestamp)
 
@@ -295,7 +310,7 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
         return stockResult
 
     # Process all stocks concurrently
-    with ThreadPoolExecutor(max_workers=min(totalTickers, 8)) as executor:
+    with ThreadPoolExecutor(max_workers=min(totalTickers, 4)) as executor:
         futureToTicker = {executor.submit(processStock, t): t for t in cleanTickers}
         for future in as_completed(futureToTicker):
             ticker = futureToTicker[future]

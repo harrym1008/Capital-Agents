@@ -4,7 +4,7 @@
 .config-bar {
     background-color: #fff;
     border-bottom: 1px solid #e2e8f0;
-    padding: 15px 30px;
+    padding: 10px 24px;
     display: flex;
     gap: 20px;
     align-items: center;
@@ -24,6 +24,7 @@
     padding-bottom: 0px;
     margin-bottom: 0px;
     box-sizing: border-box;
+    min-height: 38px;
 }
 
 .config-inputs-container.has-scrollbar {
@@ -117,7 +118,7 @@
 .stages-bar {
     background-color: #fff;
     border-bottom: 1px solid #e2e8f0;
-    padding: 8px 30px;
+    padding: 10px 24px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -137,11 +138,12 @@
     padding-bottom: 0px;
     margin-bottom: 0px;
     box-sizing: border-box;
+    min-height: 38px;
 }
 
 .stages-scroll-container.has-scrollbar {
-    padding-bottom: 6px;
-    margin-bottom: -3px;
+    padding-bottom: 8px;
+    margin-bottom: -4px;
 }
 
 .stages-scroll-container::-webkit-scrollbar {

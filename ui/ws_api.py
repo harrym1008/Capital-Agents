@@ -325,6 +325,20 @@ def registerApiRoutes(app):
         except Exception as e:
             return jsonify({"ok": False, "error": str(e), "sources": []}), 500
 
+    @app.route("/api/constants", methods=["GET"])
+    @app.route("/api/collectors/constants", methods=["GET"])
+    def apiGetCollectorsConstants():
+        try:
+            from collectors.constants import START_DATE_STR, END_DATE_STR, FIRST_TRAD_DAY_AFTER_START_STR
+            return jsonify({
+                "ok": True,
+                "startDate": START_DATE_STR,
+                "endDate": END_DATE_STR,
+                "firstTradingDay": FIRST_TRAD_DAY_AFTER_START_STR
+            })
+        except Exception as err:
+            return jsonify({"ok": False, "error": str(err)}), 500
+
 
 
 wsActionHandlers = {}
