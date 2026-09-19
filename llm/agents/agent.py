@@ -1,8 +1,7 @@
 from typing import Dict, List, Optional
 
+from colorama import Fore, Style
 import pandas as pd
-
-from cli.ansi import ANSI
 
 from llm.agents.agent_prompts import buildAgentSpecificSysPrompt, buildSummariseSysPrompt
 from llm.llm_client import BaseLLMClient, ResponsePrintMode
@@ -14,25 +13,15 @@ from ui.ui_hooks import setCurrentAgent, setAgentPhase, emitEvent
 SUMMARISE_THINK_BUDGET = 256
 SUMMARISE_ENABLED = True
 
-ANSI_TO_COLOR_NAME = {
-    ANSI.CYAN: "cyan",
-    ANSI.GREEN: "green",
-    ANSI.RED: "red",
-    ANSI.YELLOW: "yellow",
-    ANSI.BLUE: "blue",
-    ANSI.MAGENTA: "magenta",
-    ANSI.WHITE: "white"
-}
-
 
 class FinancialAgent:
-    def __init__(self, agentRole: str, tools: List[Tool], ansiColor: str = ANSI.RESET, dateStr: str = None, maxIterations: int = 10):
+    def __init__(self, agentRole: str, tools: List[Tool], color: str = "black", dateStr: str = None, maxIterations: int = 10):
         self.llmClient: Optional[BaseLLMClient] = None
 
         self.agentRole = agentRole
         self.tools: List[Tool] = tools 
-        self.color = ansiColor
-        self.colorName = ANSI_TO_COLOR_NAME.get(ansiColor, "cyan")
+        self.color = color
+        self.ansiCode = getattr(Fore, color.upper(), Fore.RESET)
 
         self.simulatedDateStr = dateStr
         self.messageHistory = []
@@ -94,7 +83,7 @@ class FinancialAgent:
         self.messageHistory.append({"role": "user", "content": incomingMessage})
         historyToUse = self.messageHistory
 
-        print(f"\n{self.color}{ANSI.BOLD}========== [{self.agentRole}] is analysing... =========={ANSI.RESET}", end="")
+        print(f"\n{self.ansiCode}{Style.BRIGHT}========== [{self.agentRole}] is analysing... =========={Style.RESET_ALL}", end="")
         
         rawAnalysis = self.llmClient.runConversation(
             historyToUse, 
@@ -123,6 +112,8 @@ class FinancialAgent:
             {"role": "user", "content": f"Reformat the following raw analysis according to the instructions:\n\n{rawAnalysis}"}
         ]
 
+        # print(f"\n{self.ansiCode}{Style.BRIGHT}========== Generating summary for [{self.agentRole}] =========={Style.RESET_ALL}", end="")
+
         uiSummary = self.llmClient.runConversation(
             tempHistory, 
             toolRegistry=None, 
@@ -149,9 +140,9 @@ class FinancialAgent:
         generateSummary = config.generateSummaries if summarisationOverride is None else summarisationOverride
         
         # Set agent context for UI streaming
-        setCurrentAgent(self.agentRole, self.colorName)
+        setCurrentAgent(self.agentRole, self.color)
         setAgentPhase("raw")
-        emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.colorName, "phase": "raw"})
+        emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.color, "phase": "raw"})
         
         mode = modeOverride or (config.modeName if hasattr(config, "modeName") else "SingleEquityRating")
 
@@ -180,7 +171,7 @@ class FinancialAgent:
             return rawAnalysis, rawAnalysis
 
         setAgentPhase("summary")
-        emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.colorName, "phase": "summary"})
+        emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.color, "phase": "summary"})
 
         # Summarise raw analysis for UI display
         try:

@@ -5,7 +5,6 @@ from typing import Dict, Any, Optional, List
 
 import pandas as pd
 
-from cli.ansi import ANSI
 from llmtools.tool_registry import ToolRegistry
 from llm.agents.agent import FinancialAgent
 from boardroom.boardroom_config import PortfolioRebalancingConfig, BoardroomPace
@@ -23,8 +22,7 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
         super().__init__(toolRegistry, timestamp)
         self.confirmedSectorAllocation: Optional[Dict[str, Any]] = None
         self.confirmedPortfolioAllocation: Optional[Dict[str, Any]] = None
-        self.lastConfig: Optional[PortfolioRebalancingConfig] = None
-        self.fullConvSummary: str = ""
+        
 
     def generate(self) -> None:
         timestampStr = self.timestamp.strftime("%Y-%m-%d")
@@ -39,7 +37,7 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
                 toolMap["fetchAllSectorRankings"],
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.CYAN,
+            color="cyan",
             dateStr=timestampStr
         )
 
@@ -49,7 +47,7 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
                 toolMap["fetchAllSectorsAnalysis"],
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.GREEN,
+            color="green",
             dateStr=timestampStr
         )
 
@@ -59,7 +57,7 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
                 toolMap["fetchAllSectorsAnalysis"],
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.RED,
+            color="red",
             dateStr=timestampStr
         )
 
@@ -71,7 +69,7 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
                 toolMap["confirmPortfolioAllocation"],
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.MAGENTA,
+            color="magenta",
             dateStr=timestampStr
         )
 
@@ -86,7 +84,7 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.GREEN,
+            color="green",
             dateStr=timestampStr
         )
 
@@ -102,7 +100,7 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.BLUE,
+            color="blue",
             dateStr=timestampStr
         )
 
@@ -115,7 +113,7 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.YELLOW,
+            color="yellow",
             dateStr=timestampStr
         )
 
@@ -128,7 +126,7 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.BLUE,
+            color="blue",
             dateStr=timestampStr
         )
 
@@ -150,26 +148,26 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
 
     def _getDefaultPhaseAgents(self, phaseNumber: int, pace: BoardroomPace) -> List[Dict[str, str]]:
         if phaseNumber == 1:
-            return [{"role": "Macro Analyst", "color": self.macroAnalyst.colorName, "name": "Macro Strategist"}]
+            return [{"role": "Macro Analyst", "color": self.macroAnalyst.color, "name": "Macro Strategist"}]
         elif phaseNumber == 2:
             return [
-                {"role": "Bullish Value Analyst", "color": self.bullAnalyst.colorName, "name": "Bullish Analyst"},
-                {"role": "Bearish Risk Analyst", "color": self.bearAnalyst.colorName, "name": "Bearish Analyst"}
+                {"role": "Bullish Value Analyst", "color": self.bullAnalyst.color, "name": "Bullish Analyst"},
+                {"role": "Bearish Risk Analyst", "color": self.bearAnalyst.color, "name": "Bearish Analyst"}
             ]
         elif phaseNumber == 3:
-            return [{"role": "Impartial Portfolio Manager", "color": self.portManager.colorName, "name": "Portfolio Manager"}]
+            return [{"role": "Impartial Portfolio Manager", "color": self.portManager.color, "name": "Portfolio Manager"}]
         elif phaseNumber == 4:
             return [
-                {"role": "Growth Stock Hunter", "color": self.growthHunter.colorName, "name": "Growth Stock Hunter"},
-                {"role": "Value/Defensive Stock Hunter", "color": self.valueHunter.colorName, "name": "Defensive Stock Hunter"}
+                {"role": "Growth Stock Hunter", "color": self.growthHunter.color, "name": "Growth Stock Hunter"},
+                {"role": "Value/Defensive Stock Hunter", "color": self.valueHunter.color, "name": "Defensive Stock Hunter"}
             ]
         elif phaseNumber == 5:
             return [
-                {"role": "Aggressive Risk Analyst", "color": self.aggRiskAnalyst.colorName, "name": "Aggressive Risk Analyst"},
-                {"role": "Conservative Risk Analyst", "color": self.consRiskAnalyst.colorName, "name": "Conservative Risk Analyst"}
+                {"role": "Aggressive Risk Analyst", "color": self.aggRiskAnalyst.color, "name": "Aggressive Risk Analyst"},
+                {"role": "Conservative Risk Analyst", "color": self.consRiskAnalyst.color, "name": "Conservative Risk Analyst"}
             ]
         elif phaseNumber == 6:
-            return [{"role": "Impartial Portfolio Manager", "color": self.portManager.colorName, "name": "Portfolio Manager"}]
+            return [{"role": "Impartial Portfolio Manager", "color": self.portManager.color, "name": "Portfolio Manager"}]
 
         return []
 
@@ -378,20 +376,11 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
             "originalPositions": config.currentPositions
         })
 
-        self._recordAndSaveSession(
-            pace=pace,
-            startTime=startTime,
-            config=config,
-            macroUISummary=macroUISummary,
-            macroRaw=macroRaw,
-            growthUISummary=growthUISummary,
-            growthRaw=growthRaw,
-            valueUISummary=valueUISummary,
-            valueRaw=valueRaw,
-            pmFinalUISummary=pmFinalUISummary,
-            pmFinalRaw=pmFinalRaw,
-            isFast=True
-        )
+        endTime = datetime.now()
+        timeTaken = endTime - startTime
+        timeStr = f"{timeTaken.seconds // 60} mins {timeTaken.seconds % 60} secs"
+        print(f"\n{'='*70}\nPortfolio Creation Boardroom Completed in {timeStr}\n{'='*70}")
+
 
     def executeCompletePortfolioRebalancing(self, config: PortfolioRebalancingConfig):
         pace = config.boardroomPace
@@ -702,134 +691,10 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
             "originalPositions": config.currentPositions
         })
 
-        self._recordAndSaveSession(
-            pace=pace,
-            startTime=startTime,
-            config=config,
-            macroUISummary=macroUISummary,
-            macroRaw=macroRaw,
-            growthUISummary=growthUISummary,
-            growthRaw=growthRaw,
-            valueUISummary=valueUISummary,
-            valueRaw=valueRaw,
-            pmFinalUISummary=pmFinalUISummary,
-            pmFinalRaw=pmFinalRaw,
-            bullSectorUISummary=bullSectorUISummary,
-            bullSectorRaw=bullSectorRaw,
-            bearSectorUISummary=bearSectorUISummary,
-            bearSectorRaw=bearSectorRaw,
-            aggProposalUISummary=aggProposalUISummary,
-            aggProposalRaw=aggProposalRaw,
-            consProposalUISummary=consProposalUISummary,
-            consProposalRaw=consProposalRaw,
-            isFast=False
-        )
-
-    def _recordAndSaveSession(
-        self,
-        pace: BoardroomPace,
-        startTime: datetime,
-        config: PortfolioRebalancingConfig,
-        macroUISummary: str,
-        macroRaw: str,
-        growthUISummary: str,
-        growthRaw: str,
-        valueUISummary: str,
-        valueRaw: str,
-        pmFinalUISummary: str,
-        pmFinalRaw: str,
-        bullSectorUISummary: Optional[str] = None,
-        bullSectorRaw: Optional[str] = None,
-        bearSectorUISummary: Optional[str] = None,
-        bearSectorRaw: Optional[str] = None,
-        aggProposalUISummary: Optional[str] = None,
-        aggProposalRaw: Optional[str] = None,
-        consProposalUISummary: Optional[str] = None,
-        consProposalRaw: Optional[str] = None,
-        isFast: bool = False
-    ):
         endTime = datetime.now()
         timeTaken = endTime - startTime
         timeStr = f"{timeTaken.seconds // 60} mins {timeTaken.seconds % 60} secs"
-
-        print()
-        self._newPhaseHeader(0, f"Final Portfolio Rebalancing Summary", pace)
-
-        separator = f"\n{ANSI.BOLD}{ANSI.DIM}{'-'*70}{ANSI.RESET}\n"
-
-        if isFast:
-            shortSummary = (
-                f"\n{ANSI.BOLD}{self.macroAnalyst.color}Macro Strategist Summary:\n{ANSI.RESET}{macroUISummary}\n"
-                f"{separator}"
-                f"\n{ANSI.BOLD}{self.growthHunter.color}Growth Stock Hunter Summary:\n{ANSI.RESET}{growthUISummary}\n"
-                f"\n{separator}\n"
-                f"\n{ANSI.BOLD}{self.valueHunter.color}Value/Defensive Stock Hunter Summary:\n{ANSI.RESET}{valueUISummary}\n"
-                f"\n{separator}\n"
-                f"\n{ANSI.BOLD}{self.portManager.color}Final Executive Decision:\n{ANSI.RESET}{pmFinalUISummary}\n"
-                f"\nConfirmed Rebalanced Portfolio: {self.confirmedPortfolioAllocation}\n"
-                f"Time taken for portfolio rebalancing: {timeStr}\n"
-            )
-            fullSummary = (
-                f"\n{ANSI.BOLD}{self.macroAnalyst.color}Macro Strategist Analysis:\n{ANSI.RESET}{macroRaw}\n"
-                f"{separator}"
-                f"\n{ANSI.BOLD}{self.growthHunter.color}Growth Stock Hunter Scouting:\n{ANSI.RESET}{growthRaw}\n"
-                f"\n{separator}\n"
-                f"\n{ANSI.BOLD}{self.valueHunter.color}Value/Defensive Stock Hunter Scouting:\n{ANSI.RESET}{valueRaw}\n"
-                f"\n{separator}\n"
-                f"\n{ANSI.BOLD}{self.portManager.color}Final Executive Decision:\n{ANSI.RESET}{pmFinalRaw}\n"
-                f"\nConfirmed Rebalanced Portfolio: {self.confirmedPortfolioAllocation}\n"
-                f"Time taken for portfolio rebalancing: {timeStr}\n"
-            )
-        else:
-            shortSummary = (
-                f"\n{ANSI.BOLD}{self.macroAnalyst.color}Macro Strategist Summary:\n{ANSI.RESET}{macroUISummary}\n"
-                f"{separator}"
-                f"\n{ANSI.BOLD}{self.bullAnalyst.color}Bullish Sector Summary:\n{ANSI.RESET}{bullSectorUISummary}\n"
-                f"{separator}"
-                f"\n{ANSI.BOLD}{self.bearAnalyst.color}Bearish Sector Summary:\n{ANSI.RESET}{bearSectorUISummary}\n"
-                f"{separator}"
-                f"\n{ANSI.BOLD}{self.growthHunter.color}Growth Stock Hunter Summary:\n{ANSI.RESET}{growthUISummary}\n"
-                f"{separator}"
-                f"\n{ANSI.BOLD}{self.valueHunter.color}Value/Defensive Stock Hunter Summary:\n{ANSI.RESET}{valueUISummary}\n"
-                f"{separator}"
-                f"\n{ANSI.BOLD}{self.aggRiskAnalyst.color}Aggressive Risk Proposal Summary:\n{ANSI.RESET}{aggProposalUISummary}\n"
-                f"{separator}"
-                f"\n{ANSI.BOLD}{self.consRiskAnalyst.color}Conservative Risk Proposal Summary:\n{ANSI.RESET}{consProposalUISummary}\n"
-                f"{separator}"
-                f"\n{ANSI.BOLD}{self.portManager.color}Final Executive Decision:\n{ANSI.RESET}{pmFinalUISummary}\n"
-                f"\nConfirmed Rebalanced Portfolio: {self.confirmedPortfolioAllocation}\n"
-                f"Time taken for portfolio rebalancing: {timeStr}\n"
-            )
-            fullSummary = (
-                f"\n{ANSI.BOLD}{self.macroAnalyst.color}Macro Strategist Analysis:\n{ANSI.RESET}{macroRaw}\n"
-                f"{separator}"
-                f"\n{ANSI.BOLD}{self.bullAnalyst.color}Bullish Sector Thesis:\n{ANSI.RESET}{bullSectorRaw}\n"
-                f"{separator}"
-                f"\n{ANSI.BOLD}{self.bearAnalyst.color}Bearish Sector Thesis:\n{ANSI.RESET}{bearSectorRaw}\n"
-                f"{separator}"
-                f"\n{ANSI.BOLD}{self.growthHunter.color}Growth Stock Hunter Scouting:\n{ANSI.RESET}{growthRaw}\n"
-                f"{separator}"
-                f"\n{ANSI.BOLD}{self.valueHunter.color}Value/Defensive Stock Hunter Scouting:\n{ANSI.RESET}{valueRaw}\n"
-                f"{separator}"
-                f"\n{ANSI.BOLD}{self.aggRiskAnalyst.color}Aggressive Allocation Proposal:\n{ANSI.RESET}{aggProposalRaw}\n"
-                f"{separator}"
-                f"\n{ANSI.BOLD}{self.consRiskAnalyst.color}Conservative Allocation Proposal:\n{ANSI.RESET}{consProposalRaw}\n"
-                f"{separator}"
-                f"\n{ANSI.BOLD}{self.portManager.color}Final Executive Decision:\n{ANSI.RESET}{pmFinalRaw}\n"
-                f"\nConfirmed Rebalanced Portfolio: {self.confirmedPortfolioAllocation}\n"
-                f"Time taken for portfolio rebalancing: {timeStr}\n"
-            )
-
-        print(shortSummary)
-
-        os.makedirs("output", exist_ok=True)
-        filenamePace = "fast" if isFast else "complete"
-        filepath = os.path.join("output", f"rebalance_{filenamePace}_{startTime.strftime('%Y-%m-%d_%H-%M-%S')}.ans")
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(fullSummary)
-
-        self.lastConfig = config
-        self.fullConvSummary = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', fullSummary)
+        print(f"\n{'='*70}\nPortfolio Creation Boardroom Completed in {timeStr}\n{'='*70}")
 
     def execute(self, config: PortfolioRebalancingConfig) -> None:
         if self.llmClient is None:

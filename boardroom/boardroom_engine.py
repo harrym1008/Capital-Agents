@@ -3,8 +3,8 @@ from typing import Dict, Any, Optional, List, Tuple
 from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
+from colorama import Fore, Style
 
-from cli.ansi import ANSI
 from llm.llm_client import BaseLLMClient
 from llmtools.tool_registry import ToolRegistry
 from llm.agents.agent import FinancialAgent
@@ -88,7 +88,7 @@ class BoardroomEngine(ABC):
             tempHeader = f"Phase {phaseNumber}: {phaseName}"
         tempHeader = f"{'|'*5} {tempHeader} {'|'*5}"
         headerLength = len(tempHeader)
-        print(f"\n{ANSI.BOLD}{'-'*headerLength}\n{tempHeader}\n{'-'*headerLength}{ANSI.RESET}\n")
+        print(f"\n{Style.BRIGHT}{'-'*headerLength}\n{tempHeader}\n{'-'*headerLength}{Style.RESET_ALL}\n")
 
         if customAgents is not None:
             emitEvent("stageStart", {
@@ -185,12 +185,12 @@ class BoardroomEngine(ABC):
                         f"You did not execute the mandatory '{mandatedToolName}' tool call. "
                         f"You must upload your decision by executing the '{mandatedToolName}' tool with all required parameters."
                     )
-                print(f"\n{ANSI.YELLOW}[Boardroom] Mandatory tool '{mandatedToolName}' not submitted or invalid. Retrying ({attempt + 1}/{maxRetries})...{ANSI.RESET}")
+                print(f"\n{Fore.YELLOW}[Boardroom] Mandatory tool '{mandatedToolName}' not submitted or invalid. Retrying ({attempt + 1}/{maxRetries})...{Style.RESET_ALL}")
 
         errorMsg = (
             f"The model got stuck in a loop and failed to submit a valid '{mandatedToolName}' tool call "
             f"after {maxRetries} retries. Please try a larger parameter model or adjust generation settings."
         )
-        print(f"\n{ANSI.RED}{ANSI.BOLD}[Boardroom Error] {errorMsg}{ANSI.RESET}\n")
+        print(f"\n{Fore.RED}{Style.BRIGHT}[Boardroom Error] {errorMsg}{Style.RESET_ALL}\n")
         raise BoardroomModelLoopException(errorMsg)
     

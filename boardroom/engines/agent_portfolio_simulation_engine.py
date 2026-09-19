@@ -1,10 +1,10 @@
 import os
 from typing import Dict, Any, Optional, List, Tuple
 
+from colorama import Fore, Style
 import pandas as pd
 import numpy as np
 
-from cli.ansi import ANSI
 from collectors.constants import NEW_YORK
 from dataquery.macro_provider import MacroSeries
 from llmtools.tool_registry import ToolRegistry, Tool
@@ -109,7 +109,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             tempHeader = f"Phase {phaseNumber}: {phaseName}"
         tempHeader = f"{'|'*5} {tempHeader} {'|'*5}"
         headerLength = len(tempHeader)
-        print(f"\n{ANSI.BOLD}{'-'*headerLength}\n{tempHeader}\n{'-'*headerLength}{ANSI.RESET}\n")
+        print(f"\n{Style.BRIGHT}{'-'*headerLength}\n{tempHeader}\n{'-'*headerLength}{Style.RESET_ALL}\n")
 
         if customAgents is not None:
             emitEvent("stageStart", {
@@ -358,7 +358,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         self.macroAnalyst = FinancialAgent(
             agentRole="Macro Analyst",
             tools=macroTools,
-            ansiColor=ANSI.CYAN,
+            color="cyan",
             dateStr=timestampStr
         )
 
@@ -370,7 +370,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 readPortfolioJournalAliasTool,
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.GREEN,
+            color="green",
             dateStr=timestampStr
         )
 
@@ -382,7 +382,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 readPortfolioJournalAliasTool,
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.RED,
+            color="red",
             dateStr=timestampStr
         )
 
@@ -399,7 +399,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         self.portManager = FinancialAgent(
             agentRole="Impartial Portfolio Manager",
             tools=pmTools,
-            ansiColor=ANSI.MAGENTA,
+            color="magenta",
             dateStr=timestampStr
         )
 
@@ -416,7 +416,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 readPortfolioJournalAliasTool,
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.GREEN,
+            color="green",
             dateStr=timestampStr
         )
 
@@ -434,7 +434,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 readPortfolioJournalAliasTool,
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.BLUE,
+            color="blue",
             dateStr=timestampStr
         )
 
@@ -449,7 +449,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 readPortfolioJournalAliasTool,
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.YELLOW,
+            color="yellow",
             dateStr=timestampStr
         )
 
@@ -464,7 +464,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 readPortfolioJournalAliasTool,
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.BLUE,
+            color="blue",
             dateStr=timestampStr
         )
 

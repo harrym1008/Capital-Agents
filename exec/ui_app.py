@@ -8,6 +8,9 @@ try:
 except AttributeError:
     pass
 
+from colorama import init as coloramaInitialise
+coloramaInitialise(autoreset=True)
+
 import json
 import logging
 import asyncio

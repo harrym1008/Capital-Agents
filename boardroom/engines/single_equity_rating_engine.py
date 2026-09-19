@@ -5,7 +5,6 @@ from typing import Dict, Any, Optional, List
 
 import pandas as pd
 
-from cli.ansi import ANSI
 from llmtools.tool_registry import ToolRegistry
 from llm.agents.agent import FinancialAgent
 from llm.agents.agent_prompts import buildSpokespersonSysPrompt, buildSpecialistQnASysPrompt
@@ -43,6 +42,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         ):
         super().__init__(toolRegistry, timestamp)
 
+        # For managing the QnA turns:
         self.lastConfig: Optional[SingleEquityRatingConfig] = None
         self.fullConvSummary: str = ""
         self.portManagerFinalOutput: Optional[str] = None
@@ -64,7 +64,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
                 toolMap["fetchAllSectorRankings"],
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.CYAN,
+            color="cyan",
             dateStr=timestampStr
         )
 
@@ -86,7 +86,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.GREEN,
+            color="green",
             dateStr=timestampStr
         )
 
@@ -108,7 +108,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.RED,
+            color="red",
             dateStr=timestampStr
         )
 
@@ -129,7 +129,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.YELLOW,
+            color="yellow",
             dateStr=timestampStr
         )
 
@@ -150,7 +150,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.BLUE,
+            color="blue",
             dateStr=timestampStr
         )
 
@@ -162,7 +162,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["confirmBoardroomDecisionLongTerm"]
             ],
-            ansiColor=ANSI.MAGENTA,
+            color="magenta",
             dateStr=timestampStr
         )
 
@@ -188,14 +188,14 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
-            ansiColor=ANSI.CYAN,
+            color="cyan",
             dateStr=timestampStr
         )
 
         self.spokesperson = FinancialAgent(
             agentRole="Boardroom Spokesperson",
             tools=[],
-            ansiColor=ANSI.CYAN,
+            color="cyan",
             dateStr=timestampStr
         )
 
@@ -224,6 +224,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         if self.llmClient is not None:
             for agent in self.agentsList:
                 agent.setClient(self.llmClient)
+
 
     def deleteQnATurn(self, turnIndex: int) -> bool:
         if 0 <= turnIndex < len(self.qnaTurns):
@@ -358,33 +359,25 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         try:
             formattedExecutiveDecision = self.toolRegistry.getTool(finalSubmitToolName).toolLog[-1]
         except Exception:
-            formattedExecutiveDecision = "Decision not found."        
-                
-        endTime = datetime.now()
-        timeTaken = endTime - startTime
-
-        print()
-        self._newPhaseHeader(0, f"Final Boardroom Summary on {targetTicker}", pace)                    
+            formattedExecutiveDecision = "Decision not found."                     
 
         convSummary = (
-            f"\n{ANSI.BOLD}{self.oneShotAnalyst.color}Final Executive Decision:\n{ANSI.RESET}{oneShotRaw}\n"
+            f"\n{self.oneShotAnalyst.color}Final Executive Decision:\n{oneShotRaw}\n"
             f"\n{formattedExecutiveDecision}\n"
-            f"Time taken for boardroom discussion: {timeTaken.seconds//60} mins {timeTaken.seconds%60} secs\n"
         )
-
-        print(convSummary)
-
-        with open(f"output\\{targetTicker}_oneshot_{startTime.strftime('%Y-%m-%d_%H-%M-%S')}.ans", "w", encoding="utf-8") as f:
-            f.write(convSummary)
-
-        self.lastConfig = config
         self.fullConvSummary = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', convSummary)
+        self.lastConfig = config
         if formattedExecutiveDecision and formattedExecutiveDecision != "Decision not found.":
             self.portManagerFinalOutput = f"{oneShotRaw}\n\n{formattedExecutiveDecision}"
         else:
             self.portManagerFinalOutput = oneShotRaw
+        
 
-
+        endTime = datetime.now()
+        timeTaken = endTime - startTime
+        timeStr = f"{timeTaken.seconds // 60} mins {timeTaken.seconds % 60} secs"
+        print(f"\n{'='*70}\nPortfolio Creation Boardroom Completed in {timeStr}\n{'='*70}")
+        
 
 
 
@@ -475,58 +468,26 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         try:
             formattedExecutiveDecision = self.toolRegistry.getTool(finalSubmitToolName).toolLog[-1]
         except Exception:
-            formattedExecutiveDecision = "Decision not found."        
-                
-        endTime = datetime.now()
-        timeTaken = endTime - startTime
+            formattedExecutiveDecision = "Decision not found."                    
 
-        print()
-        self._newPhaseHeader(0, f"Final Boardroom Summary on {targetTicker}", pace)                    
-
-        separator = f"\n{ANSI.BOLD}{ANSI.DIM}{'-'*70}{ANSI.RESET}\n"
-        shortConvSummary = (
-            f"\n{ANSI.BOLD}{self.macroAnalyst.color}Macro Analyst Summary:\n{ANSI.RESET}{macroUISummary}\n"
-            f"{separator}"
-
-            f"\n{ANSI.BOLD}{self.bullAnalyst.color}Bullish Analyst Summary:\n{ANSI.RESET}{bullThesisUISummary}\n"
-            f"\n{separator}\n"
-
-            f"\n{ANSI.BOLD}{self.bearAnalyst.color}Bearish Analyst Summary:\n{ANSI.RESET}{bearThesisUISummary}\n"
-            f"\n{separator}\n"
-
-            f"\n{ANSI.BOLD}{self.portManager.color}Final Executive Decision:\n{ANSI.RESET}{finalDecisionUISummary}\n"
+        convSummary = (
+            f"\nMacro Analyst Response:\n{macroUISummary}\n\n"
+            f"\nBullish Analyst Response:\n{bullThesisUISummary}\n\n"
+            f"\nBearish Analyst Response:\n{bearThesisUISummary}\n\n"
+            f"\nFinal Executive Response:\n{finalDecisionUISummary}\n\n"
             f"\n{formattedExecutiveDecision}\n"
-
-            f"Time taken for boardroom discussion: {timeTaken.seconds//60} mins {timeTaken.seconds%60} secs\n"
         )
-
-        fullConvSummary = (
-            f"\n{ANSI.BOLD}{self.macroAnalyst.color}Macro Analyst Summary:\n{ANSI.RESET}{macroRaw}\n"
-            f"{separator}"
-
-            f"\n{ANSI.BOLD}{self.bullAnalyst.color}Bullish Analyst Summary:\n{ANSI.RESET}{bullThesisRaw}\n"
-            f"\n{separator}\n"
-
-            f"\n{ANSI.BOLD}{self.bearAnalyst.color}Bearish Analyst Summary:\n{ANSI.RESET}{bearThesisRaw}\n"
-            f"\n{separator}\n"
-
-            f"\n{ANSI.BOLD}{self.portManager.color}Final Executive Decision:\n{ANSI.RESET}{finalDecisionRaw}\n"
-            f"\n{formattedExecutiveDecision}\n"
-            
-            f"Time taken for boardroom discussion: {timeTaken.seconds//60} mins {timeTaken.seconds%60} secs\n"
-        )
-        
-        print(shortConvSummary)
-
-        with open(f"output\\{targetTicker}_fast_{startTime.strftime('%Y-%m-%d_%H-%M-%S')}.ans", "w", encoding="utf-8") as f:
-            f.write(fullConvSummary)
-        
+        self.fullConvSummary = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', convSummary)
         self.lastConfig = config
-        self.fullConvSummary = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', fullConvSummary)
         if formattedExecutiveDecision and formattedExecutiveDecision != "Decision not found.":
             self.portManagerFinalOutput = f"{finalDecisionRaw}\n\n{formattedExecutiveDecision}"
         else:
-            self.portManagerFinalOutput = finalDecisionRaw
+            self.portManagerFinalOutput = finalDecisionRaw        
+
+        endTime = datetime.now()
+        timeTaken = endTime - startTime
+        timeStr = f"{timeTaken.seconds // 60} mins {timeTaken.seconds % 60} secs"
+        print(f"\n{'='*70}\nPortfolio Creation Boardroom Completed in {timeStr}\n{'='*70}")
 
 
 
@@ -686,88 +647,35 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         try:
             formattedExecutiveDecision = self.toolRegistry.getTool(finalSubmitToolName).toolLog[-1]
         except Exception:
-            formattedExecutiveDecision = "Decision not found."
+            formattedExecutiveDecision = "Decision not found."                
 
-
-
-        endTime = datetime.now()
-        timeTaken = endTime - startTime
-
-        print()
-        self._newPhaseHeader(0, f"Final Boardroom Summary on {targetTicker}", pace)   
-            
-        separator = f"\n{ANSI.BOLD}{ANSI.DIM}{'-'*70}{ANSI.RESET}\n"
-        shortConvSummary = (
-            f"\n{ANSI.BOLD}{self.macroAnalyst.color}Macro Analyst Summary:\n{ANSI.RESET}{macroUISummary}\n"
-            f"{separator}"
-
-            f"\n{ANSI.BOLD}{self.bullAnalyst.color}Bullish Analyst Summary:\n{ANSI.RESET}{bullThesisUISummary}\n"
-            f"\n-->\n"
-            f"\n{ANSI.BOLD}{self.consRiskAnalyst.color}Conservative Risk Analyst Summary and Questions:\n{ANSI.RESET}{consQuestionsUISummary}\n"
-            f"\n-->\n"
-            f"\n{ANSI.BOLD}{self.bullAnalyst.color}Bullish Analyst Defense:\n{ANSI.RESET}{bullDefenseUISummary}\n"
-            f"\n{separator}\n"
-
-            f"\n{ANSI.BOLD}{self.bearAnalyst.color}Bearish Analyst Summary:\n{ANSI.RESET}{bearThesisUISummary}\n"
-            f"\n-->\n"
-            f"\n{ANSI.BOLD}{self.aggRiskAnalyst.color}Aggressive Risk Analyst Summary and Questions:\n{ANSI.RESET}{aggQuestionsUISummary}\n"
-            f"\n-->\n"
-            f"\n{ANSI.BOLD}{self.bearAnalyst.color}Bearish Analyst Defense:\n{ANSI.RESET}{bearDefenseUISummary}\n"
-            f"\n{separator}\n"
-
-            f"\n{ANSI.BOLD}{self.aggRiskAnalyst.color}Aggressive Risk Analyst Proposal:\n{ANSI.RESET}{aggProposalUISummary}\n"
-            f"\n{separator}\n"
-
-            f"\n{ANSI.BOLD}{self.consRiskAnalyst.color}Conservative Risk Analyst Proposal:\n{ANSI.RESET}{consProposalUISummary}\n"
-            f"\n{separator}\n"
-
-            f"\n{ANSI.BOLD}{self.portManager.color}Final Executive Decision:\n{ANSI.RESET}{finalDecisionUISummary}\n"
+        convSummary = (
+            f"\nMacro Analyst Response:\n{macroUISummary}\n\n"
+            f"======================"
+            f"\nBearish Analyst Response:\n{bearThesisUISummary}\n\n"
+            f"\nAggressive Risk Analyst Critique:\n{aggQuestionsUISummary}\n\n"
+            f"\nBearish Analyst Defense:\n{bearDefenseUISummary}\n\n"
+            f"\nAggressive Risk Analyst Proposal:\n{aggProposalUISummary}\n\n"
+            f"======================"
+            f"\nBullish Analyst Response:\n{bullThesisUISummary}\n\n"
+            f"\nConservative Risk Analyst Critique:\n{consQuestionsUISummary}\n\n"
+            f"\nBullish Analyst Defense:\n{bullDefenseUISummary}\n\n"
+            f"\nConservative Risk Analyst Proposal:\n{consProposalUISummary}\n\n"
+            f"======================"
+            f"\nFinal Executive Response:\n{finalDecisionUISummary}\n\n"
             f"\n{formattedExecutiveDecision}\n"
-
-            f"Time taken for boardroom discussion: {timeTaken.seconds//60} mins {timeTaken.seconds%60} secs\n"
         )
-
-        fullConvSummary = (
-            f"\n{ANSI.BOLD}{self.macroAnalyst.color}Macro Analyst Summary:\n{ANSI.RESET}{macroRaw}\n"
-            f"{separator}"
-
-            f"\n{ANSI.BOLD}{self.bullAnalyst.color}Bullish Analyst Summary:\n{ANSI.RESET}{bullThesisRaw}\n"
-            f"\n-->\n"
-            f"\n{ANSI.BOLD}{self.consRiskAnalyst.color}Conservative Risk Analyst Summary and Questions:\n{ANSI.RESET}{consQuestionsRaw}\n"
-            f"\n-->\n"
-            f"\n{ANSI.BOLD}{self.bullAnalyst.color}Bullish Analyst Defense:\n{ANSI.RESET}{bullDefenseRaw}\n"
-            f"\n{separator}\n"
-
-            f"\n{ANSI.BOLD}{self.bearAnalyst.color}Bearish Analyst Summary:\n{ANSI.RESET}{bearThesisRaw}\n"
-            f"\n-->\n"
-            f"\n{ANSI.BOLD}{self.aggRiskAnalyst.color}Aggressive Risk Analyst Summary and Questions:\n{ANSI.RESET}{aggQuestionsRaw}\n"
-            f"\n-->\n"
-            f"\n{ANSI.BOLD}{self.bearAnalyst.color}Bearish Analyst Defense:\n{ANSI.RESET}{bearDefenseRaw}\n"
-            f"\n{separator}\n"
-
-            f"\n{ANSI.BOLD}{self.aggRiskAnalyst.color}Aggressive Risk Analyst Proposal:\n{ANSI.RESET}{aggProposalRaw}\n"
-            f"\n{separator}\n"
-
-            f"\n{ANSI.BOLD}{self.consRiskAnalyst.color}Conservative Risk Analyst Proposal:\n{ANSI.RESET}{consProposalRaw}\n"
-            f"\n{separator}\n"
-
-            f"\n{ANSI.BOLD}{self.portManager.color}Final Executive Decision:\n{ANSI.RESET}{finalDecisionRaw}\n"
-            f"\n{formattedExecutiveDecision}\n"
-
-            f"Time taken for boardroom discussion: {timeTaken.seconds//60} mins {timeTaken.seconds%60} secs\n"
-        )
-        
-        print(shortConvSummary)
-
-        with open(f"output\\{targetTicker}_full_{startTime.strftime('%Y-%m-%d_%H-%M-%S')}.ans", "w", encoding="utf-8") as f:
-            f.write(fullConvSummary)
-
+        self.fullConvSummary = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', convSummary)
         self.lastConfig = config
-        self.fullConvSummary = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', fullConvSummary)
         if formattedExecutiveDecision and formattedExecutiveDecision != "Decision not found.":
             self.portManagerFinalOutput = f"{finalDecisionRaw}\n\n{formattedExecutiveDecision}"
         else:
-            self.portManagerFinalOutput = finalDecisionRaw
+            self.portManagerFinalOutput = finalDecisionRaw        
+
+        endTime = datetime.now()
+        timeTaken = endTime - startTime
+        timeStr = f"{timeTaken.seconds // 60} mins {timeTaken.seconds % 60} secs"
+        print(f"\n{'='*70}\nPortfolio Creation Boardroom Completed in {timeStr}\n{'='*70}")
         
 
 
@@ -793,7 +701,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
         if self.portManagerFinalOutput:
             return self.portManagerFinalOutput
 
-        # Fallback 1: Extract from portManager's message history if available
+        # Fallback, extract from portManager's message history if available
         if self.portManager and self.portManager.messageHistory:
             assistantMessages = [
                 msg["content"] for msg in self.portManager.messageHistory 
@@ -801,12 +709,6 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
             ]
             if assistantMessages:
                 return "\n\n".join(assistantMessages)
-
-        # Fallback 2: Extract from fullConvSummary
-        if self.fullConvSummary:
-            match = re.search(r"Final Executive Decision:\s*(.*?)(?=\nTime taken|\Z)", self.fullConvSummary, re.DOTALL)
-            if match:
-                return match.group(1).strip()
 
         return None
 

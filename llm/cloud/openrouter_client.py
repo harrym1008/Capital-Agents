@@ -4,7 +4,6 @@ from typing import Optional, Any
 from openai import OpenAI
 
 from llm.llm_client import BaseLLMClient
-from cli.ansi import ANSI
 from collectors.rate_limiter import RateLimiter
 
 
@@ -71,5 +70,5 @@ class OpenRouterClient(BaseLLMClient):
         if self.rateLimiter is not None:
             waitTime = self.rateLimiter.getWaitTime()
             if waitTime > 0.05:
-                print(f"{ANSI.DIM}[Rate Limited by OpenRouter - waiting {waitTime:.1f} seconds]{ANSI.RESET}")
+                print(f"[Rate Limited by OpenRouter - waiting {waitTime:.1f} seconds]")
                 time.sleep(waitTime)

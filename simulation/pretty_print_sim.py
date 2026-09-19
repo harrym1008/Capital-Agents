@@ -1,5 +1,5 @@
 from simulation.market_sim import MarketSimulation
-from simulation.portfolio import Portfolio
+# from simulation.portfolio import Portfolio
 
 
 class ANSI:

@@ -8,9 +8,9 @@ from typing import List, Dict, Any, Optional
 from enum import Enum
 
 from openai import OpenAI, RateLimitError
+from colorama import Fore, Style
 import pandas as pd
 
-from cli.ansi import ANSI
 from llmtools.tool_registry import ToolRegistry, Tool
 from llm.token_cost_tracker import TokenCostTracker
 
@@ -210,9 +210,9 @@ class BaseLLMClient(ABC):
 
                     if responsePrint.printThinking():
                         if not isThinking:
-                            self._safePrint(f"\n{ANSI.DIM}[Thinking]: ", end="", flush=True)
+                            self._safePrint(f"\n{Style.DIM}[Thinking]: ", end="", flush=True)
                             isThinking = True
-                        self._safePrint(reasoningChunk, end="", flush=True)
+                        self._safePrint(f"{Style.DIM}{reasoningChunk}", end="", flush=True)
                     elif responsePrint == ResponsePrintMode.ONE_TOKEN_ONLY:
                         self._safePrint(f"{re.sub(r'[\x00-\x1F\x7F]', '', reasoningChunk)}                 ", end="\r", flush=True)
 
@@ -231,7 +231,7 @@ class BaseLLMClient(ABC):
 
                     if responsePrint.printResponse():
                         if isThinking:
-                            self._safePrint(f"\n{ANSI.RESET}[Response]: ", end="", flush=True)
+                            self._safePrint(f"\n{Style.RESET_ALL}[Response]: ", end="", flush=True)
                             isThinking = False
                         elif fullContent == "":
                             self._safePrint("\n[Response]: ", end="", flush=True)
@@ -252,7 +252,7 @@ class BaseLLMClient(ABC):
                             })
                         
                         if not isToolCallStreaming:
-                            self._safePrint(f"\n\n{ANSI.DIM}[Tool Calls]: ", end="", flush=True)
+                            self._safePrint(f"\n\n{Style.DIM}[Tool Calls]: ", end="", flush=True)
                             isToolCallStreaming = True
 
                         currentCall = toolCallsList[index]
@@ -262,7 +262,7 @@ class BaseLLMClient(ABC):
                             funcDelta = toolCallDelta.function
                             if getattr(funcDelta, "name", None):
                                 if not currentCall["function"]["name"]:
-                                    self._safePrint(f"\n{ANSI.RESET}{ANSI.BOLD}[Tool #{index}]: {funcDelta.name} -> ", end="", flush=True)
+                                    self._safePrint(f"\n{Style.RESET_ALL}{Style.BRIGHT}[Tool #{index}]: {funcDelta.name} -> ", end="", flush=True)
                                 else:
                                     self._safePrint(funcDelta.name, end="", flush=True)
                                 currentCall["function"]["name"] += funcDelta.name
@@ -315,9 +315,9 @@ class BaseLLMClient(ABC):
 
         if ((fullContent and responsePrint.printResponse()) or 
             (fullReasoning and responsePrint.printThinking())) and len(toolCallsList) == 0:
-            self._safePrint(ANSI.RESET)
+            self._safePrint(Style.RESET_ALL, end="")
         else:
-            self._safePrint(ANSI.RESET, end="")
+            self._safePrint(Style.RESET_ALL, end="")
 
         if len(toolCallsList) > 1:
             self._safePrint()
@@ -373,13 +373,13 @@ class BaseLLMClient(ABC):
                 stringResult = json.dumps(toolResult)
                 
                 with self.toolCallLock:                    
-                    self._safePrint(f"{ANSI.BOLD} Executing {funcName} --> {funcArgsDict}", end="")
+                    self._safePrint(f"{Style.BRIGHT} Executing {funcName} --> {funcArgsDict}", end="")
                     if toolResult is None:
-                        self._safePrint(f" {ANSI.BOLD}{ANSI.RED}... failed: Tool returned None  {ANSI.RESET}", flush=True)
+                        self._safePrint(f" {Style.BRIGHT}{Fore.RED}... failed: Tool returned None  {Style.RESET_ALL}", flush=True)
                     elif "error" in toolResult:
-                        self._safePrint(f" {ANSI.BOLD}{ANSI.RED}... failed: {toolResult['error']}  {ANSI.RESET}", flush=True)
+                        self._safePrint(f" {Style.BRIGHT}{Fore.RED}... failed: {toolResult['error']}  {Style.RESET_ALL}", flush=True)
                     else:
-                        self._safePrint(f" {ANSI.BOLD}{ANSI.GREEN}... done.  {ANSI.RESET}", flush=True)
+                        self._safePrint(f" {Style.BRIGHT}{Fore.GREEN}... done.  {Style.RESET_ALL}", flush=True)
 
                 if toolCalled.name == "executePythonCalculation":
                     with self.toolCallLock:
@@ -388,17 +388,17 @@ class BaseLLMClient(ABC):
 
                         if not success:
                             error = output.get("error", "Unknown error")
-                            self._safePrint(f"{ANSI.BOLD}{ANSI.RED}Python Execution Error: {error}{ANSI.RESET}")
+                            self._safePrint(f"{Style.BRIGHT}{Fore.RED}Python Execution Error: {error}{Style.RESET_ALL}")
                         else:
                             stdoutOutput = output.get("stdout", "No stdout captured.")
                             variablesOutput = output.get("variables", {})
 
                             self._safePrint(
-                                f"\n{ANSI.BOLD}Python Execution Output: {ANSI.RESET}"
-                                f"\n{ANSI.DIM}{stdoutOutput}{ANSI.RESET}\n"
-                                f"{ANSI.BOLD}\nPython Execution Variables: {ANSI.RESET}")
+                                f"\n{Style.BRIGHT}Python Execution Output: {Style.RESET_ALL}"
+                                f"\n{Style.DIM}{stdoutOutput}{Style.RESET_ALL}\n"
+                                f"{Style.BRIGHT}\nPython Execution Variables: {Style.RESET_ALL}")
                             for k, v in variablesOutput.items():
-                                self._safePrint(f"{ANSI.DIM}{k}: {ANSI.RESET}{v}")
+                                self._safePrint(f"{Style.DIM}{k}: {Style.RESET_ALL}{v}")
                             self._safePrint()
 
             
@@ -416,8 +416,8 @@ class BaseLLMClient(ABC):
             except Exception as e:
                 stringResult = json.dumps({"error": f"{e.__class__.__name__}: {e}"})
                 with self.toolCallLock:
-                    self._safePrint(f"{ANSI.BOLD} Executing {funcName} --> {funcArgsDict}", end="")
-                    self._safePrint(f" {ANSI.BOLD}{ANSI.RED}... failed: {e.__class__.__name__}: {e}  {ANSI.RESET}", flush=True)
+                    self._safePrint(f"{Style.BRIGHT} Executing {funcName} --> {funcArgsDict}", end="")
+                    self._safePrint(f" {Style.BRIGHT}{Fore.RED}... failed: {e.__class__.__name__}: {e}  {Style.RESET_ALL}", flush=True)
         else:
             stringResult = json.dumps({"error": f"Tool {funcName} doesn't exist or not accessible by this agent."})
 

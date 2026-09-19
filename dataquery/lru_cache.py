@@ -165,9 +165,11 @@ class LRUCache:
                 old = self.entries.pop(key)
                 self.currentSizeBytes -= old.size
 
-            while self.entries and self.currentSizeBytes + sizeBytes > self.maxSizeBytes:
-                _, evicted = self.entries.popitem(last=False)
-                self.currentSizeBytes -= evicted.size
+            if self.currentSizeBytes + sizeBytes > self.maxSizeBytes:
+                targetSizeBytes = int(self.maxSizeBytes * 0.90)     # Evict entries until we are below 90% of max size to avoid frequent evictions
+                while self.entries and self.currentSizeBytes + sizeBytes > targetSizeBytes:
+                    _, evicted = self.entries.popitem(last=False)
+                    self.currentSizeBytes -= evicted.size
 
             self.entries[key] = CacheEntry(value=value, size=sizeBytes, lastAccess=now)
             self.currentSizeBytes += sizeBytes
