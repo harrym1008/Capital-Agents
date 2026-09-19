@@ -2,7 +2,7 @@
  * boardroom_exporter.js
  * Standalone Boardroom HTML Report Exporter for CapitalAgents.
  * Captures the current DOM state of a completed boardroom simulation,
- * sanitizes live dependencies, inlines stylesheets & assets, sets tool/thinking
+ * sanitises live dependencies, inlines stylesheets & assets, sets tool/thinking
  * blocks to collapsed by default, and downloads a 100% self-contained HTML file.
  */
 

@@ -249,7 +249,7 @@
     }
     window.connectWebsocket = connectWebsocket;
 
-    // Automatically initialize WebSocket connection when header is loaded
+    // Automatically initialise WebSocket connection when header is loaded
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", connectWebsocket);
     } else {

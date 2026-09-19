@@ -86,7 +86,7 @@ class BoardroomStage(ABC):
         pass
 
 
-# Specialized BoardroomStage for stages requiring a mandatory tool execution with retries and confirmation
+# Specialised BoardroomStage for stages requiring a mandatory tool execution with retries and confirmation
 class MandatedToolStage(BoardroomStage, ABC):
     def __init__(
         self,

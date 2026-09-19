@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 
+# Base class for time horizons, subclasses for each boardroom mode
 class TimeHorizon(str, Enum):
     @classmethod
     def fromString(cls, val: Any):
@@ -46,6 +47,7 @@ class PortfolioTimeHorizon(TimeHorizon):
         return self.value.title()
 
 
+# Boardroom pace options for different boardroom modes
 class BoardroomPace(Enum):
     ONE_SHOT = "one_shot"
     FAST = "fast"
@@ -93,12 +95,13 @@ TIME_HORIZON_INFO: Dict[SingleEquityTimeHorizon, Dict[str, Any]] = {
 }
 
 
+# Allocation bias guidance for portfolio creation and rebalancing where 1 is max growth and 6 is max defensive (disable in UI for balanced)
 ALLOCATION_BIAS_INFO: Dict[int, Dict[str, str]] = {
     1: {
         "label": "Maximum Growth Bias",
         "guidance": (
             "MANDATORY MAXIMUM GROWTH BIAS DIRECTIVE: Heavily skew all sector distributions and stock selections towards "
-            "high-beta, high-momentum, innovative, and rapid capital appreciation equities. Strongly minimize "
+            "high-beta, high-momentum, innovative, and rapid capital appreciation equities. Strongly minimise "
             "defensive weightings in pursuit of maximum upside growth potential."
         ),
     },
@@ -135,12 +138,12 @@ ALLOCATION_BIAS_INFO: Dict[int, Dict[str, str]] = {
         "guidance": (
             "MANDATORY MAXIMUM DEFENSIVE BIAS DIRECTIVE: Heavily skew all sector distributions and stock selections towards "
             "maximum capital preservation, rock-solid balance sheet solvency, high dividend yield, and low-beta defensive assets. "
-            "Strictly minimize speculative, high-multiple, or volatile high-beta equities."
+            "Strictly minimise speculative, high-multiple, or volatile high-beta equities."
         ),
     },
 }
 
-
+# Rebalance amount guidance for portfolio rebalancing where 1 is very light and 6 is maximum rebalance
 REBALANCE_AMOUNT_INFO: Dict[int, Dict[str, str]] = {
     1: {
         "label": "Level 1: Very Light Rebalance",
@@ -187,7 +190,7 @@ REBALANCE_AMOUNT_INFO: Dict[int, Dict[str, str]] = {
         "label": "Level 6: Maximum Rebalance",
         "guidance": (
             "MANDATORY MAXIMUM REBALANCE MANDATE (Level 6/6): Full portfolio overhaul. Complete freedom to aggressively "
-            "restructure the portfolio from the ground up with maximum rebalance scope. Prioritize optimal forward risk-adjusted return "
+            "restructure the portfolio from the ground up with maximum rebalance scope. Prioritise optimal forward risk-adjusted return "
             "regardless of baseline inertia, replace all non-optimal holdings without hesitation."
         ),
     },

@@ -18,10 +18,10 @@ class SourcesManager:
         else:
             resultToHash = result
         try:
-            serialized = json.dumps(resultToHash, sort_keys=True, default=str)
+            serialised = json.dumps(resultToHash, sort_keys=True, default=str)
         except Exception:
-            serialized = str(resultToHash)
-        return hash(serialized)
+            serialised = str(resultToHash)
+        return hash(serialised)
 
     def addSource(self, toolName: str, args: Dict[str, Any], result: Dict[str, Any]) -> Optional[int]:
         with self.lock:

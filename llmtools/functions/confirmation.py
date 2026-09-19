@@ -211,11 +211,11 @@ def confirmPortfolioAllocation(
 
         rawLower = str(rawSecKey).strip().lower()
         if rawLower in ["cash", "usd"]:
-            return {"error": f"Sector key '{rawSecKey}' is not a recognized GICS sector."}
+            return {"error": f"Sector key '{rawSecKey}' is not a recognised GICS sector."}
 
         secTicker, resolvedName, note = data.sectors.resolveSector(str(rawSecKey).strip())
         if secTicker == "Unknown" or not secTicker:
-            return {"error": f"Sector key '{rawSecKey}' could not be resolved to a recognized GICS sector. {note}"}
+            return {"error": f"Sector key '{rawSecKey}' could not be resolved to a recognised GICS sector. {note}"}
 
         secTicker = secTicker.upper()
         if secTicker not in expectedSectors:

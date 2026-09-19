@@ -186,6 +186,14 @@ class BoardroomEngine(ABC):
                         f"You did not execute the mandatory '{mandatedToolName}' tool call. "
                         f"You must upload your decision by executing the '{mandatedToolName}' tool with all required parameters."
                     )
+
+                if maxRetries - attempt <= 3:
+                    currentPrompt += (
+                        f"\n\nPlease note that you have {maxRetries - attempt} attempts remaining to submit a valid '{mandatedToolName}' tool call. "
+                        f"Failure to do so will result in the boardroom session being terminated due to repeated invalid submissions."
+                        f"Consider different approaches or options to ENSURE that your next tool call IS VALID and successfully executed."
+                    )
+
                 print(f"\n{Fore.YELLOW}[Boardroom] Mandatory tool '{mandatedToolName}' not submitted or invalid. Retrying ({attempt + 1}/{maxRetries})...{Style.RESET_ALL}")
 
 

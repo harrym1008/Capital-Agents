@@ -585,7 +585,7 @@
             return dateStr;
         }
 
-        // Initialize on load: Always prompt setup on page refresh
+        // Initialise on load: Always prompt setup on page refresh
         window.addEventListener('DOMContentLoaded', async () => {
             initCharts();
             fetchAvailableTickersList();
@@ -913,7 +913,7 @@
             return map;
         }
 
-        // Initialize Charts
+        // Initialise Charts
         function initCharts() {
             const portCtx = document.getElementById('portfolioChart');
             if (portCtx && typeof Chart !== 'undefined') {

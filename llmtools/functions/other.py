@@ -152,7 +152,7 @@ def executePythonCalculation(tool: Tool, data: DataProviders, timestamp: pd.Time
                     if not k.startswith("_") and k not in preloadedModules
                 }
             except Exception:
-                cleanedVars = {"note": "Could not serialize variable data"}
+                cleanedVars = {"note": "Could not serialise variable data"}
             errorResult["variables"] = cleanedVars
 
         tool.toolLog.append(errorResult)

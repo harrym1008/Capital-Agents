@@ -18,7 +18,7 @@ ABBREVIATIONS_PATTERN = (
 
 
 def cleanFilingText(text: str) -> str:
-    text = cleanHtmlContent(text)       # Clean content like it is HTML (fixes bad UTF codes)
+    text = cleanHtmlContent(text)               # Clean content like it is HTML (fixes bad UTF codes)
     text = re.sub(r"[\r\n\t]+", " ", text)      # Replace newlines and tabs with spaces
     text = re.sub(r"\s{2,}", " ", text)         # Collapse multiple spaces into one
     return text.strip()
@@ -50,10 +50,10 @@ def splitIntoSentences(text: str, minCharLen: int = 35, minWords: int = 5) -> Li
             # String must be over 60% alphabetic chars to be considered a sentence
             # If it isnt, it is likely a table or list of numbers, skip it
             if (alphaCount / len(s)) > 0.60:
-                sNormalized = re.sub(r"\s+", " ", s).strip()
-                if sNormalized not in seen:
-                    seen.add(sNormalized)
-                    sentences.append(sNormalized)
+                sNormalised = re.sub(r"\s+", " ", s).strip()
+                if sNormalised not in seen:
+                    seen.add(sNormalised)
+                    sentences.append(sNormalised)
     return sentences
 
 

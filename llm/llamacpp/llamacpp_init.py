@@ -40,7 +40,7 @@ def killRemainingLlamaCppProcesses(executablePath=LLAMACPP_EXECUTABLE):
 
 def rudimentaryVramClear() -> float:
     freedVram = 0.0
-    nvmlInitialized = False
+    nvmlInitialised = False
 
     # Force unload sentiment engine and clear its references first
     try:
@@ -67,7 +67,7 @@ def rudimentaryVramClear() -> float:
             return 0.0
 
         nvmlInit()
-        nvmlInitialized = True
+        nvmlInitialised = True
         deviceCount = nvmlDeviceGetCount()
 
         if deviceCount == 0:
@@ -146,7 +146,7 @@ def rudimentaryVramClear() -> float:
         print(f"[VRAM Clear] Allocation complete ({totalAllocatedGb:.2f} GB allocated). Releasing memory buffers...")
         time.sleep(1.5)
 
-        # Phase 3: Cleanup and Synchronized Cache Flushing
+        # Phase 3: Cleanup and Synchronised Cache Flushing
         allocatedTensors.clear()
         del allocatedTensors
         gc.collect()
@@ -180,7 +180,7 @@ def rudimentaryVramClear() -> float:
         freedVram = 0.0
 
     finally:
-        if nvmlInitialized:
+        if nvmlInitialised:
             try:
                 nvmlShutdown()
             except Exception:

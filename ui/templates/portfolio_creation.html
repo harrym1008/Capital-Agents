@@ -1384,7 +1384,7 @@
     clampInput(document.getElementById("targetStockCountInput"), 1, 30, true);
     clampInput(document.getElementById("maxStockAllocationInput"), 10, 60);
 
-    // Initialize Core Engine
+    // Initialise Core Engine
     BoardroomCore.init({
         defaultStages: portfolioCreationStages,
         initialMode: document.getElementById("modeSelect")?.value || "complete",
@@ -1456,7 +1456,7 @@
         }
     });
 
-    // Initialize preset sector sliders and initial mode state
+    // Initialise preset sector sliders and initial mode state
     renderPresetSectorSliders();
     handleModeChange(document.getElementById("modeSelect")?.value || "complete");
 </script>

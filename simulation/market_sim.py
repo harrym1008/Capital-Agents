@@ -287,7 +287,7 @@ class MarketSimulation:
             self.executeTrade(userOrder)
             self.ordersArchive.append(userOrder)
             
-        # Execute and archive processed orders (SELL orders first to realize cash before BUY orders)
+        # Execute and archive processed orders (SELL orders first to realise cash before BUY orders)
         executedThisDay.sort(key=lambda item: 0 if item[0].order.side == OrderSide.SELL else 1)
         for userOrder, fillPrice in executedThisDay:
             userOrder.order.setFillParams(fillPrice, date)

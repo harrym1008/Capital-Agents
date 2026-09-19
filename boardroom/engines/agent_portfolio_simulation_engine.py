@@ -951,7 +951,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         endDateTs = pd.Timestamp(config.endDateStr).tz_localize(NEW_YORK)
         username = "AgentPortfolio"
 
-        # Initialize Market Simulation
+        # Initialise Market Simulation
         self.marketSim = MarketSimulation(
             startDate=config.startDateStr,
             endDate=config.endDateStr,
@@ -960,7 +960,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         )
         self.marketSim.initialiseUser(username, initialCash=config.initialCapital)
 
-        # Initialize S&P 500 Benchmark series
+        # Initialise S&P 500 Benchmark series
         sp500Df = self.toolRegistry.dataProviders.macro.getSeries(MacroSeries.SP500, startDateTs, endDateTs)
         if sp500Df.empty or "close" not in sp500Df.columns:
             sp500Df = self.toolRegistry.dataProviders.macro.loadSeries(MacroSeries.SP500)
@@ -1420,7 +1420,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                         self.marketSim.addOrder(order, username)
                         sellsExecuted.append(f"Trimmed {ticker} by ${dollarToSell:,.2f}")
 
-            # Execute all SELL orders first to realize cash proceeds
+            # Execute all SELL orders first to realise cash proceeds
             self.marketSim.processDaysTrades(currentSimDateTs)
 
             # 2. Execute Buys (Deploy 100% of available cash including pre-existing dividends + sell proceeds)
