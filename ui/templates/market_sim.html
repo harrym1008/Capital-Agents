@@ -1703,7 +1703,7 @@
                 }
             }
 
-            // Portfolio Chart Update — always update, even during rapid steps (pure JS, no network cost)
+            // Portfolio Chart Update - always update, even during rapid steps (pure JS, no network cost)
             if (state.history && portfolioChartInstance) {
                 const activeBtn = document.querySelector('#portfolioChartTimeframeControls .tf-btn.active');
                 const range = activeBtn ? activeBtn.textContent.toLowerCase() : '3m';

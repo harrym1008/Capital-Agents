@@ -159,7 +159,7 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
                 avgVol = float(priceData["volume"].tail(30).mean())
                 stockResult["avgVolume30d"] = cleanNumber(avgVol, NumberType.LARGE_NUMBER)
 
-            # Beta (vs SPY from OHLCV — fully point-in-time)
+            # Beta (vs SPY from OHLCV - fully point-in-time)
             if spyReturns is not None and not spyReturns.empty:
                 try:
                     stockReturnsSeries = priceData.set_index("date")["close"].pct_change().dropna()
@@ -219,7 +219,7 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
             if m.get("quickRatio") is not None:
                 stockResult["quickRatio"] = cleanNumber(m["quickRatio"], NumberType.DECIMAL)
 
-            # Dividend yield (computed from payoutRatio × EPS / price — all from series)
+            # Dividend yield (computed from payoutRatio × EPS / price - all from series)
             payoutRatio = m.get("payoutRatioTTM")
             epsVal = m.get("eps")
             if payoutRatio is not None and epsVal is not None and epsVal > 0 and price and price > 0:

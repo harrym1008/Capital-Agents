@@ -74,7 +74,7 @@ class CurrencyDataClient:
             pbar.set_description("Forex: Downloading")
 
 
-        # yfinance 'end' is exclusive — add 1 day so END_DATE's data is included
+        # yfinance 'end' is exclusive - add 1 day so END_DATE's data is included
         yfEndDate = (pd.Timestamp(self.endDate) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
         for currency in CURRENCIES:
