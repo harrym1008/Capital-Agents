@@ -1,4 +1,3 @@
-import os
 from typing import Dict, Any, Optional, List, Tuple
 
 from colorama import Fore, Style
@@ -71,6 +70,9 @@ def computeNextMilestoneDate(currentTs: pd.Timestamp, timestep: SimulationTimest
         return currentTs + pd.DateOffset(months=1)
 
 
+# The agent portfolio simulation engine, manages multi-agent portfolio creation, rebalancing and market simulation management
+# It is jerry-rigged to work with the existing UI hooks so it is not a clean bit of code! 
+# If I had more time, it would be heavily, heavily refactored/rewritten 
 class AgentPortfolioSimulationEngine(BoardroomEngine):
     def __init__(self, toolRegistry: ToolRegistry, timestamp: pd.Timestamp):
         super().__init__(toolRegistry, timestamp)
@@ -93,13 +95,9 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         self.currentSimStatus: str = "Idle"
         self.sp500InitialPrice: float = 1.0
 
-    def _newPhaseHeader(
-        self, 
-        phaseNumber: int, 
-        phaseName: str, 
-        pace: BoardroomPace = BoardroomPace.COMPLETE, 
-        customAgents: Optional[List[Dict[str, str]]] = None
-    ):
+    # Override emitNewPhase to include milestone ID and agent list
+    def emitNewPhase(self, phaseNumber: int, phaseName: str, pace: BoardroomPace = BoardroomPace.COMPLETE, 
+                     customAgents: Optional[List[Dict[str, str]]] = None):
         setCurrentStage(phaseNumber)
         setCurrentMilestoneId(self.currentMilestoneId)
         
@@ -120,7 +118,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             })
             return
 
-        agents = self._getDefaultPhaseAgents(phaseNumber, pace)
+        agents = self.getDefaultPhaseAgents(phaseNumber, pace)
         emitEvent("stageStart", {
             "stageNum": phaseNumber,
             "stageName": phaseName,
@@ -128,7 +126,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             "milestoneId": self.currentMilestoneId
         })
 
-    def _readJournal(self, tool: Tool, data: Any, timestamp: pd.Timestamp, limit: int = 10) -> Dict[str, Any]:
+    # Read and record into the journal (to bring information from one milestone to the next)        
+    def readJournal(self, tool: Tool, data: Any, timestamp: pd.Timestamp, limit: int = 10) -> Dict[str, Any]:
         currentDateStr = timestamp.strftime("%Y-%m-%d")
         entries = [e for e in self.journal if e.get("date", "") <= currentDateStr]
         if limit and limit > 0:
@@ -153,15 +152,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             "entries": entries
         }
 
-    def _recordJournalEntry(
-        self, 
-        tool: Tool, 
-        data: Any, 
-        timestamp: pd.Timestamp, 
-        entryText: str, 
-        strategicOutlook: str = "", 
-        actionTaken: str = ""
-    ) -> Dict[str, Any]:
+    def recordJournalEntry(self, tool: Tool, data: Any, timestamp: pd.Timestamp, entryText: str, 
+                           strategicOutlook: str = "", actionTaken: str = "") -> Dict[str, Any]:
         currentDateStr = timestamp.strftime("%Y-%m-%d")
         entryIndex = len(self.journal) + 1
         entry = {
@@ -181,14 +173,10 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             "recordedEntry": entry
         }
 
-    def _wrappedConfirmSectorAllocation(
-        self, 
-        tool: Tool, 
-        data: Any, 
-        timestamp: pd.Timestamp, 
-        sectorAllocations: Dict[str, float], 
-        rationale: str
-    ) -> Dict[str, Any]:
+
+    # Jerry rigged wrappers for the confirmation tools to emit events to the UI when sector or portfolio allocations are confirmed
+    def _wrappedConfirmSectorAllocation(self, tool: Tool, data: Any, timestamp: pd.Timestamp, 
+                                        sectorAllocations: Dict[str, float], rationale: str) -> Dict[str, Any]:
         res = confirmSectorAllocation(tool, data, timestamp, sectorAllocations, rationale)
         if isinstance(res, dict) and (res.get("status") == "success" or "confirmedAllocation" in res):
             if tool.toolLog:
@@ -200,15 +188,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             })
         return res
 
-    def _wrappedConfirmPortfolioAllocation(
-        self, 
-        tool: Tool, 
-        data: Any, 
-        timestamp: pd.Timestamp, 
-        sectorAllocations: Any, 
-        portfolioRationale: str, 
-        initialCapital: float = 100000.0
-    ) -> Dict[str, Any]:
+    def _wrappedConfirmPortfolioAllocation(self, tool: Tool, data: Any, timestamp: pd.Timestamp, sectorAllocations: Any,
+                                           portfolioRationale: str, initialCapital: float = 100000.0) -> Dict[str, Any]:
         res = confirmPortfolioAllocation(tool, data, timestamp, sectorAllocations, portfolioRationale, initialCapital)
         if isinstance(res, dict) and (res.get("status") == "success" or "confirmedPortfolio" in res):
             if tool.toolLog:
@@ -221,16 +202,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             })
         return res
 
-    def _wrappedDecideRebalanceNecessity(
-        self, 
-        tool: Tool, 
-        data: Any, 
-        timestamp: pd.Timestamp, 
-        decision: str, 
-        reasoning: str, 
-        macroShiftDetected: bool = False, 
-        urgency: str = "none"
-    ) -> Dict[str, Any]:
+    def _wrappedDecideRebalanceNecessity(self, tool: Tool, data: Any, timestamp: pd.Timestamp, decision: str,
+                                         reasoning: str, macroShiftDetected: bool = False, urgency: str = "none") -> Dict[str, Any]:
         res = decideRebalanceNecessity(tool, data, timestamp, decision, reasoning, macroShiftDetected, urgency)
         if isinstance(res, dict) and (res.get("status") == "success" or "decisionRecord" in res):
             record = res.get("decisionRecord") or (tool.toolLog[-1] if tool.toolLog else {})
@@ -242,12 +215,13 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             })
         return res
 
+
     def generate(self) -> None:
         timestampStr = self.timestamp.strftime("%Y-%m-%d")
         toolMap = self.toolRegistry.getToolMap()
 
         readJournalTool = Tool(
-            toolFunction=self._readJournal,
+            toolFunction=self.readJournal,
             toolName="readJournal",
             toolDescription="Reads previous executive journal entries from past milestones.",
             parameterSchema={
@@ -265,7 +239,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         )
 
         readPortfolioJournalAliasTool = Tool(
-            toolFunction=self._readJournal,
+            toolFunction=self.readJournal,
             toolName="readPortfolioJournal",
             toolDescription="Reads previous executive journal entries from past milestones.",
             parameterSchema={
@@ -283,7 +257,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         )
 
         recordJournalEntryTool = Tool(
-            toolFunction=self._recordJournalEntry,
+            toolFunction=self.recordJournalEntry,
             toolName="recordJournalEntry",
             toolDescription="Records an executive summary and strategic outlook into the journal for this milestone.",
             parameterSchema={
@@ -484,14 +458,16 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             for agent in self.agentsList:
                 agent.setClient(self.llmClient)
 
-    def _updateAgentsTimestamp(self, timestamp: pd.Timestamp):
+    def updateAgentsTimestamp(self, timestamp: pd.Timestamp):
         self.timestamp = timestamp
         dateStr = timestamp.strftime("%Y-%m-%d")
         for agent in self.agentsList:
             agent.dateStr = dateStr
             agent.messageHistory.clear()
 
-    def _getSimulationMetrics(self, config: AgentPortfolioSimulationConfig, sp500Df: pd.DataFrame) -> Dict[str, Any]:
+
+    # Get lots of metric data for the current simulation state, including portfolio value, returns, positions, and performance metrics
+    def getSimulationMetrics(self, config: AgentPortfolioSimulationConfig, sp500Df: pd.DataFrame) -> Dict[str, Any]:
         if not self.marketSim:
             return {}
         username = "AgentPortfolio" if "AgentPortfolio" in self.marketSim.userPortfolios else "AgentFund"
@@ -593,11 +569,14 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             "systemLogs": systemLogs
         }
 
-    def _emitSimulationState(self, config: AgentPortfolioSimulationConfig, sp500Df: pd.DataFrame):
-        state = self._getSimulationMetrics(config, sp500Df)
+
+    def emitSimulationState(self, config: AgentPortfolioSimulationConfig, sp500Df: pd.DataFrame):
+        state = self.getSimulationMetrics(config, sp500Df)
         emitEvent("agentSimStateUpdate", state)
 
-    def _formatCurrentHoldingsPrompt(self) -> str:
+
+    # Formats the current holdings into a human-readable string for display in the UI
+    def formatCurrentHoldingsPrompt(self) -> str:
         if not self.marketSim:
             return "No holdings currently active."
         username = "AgentPortfolio" if "AgentPortfolio" in self.marketSim.userPortfolios else "AgentFund"
@@ -623,6 +602,344 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 f"Current Price: ${curPrice:,.2f} | Value: ${posVal:,.2f} ({weightPct:.1f}%) | P&L: {pnlPct:+.1f}%"
             )
         return "\n".join(lines)
+
+    # Inception = the portfolio creation process, onetime
+    def runInceptionBoardroom(self, config: AgentPortfolioSimulationConfig, sp500Df: pd.DataFrame, startFormatted: str, promptArgs: Dict[str, Any]) -> None:
+        # Run the inception boardroom process (not in a FSM)
+
+        # Phase 1: Macro Environment Analysis
+        self.currentSimStatus = f"{startFormatted} (Inception): Stage 1"
+        self.emitSimulationState(config, sp500Df)
+        self.emitNewPhase(1, "Macro Environment Analysis", BoardroomPace.COMPLETE)
+        macroPrompt = (
+            f"Task: Conduct top-down macroeconomic analysis to guide initial portfolio inception for a {promptArgs['initialCapital']} portfolio.\n"
+            f"Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n\n"
+            f"1. Use 'fetchAllSectorRankings', 'fetchMacroContext', and 'fetchMacroNews' to analyze market regime, rates, and leading sectors.\n"
+            f"2. Output your economic indicator table, macro narrative, and market regime classification."
+        )
+        macroRaw, _ = self.macroAnalyst.analyseAndReply(
+            incomingMessage=macroPrompt,
+            toolRegistry=self.toolRegistry,
+            timestamp=self.timestamp,
+            config=config,
+            requireInitialTools=True,
+            modeOverride="PortfolioCreation"
+        )
+
+        if isStopRequested(): raise SimulationStoppedException()
+
+        # Phase 2: Sector Allocation Analysis (Bull & Bear concurrently)
+        self.currentSimStatus = f"{startFormatted} (Inception): Stage 2"
+        self.emitSimulationState(config, sp500Df)
+        self.emitNewPhase(2, "Sector Allocation Analysis", BoardroomPace.COMPLETE)
+        bullPrompt = (
+            f"Macro Context:\n{macroRaw}\n\n"
+            f"Task: Propose an aggressive, growth-oriented sector allocation for a {promptArgs['initialCapital']} portfolio.\n"
+            f"Mandatory Constraints:\n"
+            f"- Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n"
+            f"- {promptArgs['sectorDiversityRule']}\n"
+            f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n\n"
+            f"1. Use 'fetchAllSectorsAnalysis' to evaluate sector momentum.\n"
+            f"2. Propose sector percentage weights totaling 100%."
+        )
+        bearPrompt = (
+            f"Macro Context:\n{macroRaw}\n\n"
+            f"Task: Propose a defensive, risk-mitigated sector allocation for a {promptArgs['initialCapital']} portfolio.\n"
+            f"Mandatory Constraints:\n"
+            f"- Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n"
+            f"- {promptArgs['sectorDiversityRule']}\n"
+            f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n\n"
+            f"1. Use 'fetchAllSectorsAnalysis' to evaluate sector stability.\n"
+            f"2. Propose sector percentage weights totaling 100%."
+        )
+        (bullSectorRaw, _), (bearSectorRaw, _) = self.runAgentsConcurrently(
+            lambda: self.bullAnalyst.analyseAndReply(bullPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioCreation"),
+            lambda: self.bearAnalyst.analyseAndReply(bearPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioCreation")
+        )
+
+        if isStopRequested(): raise SimulationStoppedException()
+
+        # Phase 3: Sector Allocation Decision
+        self.currentSimStatus = f"{startFormatted} (Inception): Stage 3"
+        self.emitSimulationState(config, sp500Df)
+        self.emitNewPhase(3, "Sector Allocation Decision", BoardroomPace.COMPLETE)
+        confirmSectorTool = self.toolRegistry.getTool("confirmSectorAllocation")
+        pmSectorPrompt = (
+            f"Macro Context:\n{macroRaw}\n\n"
+            f"Bullish Sector Proposal:\n{bullSectorRaw}\n\n"
+            f"Bearish Sector Proposal:\n{bearSectorRaw}\n\n"
+            f"Task: As the Impartial Portfolio Manager, reconcile Bullish and Bearish proposals to determine the initial executive sector allocation for this {promptArgs['initialCapital']} portfolio.\n"
+            f"Mandatory Constraints:\n"
+            f"- Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n"
+            f"- {promptArgs['sectorDiversityRule']}\n"
+            f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n"
+            f"- Allocations must sum to approximately 100.0%.\n\n"
+            f"1. You may call 'fetchAllSectorsAnalysis' to inspect sector metrics.\n"
+            f"2. Execute the 'confirmSectorAllocation' tool with your 'sectorAllocations' dictionary and executive 'rationale'."
+        )
+        _, _ = self.executeMandatedToolStage(
+            agent=self.portManager,
+            initialPrompt=pmSectorPrompt,
+            mandatedToolName="confirmSectorAllocation",
+            config=config,
+            subrole="sector",
+            maxRetries=8,
+            requireInitialTools=True,
+            modeOverride="PortfolioCreation"
+        )
+
+        if confirmSectorTool and confirmSectorTool.toolLog:
+            self.confirmedSectorAllocation = confirmSectorTool.toolLog[-1]
+
+        emitEvent("sectorAllocationConfirmed", {
+            "stageNum": 3,
+            "confirmedAllocation": self.confirmedSectorAllocation,
+            "milestoneId": self.currentMilestoneId
+        })
+
+        confirmed = self.confirmedSectorAllocation.get("confirmedAllocation", self.confirmedSectorAllocation) if self.confirmedSectorAllocation else {}
+        sectorsDict = confirmed.get("sectorAllocations", {})
+        confirmedSectorsText = "\n".join([f"- {secInfo.get('sector', secKey)} ({secKey}): {int(round(float(secInfo.get('allocationPct', 0))))}%" for secKey, secInfo in sectorsDict.items()])
+
+        if isStopRequested(): raise SimulationStoppedException()
+
+        # Phase 4: Stock Scouting (Growth & Value Hunters concurrently)
+        self.currentSimStatus = f"{startFormatted} (Inception): Stage 4"
+        self.emitSimulationState(config, sp500Df)
+        self.emitNewPhase(4, "Stock Scouting", BoardroomPace.COMPLETE)
+        growthPrompt = (
+            f"Confirmed Portfolio Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
+            f"Task: As the Growth Stock Hunter, scout high-conviction growth equities within confirmed sectors.\n"
+            f"Constraints: Target stock count: {promptArgs['targetStockCount']}. Max stock allocation: {promptArgs['maxStockAllocation']}.\n"
+            f"1. Use 'fetchStocksInSector' (style='growth') for confirmed sectors.\n"
+            f"2. Use 'fetchBatchStockOverviews' on top conviction candidates."
+        )
+        valuePrompt = (
+            f"Confirmed Portfolio Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
+            f"Task: As the Value/Defensive Stock Hunter, scout high-conviction defensive and dividend equities within confirmed sectors.\n"
+            f"Constraints: Target stock count: {promptArgs['targetStockCount']}. Max stock allocation: {promptArgs['maxStockAllocation']}.\n"
+            f"1. Use 'fetchStocksInSector' (style='defensive') for confirmed sectors.\n"
+            f"2. Use 'fetchBatchStockOverviews' on top conviction candidates."
+        )
+        (growthRaw, _), (valueRaw, _) = self.runAgentsConcurrently(
+            lambda: self.growthHunter.analyseAndReply(growthPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioCreation"),
+            lambda: self.valueHunter.analyseAndReply(valuePrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioCreation")
+        )
+
+        if isStopRequested(): raise SimulationStoppedException()
+
+        # Phase 5: Stock Allocation Proposals (Aggressive & Conservative Risk Analysts concurrently)
+        self.currentSimStatus = f"{startFormatted} (Inception): Stage 5"
+        self.emitSimulationState(config, sp500Df)
+        self.emitNewPhase(5, "Stock Allocation Proposals", BoardroomPace.COMPLETE)
+        aggProposalPrompt = (
+            f"Confirmed Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
+            f"Growth Candidates:\n{growthRaw}\n\n"
+            f"Defensive Candidates:\n{valueRaw}\n\n"
+            f"Task: Review candidates from both hunters and construct an aggressive stock allocation proposal for {promptArgs['initialCapital']}.\n"
+            f"Group stock proposals under confirmed sectors, assigning whole integer weights summing to 100% per sector."
+        )
+        consProposalPrompt = (
+            f"Confirmed Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
+            f"Growth Candidates:\n{growthRaw}\n\n"
+            f"Defensive Candidates:\n{valueRaw}\n\n"
+            f"Task: Review candidates from both hunters and construct a conservative stock allocation proposal for {promptArgs['initialCapital']}.\n"
+            f"Group stock proposals under confirmed sectors, assigning whole integer weights summing to 100% per sector."
+        )
+        (aggProposalRaw, _), (consProposalRaw, _) = self.runAgentsConcurrently(
+            lambda: self.aggRiskAnalyst.analyseAndReply(aggProposalPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=False, modeOverride="PortfolioCreation"),
+            lambda: self.consRiskAnalyst.analyseAndReply(consProposalPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=False, modeOverride="PortfolioCreation")
+        )
+
+        if isStopRequested(): raise SimulationStoppedException()
+
+        # Phase 6: Final Executive Decision
+        self.currentSimStatus = f"{startFormatted} (Inception): Stage 6"
+        self.emitSimulationState(config, sp500Df)
+        self.emitNewPhase(6, "Final Executive Decision", BoardroomPace.COMPLETE)
+        confirmPortTool = self.toolRegistry.getTool("confirmPortfolioAllocation")
+
+        pmFinalPrompt = (
+            f"Initial Capital: {promptArgs['initialCapital']}\n"
+            f"Target Sector Allocations:\n{confirmedSectorsText}\n\n"
+            f"Growth Hunter Candidates:\n{growthRaw}\n\n"
+            f"Value Hunter Candidates:\n{valueRaw}\n\n"
+            f"Aggressive Risk Proposal:\n{aggProposalRaw}\n\n"
+            f"Conservative Risk Proposal:\n{consProposalRaw}\n\n"
+            f"Task: As the Impartial Portfolio Manager, reconcile proposals to construct the definitive inception portfolio.\n"
+            f"Mandatory: Call 'confirmPortfolioAllocation' with your allocated stock positions across confirmed sectors, 'portfolioRationale', and 'initialCapital'={config.initialCapital}.\n"
+            f"You may also call 'recordJournalEntry' with your 30-50 word executive rationale summarizing portfolio inception."
+        )
+        _, _ = self.executeMandatedToolStage(
+            agent=self.portManager,
+            initialPrompt=pmFinalPrompt,
+            mandatedToolName="confirmPortfolioAllocation",
+            config=config,
+            subrole="decision",
+            maxRetries=8,
+            requireInitialTools=True,
+            modeOverride="PortfolioCreation"
+        )
+
+        if confirmPortTool and confirmPortTool.toolLog:
+            self.confirmedPortfolioAllocation = confirmPortTool.toolLog[-1]
+
+        emitEvent("portfolioCreated", {
+            "stageNum": 6,
+            "confirmedPortfolio": self.confirmedPortfolioAllocation,
+            "milestoneId": self.currentMilestoneId
+        })
+
+
+    # Rebalance at milestone boardroom process, for periodic portfolio reviews and rebalancing
+    def runRebalanceAtMilestoneBoardroom(self, config: AgentPortfolioSimulationConfig, sp500Df: pd.DataFrame, currentDateStr: str, currentDateFormatted: str,
+        friendlyDate: str, promptArgs: Dict[str, Any], isExtended: bool, currentHoldingsStr: str, macroRaw: str, currentPortfolioTotalVal: float) -> None:
+
+        pace = BoardroomPace.COMPLETE if isExtended else BoardroomPace.FAST
+
+        if isExtended:
+            # Phase 2: Sector Allocation Analysis (Bull & Bear Analysts)
+            self.currentSimStatus = f"{friendlyDate} (Review): Stage 2"
+            self.emitSimulationState(config, sp500Df)
+            self.emitNewPhase(2, "Sector Allocation Analysis", pace)
+            bullSectorPrompt = f"Macro Context:\n{macroRaw}\n\nTask: As the Bullish Analyst, identify leading growth and expansion sectors."
+            bearSectorPrompt = f"Macro Context:\n{macroRaw}\n\nTask: As the Bearish Analyst, identify vulnerable sectors facing headwinds."
+            (bullRaw, _), (bearRaw, _) = self.runAgentsConcurrently(
+                lambda: self.bullAnalyst.analyseAndReply(bullSectorPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioRebalancing"),
+                lambda: self.bearAnalyst.analyseAndReply(bearSectorPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioRebalancing")
+            )
+            sectorContextForPM = f"Bullish Analysis:\n{bullRaw}\n\nBearish Analysis:\n{bearRaw}"
+        else:
+            sectorContextForPM = f"Macro Context:\n{macroRaw}"
+
+        if isStopRequested(): raise SimulationStoppedException()
+
+        # Phase 3: Sector Rebalancing Decision
+        self.currentSimStatus = f"{friendlyDate} (Review): Stage 3"
+        self.emitSimulationState(config, sp500Df)
+        self.emitNewPhase(3, "Sector Rebalancing Decision", pace)
+        confirmSectorTool = self.toolRegistry.getTool("confirmSectorAllocation")
+        pmSectorPrompt = (
+            f"{sectorContextForPM}\n\n"
+            f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
+            f"Task: As the Impartial Portfolio Manager, determine the target rebalanced sector allocations.\n"
+            f"Mandatory Constraints:\n"
+            f"- Rebalance Amount Mandate: {promptArgs['rebalanceAmountGuidance']}\n"
+            f"- Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n"
+            f"- {promptArgs['sectorDiversityRule']}\n"
+            f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n\n"
+            f"Mandatory: Call 'confirmSectorAllocation' with your target sector allocation dictionary."
+        )
+        _, _ = self.executeMandatedToolStage(
+            agent=self.portManager,
+            initialPrompt=pmSectorPrompt,
+            mandatedToolName="confirmSectorAllocation",
+            config=config,
+            subrole="sector",
+            maxRetries=8,
+            requireInitialTools=True,
+            modeOverride="PortfolioRebalancing"
+        )
+
+        if confirmSectorTool and confirmSectorTool.toolLog:
+            self.confirmedSectorAllocation = confirmSectorTool.toolLog[-1]
+
+        emitEvent("sectorAllocationConfirmed", {
+            "stageNum": 3,
+            "confirmedAllocation": self.confirmedSectorAllocation,
+            "milestoneId": self.currentMilestoneId
+        })
+
+        confirmed = self.confirmedSectorAllocation.get("confirmedAllocation", self.confirmedSectorAllocation) if self.confirmedSectorAllocation else {}
+        sectorsDict = confirmed.get("sectorAllocations", {})
+        confirmedSectorsText = "\n".join([f"- {secInfo.get('sector', secKey)} ({secKey}): {int(round(float(secInfo.get('allocationPct', 0))))}%" for secKey, secInfo in sectorsDict.items()])
+
+        if isStopRequested(): raise SimulationStoppedException()
+
+        # Phase 4: Stock Scouting
+        self.currentSimStatus = f"{friendlyDate} (Review): Stage 4"
+        self.emitSimulationState(config, sp500Df)
+        self.emitNewPhase(4, "Stock Holdings Audit & Scouting", pace)
+        growthPrompt = (
+            f"Target Rebalanced Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
+            f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
+            f"Task: As the Growth Stock Hunter, evaluate existing growth holdings and scout high-conviction momentum/growth replacements.\n"
+            f"Constraints: Target stock count: {promptArgs['targetStockCount']}. Max stock allocation: {promptArgs['maxStockAllocation']}."
+        )
+        valuePrompt = (
+            f"Target Rebalanced Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
+            f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
+            f"Task: As the Value/Defensive Stock Hunter, evaluate defensive holdings and scout margin-of-safety replacements.\n"
+            f"Constraints: Target stock count: {promptArgs['targetStockCount']}. Max stock allocation: {promptArgs['maxStockAllocation']}."
+        )
+        (growthRaw, _), (valueRaw, _) = self.runAgentsConcurrently(
+            lambda: self.growthHunter.analyseAndReply(growthPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioRebalancing"),
+            lambda: self.valueHunter.analyseAndReply(valuePrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioRebalancing")
+        )
+
+        if isExtended:
+            # Phase 5: Stock Allocation Proposals (Risk Analysts)
+            self.currentSimStatus = f"{friendlyDate} (Review): Stage 5"
+            self.emitSimulationState(config, sp500Df)
+            self.emitNewPhase(5, "Stock Allocation Proposals", pace)
+            aggPrompt = (
+                f"Target Rebalanced Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
+                f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
+                f"Growth Candidates from Hunter:\n{growthRaw}\n\n"
+                f"Defensive Candidates from Hunter:\n{valueRaw}\n\n"
+                f"Task: Review current holdings and scouted candidates from both hunters, then construct an assertive alpha-maximizing stock allocation proposal.\n"
+                f"Group stock proposals under confirmed sectors, assigning whole integer weights summing to 100% per sector."
+            )
+            consPrompt = (
+                f"Target Rebalanced Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
+                f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
+                f"Growth Candidates from Hunter:\n{growthRaw}\n\n"
+                f"Defensive Candidates from Hunter:\n{valueRaw}\n\n"
+                f"Task: Review current holdings and scouted candidates from both hunters, then construct a risk-controlled defensive stock allocation proposal.\n"
+                f"Group stock proposals under confirmed sectors, assigning whole integer weights summing to 100% per sector."
+            )
+            (aggRaw, _), (consRaw, _) = self.runAgentsConcurrently(
+                lambda: self.aggRiskAnalyst.analyseAndReply(aggPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=False, modeOverride="PortfolioRebalancing"),
+                lambda: self.consRiskAnalyst.analyseAndReply(consPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=False, modeOverride="PortfolioRebalancing")
+            )
+            scoutContextForPM = f"Growth Scouting:\n{growthRaw}\n\nValue Scouting:\n{valueRaw}\n\nAggressive Proposal:\n{aggRaw}\n\nConservative Proposal:\n{consRaw}"
+        else:
+            scoutContextForPM = f"Growth Scouting:\n{growthRaw}\n\nValue Scouting:\n{valueRaw}"
+
+        if isStopRequested(): raise SimulationStoppedException()
+
+        # Phase 6: Final Executive Rebalancing Decision
+        self.currentSimStatus = f"{friendlyDate} (Review): Stage 6"
+        self.emitSimulationState(config, sp500Df)
+        self.emitNewPhase(6, "Final Executive Decision", pace)
+        confirmPortTool = self.toolRegistry.getTool("confirmPortfolioAllocation")
+
+        pmFinalPrompt = (
+            f"Total Rebalance Capital: ${currentPortfolioTotalVal:,.2f}\n"
+            f"Target Sector Allocations:\n{confirmedSectorsText}\n\n"
+            f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
+            f"Mandatory Constraints:\n"
+            f"- Rebalance Amount Mandate: {promptArgs['rebalanceAmountGuidance']}\n"
+            f"- Target stock count: {promptArgs['targetStockCount']}\n"
+            f"- Max stock allocation: {promptArgs['maxStockAllocation']}\n\n"
+            f"{scoutContextForPM}\n\n"
+            f"Task: Construct the rebalanced portfolio. Execute 'confirmPortfolioAllocation' with your 'sectorAllocations' dictionary, 'portfolioRationale', and 'initialCapital'={currentPortfolioTotalVal:.2f}.\n"
+            f"You may also call 'recordJournalEntry' with your 30-50 word rationale detailing portfolio shifts."
+        )
+        _, _ = self.executeMandatedToolStage(
+            agent=self.portManager,
+            initialPrompt=pmFinalPrompt,
+            mandatedToolName="confirmPortfolioAllocation",
+            config=config,
+            subrole="decision",
+            maxRetries=8,
+            requireInitialTools=True,
+            modeOverride="PortfolioRebalancing"
+        )
+
+        if confirmPortTool and confirmPortTool.toolLog:
+            self.confirmedPortfolioAllocation = confirmPortTool.toolLog[-1]
+
 
     def execute(self, config: AgentPortfolioSimulationConfig):
         if isStopRequested():
@@ -672,9 +989,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         self.portfolioHistoryPoints.append({"x": config.startDateStr, "y": float(config.initialCapital)})
         self.sp500HistoryPoints.append({"x": config.startDateStr, "y": float(config.initialCapital)})
 
-        # -------------------------------------------------------------
-        # MILESTONE 0: INCEPTION / INITIAL PORTFOLIO CREATION (6 STAGES)
-        # -------------------------------------------------------------
+
+        # MILESTONE 0: Inception
         self.currentMilestoneId = "milestone_0"
         self.currentMilestoneLabel = f"{startFormatted} (Inception)"
         setCurrentMilestoneId(self.currentMilestoneId)
@@ -706,193 +1022,12 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             "stages": inceptionStages
         })
 
-        self._updateAgentsTimestamp(startDateTs)
+        self.updateAgentsTimestamp(startDateTs)
         promptArgs = config.getPromptArgs()
+        self.runInceptionBoardroom(config, sp500Df, startFormatted, promptArgs)
 
-        # Phase 1: Macro Environment Analysis
-        self.currentSimStatus = f"{startFormatted} (Inception): Stage 1"
-        self._emitSimulationState(config, sp500Df)
-        self._newPhaseHeader(1, "Macro Environment Analysis", BoardroomPace.COMPLETE)
-        macroPrompt = (
-            f"Task: Conduct top-down macroeconomic analysis to guide initial portfolio inception for a {promptArgs['initialCapital']} portfolio.\n"
-            f"Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n\n"
-            f"1. Use 'fetchAllSectorRankings', 'fetchMacroContext', and 'fetchMacroNews' to analyze market regime, rates, and leading sectors.\n"
-            f"2. Output your economic indicator table, macro narrative, and market regime classification."
-        )
-        macroRaw, macroUISummary = self.macroAnalyst.analyseAndReply(
-            incomingMessage=macroPrompt,
-            toolRegistry=self.toolRegistry,
-            timestamp=self.timestamp,
-            config=config,
-            requireInitialTools=True,
-            modeOverride="PortfolioCreation"
-        )
 
-        if isStopRequested(): raise SimulationStoppedException()
-
-        # Phase 2: Sector Allocation Analysis (Bull & Bear concurrently)
-        self.currentSimStatus = f"{startFormatted} (Inception): Stage 2"
-        self._emitSimulationState(config, sp500Df)
-        self._newPhaseHeader(2, "Sector Allocation Analysis", BoardroomPace.COMPLETE)
-        bullPrompt = (
-            f"Macro Context:\n{macroRaw}\n\n"
-            f"Task: Propose an aggressive, growth-oriented sector allocation for a {promptArgs['initialCapital']} portfolio.\n"
-            f"Mandatory Constraints:\n"
-            f"- Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n"
-            f"- {promptArgs['sectorDiversityRule']}\n"
-            f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n\n"
-            f"1. Use 'fetchAllSectorsAnalysis' to evaluate sector momentum.\n"
-            f"2. Propose sector percentage weights totaling 100%."
-        )
-        bearPrompt = (
-            f"Macro Context:\n{macroRaw}\n\n"
-            f"Task: Propose a defensive, risk-mitigated sector allocation for a {promptArgs['initialCapital']} portfolio.\n"
-            f"Mandatory Constraints:\n"
-            f"- Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n"
-            f"- {promptArgs['sectorDiversityRule']}\n"
-            f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n\n"
-            f"1. Use 'fetchAllSectorsAnalysis' to evaluate sector stability.\n"
-            f"2. Propose sector percentage weights totaling 100%."
-        )
-        (bullSectorRaw, _), (bearSectorRaw, _) = self._runAgentsConcurrently(
-            lambda: self.bullAnalyst.analyseAndReply(bullPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioCreation"),
-            lambda: self.bearAnalyst.analyseAndReply(bearPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioCreation")
-        )
-
-        if isStopRequested(): raise SimulationStoppedException()
-
-        # Phase 3: Sector Allocation Decision
-        self.currentSimStatus = f"{startFormatted} (Inception): Stage 3"
-        self._emitSimulationState(config, sp500Df)
-        self._newPhaseHeader(3, "Sector Allocation Decision", BoardroomPace.COMPLETE)
-        confirmSectorTool = self.toolRegistry.getTool("confirmSectorAllocation")
-        pmSectorPrompt = (
-            f"Macro Context:\n{macroRaw}\n\n"
-            f"Bullish Sector Proposal:\n{bullSectorRaw}\n\n"
-            f"Bearish Sector Proposal:\n{bearSectorRaw}\n\n"
-            f"Task: As the Impartial Portfolio Manager, reconcile Bullish and Bearish proposals to determine the initial executive sector allocation for this {promptArgs['initialCapital']} portfolio.\n"
-            f"Mandatory Constraints:\n"
-            f"- Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n"
-            f"- {promptArgs['sectorDiversityRule']}\n"
-            f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n"
-            f"- Allocations must sum to approximately 100.0%.\n\n"
-            f"1. You may call 'fetchAllSectorsAnalysis' to inspect sector metrics.\n"
-            f"2. Execute the 'confirmSectorAllocation' tool with your 'sectorAllocations' dictionary and executive 'rationale'."
-        )
-        pmSectorRaw, pmSectorUISummary = self.executeMandatedToolStage(
-            agent=self.portManager,
-            initialPrompt=pmSectorPrompt,
-            mandatedToolName="confirmSectorAllocation",
-            config=config,
-            subrole="sector",
-            maxRetries=8,
-            requireInitialTools=True,
-            modeOverride="PortfolioCreation"
-        )
-
-        if confirmSectorTool and confirmSectorTool.toolLog:
-            self.confirmedSectorAllocation = confirmSectorTool.toolLog[-1]
-
-        emitEvent("sectorAllocationConfirmed", {
-            "stageNum": 3,
-            "confirmedAllocation": self.confirmedSectorAllocation,
-            "milestoneId": self.currentMilestoneId
-        })
-
-        confirmed = self.confirmedSectorAllocation.get("confirmedAllocation", self.confirmedSectorAllocation) if self.confirmedSectorAllocation else {}
-        sectorsDict = confirmed.get("sectorAllocations", {})
-        confirmedSectorsText = "\n".join([f"- {secInfo.get('sector', secKey)} ({secKey}): {int(round(float(secInfo.get('allocationPct', 0))))}%" for secKey, secInfo in sectorsDict.items()])
-
-        if isStopRequested(): raise SimulationStoppedException()
-
-        # Phase 4: Stock Scouting (Growth & Value Hunters concurrently)
-        self.currentSimStatus = f"{startFormatted} (Inception): Stage 4"
-        self._emitSimulationState(config, sp500Df)
-        self._newPhaseHeader(4, "Stock Scouting", BoardroomPace.COMPLETE)
-        growthPrompt = (
-            f"Confirmed Portfolio Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
-            f"Task: As the Growth Stock Hunter, scout high-conviction growth equities within confirmed sectors.\n"
-            f"Constraints: Target stock count: {promptArgs['targetStockCount']}. Max stock allocation: {promptArgs['maxStockAllocation']}.\n"
-            f"1. Use 'fetchStocksInSector' (style='growth') for confirmed sectors.\n"
-            f"2. Use 'fetchBatchStockOverviews' on top conviction candidates."
-        )
-        valuePrompt = (
-            f"Confirmed Portfolio Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
-            f"Task: As the Value/Defensive Stock Hunter, scout high-conviction defensive and dividend equities within confirmed sectors.\n"
-            f"Constraints: Target stock count: {promptArgs['targetStockCount']}. Max stock allocation: {promptArgs['maxStockAllocation']}.\n"
-            f"1. Use 'fetchStocksInSector' (style='defensive') for confirmed sectors.\n"
-            f"2. Use 'fetchBatchStockOverviews' on top conviction candidates."
-        )
-        (growthRaw, _), (valueRaw, _) = self._runAgentsConcurrently(
-            lambda: self.growthHunter.analyseAndReply(growthPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioCreation"),
-            lambda: self.valueHunter.analyseAndReply(valuePrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioCreation")
-        )
-
-        if isStopRequested(): raise SimulationStoppedException()
-
-        # Phase 5: Stock Allocation Proposals (Aggressive & Conservative Risk Analysts concurrently)
-        self.currentSimStatus = f"{startFormatted} (Inception): Stage 5"
-        self._emitSimulationState(config, sp500Df)
-        self._newPhaseHeader(5, "Stock Allocation Proposals", BoardroomPace.COMPLETE)
-        aggProposalPrompt = (
-            f"Confirmed Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
-            f"Growth Candidates:\n{growthRaw}\n\n"
-            f"Defensive Candidates:\n{valueRaw}\n\n"
-            f"Task: Review candidates from both hunters and construct an aggressive stock allocation proposal for {promptArgs['initialCapital']}.\n"
-            f"Group stock proposals under confirmed sectors, assigning whole integer weights summing to 100% per sector."
-        )
-        consProposalPrompt = (
-            f"Confirmed Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
-            f"Growth Candidates:\n{growthRaw}\n\n"
-            f"Defensive Candidates:\n{valueRaw}\n\n"
-            f"Task: Review candidates from both hunters and construct a conservative stock allocation proposal for {promptArgs['initialCapital']}.\n"
-            f"Group stock proposals under confirmed sectors, assigning whole integer weights summing to 100% per sector."
-        )
-        (aggProposalRaw, _), (consProposalRaw, _) = self._runAgentsConcurrently(
-            lambda: self.aggRiskAnalyst.analyseAndReply(aggProposalPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=False, modeOverride="PortfolioCreation"),
-            lambda: self.consRiskAnalyst.analyseAndReply(consProposalPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=False, modeOverride="PortfolioCreation")
-        )
-
-        if isStopRequested(): raise SimulationStoppedException()
-
-        # Phase 6: Final Executive Decision
-        self.currentSimStatus = f"{startFormatted} (Inception): Stage 6"
-        self._emitSimulationState(config, sp500Df)
-        self._newPhaseHeader(6, "Final Executive Decision", BoardroomPace.COMPLETE)
-        confirmPortTool = self.toolRegistry.getTool("confirmPortfolioAllocation")
-
-        pmFinalPrompt = (
-            f"Initial Capital: {promptArgs['initialCapital']}\n"
-            f"Target Sector Allocations:\n{confirmedSectorsText}\n\n"
-            f"Growth Hunter Candidates:\n{growthRaw}\n\n"
-            f"Value Hunter Candidates:\n{valueRaw}\n\n"
-            f"Aggressive Risk Proposal:\n{aggProposalRaw}\n\n"
-            f"Conservative Risk Proposal:\n{consProposalRaw}\n\n"
-            f"Task: As the Impartial Portfolio Manager, reconcile proposals to construct the definitive inception portfolio.\n"
-            f"Mandatory: Call 'confirmPortfolioAllocation' with your allocated stock positions across confirmed sectors, 'portfolioRationale', and 'initialCapital'={config.initialCapital}.\n"
-            f"You may also call 'recordJournalEntry' with your 30-50 word executive rationale summarizing portfolio inception."
-        )
-        pmFinalRaw, pmFinalUISummary = self.executeMandatedToolStage(
-            agent=self.portManager,
-            initialPrompt=pmFinalPrompt,
-            mandatedToolName="confirmPortfolioAllocation",
-            config=config,
-            subrole="decision",
-            maxRetries=8,
-            requireInitialTools=True,
-            modeOverride="PortfolioCreation"
-        )
-
-        if confirmPortTool and confirmPortTool.toolLog:
-            self.confirmedPortfolioAllocation = confirmPortTool.toolLog[-1]
-
-        emitEvent("portfolioCreated", {
-            "stageNum": 6,
-            "confirmedPortfolio": self.confirmedPortfolioAllocation,
-            "milestoneId": self.currentMilestoneId
-        })
-
-        # Execute Inception Orders in MarketSimulation
+        # Execute the initial portfolio orders to populate the simulation portfolio with the confirmed inception allocation
         confirmedPort = self.confirmedPortfolioAllocation.get("confirmedPortfolio", self.confirmedPortfolioAllocation) or {}
         positions = confirmedPort.get("positions", [])
         portfolioObj = self.marketSim.userPortfolios.get(username)
@@ -957,11 +1092,10 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             "date": config.startDateStr,
             "type": "inception"
         })
-        self._emitSimulationState(config, sp500Df)
+        self.emitSimulationState(config, sp500Df)
 
-        # -------------------------------------------------------------
-        # TIMESTEP STEPPING SIMULATION LOOP
-        # -------------------------------------------------------------
+
+        # MAIN SIMULATION LOOP - per milestone review and rebalance
         milestoneIndex = 1
         currentSimDateTs = startDateTs
 
@@ -999,11 +1133,11 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
 
                 # Emit progress every few days
                 if stepCount % 5 == 0:
-                    self._emitSimulationState(config, sp500Df)
+                    self.emitSimulationState(config, sp500Df)
 
             # Check if simulation completed or market simulator cannot advance further
             if stepCount == 0 or self.marketSim.currentDate >= endDateTs or (hasattr(self.marketSim, "endDate") and self.marketSim.currentDate >= self.marketSim.endDate):
-                self._emitSimulationState(config, sp500Df)
+                self.emitSimulationState(config, sp500Df)
                 break
 
             currentSimDateTs = self.marketSim.currentDate
@@ -1011,9 +1145,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             currentDateFormatted = formatDateFriendly(currentSimDateTs)
             friendlyDate = currentDateFormatted
 
-            # ---------------------------------------------------------
-            # MILESTONE REVIEW & REBALANCE CHECKPOINT
-            # ---------------------------------------------------------
+
+            # Milestone boardroom process
             self.currentMilestoneId = f"milestone_{milestoneIndex}"
             self.currentMilestoneLabel = f"{friendlyDate} (Review)"
             setCurrentMilestoneId(self.currentMilestoneId)
@@ -1025,8 +1158,9 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 "type": "review"
             })
 
+            # Emit milestone started event with current holdings
             portfolioObj = self.marketSim.userPortfolios.get(username)
-            perfState = self._getSimulationMetrics(config, sp500Df)
+            perfState = self.getSimulationMetrics(config, sp500Df)
             currentHoldingsList = []
             if portfolioObj and portfolioObj.positions:
                 for ticker, pos in portfolioObj.positions.items():
@@ -1055,8 +1189,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 "baselinePositions": currentHoldingsList
             })
 
-            self._updateAgentsTimestamp(currentSimDateTs)
-            currentHoldingsStr = self._formatCurrentHoldingsPrompt()
+            self.updateAgentsTimestamp(currentSimDateTs)
+            currentHoldingsStr = self.formatCurrentHoldingsPrompt()
 
             # Check 3-consecutive-skipped mandate rule
             isMandatedFullRebalance = self.consecutiveSkippedSteps >= 3
@@ -1064,8 +1198,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
 
             # Phase 1: Macro Environment Analysis & Portfolio Audit
             self.currentSimStatus = f"{friendlyDate} (Review): Stage 1"
-            self._emitSimulationState(config, sp500Df)
-            self._newPhaseHeader(1, "Macro Environment Analysis", config.boardroomPace)
+            self.emitSimulationState(config, sp500Df)
+            self.emitNewPhase(1, "Macro Environment Analysis", config.boardroomPace)
             macroAuditPrompt = (
                 f"Milestone Date: {currentDateStr} ({currentDateFormatted})\n"
                 f"Portfolio Capital: ${perfState.get('totalValue', config.initialCapital):,.2f} | "
@@ -1094,8 +1228,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             else:
                 # Phase 1.5: Macro Rebalance Necessity Decision
                 self.currentSimStatus = f"{friendlyDate} (Review): Evaluating Decision"
-                self._emitSimulationState(config, sp500Df)
-                self._newPhaseHeader(1, "Macro Rebalance Checkpoint", config.boardroomPace)
+                self.emitSimulationState(config, sp500Df)
+                self.emitNewPhase(1, "Macro Rebalance Checkpoint", config.boardroomPace)
                 decideTool = self.toolRegistry.getTool("decideRebalanceNecessity")
                 decidePrompt = (
                     f"Macro Context & Audit:\n{macroRaw}\n\n"
@@ -1143,7 +1277,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                     "type": "skipped",
                     "reasoning": rebalanceDecisionReasoning
                 })
-                self._emitSimulationState(config, sp500Df)
+                self.emitSimulationState(config, sp500Df)
                 milestoneIndex += 1
                 continue
 
@@ -1185,147 +1319,20 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 "stages": activeStages
             })
 
-            if isExtended:
-                # Phase 2: Sector Allocation Analysis (Bull & Bear Analysts)
-                self.currentSimStatus = f"{friendlyDate} (Review): Stage 2"
-                self._emitSimulationState(config, sp500Df)
-                self._newPhaseHeader(2, "Sector Allocation Analysis", pace)
-                bullSectorPrompt = f"Macro Context:\n{macroRaw}\n\nTask: As the Bullish Analyst, identify leading growth and expansion sectors."
-                bearSectorPrompt = f"Macro Context:\n{macroRaw}\n\nTask: As the Bearish Analyst, identify vulnerable sectors facing headwinds."
-                (bullRaw, _), (bearRaw, _) = self._runAgentsConcurrently(
-                    lambda: self.bullAnalyst.analyseAndReply(bullSectorPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioRebalancing"),
-                    lambda: self.bearAnalyst.analyseAndReply(bearSectorPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioRebalancing")
-                )
-                sectorContextForPM = f"Bullish Analysis:\n{bullRaw}\n\nBearish Analysis:\n{bearRaw}"
-            else:
-                sectorContextForPM = f"Macro Context:\n{macroRaw}"
-
-            if isStopRequested(): raise SimulationStoppedException()
-
-            # Phase 3: Sector Rebalancing Decision
-            self.currentSimStatus = f"{friendlyDate} (Review): Stage 3"
-            self._emitSimulationState(config, sp500Df)
-            self._newPhaseHeader(3, "Sector Rebalancing Decision", pace)
-            pmSectorPrompt = (
-                f"{sectorContextForPM}\n\n"
-                f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
-                f"Task: As the Impartial Portfolio Manager, determine the target rebalanced sector allocations.\n"
-                f"Mandatory Constraints:\n"
-                f"- Rebalance Amount Mandate: {promptArgs['rebalanceAmountGuidance']}\n"
-                f"- Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n"
-                f"- {promptArgs['sectorDiversityRule']}\n"
-                f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n\n"
-                f"Mandatory: Call 'confirmSectorAllocation' with your target sector allocation dictionary."
-            )
-            _, _ = self.executeMandatedToolStage(
-                agent=self.portManager,
-                initialPrompt=pmSectorPrompt,
-                mandatedToolName="confirmSectorAllocation",
-                config=config,
-                subrole="sector",
-                maxRetries=8,
-                requireInitialTools=True,
-                modeOverride="PortfolioRebalancing"
-            )
-
-            if confirmSectorTool and confirmSectorTool.toolLog:
-                self.confirmedSectorAllocation = confirmSectorTool.toolLog[-1]
-
-            emitEvent("sectorAllocationConfirmed", {
-                "stageNum": 3,
-                "confirmedAllocation": self.confirmedSectorAllocation,
-                "milestoneId": self.currentMilestoneId
-            })
-
-            confirmed = self.confirmedSectorAllocation.get("confirmedAllocation", self.confirmedSectorAllocation) if self.confirmedSectorAllocation else {}
-            sectorsDict = confirmed.get("sectorAllocations", {})
-            confirmedSectorsText = "\n".join([f"- {secInfo.get('sector', secKey)} ({secKey}): {int(round(float(secInfo.get('allocationPct', 0))))}%" for secKey, secInfo in sectorsDict.items()])
-
-            if isStopRequested(): raise SimulationStoppedException()
-
-            # Phase 4: Stock Scouting
-            self.currentSimStatus = f"{friendlyDate} (Review): Stage 4"
-            self._emitSimulationState(config, sp500Df)
-            self._newPhaseHeader(4, "Stock Holdings Audit & Scouting", pace)
-            growthPrompt = (
-                f"Target Rebalanced Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
-                f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
-                f"Task: As the Growth Stock Hunter, evaluate existing growth holdings and scout high-conviction momentum/growth replacements.\n"
-                f"Constraints: Target stock count: {promptArgs['targetStockCount']}. Max stock allocation: {promptArgs['maxStockAllocation']}."
-            )
-            valuePrompt = (
-                f"Target Rebalanced Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
-                f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
-                f"Task: As the Value/Defensive Stock Hunter, evaluate defensive holdings and scout margin-of-safety replacements.\n"
-                f"Constraints: Target stock count: {promptArgs['targetStockCount']}. Max stock allocation: {promptArgs['maxStockAllocation']}."
-            )
-            (growthRaw, _), (valueRaw, _) = self._runAgentsConcurrently(
-                lambda: self.growthHunter.analyseAndReply(growthPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioRebalancing"),
-                lambda: self.valueHunter.analyseAndReply(valuePrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioRebalancing")
-            )
-
-            if isExtended:
-                # Phase 5: Stock Allocation Proposals (Risk Analysts)
-                self.currentSimStatus = f"{friendlyDate} (Review): Stage 5"
-                self._emitSimulationState(config, sp500Df)
-                self._newPhaseHeader(5, "Stock Allocation Proposals", pace)
-                aggPrompt = (
-                    f"Target Rebalanced Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
-                    f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
-                    f"Growth Candidates from Hunter:\n{growthRaw}\n\n"
-                    f"Defensive Candidates from Hunter:\n{valueRaw}\n\n"
-                    f"Task: Review current holdings and scouted candidates from both hunters, then construct an assertive alpha-maximizing stock allocation proposal.\n"
-                    f"Group stock proposals under confirmed sectors, assigning whole integer weights summing to 100% per sector."
-                )
-                consPrompt = (
-                    f"Target Rebalanced Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
-                    f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
-                    f"Growth Candidates from Hunter:\n{growthRaw}\n\n"
-                    f"Defensive Candidates from Hunter:\n{valueRaw}\n\n"
-                    f"Task: Review current holdings and scouted candidates from both hunters, then construct a risk-controlled defensive stock allocation proposal.\n"
-                    f"Group stock proposals under confirmed sectors, assigning whole integer weights summing to 100% per sector."
-                )
-                (aggRaw, _), (consRaw, _) = self._runAgentsConcurrently(
-                    lambda: self.aggRiskAnalyst.analyseAndReply(aggPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=False, modeOverride="PortfolioRebalancing"),
-                    lambda: self.consRiskAnalyst.analyseAndReply(consPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=False, modeOverride="PortfolioRebalancing")
-                )
-                scoutContextForPM = f"Growth Scouting:\n{growthRaw}\n\nValue Scouting:\n{valueRaw}\n\nAggressive Proposal:\n{aggRaw}\n\nConservative Proposal:\n{consRaw}"
-            else:
-                scoutContextForPM = f"Growth Scouting:\n{growthRaw}\n\nValue Scouting:\n{valueRaw}"
-
-            if isStopRequested(): raise SimulationStoppedException()
-
-            # Phase 6: Final Executive Rebalancing Decision
-            self.currentSimStatus = f"{friendlyDate} (Review): Stage 6"
-            self._emitSimulationState(config, sp500Df)
-            self._newPhaseHeader(6, "Final Executive Decision", pace)
+            # Milestone Boardroom process (Phases 2-6)
             currentPortfolioTotalVal = float(self.marketSim.getPortfolioValueAtCurrentDate(username)["totalValue"])
-
-            pmFinalPrompt = (
-                f"Total Rebalance Capital: ${currentPortfolioTotalVal:,.2f}\n"
-                f"Target Sector Allocations:\n{confirmedSectorsText}\n\n"
-                f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
-                f"Mandatory Constraints:\n"
-                f"- Rebalance Amount Mandate: {promptArgs['rebalanceAmountGuidance']}\n"
-                f"- Target stock count: {promptArgs['targetStockCount']}\n"
-                f"- Max stock allocation: {promptArgs['maxStockAllocation']}\n\n"
-                f"{scoutContextForPM}\n\n"
-                f"Task: Construct the rebalanced portfolio. Execute 'confirmPortfolioAllocation' with your 'sectorAllocations' dictionary, 'portfolioRationale', and 'initialCapital'={currentPortfolioTotalVal:.2f}.\n"
-                f"You may also call 'recordJournalEntry' with your 30-50 word rationale detailing portfolio shifts."
-            )
-            _, _ = self.executeMandatedToolStage(
-                agent=self.portManager,
-                initialPrompt=pmFinalPrompt,
-                mandatedToolName="confirmPortfolioAllocation",
+            self.runRebalanceAtMilestoneBoardroom(
                 config=config,
-                subrole="decision",
-                maxRetries=8,
-                requireInitialTools=True,
-                modeOverride="PortfolioRebalancing"
+                sp500Df=sp500Df,
+                currentDateStr=currentDateStr,
+                currentDateFormatted=currentDateFormatted,
+                friendlyDate=friendlyDate,
+                promptArgs=promptArgs,
+                isExtended=isExtended,
+                currentHoldingsStr=currentHoldingsStr,
+                macroRaw=macroRaw,
+                currentPortfolioTotalVal=currentPortfolioTotalVal
             )
-
-            if confirmPortTool and confirmPortTool.toolLog:
-                self.confirmedPortfolioAllocation = confirmPortTool.toolLog[-1]
 
             portfolioObj = self.marketSim.userPortfolios.get(username)
             preRebalanceHoldingsList = []
@@ -1354,17 +1361,15 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 "baselinePositions": preRebalanceHoldingsList
             })
 
-            # ---------------------------------------------------------
-            # SEQUENTIAL TRADE EXECUTION (SELLS FIRST, BUYS SECOND)
-            # ---------------------------------------------------------
+            # Trade execution ... sells first then buys using all cash proceeds (which may have increased from dividends or mergers)
             self.currentSimStatus = f"{friendlyDate} (Review): Executing Trades"
-            self._emitSimulationState(config, sp500Df)
+            self.emitSimulationState(config, sp500Df)
 
             confirmedPort = self.confirmedPortfolioAllocation.get("confirmedPortfolio", self.confirmedPortfolioAllocation) or {}
             targetPositions = confirmedPort.get("positions", [])
             portfolioObj = self.marketSim.userPortfolios.get(username)
             currentHoldings = dict(portfolioObj.positions) if portfolioObj else {}
-            initialCash = float(portfolioObj.cash) if portfolioObj else 0.0
+            cashBeforeSale = float(portfolioObj.cash) if portfolioObj else 0.0
 
             heldValues = {}
             for ticker, pos in currentHoldings.items():
@@ -1373,7 +1378,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                     curPrice = pos.averagePrice
                 heldValues[ticker] = float(pos.quantity) * float(curPrice)
 
-            preRebalanceTotalVal = sum(heldValues.values()) + initialCash
+            preRebalanceTotalVal = sum(heldValues.values()) + cashBeforeSale
 
             rawWeights = {}
             for pos in targetPositions:
@@ -1385,12 +1390,13 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                     weight = float(pos.get("dollarAllocation", 0.0))
                 rawWeights[ticker] = max(0.0, weight)
 
+            # Calculate the normalised target weights including 
             sumWeights = sum(rawWeights.values())
             targetWeightDict = {t: (w / sumWeights) for t, w in rawWeights.items()} if sumWeights > 0 else {}
             sellsExecuted = []
             buysExecuted = []
 
-            # 1. Execute Sells (Liquidations and Trims based on pre-rebalance total value)
+            # 1. Execute Sells
             for ticker, pos in list(currentHoldings.items()):
                 curVal = heldValues.get(ticker, 0.0)
                 curPrice = self.marketSim.getCurrentPrice(ticker)
@@ -1493,11 +1499,11 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 "buysCount": len(buysExecuted)
             })
 
-            self._emitSimulationState(config, sp500Df)
+            self.emitSimulationState(config, sp500Df)
             milestoneIndex += 1
 
         # Final completion emission
         self.currentSimStatus = "Simulation Complete"
-        finalMetrics = self._getSimulationMetrics(config, sp500Df)
+        finalMetrics = self.getSimulationMetrics(config, sp500Df)
         emitEvent("agentSimCompleted", finalMetrics)
-        print("\nAgent-Driven Portfolio Simulation completed successfully!")
+        print(f"\n{Style.BRIGHT}Agent-Driven Portfolio Simulation completed successfully!")

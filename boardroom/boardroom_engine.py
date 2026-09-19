@@ -16,6 +16,7 @@ class BoardroomModelLoopException(Exception):
     pass
 
 
+#  The main boardroom engine class, that is extended by specific boardroom engines for different scenarios
 class BoardroomEngine(ABC):
     def __init__(
             self, 
@@ -24,22 +25,26 @@ class BoardroomEngine(ABC):
         ):
         self.llmClient: Optional[BaseLLMClient] = None
         self.allowParallel: bool = False
-        self.timestamp: pd.Timestamp = timestamp
+
         self.toolRegistry: ToolRegistry = toolRegistry
         self.toolRegistry.clearToolLogs()
+
+        self.timestamp: pd.Timestamp = timestamp
+        self.lastConfig: Optional[BoardroomConfig] = None
+
         self.agents: Dict[str, FinancialAgent] = {}
         self.agentsList: List[FinancialAgent] = []
-        self.lastConfig: Optional[BoardroomConfig] = None
         self.generate()
+
 
     @abstractmethod
     def generate(self) -> None:
-        """Populates the engine's agents and tool mappings."""
+        # This method will be implemented by sub-engines to set up the specific agents and tools required for the boardroom engine
         pass
 
     @abstractmethod
     def execute(self, config: BoardroomConfig) -> None:
-        """Executes the boardroom deliberative phases for the given configuration."""
+        # Executes the boardroom engine... involves instantiating the FSM and running through its stages
         pass
 
     def assignClient(self, llmClient: BaseLLMClient):
@@ -48,7 +53,8 @@ class BoardroomEngine(ABC):
             agent.setClient(llmClient)
         self.allowParallel = llmClient.allowParallel
 
-    def _runAgentsConcurrently(self, *tasks):
+    # Run a list of tasks concurrently, if allowed by the LLM client, otherwise run them sequentially (for np>1 in llamacpp)
+    def runAgentsConcurrently(self, *tasks):
         if not self.allowParallel:
             return [task() for task in tasks]
         
@@ -76,10 +82,12 @@ class BoardroomEngine(ABC):
                 raise
             return results
 
-    def _getDefaultPhaseAgents(self, phaseNumber: int, pace: BoardroomPace) -> List[Dict[str, str]]:
+
+    def getDefaultPhaseAgents(self, phaseNumber: int, pace: BoardroomPace) -> List[Dict[str, str]]:
         return []
 
-    def _newPhaseHeader(self, phaseNumber: int, phaseName: str, pace: BoardroomPace = BoardroomPace.COMPLETE, customAgents: Optional[List[Dict[str, str]]] = None):
+
+    def emitNewPhase(self, phaseNumber: int, phaseName: str, pace: BoardroomPace = BoardroomPace.COMPLETE, customAgents: Optional[List[Dict[str, str]]] = None):
         setCurrentStage(phaseNumber)
         
         if phaseNumber == 0:
@@ -98,26 +106,19 @@ class BoardroomEngine(ABC):
             })
             return
 
-        agents = self._getDefaultPhaseAgents(phaseNumber, pace)
+        agents = self.getDefaultPhaseAgents(phaseNumber, pace)
         emitEvent("stageStart", {
             "stageNum": phaseNumber,
             "stageName": phaseName,
             "agents": agents
         })
 
-    def executeMandatedToolStage(
-        self,
-        agent: FinancialAgent,
-        initialPrompt: str,
-        mandatedToolName: str,
-        config: BoardroomConfig,
-        subrole: Optional[str] = None,
-        maxRetries: int = 8,
-        summarisationOverride: Optional[bool] = None,
-        requireInitialTools: bool = True,
-        confirmationPrompt: Optional[str] = None,
-        modeOverride: Optional[str] = None
-    ) -> Tuple[str, str]:
+    # Executes a mandated tool stage, ensuring that the agent submits a valid tool call for the specified mandated tool. 
+    # If the agent fails to submit a valid tool call after the specified number of retries, a BoardroomModelLoopException is raised (the model is likely too low-parameter to handle the task)
+    def executeMandatedToolStage(self, agent: FinancialAgent, initialPrompt: str, mandatedToolName: str, config: BoardroomConfig,
+        subrole: Optional[str] = None, maxRetries: int = 8, summarisationOverride: Optional[bool] = None, requireInitialTools: bool = True,
+        confirmationPrompt: Optional[str] = None, modeOverride: Optional[str] = None) -> Tuple[str, str]:
+
         tool = self.toolRegistry.getTool(mandatedToolName)
         if tool:
             tool.toolLog.clear()
@@ -145,7 +146,7 @@ class BoardroomEngine(ABC):
             )
 
             if tool and len(tool.toolLog) > 0:
-                # Notify agent that decision was confirmed and request short justifications & remarks
+                # Notify agent that decision was confirmed and request short justifications and remarks
                 confPrompt = confirmationPrompt or (
                     f"Your '{mandatedToolName}' submission has been verified, confirmed, and logged in the boardroom system.\n"
                     f"Please now provide short justifications and executive remarks around your decision-making process, "
@@ -187,10 +188,13 @@ class BoardroomEngine(ABC):
                     )
                 print(f"\n{Fore.YELLOW}[Boardroom] Mandatory tool '{mandatedToolName}' not submitted or invalid. Retrying ({attempt + 1}/{maxRetries})...{Style.RESET_ALL}")
 
+
+        # Max number of retries reached with no valid call ... raise an Exception to end the boardroom session
         errorMsg = (
             f"The model got stuck in a loop and failed to submit a valid '{mandatedToolName}' tool call "
             f"after {maxRetries} retries. Please try a larger parameter model or adjust generation settings."
         )
         print(f"\n{Fore.RED}{Style.BRIGHT}[Boardroom Error] {errorMsg}{Style.RESET_ALL}\n")
         raise BoardroomModelLoopException(errorMsg)
+
     

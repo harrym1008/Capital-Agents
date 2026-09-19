@@ -10,7 +10,8 @@ from llm.agents.agent import FinancialAgent
 from llm.agents.agent_prompts import buildSpokespersonSysPrompt, buildSpecialistQnASysPrompt
 from boardroom.boardroom_config import SingleEquityRatingConfig, SingleEquityTimeHorizon, BoardroomPace
 from boardroom.boardroom_engine import BoardroomEngine
-from ui.ui_hooks import isStopRequested, setCurrentStage, emitEvent, SimulationStoppedException
+from boardroom.boardroom_fsm import BoardroomContext, BoardroomStage, BoardroomFSM
+from ui.ui_hooks import isStopRequested, setCurrentStage, setCurrentAgent, setAgentPhase, emitEvent, SimulationStoppedException
 
 
 def getActiveSpecialistRoles(pace: BoardroomPace) -> List[str]:
@@ -34,6 +35,439 @@ def getActiveSpecialistRoles(pace: BoardroomPace) -> List[str]:
         ]
 
 
+# SINGLE EQUITY BOARDROOM stages for its FSM
+
+# Stage 1 only for One-Shot 
+class SingleEquityOneShotAnalysisStage(BoardroomStage):
+    def __init__(self):
+        super().__init__(
+            stageId="oneShotAnalysis",
+            phaseNumber=1,
+            phaseName="One-Shot Analysis"
+        )
+
+    def execute(self, context: BoardroomContext) -> Optional[str]:
+        engine: "SingleEquityBoardroomEngine" = context.engine
+        config: SingleEquityRatingConfig = context.config
+        targetTicker = config.ticker
+        timeHorizonInfo = config.getTimeHorizonInfo()
+
+        oneShotPrompt = (
+            f"Target Asset: {targetTicker}\n"
+            f"Time Horizon: {timeHorizonInfo['label']}\n\n"
+            f"Task: Conduct your complete analysis of macro conditions, single-stock reserach, risk assessment and final "
+            f"executive decision in one go for the ticker: {targetTicker} over the {timeHorizonInfo['label']} time horizon.\n"
+            f"Execute your data tools (macro, financials, valuation, statements, stock performance, news) to retrieve hard facts. "
+            f"Present your final executive decision with explicit rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and {timeHorizonInfo['llmFinalLinePriceTargets']}."
+        )
+
+        oneShotRaw, _ = engine.oneShotAnalyst.analyseAndReply(
+            oneShotPrompt, engine.toolRegistry, engine.timestamp, config, subrole="analysis", requireInitialTools=True
+        )
+        context.set("oneShotRaw", oneShotRaw)
+        return None
+
+
+# One shot analysis upload
+class SingleEquityOneShotUploadStage(BoardroomStage):
+    def __init__(self):
+        super().__init__(
+            stageId="oneShotUpload",
+            phaseNumber=2,
+            phaseName="Decision Upload"
+        )
+
+    def execute(self, context: BoardroomContext) -> Optional[str]:
+        engine: "SingleEquityBoardroomEngine" = context.engine
+        config: SingleEquityRatingConfig = context.config
+        targetTicker = config.ticker
+        timeHorizonInfo = config.getTimeHorizonInfo()
+        finalSubmitToolName = timeHorizonInfo["llmSubmitToolName"]
+        oneShotRaw = context.get("oneShotRaw", "")
+
+        uploadPrompt = (
+            f"Target Asset: {targetTicker}\n"
+            f"Decision:\n{oneShotRaw}\n\n"
+            f"Task: Upload and log the final boardroom verdict for {targetTicker}.\n"
+            f"Execute the {finalSubmitToolName} tool with ticker='{targetTicker}', rating, weighting and the {timeHorizonInfo['llmFinalLinePriceTargets']} based on your final decision."
+        )
+
+        origTools = list(engine.oneShotAnalyst.tools)
+        engine.oneShotAnalyst.clearTools()
+        engine.oneShotAnalyst.addTool(finalSubmitToolName, engine.toolRegistry)
+        _, _ = engine.executeMandatedToolStage(
+            agent=engine.oneShotAnalyst,
+            initialPrompt=uploadPrompt,
+            mandatedToolName=finalSubmitToolName,
+            config=config,
+            subrole="upload",
+            maxRetries=8,
+            summarisationOverride=False,
+            requireInitialTools=True
+        )
+        engine.oneShotAnalyst.tools = origTools
+
+        try:
+            formattedExecutiveDecision = engine.toolRegistry.getTool(finalSubmitToolName).toolLog[-1]
+        except Exception:
+            formattedExecutiveDecision = "Decision not found."
+
+        convSummary = (
+            f"\n{engine.oneShotAnalyst.color}Final Executive Decision:\n{oneShotRaw}\n"
+            f"\n{formattedExecutiveDecision}\n"
+        )
+        engine.fullConvSummary = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', convSummary)
+        engine.lastConfig = config
+        if formattedExecutiveDecision and formattedExecutiveDecision != "Decision not found.":
+            engine.portManagerFinalOutput = f"{oneShotRaw}\n\n{formattedExecutiveDecision}"
+        else:
+            engine.portManagerFinalOutput = oneShotRaw
+
+        return None
+
+
+# 1. Macro Analysis Stage with Macro Analyst
+class SingleEquityMacroStage(BoardroomStage):
+    def __init__(self, phaseNumber: int = 1):
+        super().__init__(
+            stageId="macroAnalysis",
+            phaseNumber=phaseNumber,
+            phaseName="Macro Environment Analysis"
+        )
+
+    def execute(self, context: BoardroomContext) -> Optional[str]:
+        engine: "SingleEquityBoardroomEngine" = context.engine
+        config: SingleEquityRatingConfig = context.config
+        timeHorizonInfo = config.getTimeHorizonInfo()
+
+        macroPrompt = (
+            f"Time Horizon: {timeHorizonInfo['label']}\n\n"
+            f"Task: Conduct top-down macroeconomic analysis for the US financial markets over the {timeHorizonInfo['label']} time horizon.\n"
+            f"Use your macro-specific tools to retrieve economic indicators, headlines, and sentiment history. "
+            f"Present a narrative macro summary and explicitly output your overall market regime classification as BULLISH, BEARISH, or NEUTRAL."
+        )
+        macroRaw, macroUISummary = engine.macroAnalyst.analyseAndReply(
+            macroPrompt, engine.toolRegistry, engine.timestamp, config, subrole=None, requireInitialTools=True
+        )
+
+        context.set("macroRaw", macroRaw)
+        context.set("macroUISummary", macroUISummary)
+        return None
+
+
+# 2. Initial equity research stage with Bullish and Bearish Analysts
+class SingleEquityResearchStage(BoardroomStage):
+    def __init__(self, targetTicker: str, phaseNumber: int = 2):
+        super().__init__(
+            stageId="specialistResearch",
+            phaseNumber=phaseNumber,
+            phaseName=f"Specialist Research on {targetTicker}"
+        )
+
+    def execute(self, context: BoardroomContext) -> Optional[str]:
+        engine: "SingleEquityBoardroomEngine" = context.engine
+        config: SingleEquityRatingConfig = context.config
+        targetTicker = config.ticker
+        timeHorizonInfo = config.getTimeHorizonInfo()
+        macroRaw = context.get("macroRaw", "")
+
+        researchPrompt = (
+            f"Macroeconomic Context:\n{macroRaw}\n\n"
+            f"Time Horizon: {timeHorizonInfo['label']}\n\n"
+            f"Task: Conduct single-stock research on ticker {targetTicker} over the {timeHorizonInfo['label']} time horizon.\n"
+            f"Execute your data tools (valuation metrics, financial statements, stock price performance, company profile, etc.) to retrieve hard facts. "
+            f"Present your thesis and state: explicit rating ({{permittedRatings}}), OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT weight, and preliminary {timeHorizonInfo['llmPriceTargets']}."
+        )
+
+        (bullThesisRaw, bullThesisUISummary), (bearThesisRaw, bearThesisUISummary) = engine.runAgentsConcurrently(
+            lambda: engine.bullAnalyst.analyseAndReply(
+                researchPrompt.format(permittedRatings="BUY/HOLD"), engine.toolRegistry, engine.timestamp,
+                config, subrole="research", requireInitialTools=True
+            ),
+            lambda: engine.bearAnalyst.analyseAndReply(
+                researchPrompt.format(permittedRatings="HOLD/SELL"), engine.toolRegistry, engine.timestamp,
+                config, subrole="research", requireInitialTools=True
+            )
+        )
+
+        context.set("bullThesisRaw", bullThesisRaw)
+        context.set("bullThesisUISummary", bullThesisUISummary)
+        context.set("bearThesisRaw", bearThesisRaw)
+        context.set("bearThesisUISummary", bearThesisUISummary)
+        return None
+
+
+# 3. Thesis critiquing stage with Aggressive and Conservative Risk Analysts
+class SingleEquityDebateStage(BoardroomStage):
+    def __init__(self, targetTicker: str, phaseNumber: int = 3):
+        super().__init__(
+            stageId="seniorRiskDebate",
+            phaseNumber=phaseNumber,
+            phaseName=f"Senior Risk Debate on {targetTicker}"
+        )
+
+    def execute(self, context: BoardroomContext) -> Optional[str]:
+        engine: "SingleEquityBoardroomEngine" = context.engine
+        config: SingleEquityRatingConfig = context.config
+        targetTicker = config.ticker
+        macroRaw = context.get("macroRaw", "")
+        bearThesisRaw = context.get("bearThesisRaw", "")
+        bullThesisRaw = context.get("bullThesisRaw", "")
+
+        aggDebatePrompt = (
+            f"Macroeconomic Context:\n{macroRaw}\n\n"
+            f"Bearish Analyst's Thesis on {targetTicker}:\n{bearThesisRaw}\n\n"
+            f"Task: Challenge the Bearish Analyst's stance on {targetTicker}.\n"
+            f"Formulate 2-3 quantitative questions challenging their downside assumptions."
+        )
+        consDebatePrompt = (
+            f"Macroeconomic Context:\n{macroRaw}\n\n"
+            f"Bullish Analyst's Thesis on {targetTicker}:\n{bullThesisRaw}\n\n"
+            f"Task: Challenge the Bullish Analyst's stance on {targetTicker}.\n"
+            f"Formulate 2-3 quantitative questions challenging their upside assumptions."
+        )
+
+        (aggQuestionsRaw, aggQuestionsUISummary), (consQuestionsRaw, consQuestionsUISummary) = engine.runAgentsConcurrently(
+            lambda: engine.aggRiskAnalyst.analyseAndReply(
+                aggDebatePrompt, engine.toolRegistry, engine.timestamp, config, "critique", requireInitialTools=False
+            ),
+            lambda: engine.consRiskAnalyst.analyseAndReply(
+                consDebatePrompt, engine.toolRegistry, engine.timestamp, config, "critique", requireInitialTools=False
+            )
+        )
+
+        context.set("aggQuestionsRaw", aggQuestionsRaw)
+        context.set("aggQuestionsUISummary", aggQuestionsUISummary)
+        context.set("consQuestionsRaw", consQuestionsRaw)
+        context.set("consQuestionsUISummary", consQuestionsUISummary)
+        return None
+
+
+# Bullish and bearish analyst's defense stage
+class SingleEquityDefenseStage(BoardroomStage):
+    def __init__(self, targetTicker: str, phaseNumber: int = 4):
+        super().__init__(
+            stageId="analystDefense",
+            phaseNumber=phaseNumber,
+            phaseName=f"Analyst Defense on {targetTicker}"
+        )
+
+    def execute(self, context: BoardroomContext) -> Optional[str]:
+        engine: "SingleEquityBoardroomEngine" = context.engine
+        config: SingleEquityRatingConfig = context.config
+        targetTicker = config.ticker
+        consQuestionsRaw = context.get("consQuestionsRaw", "")
+        aggQuestionsRaw = context.get("aggQuestionsRaw", "")
+
+        bullDefensePrompt = (
+            f"Questions Posed by Conservative Risk Analyst:\n{consQuestionsRaw}\n\n"
+            f"Task: Defend your bullish thesis and price targets for {targetTicker}.\n"
+            f"Answer each question quantitatively using your tools or Python models if needed. Revise your thesis, targets, or rating if substantiated deficiencies were highlighted."
+        )
+        bearDefensePrompt = (
+            f"Questions Posed by Aggressive Risk Analyst:\n{aggQuestionsRaw}\n\n"
+            f"Task: Defend your bearish risk analysis and price targets for {targetTicker}.\n"
+            f"Answer each question quantitatively using your tools or Python models if needed. Revise your risk assessment, targets, or rating if substantiated upside catalysts were highlighted."
+        )
+
+        (bullDefenseRaw, bullDefenseUISummary), (bearDefenseRaw, bearDefenseUISummary) = engine.runAgentsConcurrently(
+            lambda: engine.bullAnalyst.analyseAndReply(
+                bullDefensePrompt, engine.toolRegistry, engine.timestamp, config, "defense", requireInitialTools=False
+            ),
+            lambda: engine.bearAnalyst.analyseAndReply(
+                bearDefensePrompt, engine.toolRegistry, engine.timestamp, config, "defense", requireInitialTools=False
+            )
+        )
+
+        context.set("bullDefenseRaw", bullDefenseRaw)
+        context.set("bullDefenseUISummary", bullDefenseUISummary)
+        context.set("bearDefenseRaw", bearDefenseRaw)
+        context.set("bearDefenseUISummary", bearDefenseUISummary)
+        return None
+
+
+# 5. Aggressive and Conservative Risk Analyst's proposal stage
+class SingleEquityProposalStage(BoardroomStage):
+    def __init__(self, targetTicker: str, phaseNumber: int = 5):
+        super().__init__(
+            stageId="riskProposals",
+            phaseNumber=phaseNumber,
+            phaseName=f"Q&A-Based Proposals on {targetTicker}"
+        )
+
+    def execute(self, context: BoardroomContext) -> Optional[str]:
+        engine: "SingleEquityBoardroomEngine" = context.engine
+        config: SingleEquityRatingConfig = context.config
+        targetTicker = config.ticker
+        timeHorizonInfo = config.getTimeHorizonInfo()
+        bearDefenseRaw = context.get("bearDefenseRaw", "")
+        bullDefenseRaw = context.get("bullDefenseRaw", "")
+
+        aggProposalPrompt = (
+            f"Bearish Analyst's Defense:\n{bearDefenseRaw}\n\n"
+            f"Task: Formulate your final aggressive allocation proposal for {targetTicker}.\n"
+            f"Propose your {timeHorizonInfo['llmPriceTargets']} and position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), justifying your high-upside growth assumptions."
+        )
+        consProposalPrompt = (
+            f"Bullish Analyst's Defense:\n{bullDefenseRaw}\n\n"
+            f"Task: Formulate your final conservative allocation proposal for {targetTicker}.\n"
+            f"Propose your {timeHorizonInfo['llmPriceTargets']} and position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), incorporating a robust margin of safety."
+        )
+
+        (aggProposalRaw, aggProposalUISummary), (consProposalRaw, consProposalUISummary) = engine.runAgentsConcurrently(
+            lambda: engine.aggRiskAnalyst.analyseAndReply(
+                aggProposalPrompt, engine.toolRegistry, engine.timestamp, config, subrole="proposal", requireInitialTools=False
+            ),
+            lambda: engine.consRiskAnalyst.analyseAndReply(
+                consProposalPrompt, engine.toolRegistry, engine.timestamp, config, subrole="proposal", requireInitialTools=False
+            )
+        )
+
+        context.set("aggProposalRaw", aggProposalRaw)
+        context.set("aggProposalUISummary", aggProposalUISummary)
+        context.set("consProposalRaw", consProposalRaw)
+        context.set("consProposalUISummary", consProposalUISummary)
+        return None
+
+
+# 6. Conclusion and decision stage with Portfolio Manager
+class SingleEquityDecisionStage(BoardroomStage):
+    def __init__(self, targetTicker: str, phaseNumber: int):
+        super().__init__(
+            stageId="finalExecutiveDecision",
+            phaseNumber=phaseNumber,
+            phaseName=f"Final Executive Decision on {targetTicker}"
+        )
+
+    def execute(self, context: BoardroomContext) -> Optional[str]:
+        engine: "SingleEquityBoardroomEngine" = context.engine
+        config: SingleEquityRatingConfig = context.config
+        pace = config.boardroomPace
+        targetTicker = config.ticker
+        timeHorizonInfo = config.getTimeHorizonInfo()
+        finalSubmitToolName = timeHorizonInfo["llmSubmitToolName"]
+        macroRaw = context.get("macroRaw", "")
+
+        if pace == BoardroomPace.FAST:
+            bullThesisRaw = context.get("bullThesisRaw", "")
+            bearThesisRaw = context.get("bearThesisRaw", "")
+            managerPrompt = (
+                f"Target Asset: {targetTicker}\n"
+                f"Time Horizon: {timeHorizonInfo['label']}\n\n"
+                f"Macro Conditions:\n{macroRaw}\n\n"
+                f"Aggressive Allocation Case:\n{bullThesisRaw}\n\n"
+                f"Conservative Allocation Case:\n{bearThesisRaw}\n\n"
+                f"Task: Produce the final executive investment decision for {targetTicker} over the {timeHorizonInfo['label']} time horizon.\n"
+                f"Weigh upside potential against solvency risks. You MUST verify your final price targets using the 'calculateDistFromCurrPrice' tool. "
+                f"Include a definitive rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and {timeHorizonInfo['llmFinalLinePriceTargets']}."
+            )
+            requireTools = False
+        else:
+            aggProposalRaw = context.get("aggProposalRaw", "")
+            consProposalRaw = context.get("consProposalRaw", "")
+            managerPrompt = (
+                f"Target Asset: {targetTicker}\n"
+                f"Time Horizon: {timeHorizonInfo['label']}\n\n"
+                f"Macro Conditions:\n{macroRaw}\n\n"
+                f"Aggressive Allocation Case:\n{aggProposalRaw}\n\n"
+                f"Conservative Allocation Case:\n{consProposalRaw}\n\n"
+                f"Task: Produce the final executive investment decision for {targetTicker} over the {timeHorizonInfo['label']} time horizon.\n"
+                f"Weigh upside potential against solvency risks. You MUST verify your final price targets using the 'calculateDistFromCurrPrice' tool. "
+                f"Include a definitive rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and {timeHorizonInfo['llmFinalLinePriceTargets']}."
+            )
+            requireTools = True
+
+        engine.portManager.removeTool(finalSubmitToolName)
+        finalDecisionRaw, finalDecisionUISummary = engine.portManager.analyseAndReply(
+            managerPrompt, engine.toolRegistry, engine.timestamp, config, subrole="decision", requireInitialTools=requireTools
+        )
+
+        context.set("finalDecisionRaw", finalDecisionRaw)
+        context.set("finalDecisionUISummary", finalDecisionUISummary)
+        return None
+
+
+# 7. Mandated tool stage upload for the portfolio manager's final decision
+class SingleEquityDecisionUploadStage(BoardroomStage):
+    def __init__(self, phaseNumber: int):
+        super().__init__(
+            stageId="decisionUpload",
+            phaseNumber=phaseNumber,
+            phaseName="Decision Upload"
+        )
+
+    def execute(self, context: BoardroomContext) -> Optional[str]:
+        engine: "SingleEquityBoardroomEngine" = context.engine
+        config: SingleEquityRatingConfig = context.config
+        pace = config.boardroomPace
+        targetTicker = config.ticker
+        timeHorizonInfo = config.getTimeHorizonInfo()
+        finalSubmitToolName = timeHorizonInfo["llmSubmitToolName"]
+        finalDecisionRaw = context.get("finalDecisionRaw", "")
+
+        uploadPrompt = (
+            f"Target Asset: {targetTicker}\n"
+            f"Final Decision Summary:\n{finalDecisionRaw}\n\n"
+            f"Task: Upload and log the final boardroom verdict for {targetTicker}.\n"
+            f"Execute the {finalSubmitToolName} tool with ticker='{targetTicker}', rating, weighting and the {timeHorizonInfo['llmFinalLinePriceTargets']} based on your final decision."
+        )
+
+        engine.portManager.clearTools()
+        engine.portManager.addTool(finalSubmitToolName, engine.toolRegistry)
+        _, _ = engine.executeMandatedToolStage(
+            agent=engine.portManager,
+            initialPrompt=uploadPrompt,
+            mandatedToolName=finalSubmitToolName,
+            config=config,
+            subrole="upload",
+            maxRetries=8,
+            summarisationOverride=False,
+            requireInitialTools=True
+        )
+        engine.portManager.tools = []
+
+        try:
+            formattedExecutiveDecision = engine.toolRegistry.getTool(finalSubmitToolName).toolLog[-1]
+        except Exception:
+            formattedExecutiveDecision = "Decision not found."
+
+        if pace == BoardroomPace.FAST:
+            convSummary = (
+                f"\nMacro Analyst Response:\n{context.get('macroUISummary', '')}\n\n"
+                f"\nBullish Analyst Response:\n{context.get('bullThesisUISummary', '')}\n\n"
+                f"\nBearish Analyst Response:\n{context.get('bearThesisUISummary', '')}\n\n"
+                f"\nFinal Executive Response:\n{context.get('finalDecisionUISummary', '')}\n\n"
+                f"\n{formattedExecutiveDecision}\n"
+            )
+        else:
+            convSummary = (
+                f"\nMacro Analyst Response:\n{context.get('macroUISummary', '')}\n\n"
+                f"======================"
+                f"\nBearish Analyst Response:\n{context.get('bearThesisUISummary', '')}\n\n"
+                f"\nAggressive Risk Analyst Critique:\n{context.get('aggQuestionsUISummary', '')}\n\n"
+                f"\nBearish Analyst Defense:\n{context.get('bearDefenseUISummary', '')}\n\n"
+                f"\nAggressive Risk Analyst Proposal:\n{context.get('aggProposalUISummary', '')}\n\n"
+                f"======================"
+                f"\nBullish Analyst Response:\n{context.get('bullThesisUISummary', '')}\n\n"
+                f"\nConservative Risk Analyst Critique:\n{context.get('consQuestionsUISummary', '')}\n\n"
+                f"\nBullish Analyst Defense:\n{context.get('bullDefenseUISummary', '')}\n\n"
+                f"\nConservative Risk Analyst Proposal:\n{context.get('consProposalUISummary', '')}\n\n"
+                f"======================"
+                f"\nFinal Executive Response:\n{context.get('finalDecisionUISummary', '')}\n\n"
+                f"\n{formattedExecutiveDecision}\n"
+            )
+
+        engine.fullConvSummary = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', convSummary)
+        engine.lastConfig = config
+        if formattedExecutiveDecision and formattedExecutiveDecision != "Decision not found.":
+            engine.portManagerFinalOutput = f"{finalDecisionRaw}\n\n{formattedExecutiveDecision}"
+        else:
+            engine.portManagerFinalOutput = finalDecisionRaw
+
+        return None
+
+
+# The main complete engine including managing the QnA system
 class SingleEquityBoardroomEngine(BoardroomEngine):
     def __init__(
             self, 
@@ -226,50 +660,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
                 agent.setClient(self.llmClient)
 
 
-    def deleteQnATurn(self, turnIndex: int) -> bool:
-        if 0 <= turnIndex < len(self.qnaTurns):
-            targetTurn = self.qnaTurns[turnIndex]
-            
-            # Prune spokesperson message history
-            if self.spokesperson:
-                spokespersonTargetLen = targetTurn.get("spokespersonHistoryLen", 0)
-                self.spokesperson.messageHistory = self.spokesperson.messageHistory[:spokespersonTargetLen]
-            
-            # Prune specialist message histories
-            for role, targetLen in targetTurn.get("specialistHistoryLens", {}).items():
-                agent = self.specialistMap.get(role)
-                if agent is not None:
-                    agent.messageHistory = agent.messageHistory[:targetLen]
-            
-            # Prune qnaTurns list
-            self.qnaTurns = self.qnaTurns[:turnIndex]
-            return True
-        return False
-
-
-    def configureTransferToolSchema(self, pace: BoardroomPace = BoardroomPace.COMPLETE) -> None:
-        activeRoles = getActiveSpecialistRoles(pace)
-        transferTool = self.toolRegistry.getTool("transferToAgent") if self.toolRegistry else None
-        if transferTool:
-            transferTool.paramSchema = {
-                "type": "object",
-                "properties": {
-                    "agentRole": {
-                        "type": "string",
-                        "enum": activeRoles,
-                        "description": f"The exact name of the active specialist boardroom agent to transfer to ({', '.join(activeRoles)})."
-                    },
-                    "transferMessage": {
-                        "type": "string",
-                        "description": "A clear, concise instruction or summary of the question for the specialist agent to answer."
-                    }
-                },
-                "required": ["agentRole", "transferMessage"]
-            }
-
-
-
-    def _getDefaultPhaseAgents(self, phaseNumber: int, pace: BoardroomPace) -> List[Dict[str, str]]:
+    def getDefaultPhaseAgents(self, phaseNumber: int, pace: BoardroomPace) -> List[Dict[str, str]]:
         if pace == BoardroomPace.ONE_SHOT:
             analystColor = self.oneShotAnalyst.color if self.oneShotAnalyst is not None else self.macroAnalyst.color
             return [{"role": "One-Shot Analyst", "color": analystColor, "name": "One-Shot Analyst"}]
@@ -309,374 +700,35 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
             return [{"role": "Impartial Portfolio Manager", "color": self.portManager.color, "name": "Portfolio Manager"}]
         return []
 
-    def executeOneShotBoardroom(self, config: SingleEquityRatingConfig):
-        targetTicker = config.ticker
+
+
+
+    def buildFSM(self, config: SingleEquityRatingConfig) -> BoardroomFSM:
         pace = config.boardroomPace
-        timeHorizonInfo = config.getTimeHorizonInfo()
-        finalSubmitToolName = timeHorizonInfo["llmSubmitToolName"]
-
-        startTime = datetime.now()
-        dateStr = self.timestamp.strftime("%Y-%m-%d")
-        print(f"\n{'='*70}\nStarting One-Shot Boardroom Evaluation for: {targetTicker}\n{'='*70}")        
-
-        # Phase 1: One Shot Analysis
-        self._newPhaseHeader(1, "One-Shot Analysis", pace)
-        oneShotPrompt = (
-            f"Target Asset: {targetTicker}\n"
-            f"Time Horizon: {timeHorizonInfo['label']}\n\n"
-            f"Task: Conduct your complete analysis of macro conditions, single-stock reserach, risk assessment and final " 
-            f"executive decision in one go for the ticker: {targetTicker} over the {timeHorizonInfo['label']} time horizon.\n"
-            f"Execute your data tools (macro, financials, valuation, statements, stock performance, news) to retrieve hard facts. "
-            f"Present your final executive decision with explicit rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and {timeHorizonInfo['llmFinalLinePriceTargets']}." 
-        )
-        oneShotRaw, _ = self.oneShotAnalyst.analyseAndReply(
-            oneShotPrompt, self.toolRegistry, self.timestamp, config, subrole="analysis", requireInitialTools=True
-        )
-
-        # Phase 2: Decision Upload
-        self._newPhaseHeader(2, "Decision Upload", pace)
-        uploadPrompt = (
-            f"Target Asset: {targetTicker}\n"
-            f"Decision:\n{oneShotRaw}\n\n"
-            f"Task: Upload and log the final boardroom verdict for {targetTicker}.\n"
-            f"Execute the {finalSubmitToolName} tool with ticker='{targetTicker}', rating, weighting and the {timeHorizonInfo['llmFinalLinePriceTargets']} based on your final decision."
-        )
-        origTools = list(self.oneShotAnalyst.tools)
-        self.oneShotAnalyst.clearTools()
-        self.oneShotAnalyst.addTool(finalSubmitToolName, self.toolRegistry)
-        _, _ = self.executeMandatedToolStage(
-            agent=self.oneShotAnalyst,
-            initialPrompt=uploadPrompt,
-            mandatedToolName=finalSubmitToolName,
-            config=config,
-            subrole="upload",
-            maxRetries=8,
-            summarisationOverride=False,
-            requireInitialTools=True
-        )
-        self.oneShotAnalyst.tools = origTools
-
-        try:
-            formattedExecutiveDecision = self.toolRegistry.getTool(finalSubmitToolName).toolLog[-1]
-        except Exception:
-            formattedExecutiveDecision = "Decision not found."                     
-
-        convSummary = (
-            f"\n{self.oneShotAnalyst.color}Final Executive Decision:\n{oneShotRaw}\n"
-            f"\n{formattedExecutiveDecision}\n"
-        )
-        self.fullConvSummary = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', convSummary)
-        self.lastConfig = config
-        if formattedExecutiveDecision and formattedExecutiveDecision != "Decision not found.":
-            self.portManagerFinalOutput = f"{oneShotRaw}\n\n{formattedExecutiveDecision}"
-        else:
-            self.portManagerFinalOutput = oneShotRaw
-        
-
-        endTime = datetime.now()
-        timeTaken = endTime - startTime
-        timeStr = f"{timeTaken.seconds // 60} mins {timeTaken.seconds % 60} secs"
-        print(f"\n{'='*70}\nPortfolio Creation Boardroom Completed in {timeStr}\n{'='*70}")
-        
-
-
-
-    def executeFastSingleBoardroom(self, config: SingleEquityRatingConfig):
         targetTicker = config.ticker
-        pace = config.boardroomPace
-        timeHorizonInfo = config.getTimeHorizonInfo()
-        finalSubmitToolName = timeHorizonInfo["llmSubmitToolName"]
 
-        startTime = datetime.now()
-        dateStr = self.timestamp.strftime("%Y-%m-%d")
-        print(f"\n{'='*70}\nStarting Fast Boardroom Evaluation for: {targetTicker}\n{'='*70}")        
-
-        # Phase 1: Macro Environment Analysis
-        self._newPhaseHeader(1, "Macro Environment Analysis", pace)
-        macroPrompt = (
-            f"Time Horizon: {timeHorizonInfo['label']}\n\n"
-            f"Task: Conduct top-down macroeconomic analysis for the US financial markets over the {timeHorizonInfo['label']} time horizon.\n"
-            f"Use your macro-specific tools to retrieve economic indicators, headlines, and sentiment history. "
-            f"Present a narrative macro summary and explicitly output your overall market regime classification as BULLISH, BEARISH, or NEUTRAL."
-        )
-        macroRaw, macroUISummary = self.macroAnalyst.analyseAndReply(
-            macroPrompt, self.toolRegistry, self.timestamp, config, subrole=None, requireInitialTools=True
-        )
-        
-        # Phase 2: Specialist Research
-        self._newPhaseHeader(2, f"Specialist Research on {targetTicker}", pace)
-        researchPrompt = (
-            f"Macroeconomic Context:\n{macroRaw}\n\n"
-            f"Time Horizon: {timeHorizonInfo['label']}\n\n"
-            f"Task: Conduct single-stock research on ticker {targetTicker} over the {timeHorizonInfo['label']} time horizon.\n"
-            f"Execute your data tools (valuation metrics, financial statements, stock price performance, company profile, etc.) to retrieve hard facts. "
-            f"Present your thesis and state: explicit rating ({{permittedRatings}}), OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT weight, and preliminary {timeHorizonInfo['llmPriceTargets']}."
-        )
-        
-        (bullThesisRaw, bullThesisUISummary), (bearThesisRaw, bearThesisUISummary) = self._runAgentsConcurrently(
-            lambda: self.bullAnalyst.analyseAndReply(
-                researchPrompt.format(permittedRatings="BUY/HOLD"), self.toolRegistry, self.timestamp, 
-                config, subrole="research", requireInitialTools=True
-            ),
-            lambda: self.bearAnalyst.analyseAndReply(
-                researchPrompt.format(permittedRatings="HOLD/SELL"), self.toolRegistry, self.timestamp, 
-                config, subrole="research", requireInitialTools=True
-            )
-        )
-
-
-        # Phase 3/6: Final Executive Decision
-        self._newPhaseHeader(3, f"Final Executive Decision on {targetTicker}", pace)
-        managerPrompt = (
-            f"Target Asset: {targetTicker}\n"
-            f"Time Horizon: {timeHorizonInfo['label']}\n\n"
-            f"Macro Conditions:\n{macroRaw}\n\n"
-            f"Aggressive Allocation Case:\n{bullThesisRaw}\n\n"
-            f"Conservative Allocation Case:\n{bearThesisRaw}\n\n"
-            f"Task: Produce the final executive investment decision for {targetTicker} over the {timeHorizonInfo['label']} time horizon.\n"
-            f"Weigh upside potential against solvency risks. You MUST verify your final price targets using the 'calculateDistFromCurrPrice' tool. "
-            f"Include a definitive rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and {timeHorizonInfo['llmFinalLinePriceTargets']}."
-        )
-        self.portManager.removeTool(finalSubmitToolName)
-        finalDecisionRaw, finalDecisionUISummary = self.portManager.analyseAndReply(
-            managerPrompt, self.toolRegistry, self.timestamp, config, subrole="decision", requireInitialTools=False
-        )
-
-
-        # Phase 4/7: Decision Upload
-        self._newPhaseHeader(4, "Decision Upload", pace)
-        uploadPrompt = (
-            f"Target Asset: {targetTicker}\n"
-            f"Final Decision Summary:\n{finalDecisionRaw}\n\n"
-            f"Task: Upload and log the final boardroom verdict for {targetTicker}.\n"
-            f"Execute the {finalSubmitToolName} tool with ticker='{targetTicker}', rating, weighting and the {timeHorizonInfo['llmFinalLinePriceTargets']} based on your final decision."
-        )
-        self.portManager.clearTools()
-        self.portManager.addTool(finalSubmitToolName, self.toolRegistry)
-        _, _ = self.executeMandatedToolStage(
-            agent=self.portManager,
-            initialPrompt=uploadPrompt,
-            mandatedToolName=finalSubmitToolName,
-            config=config,
-            subrole="upload",
-            maxRetries=8,
-            summarisationOverride=False,
-            requireInitialTools=True
-        )
-        self.portManager.tools = []
-
-        try:
-            formattedExecutiveDecision = self.toolRegistry.getTool(finalSubmitToolName).toolLog[-1]
-        except Exception:
-            formattedExecutiveDecision = "Decision not found."                    
-
-        convSummary = (
-            f"\nMacro Analyst Response:\n{macroUISummary}\n\n"
-            f"\nBullish Analyst Response:\n{bullThesisUISummary}\n\n"
-            f"\nBearish Analyst Response:\n{bearThesisUISummary}\n\n"
-            f"\nFinal Executive Response:\n{finalDecisionUISummary}\n\n"
-            f"\n{formattedExecutiveDecision}\n"
-        )
-        self.fullConvSummary = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', convSummary)
-        self.lastConfig = config
-        if formattedExecutiveDecision and formattedExecutiveDecision != "Decision not found.":
-            self.portManagerFinalOutput = f"{finalDecisionRaw}\n\n{formattedExecutiveDecision}"
+        if pace == BoardroomPace.ONE_SHOT:
+            fsm = BoardroomFSM(initialStageId="oneShotAnalysis", title=f"One-Shot Boardroom Evaluation for: {targetTicker}")
+            fsm.addStage(SingleEquityOneShotAnalysisStage(), nextStage="oneShotUpload")
+            fsm.addStage(SingleEquityOneShotUploadStage(), nextStage=None)
+            return fsm
+        elif pace == BoardroomPace.FAST:
+            fsm = BoardroomFSM(initialStageId="macroAnalysis", title=f"Fast Boardroom Evaluation for: {targetTicker}")
+            fsm.addStage(SingleEquityMacroStage(phaseNumber=1), nextStage="specialistResearch")
+            fsm.addStage(SingleEquityResearchStage(targetTicker=targetTicker, phaseNumber=2), nextStage="finalExecutiveDecision")
+            fsm.addStage(SingleEquityDecisionStage(targetTicker=targetTicker, phaseNumber=3), nextStage="decisionUpload")
+            fsm.addStage(SingleEquityDecisionUploadStage(phaseNumber=4), nextStage=None)
+            return fsm
         else:
-            self.portManagerFinalOutput = finalDecisionRaw        
-
-        endTime = datetime.now()
-        timeTaken = endTime - startTime
-        timeStr = f"{timeTaken.seconds // 60} mins {timeTaken.seconds % 60} secs"
-        print(f"\n{'='*70}\nPortfolio Creation Boardroom Completed in {timeStr}\n{'='*70}")
-
-
-
-
-    def executeCompleteSingleBoardroom(self, config: SingleEquityRatingConfig):
-        targetTicker = config.ticker
-        pace = config.boardroomPace
-        timeHorizonInfo = config.getTimeHorizonInfo()
-        finalSubmitToolName = timeHorizonInfo["llmSubmitToolName"]
-
-        startTime = datetime.now()
-        dateStr = self.timestamp.strftime("%Y-%m-%d")
-        print(f"\n{'='*70}\nStarting Live Boardroom Evaluation for: {targetTicker}\n{'='*70}")        
-
-        # Phase 1: Macro Environment Analysis
-        self._newPhaseHeader(1, "Macro Environment Analysis", pace)
-        macroPrompt = (
-            f"Time Horizon: {timeHorizonInfo['label']}\n\n"
-            f"Task: Conduct top-down macroeconomic analysis for the US financial markets over the {timeHorizonInfo['label']} time horizon.\n"
-            f"Use your macro-specific tools to retrieve economic indicators, headlines, and sentiment history. "
-            f"Present a narrative macro summary and explicitly output your overall market regime classification as BULLISH, BEARISH, or NEUTRAL."
-        )
-        macroRaw, macroUISummary = self.macroAnalyst.analyseAndReply(
-            macroPrompt, self.toolRegistry, self.timestamp, config, subrole=None, requireInitialTools=True
-        )
-        
-        # Phase 2: Specialist Research
-        self._newPhaseHeader(2, f"Specialist Research on {targetTicker}", pace)
-        researchPrompt = (
-            f"Macroeconomic Context:\n{macroRaw}\n\n"
-            f"Time Horizon: {timeHorizonInfo['label']}\n\n"
-            f"Task: Conduct single-stock research on ticker {targetTicker} over the {timeHorizonInfo['label']} time horizon.\n"
-            f"Execute your data tools (valuation metrics, financial statements, stock price performance, company profile) to retrieve hard facts. "
-            f"Present your thesis and state: explicit rating ({{permittedRatings}}), OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT weight, and preliminary {timeHorizonInfo['llmPriceTargets']}."
-        )
-        
-        (bullThesisRaw, bullThesisUISummary), (bearThesisRaw, bearThesisUISummary) = self._runAgentsConcurrently(
-            lambda: self.bullAnalyst.analyseAndReply(
-                researchPrompt.format(permittedRatings="BUY/HOLD"), self.toolRegistry, self.timestamp, 
-                config, subrole="research", requireInitialTools=True
-            ),
-            lambda: self.bearAnalyst.analyseAndReply(
-                researchPrompt.format(permittedRatings="HOLD/SELL"), self.toolRegistry, self.timestamp, 
-                config, subrole="research", requireInitialTools=True
-            )
-        )
-
-        # Phase 3: Senior Risk Debate
-        self._newPhaseHeader(3, f"Senior Risk Debate on {targetTicker}", pace)
-        aggDebatePrompt = (
-            f"Macroeconomic Context:\n{macroRaw}\n\n"
-            f"Bearish Analyst's Thesis on {targetTicker}:\n{bearThesisRaw}\n\n"
-            f"Task: Challenge the Bearish Analyst's stance on {targetTicker}.\n"
-            f"Formulate 2-3 quantitative questions challenging their downside assumptions."
-        )
-        consDebatePrompt = (
-            f"Macroeconomic Context:\n{macroRaw}\n\n"
-            f"Bullish Analyst's Thesis on {targetTicker}:\n{bullThesisRaw}\n\n"
-            f"Task: Challenge the Bullish Analyst's stance on {targetTicker}.\n"
-            f"Formulate 2-3 quantitative questions challenging their upside assumptions."
-        )
-        
-        (aggQuestionsRaw, aggQuestionsUISummary), (consQuestionsRaw, consQuestionsUISummary) = self._runAgentsConcurrently(
-            lambda: self.aggRiskAnalyst.analyseAndReply(
-                aggDebatePrompt, self.toolRegistry, self.timestamp, config, "critique", requireInitialTools=False
-            ),
-            lambda: self.consRiskAnalyst.analyseAndReply(
-                consDebatePrompt, self.toolRegistry, self.timestamp, config, "critique", requireInitialTools=False
-            )
-        )
-        
-        # Phase 4: Analyst Defense
-        self._newPhaseHeader(4, f"Analyst Defense on {targetTicker}", pace)
-        bullDefensePrompt = (
-            f"Questions Posed by Conservative Risk Analyst:\n{consQuestionsRaw}\n\n"
-            f"Task: Defend your bullish thesis and price targets for {targetTicker}.\n"
-            f"Answer each question quantitatively using your tools or Python models if needed. Revise your thesis, targets, or rating if substantiated deficiencies were highlighted."
-        )
-        bearDefensePrompt = (
-            f"Questions Posed by Aggressive Risk Analyst:\n{aggQuestionsRaw}\n\n"
-            f"Task: Defend your bearish risk analysis and price targets for {targetTicker}.\n"
-            f"Answer each question quantitatively using your tools or Python models if needed. Revise your risk assessment, targets, or rating if substantiated upside catalysts were highlighted."
-        )
-        
-        (bullDefenseRaw, bullDefenseUISummary), (bearDefenseRaw, bearDefenseUISummary) = self._runAgentsConcurrently(
-            lambda: self.bullAnalyst.analyseAndReply(
-                bullDefensePrompt, self.toolRegistry, self.timestamp, config, "defense", requireInitialTools=False
-            ),
-            lambda: self.bearAnalyst.analyseAndReply(
-                bearDefensePrompt, self.toolRegistry, self.timestamp, config, "defense", requireInitialTools=False
-            )
-        )
-
-        # Phase 5: Q&A Based Proposals
-        self._newPhaseHeader(5, f"Q&A-Based Proposals on {targetTicker}", pace)
-        aggProposalPrompt = (
-            f"Bearish Analyst's Defense:\n{bearDefenseRaw}\n\n"
-            f"Task: Formulate your final aggressive allocation proposal for {targetTicker}.\n"
-            f"Propose your {timeHorizonInfo['llmPriceTargets']} and position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), justifying your high-upside growth assumptions."
-        )
-        consProposalPrompt = (
-            f"Bullish Analyst's Defense:\n{bullDefenseRaw}\n\n"
-            f"Task: Formulate your final conservative allocation proposal for {targetTicker}.\n"
-            f"Propose your {timeHorizonInfo['llmPriceTargets']} and position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), incorporating a robust margin of safety."
-        )
-        
-        (aggProposalRaw, aggProposalUISummary), (consProposalRaw, consProposalUISummary) = self._runAgentsConcurrently(
-            lambda: self.aggRiskAnalyst.analyseAndReply(
-                aggProposalPrompt, self.toolRegistry, self.timestamp, config, subrole="proposal", requireInitialTools=False
-            ),
-            lambda: self.consRiskAnalyst.analyseAndReply(
-                consProposalPrompt, self.toolRegistry, self.timestamp, config, subrole="proposal", requireInitialTools=False
-            )
-        )
-
-        
-
-        # Phase 6: Final Executive Decision
-        self._newPhaseHeader(6, f"Final Executive Decision on {targetTicker}", pace)
-        managerPrompt = (
-            f"Target Asset: {targetTicker}\n"
-            f"Time Horizon: {timeHorizonInfo['label']}\n\n"
-            f"Macro Conditions:\n{macroRaw}\n\n"
-            f"Aggressive Allocation Case:\n{aggProposalRaw}\n\n"
-            f"Conservative Allocation Case:\n{consProposalRaw}\n\n"
-            f"Task: Produce the final executive investment decision for {targetTicker} over the {timeHorizonInfo['label']} time horizon.\n"
-            f"Weigh upside potential against solvency risks. You MUST verify your final price targets using the 'calculateDistFromCurrPrice' tool. "
-            f"Include a definitive rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and {timeHorizonInfo['llmFinalLinePriceTargets']}."
-        )
-        self.portManager.removeTool(finalSubmitToolName)
-        finalDecisionRaw, finalDecisionUISummary = self.portManager.analyseAndReply(
-            managerPrompt, self.toolRegistry, self.timestamp, config, subrole="decision", requireInitialTools=True
-        )
-
-        
-        # Phase 7: Decision Upload
-        self._newPhaseHeader(7, "Decision Upload", pace)
-        uploadPrompt = (
-            f"Target Asset: {targetTicker}\n"
-            f"Final Decision Summary:\n{finalDecisionRaw}\n\n"
-            f"Task: Upload and log the final boardroom verdict for {targetTicker}.\n"
-            f"Execute the {finalSubmitToolName} tool with ticker='{targetTicker}', rating, weighting and the {timeHorizonInfo['llmFinalLinePriceTargets']} based on your final decision."
-        )
-        self.portManager.clearTools()
-        self.portManager.addTool(finalSubmitToolName, self.toolRegistry)
-        _, _ = self.executeMandatedToolStage(
-            agent=self.portManager,
-            initialPrompt=uploadPrompt,
-            mandatedToolName=finalSubmitToolName,
-            config=config,
-            subrole="upload",
-            maxRetries=8,
-            summarisationOverride=False,
-            requireInitialTools=True
-        )
-
-        try:
-            formattedExecutiveDecision = self.toolRegistry.getTool(finalSubmitToolName).toolLog[-1]
-        except Exception:
-            formattedExecutiveDecision = "Decision not found."                
-
-        convSummary = (
-            f"\nMacro Analyst Response:\n{macroUISummary}\n\n"
-            f"======================"
-            f"\nBearish Analyst Response:\n{bearThesisUISummary}\n\n"
-            f"\nAggressive Risk Analyst Critique:\n{aggQuestionsUISummary}\n\n"
-            f"\nBearish Analyst Defense:\n{bearDefenseUISummary}\n\n"
-            f"\nAggressive Risk Analyst Proposal:\n{aggProposalUISummary}\n\n"
-            f"======================"
-            f"\nBullish Analyst Response:\n{bullThesisUISummary}\n\n"
-            f"\nConservative Risk Analyst Critique:\n{consQuestionsUISummary}\n\n"
-            f"\nBullish Analyst Defense:\n{bullDefenseUISummary}\n\n"
-            f"\nConservative Risk Analyst Proposal:\n{consProposalUISummary}\n\n"
-            f"======================"
-            f"\nFinal Executive Response:\n{finalDecisionUISummary}\n\n"
-            f"\n{formattedExecutiveDecision}\n"
-        )
-        self.fullConvSummary = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', convSummary)
-        self.lastConfig = config
-        if formattedExecutiveDecision and formattedExecutiveDecision != "Decision not found.":
-            self.portManagerFinalOutput = f"{finalDecisionRaw}\n\n{formattedExecutiveDecision}"
-        else:
-            self.portManagerFinalOutput = finalDecisionRaw        
-
-        endTime = datetime.now()
-        timeTaken = endTime - startTime
-        timeStr = f"{timeTaken.seconds // 60} mins {timeTaken.seconds % 60} secs"
-        print(f"\n{'='*70}\nPortfolio Creation Boardroom Completed in {timeStr}\n{'='*70}")
-        
+            fsm = BoardroomFSM(initialStageId="macroAnalysis", title=f"Live Boardroom Evaluation for: {targetTicker}")
+            fsm.addStage(SingleEquityMacroStage(phaseNumber=1), nextStage="specialistResearch")
+            fsm.addStage(SingleEquityResearchStage(targetTicker=targetTicker, phaseNumber=2), nextStage="seniorRiskDebate")
+            fsm.addStage(SingleEquityDebateStage(targetTicker=targetTicker, phaseNumber=3), nextStage="analystDefense")
+            fsm.addStage(SingleEquityDefenseStage(targetTicker=targetTicker, phaseNumber=4), nextStage="riskProposals")
+            fsm.addStage(SingleEquityProposalStage(targetTicker=targetTicker, phaseNumber=5), nextStage="finalExecutiveDecision")
+            fsm.addStage(SingleEquityDecisionStage(targetTicker=targetTicker, phaseNumber=6), nextStage="decisionUpload")
+            fsm.addStage(SingleEquityDecisionUploadStage(phaseNumber=7), nextStage=None)
+            return fsm
 
 
     def execute(self, config: SingleEquityRatingConfig):
@@ -685,17 +737,55 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
 
         self.toolRegistry.clearToolLogs()
         self.configureTransferToolSchema(config.boardroomPace)
-
         self.llmClient.newTask()
+        self.lastConfig = config
 
-        if config.boardroomPace == BoardroomPace.ONE_SHOT:
-            self.executeOneShotBoardroom(config)
-        elif config.boardroomPace == BoardroomPace.FAST:
-            self.executeFastSingleBoardroom(config)
-        else:
-            self.executeCompleteSingleBoardroom(config)
+        context = BoardroomContext(engine=self, config=config)
+        fsm = self.buildFSM(config)
+        fsm.run(context)
 
 
+    # Non standard QnA management methods for this engine only 
+
+    def deleteQnATurn(self, turnIndex: int) -> bool:
+        if 0 <= turnIndex < len(self.qnaTurns):
+            targetTurn = self.qnaTurns[turnIndex]
+            
+            # Prune spokesperson message history
+            if self.spokesperson:
+                spokespersonTargetLen = targetTurn.get("spokespersonHistoryLen", 0)
+                self.spokesperson.messageHistory = self.spokesperson.messageHistory[:spokespersonTargetLen]
+            
+            # Prune specialist message histories
+            for role, targetLen in targetTurn.get("specialistHistoryLens", {}).items():
+                agent = self.specialistMap.get(role)
+                if agent is not None:
+                    agent.messageHistory = agent.messageHistory[:targetLen]
+            
+            # Prune qnaTurns list
+            self.qnaTurns = self.qnaTurns[:turnIndex]
+            return True
+        return False
+
+    def configureTransferToolSchema(self, pace: BoardroomPace) -> None:
+        activeRoles = getActiveSpecialistRoles(pace)
+        transferTool = self.toolRegistry.getTool("transferToAgent") if self.toolRegistry else None
+        if transferTool:
+            transferTool.paramSchema = {
+                "type": "object",
+                "properties": {
+                    "agentRole": {
+                        "type": "string",
+                        "enum": activeRoles,
+                        "description": f"The exact name of the active specialist boardroom agent to transfer to ({', '.join(activeRoles)})."
+                    },
+                    "transferMessage": {
+                        "type": "string",
+                        "description": "A clear, concise instruction or summary of the question for the specialist agent to answer."
+                    }
+                },
+                "required": ["agentRole", "transferMessage"]
+            }
 
     def getPortfolioManagerFinalOutput(self) -> Optional[str]:
         if self.portManagerFinalOutput:
@@ -712,6 +802,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
 
         return None
 
+    # Handles when the spokesperson in the QnA transfers from themselves to a specialist
     def executeSpecialistTransfer(self, agentRole: str, transferMessage: str, config: SingleEquityRatingConfig) -> Dict[str, Any]:
         specialist = self.specialistMap.get(agentRole)
         if not specialist:
@@ -791,18 +882,9 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
             setAgentPhase("raw")
 
 
-    def processQnAQuery(self, query: str, config: Optional[SingleEquityRatingConfig] = None, targetAgent: Optional[str] = None):
-        if config is None:
-            config = self.lastConfig
-
-        if config is None:
-            config = SingleEquityRatingConfig(
-                ticker="UNKNOWN",
-                simulatedDateStr=self.timestamp.strftime("%Y-%m-%d"),
-                timeHorizon=SingleEquityTimeHorizon.LONG,
-                boardroomPace=BoardroomPace.FAST
-            )
-
+    # Handles the entire QnA process
+    def processQnAQuery(self, query: str, targetAgent: Optional[str] = None):
+        config = self.lastConfig
         activeRoles = getActiveSpecialistRoles(config.boardroomPace)
         self.configureTransferToolSchema(config.boardroomPace)
 
@@ -903,7 +985,3 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
                 "stageNum": "qa"
             })
             emitEvent("qaComplete", {"stageNum": "qa"})
-
-
-
-
