@@ -491,6 +491,10 @@ class BaseLLMClient(ABC):
             if extraBody is not None:
                 responseKwargs["extra_body"] = extraBody
 
+            emitEvent("promptProcessing", {
+                "iteration": currentIteration
+            })
+
             responseStream = self._createResponseStream(**responseKwargs)
             content, reasoning, toolCallsList, usage = self.handleResponseStream(responseStream, responsePrint)
             self.costTracker.recordUsage(usage)

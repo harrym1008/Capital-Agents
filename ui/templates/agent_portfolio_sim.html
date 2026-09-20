@@ -118,25 +118,25 @@
             </div>
             <div class="metric-group">
                 <div class="metric-line">
-                    <span class="metric-label">Date:</span>
+                    <span class="metric-label" id="metricDateLabel">Date:</span>
                     <span class="date-highlight" id="currentSimDateDisplay">--</span>
                 </div>
             </div>
             <div class="metric-group">
                 <div class="metric-line">
-                    <span class="metric-label">Cash:</span>
+                    <span class="metric-label" id="metricCashLabel">Cash:</span>
                     <span class="metric-value" id="metricCashVal">$100,000.00</span>
                 </div>
             </div>
             <div class="metric-group">
                 <div class="metric-line">
-                    <span class="metric-label">Stock:</span>
+                    <span class="metric-label" id="metricStockLabel">Stock:</span>
                     <span class="metric-value" id="metricStockVal">$0.00</span>
                 </div>
             </div>
             <div class="metric-group">
                 <div class="metric-line">
-                    <span class="metric-label">Assets:</span>
+                    <span class="metric-label" id="metricTotalLabel">Assets:</span>
                     <span class="metric-value" id="metricTotalVal">$100,000.00</span>
                 </div>
                 <div class="metric-change" id="metricFundReturn">+0.00% ($0.00)</div>
@@ -228,6 +228,7 @@
 {% endblock %}
 
 {% block page_scripts %}
+<script src="/static/js/agent_sim_exporter.js"></script>
 <script>
     // =========================================================================
     // STANDALONE MULTI-SESSION CLIENT ENGINE FOR AGENT PORTFOLIO SIMULATION
@@ -309,7 +310,10 @@
 
     function formatMilestoneLabel(dateInput, type = "review") {
         const friendly = formatFriendlyDate(dateInput);
-        const tag = (String(type).toLowerCase() === "inception") ? "(Inception)" : "(Review)";
+        const lowerType = String(type).toLowerCase();
+        let tag = "(Review)";
+        if (lowerType === "inception") tag = "(Inception)";
+        else if (lowerType === "evaluation" || lowerType === "performance_evaluation") tag = "(Performance Evaluation)";
         return `${friendly} ${tag}`;
     }
 
@@ -533,6 +537,8 @@
 
             this.confirmedSector = null;
             this.confirmedPortfolio = null;
+            this.sessionMetrics = null;
+            this.promptProcessingBanners = {}; // `${stageNum}_${agentRole}` -> bannerElement
 
             this._initWorkspaceDOM();
         }
@@ -744,6 +750,51 @@
             };
             sData.agentPanes[agentRole] = paneObj;
             return paneObj;
+        }
+
+        showPromptProcessing(stageNum, agentRole) {
+            const paneObj = this.getOrCreateAgentPane(stageNum, agentRole);
+            if (!paneObj || !paneObj.feedEl) return;
+            const compoundKey = `${stageNum}_${agentRole}`;
+
+            if (this.promptProcessingBanners[compoundKey]) return;
+
+            const banner = document.createElement("div");
+            banner.className = "prompt-processing-banner";
+
+            const spinner = document.createElement("span");
+            spinner.className = "prompt-processing-spinner";
+
+            const text = document.createElement("span");
+            text.innerText = "Prompt Processing";
+
+            banner.appendChild(spinner);
+            banner.appendChild(text);
+
+            paneObj.feedEl.appendChild(banner);
+            this.promptProcessingBanners[compoundKey] = banner;
+            this.autoScrollFeed(stageNum, agentRole);
+        }
+
+        removePromptProcessing(stageNum, agentRole) {
+            const compoundKey = `${stageNum}_${agentRole}`;
+            const banner = this.promptProcessingBanners[compoundKey];
+            if (banner) {
+                if (banner.parentNode) {
+                    banner.parentNode.removeChild(banner);
+                }
+                delete this.promptProcessingBanners[compoundKey];
+            }
+        }
+
+        clearAllPromptProcessing() {
+            Object.keys(this.promptProcessingBanners).forEach(key => {
+                const banner = this.promptProcessingBanners[key];
+                if (banner && banner.parentNode) {
+                    banner.parentNode.removeChild(banner);
+                }
+            });
+            this.promptProcessingBanners = {};
         }
 
         startReasoningBlock(stageNum, agentRole) {
@@ -1639,13 +1690,14 @@
                 if (initialData.label && (!this.sessions[id].label || this.sessions[id].label === id)) {
                     this.sessions[id].label = initialData.label;
                 }
-                if (initialData.stages && (!this.sessions[id].stages || this.sessions[id].stages.length === 0)) {
+                if (initialData.stages && initialData.stages.length > 0) {
                     this.sessions[id].stages = initialData.stages;
                 }
                 if (initialData.date) this.sessions[id].date = initialData.date;
                 if (initialData.dateFormatted) this.sessions[id].dateFormatted = initialData.dateFormatted;
                 if (initialData.type) this.sessions[id].type = initialData.type;
                 if (initialData.pace) this.sessions[id].pace = initialData.pace;
+                if (initialData.sessionMetrics) this.sessions[id].sessionMetrics = initialData.sessionMetrics;
                 this.sessions[id].updateReceiptDatesAndCapital(initialData.date || initialData.dateFormatted);
             }
             return this.sessions[id];
@@ -1686,6 +1738,7 @@
                 if (prevSession) {
                     prevSession.isCompleted = true;
                 }
+                this.activeViewingStageNum = 1;
             }
             this.liveSessionId = mId;
 
@@ -1730,6 +1783,7 @@
             }
 
             this.switchSession("current");
+            return session;
         }
 
         switchSession(selectedId) {
@@ -1757,15 +1811,26 @@
             // 4. Render Stage Tabs for this session
             const stages = (session.stages && session.stages.length > 0) 
                 ? session.stages 
-                : ((targetId === "milestone_0") 
+                : ((targetId === "milestone_0" || session.type === "inception") 
                     ? defaultInceptionStages 
-                    : ((session.pace === "complete") ? completeRebalanceStages : fastRebalanceStages));
+                    : ((session.type === "evaluation" || session.pace === "one_shot")
+                        ? [{ num: 1, name: "Comprehensive Performance Evaluation" }]
+                        : ((session.type === "skipped" || session.pace === "skipped")
+                            ? [{ num: 1, name: "Macro Environment Analysis" }]
+                            : ((session.pace === "complete") ? completeRebalanceStages : fastRebalanceStages))));
             renderStagesBarTabs(stages, targetId);
 
             // 5. Switch to target stage
             const stageNumToView = (selectedId === "current" && this.activeViewingStageNum) ? this.activeViewingStageNum : (stages[0]?.num || 1);
             this.switchStage(stageNumToView, targetId);
             this.updateStageTabsState(targetId);
+
+            // 6. Update sidebar metrics: if viewing a past/specific session with post-session metrics, render them and turn Cash/Stock/Assets labels red
+            if (session && session.sessionMetrics) {
+                renderSidebarMetrics(session.sessionMetrics, isPast);
+            } else if (selectedId === "current" && lastLiveSimulationState) {
+                renderSidebarMetrics(lastLiveSimulationState, false);
+            }
         }
 
         switchStage(stageNum, sessionId = null) {
@@ -2065,14 +2130,28 @@
         chartInstance.update();
     }
 
-    function updateSimulationUI(data) {
+    let lastLiveSimulationState = null;
+
+    function renderSidebarMetrics(data, isPast = false) {
         if (!data) return;
 
-        // Status row
-        if (data.simStatus) {
-            const statusDisplay = document.getElementById("currentSimStatusDisplay");
-            if (statusDisplay) statusDisplay.textContent = data.simStatus;
-        }
+        // Color Date, Cash, Stock, Assets labels red when viewing a historical past session
+        const dateLabel = document.getElementById("metricDateLabel");
+        const cashLabel = document.getElementById("metricCashLabel");
+        const stockLabel = document.getElementById("metricStockLabel");
+        const totalLabel = document.getElementById("metricTotalLabel");
+        const labelsToHighlight = [dateLabel, cashLabel, stockLabel, totalLabel];
+        labelsToHighlight.forEach(lbl => {
+            if (lbl) {
+                if (isPast) {
+                    lbl.style.color = "#dc2626";
+                    lbl.style.fontWeight = "700";
+                } else {
+                    lbl.style.color = "";
+                    lbl.style.fontWeight = "";
+                }
+            }
+        });
 
         // Date row
         const dateDisplay = document.getElementById("currentSimDateDisplay");
@@ -2164,20 +2243,58 @@
 
         // Timeline & System Activity Logs
         renderActivityFeed(data.rebalanceHistory, data.systemLogs);
+    }
+
+    function updateSimulationUI(data) {
+        if (!data) return;
+        lastLiveSimulationState = data;
+
+        // Status row
+        if (data.simStatus) {
+            const statusDisplay = document.getElementById("currentSimStatusDisplay");
+            if (statusDisplay) statusDisplay.textContent = data.simStatus;
+        }
+
+        // Sync sessionMetrics, stages, and pace into session objects if milestones array is present
+        if (data.milestones && Array.isArray(data.milestones)) {
+            data.milestones.forEach(m => {
+                if (m && m.milestoneId) {
+                    const sess = sessionMgr.getOrCreateSession(m.milestoneId, {
+                        stages: m.stages,
+                        pace: m.pace,
+                        type: m.type
+                    });
+                    if (sess) {
+                        if (m.sessionMetrics && !sess.sessionMetrics) {
+                            sess.sessionMetrics = m.sessionMetrics;
+                        }
+                        if (m.stages && m.stages.length > 0) {
+                            sess.stages = m.stages;
+                        }
+                        if (m.pace) {
+                            sess.pace = m.pace;
+                        }
+                    }
+                }
+            });
+            sessionMgr.updateDropdownOptions(data.milestones);
+        }
 
         // Current Milestone & Dropdown options
         if (data.currentMilestoneId) {
             const isInc = (data.currentMilestoneId === "milestone_0" || data.type === "inception");
+            const isEval = (data.type === "evaluation");
             const dateRaw = data.currentDateFriendly || data.currentDate || data.date;
+            const milestoneType = isInc ? "inception" : (isEval ? "evaluation" : "review");
             const label = (data.currentMilestoneLabel && data.currentMilestoneLabel.includes("("))
                 ? data.currentMilestoneLabel
-                : (dateRaw ? formatMilestoneLabel(dateRaw, isInc ? "inception" : "review") : data.currentMilestoneId);
+                : (dateRaw ? formatMilestoneLabel(dateRaw, milestoneType) : data.currentMilestoneId);
 
             if (sessionMgr.liveSessionId !== data.currentMilestoneId) {
                 sessionMgr.setLiveSessionId(data.currentMilestoneId, label, {
                     date: data.currentDate,
                     dateFormatted: formatFriendlyDate(dateRaw),
-                    type: isInc ? "inception" : "review"
+                    type: milestoneType
                 });
             } else {
                 const liveSession = sessionMgr.getLiveSession();
@@ -2192,8 +2309,15 @@
             }
         }
 
-        if (data.milestones) {
-            sessionMgr.updateDropdownOptions(data.milestones);
+        // Only update live sidebar if viewing Current session or live simulation
+        const isPastViewing = (sessionMgr.activeViewingSessionId !== "current" && sessionMgr.activeViewingSessionId !== sessionMgr.liveSessionId);
+        if (!isPastViewing) {
+            const liveSess = sessionMgr.getLiveSession();
+            if (liveSess && liveSess.sessionMetrics) {
+                renderSidebarMetrics(liveSess.sessionMetrics, false);
+            } else {
+                renderSidebarMetrics(data, false);
+            }
         }
     }
 
@@ -2481,7 +2605,7 @@
         sessionMgr.reset();
 
         // Initialise Milestone 0 session
-        sessionMgr.setLiveSessionId("milestone_0", formatMilestoneLabel(startDate, "inception"), {
+        const m0Session = sessionMgr.setLiveSessionId("milestone_0", formatMilestoneLabel(startDate, "inception"), {
             date: startDate,
             dateFormatted: formatFriendlyDate(startDate),
             type: "inception",
@@ -2490,8 +2614,20 @@
         });
         sessionMgr.switchSession("current");
 
+        // Immediately mount Stage 1 (Macro Strategist) so the UI responds without delay
+        if (m0Session) {
+            m0Session.getOrCreateStageWorkspace(1, "Macro Environment Analysis", [
+                { role: "Macro Analyst", color: "cyan", name: "Macro Strategist" }
+            ]);
+            sessionMgr.switchStage(1, "milestone_0");
+            sessionMgr.updateStageTabsState("milestone_0");
+        }
+
         setControlsRunningState(true);
         startSimTimer();
+        if (typeof AgentSimExporter !== "undefined" && AgentSimExporter.handleSimStart) {
+            AgentSimExporter.handleSimStart();
+        }
 
         const payload = {
             action: "start",
@@ -2530,7 +2666,17 @@
 
     function onSimulationCompleted() {
         setControlsRunningState(false);
+        const timerEl = document.getElementById("simulationTimer");
+        const elapsedText = timerEl ? timerEl.innerText.trim() : "";
         stopSimTimer();
+        Object.values(sessionMgr.sessions || {}).forEach(s => {
+            if (s && typeof s.clearAllPromptProcessing === "function") {
+                s.clearAllPromptProcessing();
+            }
+        });
+        if (typeof AgentSimExporter !== "undefined" && AgentSimExporter.handleSimComplete) {
+            AgentSimExporter.handleSimComplete({ totalTime: elapsedText });
+        }
     }
 
     // =========================================================================
@@ -2542,25 +2688,33 @@
 
         const mId = payload.milestoneId || sessionMgr.liveSessionId;
         const stageNum = (payload.stageNum !== undefined && payload.stageNum !== null) ? payload.stageNum : (sessionMgr.activeViewingStageNum || 1);
-        const agentRole = payload.agentRole || payload.role;
+        const rawRole = payload.agentRole || payload.role;
+        const agentRole = (typeof rawRole === "object" && rawRole !== null) ? (rawRole.role || "") : (rawRole || "");
+        const agentColor = (typeof rawRole === "object" && rawRole !== null) ? (rawRole.color || payload.agentColor || payload.color) : (payload.agentColor || payload.color);
 
         switch (payload.type) {
             case "milestoneStarted": {
                 let stages = payload.stages;
                 if (!stages || stages.length === 0) {
-                    stages = (payload.type === "inception" || payload.pace === "complete") ? defaultInceptionStages : fastRebalanceStages;
+                    if (payload.type === "evaluation") {
+                        stages = [{ num: 1, name: "Comprehensive Performance Evaluation" }];
+                    } else {
+                        stages = (payload.type === "inception" || payload.pace === "complete") ? defaultInceptionStages : fastRebalanceStages;
+                    }
                 }
                 const isInc = (mId === "milestone_0" || payload.type === "inception");
+                const isEval = (payload.type === "evaluation");
                 const dateRaw = payload.date || payload.dateFormatted;
+                const mType = isInc ? "inception" : (isEval ? "evaluation" : "review");
                 const label = (payload.label && payload.label.includes("("))
                     ? payload.label 
-                    : (dateRaw ? formatMilestoneLabel(dateRaw, isInc ? "inception" : "review") : mId);
+                    : (dateRaw ? formatMilestoneLabel(dateRaw, mType) : mId);
 
                 sessionMgr.setLiveSessionId(mId, label, {
                     date: payload.date,
                     dateFormatted: payload.dateFormatted ? formatFriendlyDate(payload.dateFormatted) : (payload.date ? formatFriendlyDate(payload.date) : null),
-                    type: isInc ? "inception" : "review",
-                    pace: payload.pace,
+                    type: mType,
+                    pace: payload.pace || (isEval ? "one_shot" : "fast"),
                     stages: stages
                 });
 
@@ -2569,6 +2723,14 @@
                     session.baselinePositions = payload.baselinePositions;
                 }
                 session.updateReceiptDatesAndCapital(payload.date || payload.dateFormatted);
+
+                if (isEval) {
+                    session.getOrCreateStageWorkspace(1, "Comprehensive Performance Evaluation", [
+                        { role: "Impartial Portfolio Manager", color: "purple", name: "Portfolio Manager" }
+                    ]);
+                    sessionMgr.switchStage(1, mId);
+                    sessionMgr.updateStageTabsState(mId);
+                }
                 break;
             }
 
@@ -2621,9 +2783,17 @@
                 break;
             }
 
+            case "promptProcessing": {
+                if (!agentRole) break;
+                const session = sessionMgr.getOrCreateSession(mId);
+                session.showPromptProcessing(stageNum, agentRole);
+                break;
+            }
+
             case "reasoningStart": {
                 if (!agentRole) break;
                 const session = sessionMgr.getOrCreateSession(mId);
+                session.removePromptProcessing(stageNum, agentRole);
                 session.startReasoningBlock(stageNum, agentRole);
                 break;
             }
@@ -2633,6 +2803,7 @@
                 if (!agentRole) break;
                 const token = payload.token !== undefined ? payload.token : (payload.chunk || "");
                 const session = sessionMgr.getOrCreateSession(mId);
+                session.removePromptProcessing(stageNum, agentRole);
                 session.appendReasoningToken(stageNum, agentRole, token);
                 break;
             }
@@ -2647,6 +2818,7 @@
             case "contentStart": {
                 if (!agentRole) break;
                 const session = sessionMgr.getOrCreateSession(mId);
+                session.removePromptProcessing(stageNum, agentRole);
                 session.startContentBlock(stageNum, agentRole, payload.phase);
                 break;
             }
@@ -2656,6 +2828,7 @@
                 if (!agentRole) break;
                 const token = payload.token !== undefined ? payload.token : (payload.chunk || "");
                 const session = sessionMgr.getOrCreateSession(mId);
+                session.removePromptProcessing(stageNum, agentRole);
                 session.appendContentToken(stageNum, agentRole, token, payload.phase);
                 break;
             }
@@ -2671,6 +2844,7 @@
                 if (!agentRole) break;
                 const tIndex = (payload.index !== undefined) ? payload.index : payload.toolIndex;
                 const session = sessionMgr.getOrCreateSession(mId);
+                session.removePromptProcessing(stageNum, agentRole);
                 session.startToolCallStream(stageNum, agentRole, tIndex, payload.toolName);
                 break;
             }
@@ -2680,6 +2854,7 @@
                 const tIndex = (payload.index !== undefined) ? payload.index : payload.toolIndex;
                 const token = payload.token !== undefined ? payload.token : (payload.chunk || "");
                 const session = sessionMgr.getOrCreateSession(mId);
+                session.removePromptProcessing(stageNum, agentRole);
                 session.appendToolCallStreamToken(stageNum, agentRole, tIndex, token);
                 break;
             }
@@ -2688,6 +2863,7 @@
                 if (!agentRole) break;
                 const tIndex = (payload.toolIndex !== undefined) ? payload.toolIndex : payload.index;
                 const session = sessionMgr.getOrCreateSession(mId);
+                session.removePromptProcessing(stageNum, agentRole);
                 session.startToolCall(stageNum, agentRole, payload.toolName, payload.args, payload.callId, tIndex);
                 break;
             }
@@ -2721,6 +2897,7 @@
             case "agentRunEnd": {
                 if (!agentRole) break;
                 const session = sessionMgr.getOrCreateSession(mId);
+                session.removePromptProcessing(stageNum, agentRole);
                 session.endContentBlock(stageNum, agentRole);
                 break;
             }
@@ -2747,7 +2924,27 @@
 
             case "milestoneCompleted": {
                 const session = sessionMgr.getOrCreateSession(mId);
-                session.isCompleted = true;
+                if (session) {
+                    session.isCompleted = true;
+                    if (payload.stages && payload.stages.length > 0) {
+                        session.stages = payload.stages;
+                    }
+                    if (payload.pace) {
+                        session.pace = payload.pace;
+                    }
+                    if (payload.sessionMetrics) {
+                        session.sessionMetrics = payload.sessionMetrics;
+                        const targetViewingId = (sessionMgr.activeViewingSessionId === "current") ? sessionMgr.liveSessionId : sessionMgr.activeViewingSessionId;
+                        if (targetViewingId === mId) {
+                            const isPast = (sessionMgr.activeViewingSessionId !== "current" && sessionMgr.activeViewingSessionId !== sessionMgr.liveSessionId);
+                            renderSidebarMetrics(session.sessionMetrics, isPast);
+                        }
+                    }
+                    const activeViewId = (sessionMgr.activeViewingSessionId === "current") ? sessionMgr.liveSessionId : sessionMgr.activeViewingSessionId;
+                    if (activeViewId === mId && session.stages && session.stages.length > 0) {
+                        renderStagesBarTabs(session.stages, mId);
+                    }
+                }
                 sessionMgr.updateStageTabsState(mId);
                 break;
             }
@@ -2912,6 +3109,20 @@
                 e.preventDefault();
                 stopSimulation();
             };
+        }
+
+        // Wire Download Report Button directly to AgentSimExporter
+        const downloadBtn = document.getElementById("downloadReportBtn");
+        if (downloadBtn) {
+            downloadBtn.onclick = (e) => {
+                e.preventDefault();
+                if (typeof AgentSimExporter !== "undefined") {
+                    AgentSimExporter.downloadHtmlReport();
+                }
+            };
+        }
+        if (typeof AgentSimExporter !== "undefined") {
+            window.BoardroomExporter = AgentSimExporter;
         }
     });
 </script>

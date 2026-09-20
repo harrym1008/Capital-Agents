@@ -70,6 +70,16 @@ def computeNextMilestoneDate(currentTs: pd.Timestamp, timestep: SimulationTimest
         return currentTs + pd.DateOffset(months=1)
 
 
+def truncateToWords(text: str, maxWords: int = 500) -> str:
+    """Truncates string to a maximum number of words to fit in LLM context."""
+    if not text:
+        return ""
+    words = text.split()
+    if len(words) <= maxWords:
+        return text
+    return " ".join(words[:maxWords]) + " ... [truncated]"
+
+
 # The agent portfolio simulation engine, manages multi-agent portfolio creation, rebalancing and market simulation management
 # It is jerry-rigged to work with the existing UI hooks so it is not a clean bit of code! 
 # If I had more time, it would be heavily, heavily refactored/rewritten 
@@ -83,6 +93,9 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
 
         # Instance-bound simulation journal
         self.journal: List[Dict[str, Any]] = []
+
+        # Historical Stage 6 executive decisions for Performance Evaluation
+        self.stage6Decisions: List[Dict[str, Any]] = []
 
         # Simulation history tracking
         self.portfolioHistoryPoints: List[Dict[str, Any]] = []
@@ -542,6 +555,16 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         if portfolioObj and hasattr(portfolioObj, "mainLog"):
             systemLogs = [entry.toDict() if hasattr(entry, "toDict") else entry for entry in portfolioObj.mainLog]
 
+        # Build clean milestones list to ensure no nested circular references
+        cleanMilestones = []
+        for m in self.milestonesList:
+            mCopy = dict(m)
+            if "sessionMetrics" in mCopy and isinstance(mCopy["sessionMetrics"], dict):
+                cleanMetrics = dict(mCopy["sessionMetrics"])
+                cleanMetrics.pop("milestones", None)
+                mCopy["sessionMetrics"] = cleanMetrics
+            cleanMilestones.append(mCopy)
+
         friendlyDate = formatDateFriendly(currentDateTs)
         return {
             "simStatus": self.currentSimStatus,
@@ -565,7 +588,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             "portfolioPoints": list(self.portfolioHistoryPoints),
             "sp500Points": list(self.sp500HistoryPoints),
             "rebalanceHistory": list(self.rebalanceHistory),
-            "milestones": list(self.milestonesList),
+            "milestones": cleanMilestones,
             "systemLogs": systemLogs
         }
 
@@ -573,6 +596,17 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
     def emitSimulationState(self, config: AgentPortfolioSimulationConfig, sp500Df: pd.DataFrame):
         state = self.getSimulationMetrics(config, sp500Df)
         emitEvent("agentSimStateUpdate", state)
+
+
+    def capturePostSessionMetrics(self, config: AgentPortfolioSimulationConfig, sp500Df: pd.DataFrame) -> Dict[str, Any]:
+        """Captures complete portfolio state, holdings, and sliced history as of session completion."""
+        metrics = self.getSimulationMetrics(config, sp500Df)
+        metrics.pop("milestones", None)
+        currentDateStr = self.marketSim.currentDate.strftime("%Y-%m-%d") if self.marketSim else config.startDateStr
+        metrics["portfolioPoints"] = [p for p in self.portfolioHistoryPoints if p.get("x", "") <= currentDateStr]
+        metrics["sp500Points"] = [p for p in self.sp500HistoryPoints if p.get("x", "") <= currentDateStr]
+        metrics["rebalanceHistory"] = list(self.rebalanceHistory)
+        return metrics
 
 
     # Formats the current holdings into a human-readable string for display in the UI
@@ -608,7 +642,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         # Run the inception boardroom process (not in a FSM)
 
         # Phase 1: Macro Environment Analysis
-        self.currentSimStatus = f"{startFormatted} (Inception): Stage 1"
+        self.currentSimStatus = f"{startFormatted}: Stage 1"
         self.emitSimulationState(config, sp500Df)
         self.emitNewPhase(1, "Macro Environment Analysis", BoardroomPace.COMPLETE)
         macroPrompt = (
@@ -629,7 +663,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         if isStopRequested(): raise SimulationStoppedException()
 
         # Phase 2: Sector Allocation Analysis (Bull & Bear concurrently)
-        self.currentSimStatus = f"{startFormatted} (Inception): Stage 2"
+        self.currentSimStatus = f"{startFormatted}: Stage 2"
         self.emitSimulationState(config, sp500Df)
         self.emitNewPhase(2, "Sector Allocation Analysis", BoardroomPace.COMPLETE)
         bullPrompt = (
@@ -660,7 +694,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         if isStopRequested(): raise SimulationStoppedException()
 
         # Phase 3: Sector Allocation Decision
-        self.currentSimStatus = f"{startFormatted} (Inception): Stage 3"
+        self.currentSimStatus = f"{startFormatted}: Stage 3"
         self.emitSimulationState(config, sp500Df)
         self.emitNewPhase(3, "Sector Allocation Decision", BoardroomPace.COMPLETE)
         confirmSectorTool = self.toolRegistry.getTool("confirmSectorAllocation")
@@ -683,7 +717,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             mandatedToolName="confirmSectorAllocation",
             config=config,
             subrole="sector",
-            maxRetries=8,
+            maxRetries=10,
             requireInitialTools=True,
             modeOverride="PortfolioCreation"
         )
@@ -704,7 +738,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         if isStopRequested(): raise SimulationStoppedException()
 
         # Phase 4: Stock Scouting (Growth & Value Hunters concurrently)
-        self.currentSimStatus = f"{startFormatted} (Inception): Stage 4"
+        self.currentSimStatus = f"{startFormatted}: Stage 4"
         self.emitSimulationState(config, sp500Df)
         self.emitNewPhase(4, "Stock Scouting", BoardroomPace.COMPLETE)
         growthPrompt = (
@@ -729,7 +763,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         if isStopRequested(): raise SimulationStoppedException()
 
         # Phase 5: Stock Allocation Proposals (Aggressive & Conservative Risk Analysts concurrently)
-        self.currentSimStatus = f"{startFormatted} (Inception): Stage 5"
+        self.currentSimStatus = f"{startFormatted}: Stage 5"
         self.emitSimulationState(config, sp500Df)
         self.emitNewPhase(5, "Stock Allocation Proposals", BoardroomPace.COMPLETE)
         aggProposalPrompt = (
@@ -754,7 +788,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         if isStopRequested(): raise SimulationStoppedException()
 
         # Phase 6: Final Executive Decision
-        self.currentSimStatus = f"{startFormatted} (Inception): Stage 6"
+        self.currentSimStatus = f"{startFormatted}: Stage 6"
         self.emitSimulationState(config, sp500Df)
         self.emitNewPhase(6, "Final Executive Decision", BoardroomPace.COMPLETE)
         confirmPortTool = self.toolRegistry.getTool("confirmPortfolioAllocation")
@@ -770,19 +804,27 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"Mandatory: Call 'confirmPortfolioAllocation' with your allocated stock positions across confirmed sectors, 'portfolioRationale', and 'initialCapital'={config.initialCapital}.\n"
             f"You may also call 'recordJournalEntry' with your 30-50 word executive rationale summarizing portfolio inception."
         )
-        _, _ = self.executeMandatedToolStage(
+        pmResponse, _ = self.executeMandatedToolStage(
             agent=self.portManager,
             initialPrompt=pmFinalPrompt,
             mandatedToolName="confirmPortfolioAllocation",
             config=config,
             subrole="decision",
-            maxRetries=8,
+            maxRetries=10,
             requireInitialTools=True,
             modeOverride="PortfolioCreation"
         )
 
         if confirmPortTool and confirmPortTool.toolLog:
             self.confirmedPortfolioAllocation = confirmPortTool.toolLog[-1]
+
+        self.stage6Decisions.append({
+            "milestoneId": self.currentMilestoneId,
+            "milestoneLabel": self.currentMilestoneLabel,
+            "date": config.startDateStr,
+            "type": "inception",
+            "pmResponse": pmResponse or ""
+        })
 
         emitEvent("portfolioCreated", {
             "stageNum": 6,
@@ -799,7 +841,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
 
         if isExtended:
             # Phase 2: Sector Allocation Analysis (Bull & Bear Analysts)
-            self.currentSimStatus = f"{friendlyDate} (Review): Stage 2"
+            self.currentSimStatus = f"{friendlyDate}: Stage 2"
             self.emitSimulationState(config, sp500Df)
             self.emitNewPhase(2, "Sector Allocation Analysis", pace)
             bullSectorPrompt = f"Macro Context:\n{macroRaw}\n\nTask: As the Bullish Analyst, identify leading growth and expansion sectors."
@@ -815,7 +857,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         if isStopRequested(): raise SimulationStoppedException()
 
         # Phase 3: Sector Rebalancing Decision
-        self.currentSimStatus = f"{friendlyDate} (Review): Stage 3"
+        self.currentSimStatus = f"{friendlyDate}: Stage 3"
         self.emitSimulationState(config, sp500Df)
         self.emitNewPhase(3, "Sector Rebalancing Decision", pace)
         confirmSectorTool = self.toolRegistry.getTool("confirmSectorAllocation")
@@ -836,7 +878,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             mandatedToolName="confirmSectorAllocation",
             config=config,
             subrole="sector",
-            maxRetries=8,
+            maxRetries=10,
             requireInitialTools=True,
             modeOverride="PortfolioRebalancing"
         )
@@ -857,7 +899,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         if isStopRequested(): raise SimulationStoppedException()
 
         # Phase 4: Stock Scouting
-        self.currentSimStatus = f"{friendlyDate} (Review): Stage 4"
+        self.currentSimStatus = f"{friendlyDate}: Stage 4"
         self.emitSimulationState(config, sp500Df)
         self.emitNewPhase(4, "Stock Holdings Audit & Scouting", pace)
         growthPrompt = (
@@ -879,7 +921,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
 
         if isExtended:
             # Phase 5: Stock Allocation Proposals (Risk Analysts)
-            self.currentSimStatus = f"{friendlyDate} (Review): Stage 5"
+            self.currentSimStatus = f"{friendlyDate}: Stage 5"
             self.emitSimulationState(config, sp500Df)
             self.emitNewPhase(5, "Stock Allocation Proposals", pace)
             aggPrompt = (
@@ -909,7 +951,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         if isStopRequested(): raise SimulationStoppedException()
 
         # Phase 6: Final Executive Rebalancing Decision
-        self.currentSimStatus = f"{friendlyDate} (Review): Stage 6"
+        self.currentSimStatus = f"{friendlyDate}: Stage 6"
         self.emitSimulationState(config, sp500Df)
         self.emitNewPhase(6, "Final Executive Decision", pace)
         confirmPortTool = self.toolRegistry.getTool("confirmPortfolioAllocation")
@@ -926,19 +968,27 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"Task: Construct the rebalanced portfolio. Execute 'confirmPortfolioAllocation' with your 'sectorAllocations' dictionary, 'portfolioRationale', and 'initialCapital'={currentPortfolioTotalVal:.2f}.\n"
             f"You may also call 'recordJournalEntry' with your 30-50 word rationale detailing portfolio shifts."
         )
-        _, _ = self.executeMandatedToolStage(
+        pmResponse, _ = self.executeMandatedToolStage(
             agent=self.portManager,
             initialPrompt=pmFinalPrompt,
             mandatedToolName="confirmPortfolioAllocation",
             config=config,
             subrole="decision",
-            maxRetries=8,
+            maxRetries=10,
             requireInitialTools=True,
             modeOverride="PortfolioRebalancing"
         )
 
         if confirmPortTool and confirmPortTool.toolLog:
             self.confirmedPortfolioAllocation = confirmPortTool.toolLog[-1]
+
+        self.stage6Decisions.append({
+            "milestoneId": self.currentMilestoneId,
+            "milestoneLabel": self.currentMilestoneLabel,
+            "date": currentDateStr,
+            "type": "review",
+            "pmResponse": pmResponse or ""
+        })
 
 
     def execute(self, config: AgentPortfolioSimulationConfig):
@@ -982,6 +1032,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         self.sp500HistoryPoints.clear()
         self.rebalanceHistory.clear()
         self.milestonesList.clear()
+        self.stage6Decisions.clear()
         self.consecutiveSkippedSteps = 0
 
         # Record inception chart point
@@ -1086,15 +1137,6 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             "stockCount": len(positions)
         })
 
-        emitEvent("milestoneCompleted", {
-            "milestoneId": self.currentMilestoneId,
-            "label": self.currentMilestoneLabel,
-            "date": config.startDateStr,
-            "type": "inception"
-        })
-        self.emitSimulationState(config, sp500Df)
-
-
         # MAIN SIMULATION LOOP - per milestone review and rebalance
         milestoneIndex = 1
         currentSimDateTs = startDateTs
@@ -1112,7 +1154,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
 
             print(f"\nAdvancing Market Simulation from {currentSimDateTs.strftime('%Y-%m-%d')} to {nextMilestoneDateTs.strftime('%Y-%m-%d')}...")
 
-            # Advance Market Simulator day-by-day
+            # Advance Market Simulator day-by-day to next milestone date
             stepCount = 0
             while self.marketSim.currentDate < nextMilestoneDateTs:
                 if isStopRequested(): 
@@ -1135,6 +1177,21 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 if stepCount % 5 == 0:
                     self.emitSimulationState(config, sp500Df)
 
+            # If this is milestone 1 beginning, the prior milestone was Inception (milestone_0).
+            # Now that the market has advanced up to inception + timestep, capture and emit
+            # inception's post-session metrics so the chart and metrics show full performance over the interval!
+            if milestoneIndex == 1:
+                inceptionMetrics = self.capturePostSessionMetrics(config, sp500Df)
+                if self.milestonesList and self.milestonesList[0].get("milestoneId") == "milestone_0":
+                    self.milestonesList[0]["sessionMetrics"] = inceptionMetrics
+                emitEvent("milestoneCompleted", {
+                    "milestoneId": "milestone_0",
+                    "label": self.milestonesList[0].get("label", "Inception"),
+                    "date": config.startDateStr,
+                    "type": "inception",
+                    "sessionMetrics": inceptionMetrics
+                })
+
             # Check if simulation completed or market simulator cannot advance further
             if stepCount == 0 or self.marketSim.currentDate >= endDateTs or (hasattr(self.marketSim, "endDate") and self.marketSim.currentDate >= self.marketSim.endDate):
                 self.emitSimulationState(config, sp500Df)
@@ -1155,7 +1212,14 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 "label": self.currentMilestoneLabel,
                 "date": currentDateStr,
                 "dateFormatted": currentDateFormatted,
-                "type": "review"
+                "type": "review",
+                "pace": "fast",
+                "stages": [
+                    {"num": 1, "name": "Macro Environment Analysis"},
+                    {"num": 3, "name": "Sector Rebalancing Decision"},
+                    {"num": 4, "name": "Stock Holdings Audit & Scouting"},
+                    {"num": 6, "name": "Final Executive Decision"}
+                ]
             })
 
             # Emit milestone started event with current holdings
@@ -1197,7 +1261,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             decision = "extendedBalanceRequired" if isMandatedFullRebalance else None
 
             # Phase 1: Macro Environment Analysis & Portfolio Audit
-            self.currentSimStatus = f"{friendlyDate} (Review): Stage 1"
+            self.currentSimStatus = f"{friendlyDate}: Stage 1"
             self.emitSimulationState(config, sp500Df)
             self.emitNewPhase(1, "Macro Environment Analysis", config.boardroomPace)
             macroAuditPrompt = (
@@ -1227,7 +1291,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 rebalanceDecisionReasoning = "Mandatory full 6-stage rebalance triggered due to 3 consecutive skipped review periods."
             else:
                 # Phase 1.5: Macro Rebalance Necessity Decision
-                self.currentSimStatus = f"{friendlyDate} (Review): Evaluating Decision"
+                self.currentSimStatus = f"{friendlyDate}: Stage 1.5"
                 self.emitSimulationState(config, sp500Df)
                 self.emitNewPhase(1, "Macro Rebalance Checkpoint", config.boardroomPace)
                 decideTool = self.toolRegistry.getTool("decideRebalanceNecessity")
@@ -1245,7 +1309,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                     mandatedToolName="decideRebalanceNecessity",
                     config=config,
                     subrole="decision",
-                    maxRetries=6,
+                    maxRetries=10,
                     requireInitialTools=True,
                     modeOverride="PortfolioRebalancing"
                 )
@@ -1261,7 +1325,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             # Process Rebalance Decision
             if decision == "noBalanceRequired" and not isMandatedFullRebalance:
                 self.consecutiveSkippedSteps += 1
-                self.currentSimStatus = f"{friendlyDate} (Review): Rebalance Skipped"
+                # self.currentSimStatus = f"{friendlyDate}: Rebalance Skipped"
                 self.rebalanceHistory.append({
                     "milestoneId": self.currentMilestoneId,
                     "date": currentDateStr,
@@ -1270,12 +1334,24 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                     "summary": f"No rebalance required. {rebalanceDecisionReasoning}",
                     "consecutiveSkipped": self.consecutiveSkippedSteps
                 })
+                skippedStages = [{"num": 1, "name": "Macro Environment Analysis"}]
+                sessionMetrics = self.capturePostSessionMetrics(config, sp500Df)
+                for m in self.milestonesList:
+                    if m.get("milestoneId") == self.currentMilestoneId:
+                        m["sessionMetrics"] = sessionMetrics
+                        m["stages"] = skippedStages
+                        m["pace"] = "skipped"
+                        break
+
                 emitEvent("milestoneCompleted", {
                     "milestoneId": self.currentMilestoneId,
                     "label": self.currentMilestoneLabel,
                     "date": currentDateStr,
                     "type": "skipped",
-                    "reasoning": rebalanceDecisionReasoning
+                    "pace": "skipped",
+                    "reasoning": rebalanceDecisionReasoning,
+                    "stages": skippedStages,
+                    "sessionMetrics": sessionMetrics
                 })
                 self.emitSimulationState(config, sp500Df)
                 milestoneIndex += 1
@@ -1362,7 +1438,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             })
 
             # Trade execution ... sells first then buys using all cash proceeds (which may have increased from dividends or mergers)
-            self.currentSimStatus = f"{friendlyDate} (Review): Executing Trades"
+            self.currentSimStatus = f"{friendlyDate}: Executing Trades"
             self.emitSimulationState(config, sp500Df)
 
             confirmedPort = self.confirmedPortfolioAllocation.get("confirmedPortfolio", self.confirmedPortfolioAllocation) or {}
@@ -1490,20 +1566,169 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 "stockCount": len(targetPositions)
             })
 
+            sessionMetrics = self.capturePostSessionMetrics(config, sp500Df)
+            for m in self.milestonesList:
+                if m.get("milestoneId") == self.currentMilestoneId:
+                    m["sessionMetrics"] = sessionMetrics
+                    m["stages"] = activeStages
+                    m["pace"] = "complete" if isExtended else "fast"
+                    break
+
             emitEvent("milestoneCompleted", {
                 "milestoneId": self.currentMilestoneId,
                 "label": self.currentMilestoneLabel,
                 "date": currentDateStr,
                 "type": "rebalanced",
+                "pace": "complete" if isExtended else "fast",
+                "stages": activeStages,
                 "sellsCount": len(sellsExecuted),
-                "buysCount": len(buysExecuted)
+                "buysCount": len(buysExecuted),
+                "sessionMetrics": sessionMetrics
             })
 
             self.emitSimulationState(config, sp500Df)
             milestoneIndex += 1
+
+        # Ensure market simulation has fully advanced to endDateTs before Performance Evaluation
+        stepCount = 0
+        while self.marketSim.currentDate < endDateTs:
+            if isStopRequested():
+                raise SimulationStoppedException()
+            success = self.marketSim.runNextDay()
+            if not success:
+                break
+            stepCount += 1
+            currDateStr = self.marketSim.currentDate.strftime("%Y-%m-%d")
+            currVal = float(self.marketSim.getPortfolioValueAtCurrentDate(username)["totalValue"])
+            currSpPrice = getSp500PriceOnDate(self.marketSim.currentDate, sp500Df)
+            currSpVal = config.initialCapital * (currSpPrice / self.sp500InitialPrice) if self.sp500InitialPrice > 0 else config.initialCapital
+            self.portfolioHistoryPoints.append({"x": currDateStr, "y": round(currVal, 2)})
+            self.sp500HistoryPoints.append({"x": currDateStr, "y": round(currSpVal, 2)})
+
+        if stepCount > 0:
+            self.emitSimulationState(config, sp500Df)
+
+        # Dedicated Performance Evaluation Step on final date
+        self.runPerformanceEvaluationBoardroom(config, sp500Df, self.marketSim.currentDate)
 
         # Final completion emission
         self.currentSimStatus = "Simulation Complete"
         finalMetrics = self.getSimulationMetrics(config, sp500Df)
         emitEvent("agentSimCompleted", finalMetrics)
         print(f"\n{Style.BRIGHT}Agent-Driven Portfolio Simulation completed successfully!")
+
+
+    def runPerformanceEvaluationBoardroom(
+        self,
+        config: AgentPortfolioSimulationConfig,
+        sp500Df: pd.DataFrame,
+        evalDateTs: pd.Timestamp
+    ) -> None:
+        """Executes the final Performance Evaluation milestone where the Portfolio Manager reviews all Stage 6 decisions and full results."""
+        if isStopRequested():
+            raise SimulationStoppedException()
+
+        evalDateStr = evalDateTs.strftime("%Y-%m-%d")
+        evalDateFormatted = formatDateFriendly(evalDateTs)
+        milestoneIndex = len(self.milestonesList)
+        self.currentMilestoneId = f"milestone_{milestoneIndex}"
+        self.currentMilestoneLabel = f"{evalDateFormatted} (Performance Evaluation)"
+        setCurrentMilestoneId(self.currentMilestoneId)
+
+        evalStages = [
+            {"num": 1, "name": "Comprehensive Performance Evaluation"}
+        ]
+        self.milestonesList.append({
+            "milestoneId": self.currentMilestoneId,
+            "label": self.currentMilestoneLabel,
+            "date": evalDateStr,
+            "dateFormatted": evalDateFormatted,
+            "type": "evaluation",
+            "pace": "one_shot",
+            "stages": evalStages
+        })
+
+        emitEvent("milestoneStarted", {
+            "milestoneId": self.currentMilestoneId,
+            "label": self.currentMilestoneLabel,
+            "date": evalDateStr,
+            "dateFormatted": evalDateFormatted,
+            "type": "evaluation",
+            "pace": "one_shot",
+            "stages": evalStages
+        })
+
+        self.updateAgentsTimestamp(evalDateTs)
+        self.currentSimStatus = f"{evalDateFormatted} (Evaluation): Executive Performance Review"
+        self.emitSimulationState(config, sp500Df)
+
+        customAgent = [{"role": "Impartial Portfolio Manager", "color": "purple", "name": "Portfolio Manager"}]
+        self.emitNewPhase(1, "Comprehensive Performance Evaluation", BoardroomPace.ONE_SHOT, customAgents=customAgent)
+
+        # Collect full performance metrics
+        perfMetrics = self.getSimulationMetrics(config, sp500Df)
+        startFormatted = formatDateFriendly(pd.Timestamp(config.startDateStr))
+
+        # Format historical Stage 6 decisions (truncated to max 500 words each)
+        decisionsTextList = []
+        for d in self.stage6Decisions:
+            truncatedText = truncateToWords(d.get("pmResponse", ""), 500)
+            decisionsTextList.append(
+                f"### Milestone: {d.get('milestoneLabel', d.get('date'))} ({d.get('date')})\n"
+                f"{truncatedText}"
+            )
+        decisionsHistoryStr = "\n\n".join(decisionsTextList) if decisionsTextList else "No prior Stage 6 logs available."
+
+        # Format final holdings
+        finalHoldingsStr = self.formatCurrentHoldingsPrompt()
+
+        pmEvalPrompt = (
+            f"=== COMPREHENSIVE PERFORMANCE EVALUATION ===\n"
+            f"Simulation Period: {config.startDateStr} ({startFormatted}) to {evalDateStr} ({evalDateFormatted})\n"
+            f"Initial Capital: ${config.initialCapital:,.2f}\n"
+            f"Final Portfolio Assets: ${perfMetrics.get('totalValue', config.initialCapital):,.2f} "
+            f"(Cash: ${perfMetrics.get('cashValue', 0.0):,.2f}, Equities: ${perfMetrics.get('stockValue', 0.0):,.2f})\n"
+            f"Total Return: {perfMetrics.get('totalReturnPct', 0.0):+.2f}% (${perfMetrics.get('totalReturnDollar', 0.0):+,.2f}) vs S&P 500: {perfMetrics.get('sp500ReturnPct', 0.0):+.2f}% (${perfMetrics.get('sp500ReturnDollar', 0.0):+,.2f})\n"
+            f"Alpha Generated: {perfMetrics.get('alphaPct', 0.0):+.2f}%\n"
+            f"Portfolio Sharpe Ratio: {perfMetrics.get('sharpeRatio', 0.0):.2f}\n"
+            f"Portfolio Max Drawdown: {perfMetrics.get('maxDrawdownPct', 0.0):.2f}%\n\n"
+            f"=== FINAL PORTFOLIO HOLDINGS ===\n"
+            f"{finalHoldingsStr}\n\n"
+            f"=== HISTORICAL STAGE 6 EXECUTIVE REBALANCING DECISIONS ===\n"
+            f"{decisionsHistoryStr}\n\n"
+            f"Task: As the Impartial Portfolio Manager, conduct an exhaustive, rigorous post-mortem performance evaluation of the portfolio strategy across time itself.\n"
+            f"Structure your response with clear, professional sections:\n"
+            f"1. Executive Summary: Overarching assessment of performance vs S&P 500 benchmark and initial investment mandate.\n"
+            f"2. Winning Themes & Successful Bets: Highlight top-contributing stock picks, sector allocations, and well-timed entries/expansions.\n"
+            f"3. Strategic Shortcomings & Underperformers: Frank analysis of lagging equities, sector drags, mistimed trims, and severe drawdown episodes.\n"
+            f"4. Mandate & Risk Discipline Audit: Evaluation of how consistently the portfolio adhered to target risk tolerances, diversification constraints, and market regime shifts.\n"
+            f"5. Definitive Conclusion: Final verdict on fund performance and lessons learned across the entire simulated lifecycle."
+        )
+
+        evalRaw, _ = self.portManager.analyseAndReply(
+            incomingMessage=pmEvalPrompt,
+            toolRegistry=self.toolRegistry,
+            timestamp=self.timestamp,
+            config=config,
+            requireInitialTools=False,
+            modeOverride="PortfolioCreation"
+        )
+
+        # Capture post-session metrics for this evaluation milestone
+        postMetrics = self.capturePostSessionMetrics(config, sp500Df)
+        for m in self.milestonesList:
+            if m.get("milestoneId") == self.currentMilestoneId:
+                m["sessionMetrics"] = postMetrics
+                m["stages"] = evalStages
+                break
+
+        emitEvent("milestoneCompleted", {
+            "milestoneId": self.currentMilestoneId,
+            "label": self.currentMilestoneLabel,
+            "date": evalDateStr,
+            "type": "evaluation",
+            "pace": "one_shot",
+            "stages": evalStages,
+            "sessionMetrics": postMetrics
+        })
+        self.emitSimulationState(config, sp500Df)

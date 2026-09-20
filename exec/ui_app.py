@@ -105,7 +105,13 @@ def broadcastEvent(eventData):
     with connectedWebsocketsLock:
         sockets = list(connectedWebsockets)
     if sockets:
-        message = json.dumps(eventData)
+        try:
+            message = json.dumps(eventData)
+        except Exception as e:
+            evtType = eventData.get("type") if isinstance(eventData, dict) else "unknown"
+            print(f"Error serialising UI event '{evtType}': {e}")
+            return
+
         for ws in sockets:
             try:
                 asyncio.run_coroutine_threadsafe(ws.send(message), eventLoop)

@@ -9,6 +9,7 @@ const BoardroomCore = (function () {
     let serverIsLoaded = false;
     let activeAgentPanes = {}; // Map of "stageNum_agentRole" -> { pane, feed }
     let activeBlocks = {};     // Map of "stageNum_agentRole" -> { type, element, block, rawText }
+    let promptProcessingBanners = {}; // Map of "stageNum_agentRole" -> bannerElement
     let streamingArgs = {};    // Map of "stageNum_toolIndex" -> raw string
     let currentStageNumber = 0;
     let highestStageNumber = 0;
@@ -1005,18 +1006,21 @@ const BoardroomCore = (function () {
         }
         if (!workspace) return null;
 
-        const config = roleConfigs[agentRole] || {
-            class: agentColor || "cyan",
-            initials: (agentRole || "AG").slice(0, 2).toUpperCase(),
-            name: displayName || agentRole
+        const safeRole = (typeof agentRole === "object" && agentRole !== null) ? (agentRole.role || "") : String(agentRole || "");
+        const safeColor = (typeof agentRole === "object" && agentRole !== null) ? (agentRole.color || agentColor) : agentColor;
+
+        const config = roleConfigs[safeRole] || {
+            class: safeColor || "cyan",
+            initials: (safeRole || "AG").slice(0, 2).toUpperCase(),
+            name: displayName || safeRole
         };
-        const colorClass = config.class || agentColor || "cyan";
-        const initials = config.initials || (agentRole || "AG").slice(0, 2).toUpperCase();
-        const roleName = displayName || config.name || agentRole;
+        const colorClass = config.class || safeColor || "cyan";
+        const initials = config.initials || (safeRole || "AG").slice(0, 2).toUpperCase();
+        const roleName = displayName || config.name || safeRole;
 
         const pane = document.createElement("div");
         pane.className = (stageNum === "qa") ? "agent-pane qa-agent-pane" : "agent-pane";
-        pane.id = `pane-${stageNum}-${agentRole.replace(/\s+/g, '')}-${Date.now()}`;
+        pane.id = `pane-${stageNum}-${safeRole.replace(/\s+/g, '')}-${Date.now()}`;
 
         const header = document.createElement("div");
         header.className = "agent-header";
@@ -1073,6 +1077,51 @@ const BoardroomCore = (function () {
         el.innerText = payload.message || `Received 429 "Too Many Requests". Waiting for ${payload.waitTime}s...`;
         paneObj.feed.appendChild(el);
         autoScroll(paneObj.feed);
+    }
+
+    function showPromptProcessing(stageNum, agentRole) {
+        const paneObj = getOrCreateAgentPane(stageNum, agentRole);
+        if (!paneObj || !paneObj.feed) return;
+        const compoundKey = `${stageNum}_${agentRole}`;
+
+        if (promptProcessingBanners[compoundKey]) return;
+
+        const banner = document.createElement("div");
+        banner.className = "prompt-processing-banner";
+
+        const spinner = document.createElement("span");
+        spinner.className = "prompt-processing-spinner";
+
+        const text = document.createElement("span");
+        text.innerText = "Prompt Processing";
+
+        banner.appendChild(spinner);
+        banner.appendChild(text);
+
+        paneObj.feed.appendChild(banner);
+        promptProcessingBanners[compoundKey] = banner;
+        autoScrollFeedOrWorkspace(stageNum, agentRole);
+    }
+
+    function removePromptProcessing(stageNum, agentRole) {
+        const compoundKey = `${stageNum}_${agentRole}`;
+        const banner = promptProcessingBanners[compoundKey];
+        if (banner) {
+            if (banner.parentNode) {
+                banner.parentNode.removeChild(banner);
+            }
+            delete promptProcessingBanners[compoundKey];
+        }
+    }
+
+    function clearAllPromptProcessing() {
+        Object.keys(promptProcessingBanners).forEach(key => {
+            const banner = promptProcessingBanners[key];
+            if (banner && banner.parentNode) {
+                banner.parentNode.removeChild(banner);
+            }
+        });
+        promptProcessingBanners = {};
     }
 
     function startReasoningBlock(stageNum, agentRole) {
@@ -1681,10 +1730,23 @@ const BoardroomCore = (function () {
         activeAgentPanes = {};
         activeBlocks = {};
         streamingArgs = {};
+        clearAllPromptProcessing();
         currentStageNumber = 0;
         highestStageNumber = 0;
         updateSummariesBtnState();
         resetSourcesUI();
+
+        // Immediately mount Stage 1 so the UI responds without delay
+        const initialMode = modeSelect ? modeSelect.value : "fast";
+        if (initialMode === "one_shot") {
+            setupStageLayout(1, "One-Shot Analysis", [
+                { role: "One-Shot Analyst", color: "cyan", name: "One-Shot Analyst" }
+            ]);
+        } else {
+            setupStageLayout(1, "Macro Environment Analysis", [
+                { role: "Macro Analyst", color: "cyan", name: "Macro Analyst" }
+            ]);
+        }
 
         const sidebarContent = document.getElementById("sidebarContent");
         if (sidebarContent) sidebarContent.innerHTML = "";
@@ -1716,7 +1778,10 @@ const BoardroomCore = (function () {
     function handleSimulationEvent(payload) {
         if (!payload || !payload.type) return;
 
-        const { type, agentRole, agentColor, phase, stageNum } = payload;
+        const rawRole = payload.agentRole || payload.role;
+        const agentRole = (typeof rawRole === "object" && rawRole !== null) ? (rawRole.role || "") : (rawRole || "");
+        const agentColor = (typeof rawRole === "object" && rawRole !== null) ? (rawRole.color || payload.agentColor || payload.color) : (payload.agentColor || payload.color);
+        const { type, phase, stageNum } = payload;
         const activeStage = (stageNum !== undefined && stageNum !== null) ? stageNum : currentStageNumber;
 
         switch (type) {
@@ -1751,11 +1816,19 @@ const BoardroomCore = (function () {
                 getOrCreateAgentPane(activeStage, agentRole, agentColor, payload.displayName);
                 break;
 
+            case "promptProcessing":
+                if (agentRole) {
+                    showPromptProcessing(activeStage, agentRole);
+                }
+                break;
+
             case "reasoningStart":
+                removePromptProcessing(activeStage, agentRole);
                 startReasoningBlock(activeStage, agentRole);
                 break;
 
             case "reasoningToken":
+                removePromptProcessing(activeStage, agentRole);
                 appendReasoningToken(activeStage, agentRole, payload.token);
                 break;
 
@@ -1764,10 +1837,12 @@ const BoardroomCore = (function () {
                 break;
 
             case "contentStart":
+                removePromptProcessing(activeStage, agentRole);
                 startContentBlock(activeStage, agentRole, phase);
                 break;
 
             case "contentToken":
+                removePromptProcessing(activeStage, agentRole);
                 appendContentToken(activeStage, agentRole, payload.token, phase);
                 break;
 
@@ -1776,18 +1851,21 @@ const BoardroomCore = (function () {
                 break;
 
             case "toolCallStreamStart": {
+                removePromptProcessing(activeStage, agentRole);
                 const tIndex = (payload.index !== undefined) ? payload.index : payload.toolIndex;
                 startToolCallStream(activeStage, agentRole, tIndex, payload.toolName);
                 break;
             }
 
             case "toolCallStreamToken": {
+                removePromptProcessing(activeStage, agentRole);
                 const tIndex = (payload.index !== undefined) ? payload.index : payload.toolIndex;
                 appendToolCallStreamToken(activeStage, agentRole, tIndex, payload.token);
                 break;
             }
 
             case "toolCallStart": {
+                removePromptProcessing(activeStage, agentRole);
                 if (payload.toolName && payload.toolName.startsWith("confirmBoardroomDecision")) {
                     emit("decisionStarted", payload);
                 }
@@ -1818,6 +1896,7 @@ const BoardroomCore = (function () {
                 break;
 
             case "agentRunEnd":
+                removePromptProcessing(activeStage, agentRole);
                 endCurrentBlock(activeStage, agentRole);
                 break;
 
@@ -1846,6 +1925,7 @@ const BoardroomCore = (function () {
             case "simComplete":
                 setControlsRunningState(false);
                 stopSimulationTimer();
+                clearAllPromptProcessing();
 
                 const qaTab = document.getElementById("stageStep-qa");
                 if (qaTab) {
@@ -1878,6 +1958,7 @@ const BoardroomCore = (function () {
                 hideActiveBoardroomModal();
                 setControlsRunningState(false);
                 stopSimulationTimer();
+                clearAllPromptProcessing();
                 document.querySelectorAll(".stage-item").forEach(item => item.classList.remove("active"));
                 emit("simStopped", payload);
                 break;
@@ -1887,6 +1968,7 @@ const BoardroomCore = (function () {
                 alert("Simulation Error: " + payload.message);
                 setControlsRunningState(false);
                 stopSimulationTimer();
+                clearAllPromptProcessing();
                 document.querySelectorAll(".stage-item").forEach(item => item.classList.remove("active"));
                 emit("error", payload);
                 break;

@@ -256,7 +256,7 @@ class CreationSectorDecisionStage(BoardroomStage):
             mandatedToolName="confirmSectorAllocation",
             config=config,
             subrole="sector",
-            maxRetries=8,
+            maxRetries=10,
             requireInitialTools=True
         )
 
@@ -609,7 +609,7 @@ class CreationFinalDecisionStage(BoardroomStage):
             mandatedToolName="confirmPortfolioAllocation",
             config=config,
             subrole="decision",
-            maxRetries=8,
+            maxRetries=10,
             requireInitialTools=True
         )
 
