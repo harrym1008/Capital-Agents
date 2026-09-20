@@ -34,8 +34,8 @@ class SegmentExecutionResult:
 
 class MarketSimulation:
     def __init__(self, startDate, endDate, tickerDataProvider=None, dailyPriceProvider=None):
-        self.startDate = pd.Timestamp(startDate, tz=NEW_YORK)
-        self.endDate = pd.Timestamp(endDate, tz=NEW_YORK) - timedelta(days=1)    
+        self.startDate = pd.Timestamp(startDate, tz=NEW_YORK).normalize()
+        self.endDate = pd.Timestamp(endDate, tz=NEW_YORK).normalize()    
         self.currentDate = self.startDate
         self.started = False
 
@@ -499,12 +499,12 @@ class MarketSimulation:
 
 
     def processTomorrowsDelistings(self, today):
-        tomorrow = today + timedelta(days=1)
+        tomorrow = (today + pd.DateOffset(days=1)).normalize()
         if tomorrow > self.endDate:
             return
         
         while not self.isTradingDay(tomorrow):
-            tomorrow += timedelta(days=1)
+            tomorrow = (tomorrow + pd.DateOffset(days=1)).normalize()
             if tomorrow > self.endDate:
                 return
 
@@ -544,15 +544,15 @@ class MarketSimulation:
     def runNextDay(self):
         if not self.started:
             self.started = True
-            currentDate = self.currentDate
+            currentDate = self.currentDate.normalize()
         else:
-            currentDate = self.currentDate + timedelta(days=1)
+            currentDate = (self.currentDate + pd.DateOffset(days=1)).normalize()
 
         if currentDate > self.endDate:
             return False
 
         while not self.isTradingDay(currentDate):
-            currentDate += timedelta(days=1)
+            currentDate = (currentDate + pd.DateOffset(days=1)).normalize()
             if currentDate > self.endDate:
                 return False
 

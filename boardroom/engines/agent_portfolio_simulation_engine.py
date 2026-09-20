@@ -59,15 +59,16 @@ def getSp500PriceOnDate(dateTs: pd.Timestamp, sp500Df: pd.DataFrame) -> float:
 def computeNextMilestoneDate(currentTs: pd.Timestamp, timestep: SimulationTimestep) -> pd.Timestamp:
     """Calculates the target timestamp for the subsequent simulation review milestone."""
     if timestep == SimulationTimestep.ONE_WEEK:
-        return currentTs + pd.Timedelta(weeks=1)
+        res = currentTs + pd.Timedelta(weeks=1)
     elif timestep == SimulationTimestep.TWO_WEEKS:
-        return currentTs + pd.Timedelta(weeks=2)
+        res = currentTs + pd.Timedelta(weeks=2)
     elif timestep == SimulationTimestep.TWO_MONTHS:
-        return currentTs + pd.DateOffset(months=2)
+        res = currentTs + pd.DateOffset(months=2)
     elif timestep == SimulationTimestep.THREE_MONTHS:
-        return currentTs + pd.DateOffset(months=3)
+        res = currentTs + pd.DateOffset(months=3)
     else:  # ONE_MONTH default
-        return currentTs + pd.DateOffset(months=1)
+        res = currentTs + pd.DateOffset(months=1)
+    return res.normalize()
 
 
 def truncateToWords(text: str, maxWords: int = 500) -> str:
@@ -997,8 +998,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
 
         config.generateSummaries = False
         self.lastConfig = config
-        startDateTs = pd.Timestamp(config.startDateStr).tz_localize(NEW_YORK)
-        endDateTs = pd.Timestamp(config.endDateStr).tz_localize(NEW_YORK)
+        startDateTs = pd.Timestamp(config.startDateStr, tz=NEW_YORK).normalize()
+        endDateTs = pd.Timestamp(config.endDateStr, tz=NEW_YORK).normalize()
         username = "AgentPortfolio"
 
         # Initialise Market Simulation
@@ -1146,8 +1147,10 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 raise SimulationStoppedException()
 
             nextMilestoneDateTs = computeNextMilestoneDate(currentSimDateTs, config.timestep)
-            if nextMilestoneDateTs > endDateTs:
-                nextMilestoneDateTs = endDateTs
+            if nextMilestoneDateTs >= endDateTs:
+                # The remaining interval to endDate is less than or equal to a full timestep.
+                # Stop the review loop so the market simulation advances directly to endDate for Performance Evaluation.
+                break
 
             if currentSimDateTs >= endDateTs:
                 break
@@ -1177,20 +1180,20 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 if stepCount % 5 == 0:
                     self.emitSimulationState(config, sp500Df)
 
-            # If this is milestone 1 beginning, the prior milestone was Inception (milestone_0).
-            # Now that the market has advanced up to inception + timestep, capture and emit
-            # inception's post-session metrics so the chart and metrics show full performance over the interval!
-            if milestoneIndex == 1:
-                inceptionMetrics = self.capturePostSessionMetrics(config, sp500Df)
-                if self.milestonesList and self.milestonesList[0].get("milestoneId") == "milestone_0":
-                    self.milestonesList[0]["sessionMetrics"] = inceptionMetrics
-                emitEvent("milestoneCompleted", {
-                    "milestoneId": "milestone_0",
-                    "label": self.milestonesList[0].get("label", "Inception"),
-                    "date": config.startDateStr,
-                    "type": "inception",
-                    "sessionMetrics": inceptionMetrics
-                })
+            # Update prior milestone's post-session metrics over the advanced interval
+            priorMilestoneId = f"milestone_{milestoneIndex - 1}"
+            priorMetrics = self.capturePostSessionMetrics(config, sp500Df)
+            for m in self.milestonesList:
+                if m.get("milestoneId") == priorMilestoneId:
+                    m["sessionMetrics"] = priorMetrics
+                    emitEvent("milestoneCompleted", {
+                        "milestoneId": priorMilestoneId,
+                        "label": m.get("label"),
+                        "date": m.get("date"),
+                        "type": m.get("type"),
+                        "sessionMetrics": priorMetrics
+                    })
+                    break
 
             # Check if simulation completed or market simulator cannot advance further
             if stepCount == 0 or self.marketSim.currentDate >= endDateTs or (hasattr(self.marketSim, "endDate") and self.marketSim.currentDate >= self.marketSim.endDate):
@@ -1607,6 +1610,20 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
 
         if stepCount > 0:
             self.emitSimulationState(config, sp500Df)
+
+        # Update the latest completed milestone's metrics with performance up to the end date
+        if self.milestonesList:
+            lastMilestone = self.milestonesList[-1]
+            lastMilestoneId = lastMilestone.get("milestoneId")
+            interimMetrics = self.capturePostSessionMetrics(config, sp500Df)
+            lastMilestone["sessionMetrics"] = interimMetrics
+            emitEvent("milestoneCompleted", {
+                "milestoneId": lastMilestoneId,
+                "label": lastMilestone.get("label"),
+                "date": lastMilestone.get("date"),
+                "type": lastMilestone.get("type"),
+                "sessionMetrics": interimMetrics
+            })
 
         # Dedicated Performance Evaluation Step on final date
         self.runPerformanceEvaluationBoardroom(config, sp500Df, self.marketSim.currentDate)
