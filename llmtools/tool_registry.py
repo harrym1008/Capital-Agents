@@ -1,5 +1,5 @@
 from dataquery import LRUCache, MacroDataProvider, NewsDataProvider, DailyPriceProvider, \
-                      TickerDataProvider, ShortDataProvider, EdgarDataProvider, ForexDataProvider, SectorDataProvider, FinnhubDataProvider
+                      TickerDataProvider, ShortDataProvider, EdgarDataProvider, ForexDataProvider, SectorDataProvider, SectorLeadersProvider, FinnhubDataProvider
 from collectors.constants import START_DATE, END_DATE
 from collectors.rate_limiter import GlobalRateLimiters
 
@@ -25,6 +25,7 @@ class DataProviders:
         self.edgar = EdgarDataProvider(self.tickers, self.cache, self.rateLimiters.edgarLimiter)
         self.forex = ForexDataProvider(START_DATE, END_DATE, self.cache, self.rateLimiters)
         self.sectors = SectorDataProvider(self.cache, self.rateLimiters, self.macro, self.tickers)
+        self.sectorLeaders = SectorLeadersProvider(self.cache)
         self.finnhub = FinnhubDataProvider(self.cache, self.rateLimiters.finnhubLimiter)
 
         self.sentimentCache = LRUCache(8 * 1024 ** 2, main=False)  # 8 MB max size

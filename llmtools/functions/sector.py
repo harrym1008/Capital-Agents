@@ -489,19 +489,12 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
 
     cached = data.cache.get(cacheKey)
     if cached is not None:
-        if tool is not None:
-            tool.updateProgress(100.0)
         return cached
 
     with data.sectors.keyedLocks.lockKey(cacheKey):
         cached = data.cache.get(cacheKey)
         if cached is not None:
-            if tool is not None:
-                tool.updateProgress(100.0)
             return cached
-
-        if tool is not None:
-            tool.updateProgress(3.0)
 
         # 1. Pre-load benchmark SP500 and Treasury 10Y series
         spyClosesDf = pd.DataFrame()
@@ -553,6 +546,8 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
         totalSectors = len(DB_SECTOR_TO_TICKER)
         completedInit = 0
 
+        leadersMap = data.sectorLeaders.getAllSectorLeaders(effectiveTs, limit=25)
+
         for dbKey, etfTicker in sorted(DB_SECTOR_TO_TICKER.items()):
             candidateProfiles = [
                 p for p in data.tickers.tickerIndex.values()
@@ -566,26 +561,18 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
                 p.industry for p in candidateProfiles if p.industry and p.industry.lower() != "unknown"
             )))
 
-            # Step 1: Fast market cap screen across all candidates
-            def getCandidateCap(p):
-                row = data.ohlcv.getSingleDayTickerData(p.ticker, effectiveTs)
-                if row is None or "marketCap" not in row:
-                    return None
-                capStr = str(row["marketCap"])
-                capNum = parseMarketCapValue(capStr)
-                if 0 < capNum <= 10e12:
-                    return (p, capNum, capStr)
-                return None
+            top25Tickers = leadersMap.get(etfTicker, [])
+            top25Caps = []
+            for t in top25Tickers:
+                p = data.tickers.getTickerProfile(t)
+                if p is not None:
+                    row = data.ohlcv.getSingleDayTickerData(p.ticker, effectiveTs)
+                    capStr = str(row["marketCap"]) if row is not None and "marketCap" in row else "N/A"
+                    capNum = parseMarketCapValue(capStr)
+                    top25Caps.append((p, capNum, capStr))
 
-            with ThreadPoolExecutor(max_workers=32) as executor:
-                scoredCaps = [r for r in executor.map(getCandidateCap, candidateProfiles) if r is not None]
-
-            scoredCaps.sort(key=lambda x: x[1], reverse=True)
-            sectorCapSum = sum(h[1] for h in scoredCaps)
+            sectorCapSum = sum(h[1] for h in top25Caps if h[1] is not None and h[1] > 0)
             sectorMarketCapSums[etfTicker] = sectorCapSum
-
-            top25Caps = scoredCaps[:25]
-            top20Tickers = [h[0].ticker for h in scoredCaps[:20]]
 
             # Step 2: Evaluate 1-year OHLCV for top 25 holdings (fast breadth & constituent divergence)
             def evalTopHolding(item):
@@ -633,7 +620,7 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
                         agentHeadlines.append(f"{hl} ({age})")
 
             # Step 4: Query constituent news for FinBERT sentiment (engine-subsampled)
-            candidateTickers = [etfTicker] + top20Tickers
+            candidateTickers = [etfTicker] + top25Tickers
             rawNewsDf = data.news.getSectorConstituentsNews(candidateTickers, effectiveTs, limit=400, maxReferencedTickers=10)
             newsDf = subsampleSectorArticles(rawNewsDf)
             sectorNewsDfs[etfTicker] = newsDf
@@ -661,12 +648,10 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
             }
 
             completedInit += 1
-            if tool is not None:
-                tool.updateProgress(3.0 + (completedInit / totalSectors) * 37.0)
+            tool.updateProgress((completedInit / totalSectors) * 50.0)
 
         # 3. Score all unique headlines across all sectors with ModernFinBERT
-        if tool is not None:
-            tool.updateProgress(42.0)
+        tool.updateProgress(50.0)
 
         uniqueHeadlinesList = list(allUniqueHeadlines)
         totalHeadlinesToScore = len(uniqueHeadlinesList)
@@ -675,14 +660,13 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
         def onFinbertProgress(increment):
             if tool is not None and totalHeadlinesToScore > 0:
                 scoredCount[0] += increment
-                prog = 42.0 + (scoredCount[0] / totalHeadlinesToScore) * 48.0
-                tool.updateProgress(min(90.0, prog))
+                prog = 50.0 + (scoredCount[0] / totalHeadlinesToScore) * 50.0
+                tool.updateProgress(prog)
 
         if uniqueHeadlinesList:
             scoreTextsWithCache(uniqueHeadlinesList, data=data, onProgressCallback=onFinbertProgress)
 
-        if tool is not None:
-            tool.updateProgress(92.0)
+        tool.updateProgress(92.0)
 
         # Total market cap across all 11 sectors for benchmark weighting
         totalMarketCapAll = sum(sectorMarketCapSums.values()) or 1.0
@@ -834,8 +818,7 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
         cleanedFinal = cleanData(finalOutput)
         data.cache.put(cacheKey, cleanedFinal)
 
-        if tool is not None:
-            tool.updateProgress(100.0)
+        tool.updateProgress(100.0)
 
         return cleanedFinal
 

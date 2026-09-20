@@ -8,6 +8,7 @@ from collectors.macro_dl_client import MacroDataClient
 from collectors.forex_dl_client import CurrencyDataClient
 from collectors.shortdata_dl_client import ShortDataClient
 from collectors.sector_dl_client import SectorDataClient
+from collectors.sector_leaders_generator import SectorLeadersGenerator
 
 from collectors.rate_limiter import GlobalRateLimiters
 from collectors.constants import *
@@ -54,6 +55,10 @@ def runMassDownloadTool():
         "sector": {
             "confirm": input("Download sector data? (yes/no)    > ").lower() == "yes",
             "desc": f"Sector data from {dateStartStr} to {dateEndStr}"
+        },
+        "sectorleaders": {
+            "confirm": input("Generate sector leaders? (yes/no) > ").lower() == "yes",
+            "desc": f"Top 25 market-cap sector leaders from {dateStartStr} to {dateEndStr}"
         },
     }
 
@@ -165,16 +170,21 @@ def runMassDownloadTool():
     for pbar in pbars.values():
         pbar.close()
 
-    # Step 3: Precalculate news sentiment scores if requested
-    # if downloading["newssentiment"]["confirm"]:
-    #     sentimentClient = NewsSentimentClient()
-    #     sentimentClient.processAllNews(None)
-
-
     print("\n" + "=" * 60)
     print("All downloads complete!")
     print("=" * 60)
 
+    # Step 3: Post download generators
+
+    if downloading["sectorleaders"]["confirm"]:
+        if os.path.exists(ALL_TICKERS_FILE):
+            pbarLeaders = tqdm(total=11, desc="[SECTOR LEADERS]", position=0, leave=True)
+            generator = SectorLeadersGenerator()
+            generator.generateSectorLeaders(pbar=pbarLeaders)
+            pbarLeaders.close()
+            tqdm.write("Completed generating sector leaders parquet\n")
+        else:
+            tqdm.write(f"Skipping sector leaders generation: {ALL_TICKERS_FILE} not found.\n")
 
 
 if __name__ == "__main__":

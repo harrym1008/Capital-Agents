@@ -89,6 +89,5 @@ FOREX_DIRECTORY = "data/forex/"
 SECTOR_DIRECTORY = "data/sectors/"
 
 
-# For news_sentiment_client.py
-NEWS_SENTIMENT_PARQUET_PATH = "data/newssentiment.parquet"
-NEWS_SENTIMENT_BATCHES_DIR = "data/sentiment_batches"
+# For sector_leaders_generator.py
+SECTOR_LEADERS_PARQUET_PATH = "data/sectorleaders.parquet"

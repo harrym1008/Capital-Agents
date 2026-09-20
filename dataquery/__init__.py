@@ -9,4 +9,5 @@ from .short_provider import ShortDataProvider
 from .edgar_provider import EdgarDataProvider, FormType
 from .forex_provider import ForexDataProvider
 from .sector_provider import SectorDataProvider
+from .sector_leaders_provider import SectorLeadersProvider
 from .finnhub_provider import FinnhubDataProvider
