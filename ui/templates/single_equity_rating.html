@@ -2,10 +2,14 @@
 
 {% block title %}CapitalAgents - Single Ticker Rating{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/single_equity_rating.css">
+{% endblock %}
+
 {% block config_inputs %}
     <div class="config-group">
         <label for="tickerInput">Ticker:</label>
-        <input type="text" id="tickerInput" placeholder="TCKR" style="width: 80px; text-transform: uppercase;">
+        <input type="text" id="tickerInput" placeholder="TCKR" class="ticker-input-narrow">
     </div>
     <div class="config-group">
         <label for="modeSelect">Mode:</label>
@@ -60,7 +64,7 @@
         const targetSelect = document.getElementById("qaTargetSelect");
         if (!targetSelect) return;
 
-        const mode = document.getElementById("modeSelect")?.value || "fast";
+        const mode = document.getElementById("modeSelect").value || "fast";
         const currentValue = targetSelect.value;
 
         let specialists = [];
@@ -101,7 +105,7 @@
     }
 
     // Re-init stages bar and target agents when evaluation mode changes
-    document.getElementById("modeSelect")?.addEventListener("change", function () {
+    document.getElementById("modeSelect").addEventListener("change", function () {
         BoardroomCore.initStagesBar(this.value, singleEquityStages);
         updateQaTargetAgents();
     });
@@ -134,24 +138,24 @@
             qaWorkspace.style.flexDirection = "column";
 
             qaWorkspace.innerHTML = `
-                <div id="qaChatHistory" style="flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 1000px; margin: 0 auto; overflow-y: auto; padding-right: 10px;">
+                <div id="qaChatHistory" class="question-answer-history">
                     <div class="agent-pane qa-agent-pane qa-welcome-pane">
                         <div class="agent-header">
                             <div class="agent-avatar agent-cyan">SP</div>
                             <div class="agent-role-name">Boardroom Spokesperson</div>
                         </div>
-                        <div class="agent-feed" style="font-size: 15px; overflow-y: visible; line-height: 1.6; color: #1e293b;">
+                        <div class="agent-feed question-answer-feed">
                             Welcome to the Boardroom Q&A. You can ask any question regarding the evaluation, financial models, valuation metrics, or risk assessment, and I will summarise directly or transfer you to the relevant specialist analyst.
                         </div>
                     </div>
                 </div>
 
-                <div style="flex: none; width: 100%; max-width: 1000px; margin: 0 auto; display: flex; gap: 10px; align-items: flex-end; padding-right: 6px;">
-                    <textarea id="qaInput" rows="1" placeholder="Ask a question... (Enter to send, Shift+Enter for newline)" style="flex: 1; padding: 12px 16px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 16px; outline: none; background: #ffffff; color: #0f172a; resize: none; overflow-y: hidden; min-height: 48px; max-height: 220px; box-sizing: border-box; line-height: 1.5; font-family: inherit;"></textarea>
-                    <select id="qaTargetSelect" style="flex: none; height: 48px; padding: 0 14px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 14px; font-weight: 600; outline: none; background: #ffffff; color: #1e293b; cursor: pointer; box-sizing: border-box;">
+                <div class="question-answer-input-row">
+                    <textarea id="qaInput" rows="1" placeholder="Ask a question... (Enter to send, Shift+Enter for newline)" class="question-answer-textarea"></textarea>
+                    <select id="qaTargetSelect" class="question-answer-target-select">
                         <option value="auto">Auto Delegate</option>
                     </select>
-                    <button id="qaSendBtn" class="run-btn" style="flex: none; height: 48px; padding: 0 24px; border-radius: 8px; font-weight: bold; font-size: 16px; box-sizing: border-box;">Send</button>
+                    <button id="qaSendBtn" class="run-btn question-answer-send-button">Send</button>
                 </div>
             `;
             panesContainer.appendChild(qaWorkspace);
@@ -259,7 +263,7 @@
                     <div class="agent-avatar agent-cyan">SP</div>
                     <div class="agent-role-name">Boardroom Spokesperson</div>
                 </div>
-                <div class="agent-feed" style="font-size: 15px; overflow-y: visible; line-height: 1.6; color: #1e293b;">
+                <div class="agent-feed question-answer-feed">
                     Welcome to the Boardroom Q&A. You can ask any question regarding the evaluation, financial models, valuation metrics, or risk assessment, and I will summarise directly or transfer you to the relevant specialist analyst.
                 </div>
             </div>
@@ -297,38 +301,38 @@
     BoardroomCore.setCustomStageLayoutHandler(({ stageNum, stageName, agents, workspace }) => {
         if (stageName.includes("Decision Upload")) {
             workspace.innerHTML = `
-                <div class="upload-receipt-container" style="flex: 1; max-width: 440px; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); align-self: stretch; height: 100%; min-height: 0; overflow-y: auto; box-sizing: border-box;">
-                    <h2 style="font-size: 18px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 16px; text-align: center;">BOARDROOM DECISION REPORT</h2>
-                    <div style="display: grid; grid-template-columns: 160px 1fr; gap: 14px; font-size: 14px; line-height: 1.2;">
-                        <div style="font-weight: 700; color: #475569;">Asset Ticker:</div>
-                        <div id="receipt-ticker" style="font-weight: bold;">${currentTicker || '--'}</div>
+                <div class="upload-receipt-container single-equity-receipt-card">
+                    <h2 class="single-equity-receipt-title">BOARDROOM DECISION REPORT</h2>
+                    <div class="single-equity-receipt-grid">
+                        <div class="receipt-field-label">Asset Ticker:</div>
+                        <div id="receipt-ticker" class="receipt-field-value">${currentTicker || '--'}</div>
 
-                        <div style="font-weight: 700; color: #475569;">Date of Analysis:</div>
-                        <div id="receipt-date" style="font-weight: bold;">${BoardroomCore.formatOrdinalDate(currentSimulatedDate)}</div>
+                        <div class="receipt-field-label">Date of Analysis:</div>
+                        <div id="receipt-date" class="receipt-field-value">${BoardroomCore.formatOrdinalDate(currentSimulatedDate)}</div>
 
-                        <div style="font-weight: 700; color: #475569;">Investment Rating:</div>
-                        <div><span id="receipt-rating" class="tool-status-badge status-running" style="font-size: 11px; margin-left: 0; font-weight: bold;">--</span></div>
+                        <div class="receipt-field-label">Investment Rating:</div>
+                        <div><span id="receipt-rating" class="tool-status-badge status-running receipt-rating-badge">--</span></div>
 
-                        <div style="font-weight: 700; color: #475569;">Portfolio Weighting:</div>
-                        <div id="receipt-weighting" style="font-weight: bold;">--</div>
+                        <div class="receipt-field-label">Portfolio Weighting:</div>
+                        <div id="receipt-weighting" class="receipt-field-value">--</div>
 
-                        <div id="receipt-label-1" style="font-weight: 700; color: #475569;">12-Month Price Target:</div>
-                        <div id="receipt-target-12" style="font-weight: bold;">--</div>
+                        <div id="receipt-label-1" class="receipt-field-label">12-Month Price Target:</div>
+                        <div id="receipt-target-12" class="receipt-field-value">--</div>
 
-                        <div id="receipt-label-2" style="font-weight: 700; color: #475569;">3-Year Price Target:</div>
-                        <div id="receipt-target-36" style="font-weight: bold;">--</div>
+                        <div id="receipt-label-2" class="receipt-field-label">3-Year Price Target:</div>
+                        <div id="receipt-target-36" class="receipt-field-value">--</div>
 
-                        <div style="font-weight: 700; color: #475569;">Upload Status:</div>
-                        <div><span id="receipt-status" class="tool-status-badge status-running" style="font-size: 11px; margin-left: 0; font-weight: bold;">PENDING UPLOAD</span></div>
+                        <div class="receipt-field-label">Upload Status:</div>
+                        <div><span id="receipt-status" class="tool-status-badge status-running receipt-rating-badge">PENDING UPLOAD</span></div>
                     </div>
 
-                    <div id="receiptChartContainer" style="margin-top: 16px; width: 100%; position: relative; border: none; padding: 0; background-color: #ffffff; text-align: center;">
-                        <canvas id="receiptChartCanvas" style="width: 100%; height: 210px; display: block;"></canvas>
+                    <div id="receiptChartContainer" class="single-equity-receipt-chart-container">
+                        <canvas id="receiptChartCanvas" class="single-equity-receipt-chart"></canvas>
                     </div>
 
-                    <div id="finalTimeReportRow" style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #cbd5e1; display: none; text-align: center;">
-                        <div style="font-size: 15px; font-weight: 700; color: #10b981; margin-bottom: 5px;">✓ Simulation Completed Successfully</div>
-                        <div id="finalTimeReportValue" style="font-size: 13px; font-weight: 600; color: #475569;">Time Taken: Running...</div>
+                    <div id="finalTimeReportRow" class="single-equity-time-row">
+                        <div class="single-equity-success-title">✓ Simulation Completed Successfully</div>
+                        <div id="finalTimeReportValue" class="single-equity-time-value">Time Taken: Running...</div>
                     </div>
                 </div>
             `;
@@ -539,6 +543,9 @@
     }
 
     function countDecimalPlaces(num) {
+        if (window.AppUtils && window.AppUtils.countDecimalPlaces) {
+            return window.AppUtils.countDecimalPlaces(num);
+        }
         if (!num || Math.floor(num) === num) return 0;
         const str = num.toString();
         if (str.indexOf("e-") !== -1) return parseInt(str.split("e-")[1], 10);
@@ -547,15 +554,18 @@
     }
 
     function formatYAxisLabel(val, stepSize) {
+        if (window.AppUtils && window.AppUtils.formatLargeCurrency) {
+            return window.AppUtils.formatLargeCurrency(val, stepSize);
+        }
         if (val === 0) return "$0";
         const absVal = Math.abs(val);
         let unit = "";
         let div = 1;
 
-        if (absVal >= 1e12) { unit = "T"; div = 1e12; }
-        else if (absVal >= 1e9) { unit = "B"; div = 1e9; }
-        else if (absVal >= 1e6) { unit = "M"; div = 1e6; }
-        else if (absVal >= 1e3) { unit = "k"; div = 1e3; }
+        if (absVal >= 1e12) { unit = "tn"; div = 1e12; }
+        else if (absVal >= 1e9) { unit = "bn"; div = 1e9; }
+        else if (absVal >= 1e6) { unit = "mn"; div = 1e6; }
+        else if (absVal >= 1e3) { unit = "K"; div = 1e3; }
 
         const num = val / div;
         let dp = 0;
@@ -723,7 +733,7 @@
         const canvas = document.getElementById("receiptChartCanvas");
         if (!canvas) return;
 
-        const ticker = currentTicker || document.getElementById("tickerInput")?.value.trim().toUpperCase() || "NVDA";
+        const ticker = currentTicker || document.getElementById("tickerInput").value.trim().toUpperCase() || "NVDA";
         let simDateStr = currentSimulatedDate;
         if (!simDateStr) {
             const simCheckbox = document.getElementById("simulatedDateCheckbox");
@@ -825,7 +835,7 @@
     // Initialise Core Engine
     BoardroomCore.init({
         defaultStages: singleEquityStages,
-        initialMode: document.getElementById("modeSelect")?.value || "fast",
+        initialMode: document.getElementById("modeSelect").value || "fast",
         getPayload: () => {
             const ticker = document.getElementById("tickerInput").value.trim().toUpperCase();
             if (!ticker) {

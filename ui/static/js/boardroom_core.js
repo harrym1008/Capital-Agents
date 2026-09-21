@@ -224,29 +224,17 @@ const BoardroomCore = (function () {
 
         // Display math: $$...$$
         text = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
-            try {
-                return katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false });
-            } catch (e) {
-                return match;
-            }
+            return katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false });
         });
 
         // Display math: \[...\]
         text = text.replace(/\\\[([\s\S]+?)\\\]/g, (match, formula) => {
-            try {
-                return katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false });
-            } catch (e) {
-                return match;
-            }
+            return katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false });
         });
 
         // Inline math: \(...\)
         text = text.replace(/\\\(([\s\S]+?)\\\)/g, (match, formula) => {
-            try {
-                return katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false });
-            } catch (e) {
-                return match;
-            }
+            return katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false });
         });
 
         // Inline math: $...$
@@ -257,11 +245,7 @@ const BoardroomCore = (function () {
             if (formula.includes('**') || formula.includes('__') || formula.includes('<') || formula.includes('>')) {
                 return match;
             }
-            try {
-                return katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false });
-            } catch (e) {
-                return match;
-            }
+            return katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false });
         });
 
         return text;
@@ -300,7 +284,7 @@ const BoardroomCore = (function () {
         text = parseLatex(text);
 
         // 2. Parse tables
-        formattedText = parseTables(text);
+        let formattedText = parseTables(text);
 
         // 3. Parse code blocks (if for some reason the model wants to show the user what they wrote into the Python tool)
         formattedText = formattedText.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
@@ -402,9 +386,7 @@ const BoardroomCore = (function () {
         const provider = data.provider || (data.openrouterRunning ? "openrouter" : (data.openaiCompatibleRunning ? "openaicompatible" : (data.llamacppRunning ? "llamacpp" : "")));
         currentServerProvider = (provider || "").toLowerCase();
 
-        if (typeof updateServerStatus === "function") {
-            updateServerStatus(isRunning, provider);
-        } else if (typeof window.updateServerStatus === "function") {
+        if (typeof window.updateServerStatus === "function") {
             window.updateServerStatus(isRunning, provider);
         } else {
             setServerConnectedState(isRunning);
@@ -412,9 +394,7 @@ const BoardroomCore = (function () {
 
         updateGenerationSettingsUI(currentServerProvider);
         if (data.costData) {
-            if (typeof updateCostUI === "function") {
-                updateCostUI(data.costData);
-            } else if (typeof window.updateCostUI === "function") {
+            if (typeof window.updateCostUI === "function") {
                 window.updateCostUI(data.costData);
             }
         }
@@ -904,7 +884,7 @@ const BoardroomCore = (function () {
             panesContainer.appendChild(stageWorkspace);
 
             let handled = false;
-            if (typeof customStageLayoutHandler === "function") {
+            if (customStageLayoutHandler) {
                 handled = customStageLayoutHandler({ stageNum, stageName, agents, workspace: stageWorkspace });
             }
             if (!handled) {
@@ -1601,9 +1581,9 @@ const BoardroomCore = (function () {
     }
 
     function getGenerationSettings() {
-        const maxIters = parseInt(document.getElementById("maxItersInput")?.value || 6, 10);
-        const thinkingBudget = parseInt(document.getElementById("thinkingBudgetInput")?.value || 2048, 10);
-        const temp = parseFloat(document.getElementById("temperatureInput")?.value || 0.5);
+        const maxIters = parseInt(document.getElementById("maxItersInput").value || 6, 10);
+        const thinkingBudget = parseInt(document.getElementById("thinkingBudgetInput").value || 2048, 10);
+        const temp = parseFloat(document.getElementById("temperatureInput").value || 0.5);
         const generateSummaries = document.getElementById("generateSummariesCheckbox") ? document.getElementById("generateSummariesCheckbox").checked : true;
 
         return {
@@ -1703,7 +1683,7 @@ const BoardroomCore = (function () {
             return;
         }
 
-        if (typeof getPayloadFn !== "function") {
+        if (!getPayloadFn) {
             console.error("BoardroomCore: getPayload function is not registered.");
             return;
         }
@@ -1722,8 +1702,8 @@ const BoardroomCore = (function () {
         }
 
         startSimulationTimer();
-        if (typeof BoardroomExporter !== "undefined" && BoardroomExporter.handleSimStart) {
-            BoardroomExporter.handleSimStart();
+        if (window.BoardroomExporter && window.BoardroomExporter.handleSimStart) {
+            window.BoardroomExporter.handleSimStart();
         }
 
         // Clear existing state
@@ -1787,15 +1767,15 @@ const BoardroomCore = (function () {
         switch (type) {
             case "metricsUpdate":
                 setServerConnectedState(true);
-                if (typeof updateCostUI === "function" && payload.costData) {
-                    updateCostUI(payload.costData);
+                if (window.updateCostUI && payload.costData) {
+                    window.updateCostUI(payload.costData);
                 }
                 break;
 
             case "costUpdate":
                 setServerConnectedState(true);
-                if (typeof updateCostUI === "function") {
-                    updateCostUI(payload);
+                if (window.updateCostUI) {
+                    window.updateCostUI(payload);
                 }
                 break;
 
@@ -1940,8 +1920,8 @@ const BoardroomCore = (function () {
                     }
                 }
 
-                if (typeof BoardroomExporter !== "undefined" && BoardroomExporter.handleSimComplete) {
-                    BoardroomExporter.handleSimComplete(payload);
+                if (window.BoardroomExporter && window.BoardroomExporter.handleSimComplete) {
+                    window.BoardroomExporter.handleSimComplete(payload);
                 }
 
                 // Mark all stages as completed in the stages bar
@@ -1996,9 +1976,7 @@ const BoardroomCore = (function () {
         setupAutoScroll(document.getElementById("sidebarContent"));
         initSimulatedDateControl();
         initScrollbarAutoPadding();
-        if (typeof connectWebsocket === "function") {
-            connectWebsocket();
-        } else if (typeof window.connectWebsocket === "function") {
+        if (typeof window.connectWebsocket === "function") {
             window.connectWebsocket();
         }
         checkServerStatus();
@@ -2090,111 +2068,6 @@ const BoardroomCore = (function () {
         return null;
     }
 
-    // Dev Test Demo function
-    function runTestDemo(animated = false) {
-        console.log("Running Test Demo Simulation (animated=" + animated + ")...");
-        const events = [
-            {
-                type: "stageStart",
-                stageNum: 1,
-                stageName: "Macro Environment Analysis",
-                agents: [{ role: "Macro Analyst", color: "cyan", name: "Macro Analyst" }]
-            },
-            {
-                type: "agentRunStart",
-                agentRole: "Macro Analyst",
-                agentColor: "cyan",
-                phase: "raw",
-                stageNum: 1
-            },
-            {
-                type: "reasoningStart",
-                stageNum: 1,
-                agentRole: "Macro Analyst"
-            },
-            {
-                type: "reasoningToken",
-                stageNum: 1,
-                agentRole: "Macro Analyst",
-                token: "Here is some reasoning text... \n\nI will now perform a tool call:"
-            },
-            {
-                type: "reasoningEnd",
-                stageNum: 1,
-                agentRole: "Macro Analyst"
-            },
-            {
-                type: "rateLimit",
-                stageNum: 1,
-                agentRole: "Macro Analyst",
-                agentColor: "cyan",
-                waitTime: 8.0,
-                message: "Received 429 \"Too Many Requests\". Waiting for 8.0 seconds..."
-            },
-            {
-                type: "toolCallStart",
-                stageNum: 1,
-                agentRole: "Macro Analyst",
-                toolName: "exampleToolCall",
-                args: JSON.stringify({ query: "lorem ipsum", limit: 5, filter: "active" }),
-                callId: "call_example_001",
-                toolIndex: 0
-            },
-            {
-                type: "toolCallEnd",
-                stageNum: 1,
-                agentRole: "Macro Analyst",
-                toolName: "exampleToolCall",
-                callId: "call_example_001",
-                status: "success",
-                result: JSON.stringify({ status: "ok", results: ["lorem", "ipsum", "dolor"] }),
-                stdout: "",
-                variables: {},
-                toolIndex: 0
-            },
-            {
-                type: "contentStart",
-                stageNum: 1,
-                agentRole: "Macro Analyst",
-                phase: "raw"
-            },
-            {
-                type: "contentToken",
-                stageNum: 1,
-                agentRole: "Macro Analyst",
-                phase: "raw",
-                token: `# Heading 1\n## Heading 2\n### Heading 3\n#### Heading 4\n\nHere is **bold**, *italic*, and ***both***:\n\n- First bullet point\n- Second bullet with **bold** inside\n- Third bullet\n\n| Sector | Conviction | Weight |\n| :--- | :--- | :--- |\n| Technology | **High** | 35% |\n| Healthcare | Medium | 20% |\n| Energy | Defensive | 15% |\n\n\`\`\`python\nresult = compute_risk(sectors, weights=0.35)\nprint(f"Risk score: {result}")\n\`\`\`\n\nLaTeX inline: $\\alpha = 0.05$ and display:\n\n$$\\sum_{i=1}^{n} w_i r_i = R_p$$\n\nSource references: <citation>1</citation> and <toolCitation>2</toolCitation> and <newsCitation>3:1</newsCitation>\n\n--- \nComplete demonstration.`
-            },
-            {
-                type: "contentEnd",
-                stageNum: 1,
-                agentRole: "Macro Analyst"
-            },
-            {
-                type: "agentRunEnd",
-                stageNum: 1,
-                agentRole: "Macro Analyst"
-            }
-        ];
-
-        if (!animated) {
-            events.forEach(evt => handleSimulationEvent(evt));
-            console.log("✓ Test Demo rendered immediately into Stage 1!");
-        } else {
-            let idx = 0;
-            function playNext() {
-                if (idx < events.length) {
-                    const evt = events[idx++];
-                    handleSimulationEvent(evt);
-                    setTimeout(playNext, 150);
-                } else {
-                    console.log("✓ Animated Test Demo completed!");
-                }
-            }
-            playNext();
-        }
-    }
-
     return {
         init,
         on,
@@ -2220,8 +2093,6 @@ const BoardroomCore = (function () {
         setCustomStageLayoutHandler: (fn) => { customStageLayoutHandler = fn; },
         createAgentPane,
         getOrCreateAgentPane,
-        getCurrentStageNumber: () => currentStageNumber,
-        getHighestStageNumber: () => highestStageNumber,
         updateSummariesBtnState,
         setupAutoScroll,
         autoScroll,
@@ -2230,7 +2101,6 @@ const BoardroomCore = (function () {
         parseMarkdown,
         formatOrdinalDate,
         registerRole,
-        runTestDemo,
         openSourceModal,
         closeSourceModal,
         showSourceCitation,
@@ -2260,9 +2130,6 @@ window.showStageWorkspace = BoardroomCore.showStageWorkspace;
 window.openSourceModal = BoardroomCore.openSourceModal;
 window.closeSourceModal = BoardroomCore.closeSourceModal;
 window.showSourceCitation = BoardroomCore.showSourceCitation;
-window.runTestDemo = BoardroomCore.runTestDemo;
-window.testDemo = BoardroomCore.runTestDemo;
-window.testMacroStage = BoardroomCore.runTestDemo;
 window.initSimulatedDateControl = BoardroomCore.initSimulatedDateControl;
 window.getSimulatedDate = BoardroomCore.getSimulatedDate;
 

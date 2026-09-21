@@ -14,7 +14,7 @@
     {% include 'header.html' %}
     
 
-    <div class="main-layout" style="display: flex; flex: 1; overflow: hidden; position: relative;">  
+    <div class="main-layout server-main-layout">  
 
         <div class="splash-container">
 
@@ -22,7 +22,7 @@
                 <h1 id="pageTitle">Manage LLM Server</h1>
 
                 <!-- Configuration Setup Form -->
-                <div id="setupForm" style="display: flex; flex-direction: column; gap: 20px;">
+                <div id="setupForm" class="column-gap-large">
                     <div class="model-select-form-group">
                         <label for="provider">LLM Server:</label>
                         <select id="provider">
@@ -34,8 +34,8 @@
 
                     <div class="model-select-form-group hidden" id="openrouterConfig">
                         <!-- Full-Width Model Selector -->
-                        <div style="margin-bottom: 10px;">
-                            <label for="openrouterModelName" style="margin-bottom: 6px; display: block;">Selected Model:</label>
+                        <div class="server-form-label-spaced">
+                            <label for="openrouterModelName" class="server-form-label">Selected Model:</label>
                             <div class="openrouter-autocomplete-wrapper">
                                 <div class="openrouter-input-box">
                                     <input
@@ -50,14 +50,14 @@
                         </div>
 
                         <!-- Provider Router & Pricing Info Row (only shown when a model is selected) -->
-                        <div class="hidden" id="openrouterRouterGroup" style="display: flex; gap: 20px; align-items: flex-start; margin-top: 10px;">
+                        <div class="hidden router-pricing-row" id="openrouterRouterGroup" style="display: flex;">
                             <!-- Left Half (50%): Provider Router Dropdown -->
-                            <div style="flex: 1.8; min-width: 0;">
-                                <label style="margin-bottom: 6px; display: block;">Selected Provider:</label>
+                            <div class="server-form-column-narrow">
+                                <label class="server-form-label">Selected Provider:</label>
                                 <div class="openrouter-router-wrapper">
                                     <div id="openrouterRouterTrigger" class="openrouter-router-trigger">
                                         <span id="openrouterRouterSelectedText">Automatic</span>
-                                        <span style="font-size: 10px; color: #64748b;">▼</span>
+                                        <span class="router-caret">▼</span>
                                     </div>
                                     <div id="openrouterRouterDropdown" class="openrouter-router-dropdown hidden"></div>
                                 </div>
@@ -65,13 +65,13 @@
                             </div>
 
                             <!-- Right Half (50%): Simple Pricing Grid -->
-                            <div id="openrouterPricingInfo" class="openrouter-simple-info hidden" style="flex: 1; min-width: 0; padding: 12px 0px 0px 12px;"></div>
+                            <div id="openrouterPricingInfo" class="openrouter-simple-info hidden pricing-info-panel"></div>
                         </div>
                     </div>
 
-                    <div class="model-select-form-group hidden" id="openaiCompatibleConfig" style="display: flex; flex-direction: column; gap: 14px;">
+                    <div class="model-select-form-group hidden openai-config-column" id="openaiCompatibleConfig" style="display: flex;">
                         <div>
-                            <label for="openaiBaseUrl" style="margin-bottom: 6px; display: block;">Base URL:</label>
+                            <label for="openaiBaseUrl" class="server-form-label">Base URL:</label>
                             <input
                                 id="openaiBaseUrl"
                                 type="text"
@@ -80,7 +80,7 @@
                             >
                         </div>
                         <div>
-                            <label for="openaiApiKey" style="margin-bottom: 6px; display: block;">API Key:</label>
+                            <label for="openaiApiKey" class="server-form-label">API Key:</label>
                             <input
                                 id="openaiApiKey"
                                 type="password"
@@ -89,7 +89,7 @@
                             >
                         </div>
                         <div>
-                            <label for="openaiModelName" style="margin-bottom: 6px; display: block;">Model Name:</label>
+                            <label for="openaiModelName" class="server-form-label">Model Name:</label>
                             <input
                                 id="openaiModelName"
                                 type="text"
@@ -100,19 +100,19 @@
                     </div>
 
                     <div class="model-select-form-group" id="llamacppConfig">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                            <label for="llamaModel">Selected Model:</label>                            
+                        <div class="server-header-row">
+                            <label for="llamaModel">Selected Model:</label>
                         </div>
                         <select id="llamaModel">
                             <option>Loading...</option>
                         </select>
-                        <div id="llamaNoModelsNotice" class="hidden" style="display: flex; justify-content: space-between; flex-direction: column; color: #ef4444; gap: 4px; padding-bottom: 10px;">
+                        <div id="llamaNoModelsNotice" class="hidden no-models-notice" style="display: flex;">
                             <span>No models have been configured!</span>
                             <span>Click the <strong>'Configure Llama.cpp'</strong> button to setup models inside llama.cpp.</span>
                         </div>
                     </div>
 
-                    <div class="model-select-form-group" id="llamacppOptions" style="display: flex; flex-direction: column; gap: 12px;">
+                    <div class="model-select-form-group llamacpp-options-column" id="llamacppOptions">
                         <label for="parallelCheckbox" class="parallel-checkbox">
                             <input type="checkbox" id="parallelCheckbox" checked>
                             Two Slots in Parallel
@@ -123,24 +123,24 @@
                         </label>
                     </div>
 
-                    <button id="loadModelBtn" style="width: 50%; margin: 10px 0 0 25%; font-size: 120%;">Start Server</button>
-                    <a id="configureLlamaBtn" href="/llamacpp-setup" class="aref-button btn-secondary" style="width: 50%; margin: 0 0 0 25%; font-size: 120%;">Configure Llama.cpp</a>
+                    <button id="loadModelBtn" class="server-start-button">Start Server</button>
+                    <a id="configureLlamaBtn" href="/llamacpp-setup" class="aref-button btn-secondary server-configure-button">Configure Llama.cpp</a>
                 </div>
 
                 <!-- Active Server Management Panel (Simplified Plain Text View) -->
-                <div id="serverStatusPanel" class="hidden" style="display: flex; flex-direction: column; gap: 12px;">
-                    <div style="font-size: 14px; line-height: 1.6; color: #334155;">
+                <div id="serverStatusPanel" class="hidden server-status-column" style="display: flex;">
+                    <div class="server-status-detail">
                         <p><strong>Provider:</strong> <span id="displayProvider">-</span></p>
                         <p><strong>Model:</strong> <span id="displayModel">-</span></p>
                         <p><strong>Parallel Slots:</strong> <span id="displayParallel">-</span></p>
                     </div>
 
-                    <p style="font-size: 15px; font-weight: 600;">
+                    <p class="server-status-line">
                         Status: <span id="statusBadgeText" style="color: #d97706;">Loading...</span>
                     </p>
 
                     <div id="errorAlertBanner" class="error-alert-banner hidden"></div>
-                    <div id="successAlertBanner" class="success-alert-banner hidden" style="display: flex; align-items: center; justify-content: space-between;">
+                    <div id="successAlertBanner" class="success-alert-banner hidden success-banner-spread" style="display: flex;">
                         <span>Server loaded successfully</span>
                         <a href="/" class="aref-button">Choose Boardroom &rarr;</a>
                     </div>
@@ -149,13 +149,13 @@
                         <pre id="llamaLoadingLogs" class="llama-loading-logs"></pre>
                     </div>
 
-                    <div id="viewLogsRow" class="hidden" style="display: flex; justify-content: flex-end; width: 100%;">
-                        <a id="viewLogsBtn" href="/llamacpp-logs" class="aref-button btn-secondary" style="transform: translateY(-6px);">View Logs</a>
+                    <div id="viewLogsRow" class="hidden view-logs-row" style="display: flex;">
+                        <a id="viewLogsBtn" href="/llamacpp-logs" class="aref-button btn-secondary view-logs-button">View Logs</a>
                     </div>
 
-                    <div style="display: flex; gap: 12px; justify-content: center; width: 100%; margin-top: 4px;">
-                        <button id="stopModelBtn" class="btn-danger" style="flex: 1; max-width: 220px; font-size: 110%;">Stop Server</button>
-                        <button id="reconfigureBtn" class="btn-secondary hidden" style="flex: 1; max-width: 220px; font-size: 110%;">Back to Setup</button>
+                    <div class="server-action-row">
+                        <button id="stopModelBtn" class="btn-danger server-stop-button">Stop Server</button>
+                        <button id="reconfigureBtn" class="btn-secondary hidden server-stop-button">Back to Setup</button>
                     </div>
                 </div>
 
@@ -178,8 +178,8 @@
             if (container && container.classList.contains("hidden")) {
                 container.classList.remove("hidden");
             }
-            if (typeof appendTerminalLog === 'function') {
-                appendTerminalLog("llamaLoadingLogs", logLine);
+            if (typeof window.appendTerminalLog === 'function') {
+                window.appendTerminalLog("llamaLoadingLogs", logLine);
             } else {
                 const logsPre = document.getElementById("llamaLoadingLogs");
                 if (logsPre) {
@@ -348,7 +348,7 @@
         function getContextWarningHtml(contextLength) {
             if (contextLength && contextLength < 50000) {
                 return `
-                    <div style="width: 100%; margin-top: 6px; padding: 7px 12px; background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; color: #dc2626; font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                    <div class="context-warning-banner">
                         <span>Warning: This model has a limited context window, which may lead to processing failures or unexpected crashes.</span>
                     </div>
                 `;
@@ -479,8 +479,8 @@
             if (!matchedModel) {
                 updateOpenRouterRouterGroup("");
                 badge.innerHTML = `
-                    <div style="font-weight:600; color:#dc2626; margin-bottom: 2px;">Model Not Found</div>
-                    <div style="font-size:12px; color:#64748b;">Model '${val}' does not exist on OpenRouter.</div>
+                    <div class="model-not-found-title">Model Not Found</div>
+                    <div class="model-not-found-detail">Model '${val}' does not exist on OpenRouter.</div>
                 `;
                 return;
             }
@@ -504,15 +504,15 @@
             const cacheStr = formatPriceStr(prices.cacheHit);
 
             badge.innerHTML = `
-                <div style="display: grid; grid-template-columns: auto 1fr; gap: 0px 6px; font-size: 13px; align-items: center;">
-                    <span style="font-weight: 400; color: #64748b;">Input/1M:</span>
-                    <span style="font-weight: 600; color: #0f172a;">${inputStr}</span>
+                <div class="pricing-grid">
+                    <span class="pricing-grid-label">Input/1M:</span>
+                    <span class="pricing-grid-value">${inputStr}</span>
 
-                    <span style="font-weight: 400; color: #64748b;">Output/1M:</span>
-                    <span style="font-weight: 600; color: #0f172a;">${outputStr}</span>
+                    <span class="pricing-grid-label">Output/1M:</span>
+                    <span class="pricing-grid-value">${outputStr}</span>
 
-                    <span style="font-weight: 400; color: #64748b;">Cache/1M:</span>
-                    <span style="font-weight: 600; color: #0f172a;">${cacheStr}</span>
+                    <span class="pricing-grid-label">Cache/1M:</span>
+                    <span class="pricing-grid-value">${cacheStr}</span>
                 </div>
                 ${getContextWarningHtml(contextLength)}
             `;

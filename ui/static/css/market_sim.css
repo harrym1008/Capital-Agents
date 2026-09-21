@@ -673,15 +673,6 @@
     object-fit: contain;
 }
 
-.stock-symbol {
-    background-color: #f1f5f9;
-    color: #475569;
-    font-size: 0.75rem;
-    font-weight: 700;
-    padding: 2px 6px;
-    border-radius: 4px;
-}
-
 .chart-section {
     display: flex;
     gap: 8px;
@@ -802,18 +793,6 @@
     min-width: 0;
 }
 
-.val-up {
-    color: #16a34a !important;
-}
-
-.val-down {
-    color: #dc2626 !important;
-}
-
-.val-down {
-    color: #dc2626 !important;
-}
-
 .news-feed-wrapper {
     flex: 1;
     min-height: 140px;
@@ -903,4 +882,77 @@
 
 @keyframes inspectorSpin {
     to { transform: rotate(360deg); }
+}
+
+.currency-input-row {
+    display: flex;
+    align-items: center;
+}
+
+.currency-symbol {
+    padding-right: 8px;
+}
+
+.sim-info-header-spread {
+    justify-content: space-between;
+}
+
+.cancel-order-btn-muted {
+    color: #64748b;
+    border-color: #cbd5e1;
+}
+
+.order-ticker-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 3px;
+}
+
+.small-input-label-flush {
+    margin-bottom: 0;
+}
+
+.order-ticker-input {
+    text-transform: uppercase;
+    font-weight: 700;
+}
+
+.log-pill-empty {
+    text-align: center;
+    color: #94a3b8;
+}
+
+.stock-price-summary {
+    text-align: right;
+}
+
+.stock-current-price {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.stock-period-return {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #10b981;
+}
+
+.news-article-count {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #94a3b8;
+}
+
+.empty-news-message {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    text-align: center;
+    padding: 12px 0;
+}
+
+.metric-external-link {
+    color: #2563eb;
+    text-decoration: underline;
 }

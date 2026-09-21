@@ -189,3 +189,190 @@
     font-size: 13px;
     text-align: center;
 }
+
+.server-main-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.server-form-label {
+    margin-bottom: 6px;
+    display: block;
+}
+
+.server-form-label-spaced {
+    margin-bottom: 10px;
+}
+
+.server-form-column-narrow {
+    flex: 1.8;
+    min-width: 0;
+}
+
+.router-pricing-row {
+    gap: 20px;
+    align-items: flex-start;
+    margin-top: 10px;
+}
+
+.router-caret {
+    font-size: 10px;
+    color: #64748b;
+}
+
+.pricing-info-panel {
+    flex: 1;
+    min-width: 0;
+    padding: 12px 0px 0px 12px;
+}
+
+.openai-config-column {
+    flex-direction: column;
+    gap: 14px;
+}
+
+.server-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2px;
+}
+
+.no-models-notice {
+    justify-content: space-between;
+    flex-direction: column;
+    color: #ef4444;
+    gap: 4px;
+    padding-bottom: 10px;
+}
+
+.llamacpp-options-column {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.server-start-button {
+    width: 50%;
+    margin: 10px 0 0 25%;
+    font-size: 120%;
+}
+
+.server-configure-button {
+    width: 50%;
+    margin: 0 0 0 25%;
+    font-size: 120%;
+}
+
+.server-status-column {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.server-status-detail {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #334155;
+}
+
+.server-status-line {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.server-action-row {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    width: 100%;
+    margin-top: 4px;
+}
+
+.server-stop-button {
+    flex: 1;
+    max-width: 220px;
+    font-size: 110%;
+}
+
+.view-logs-button {
+    transform: translateY(-6px);
+}
+
+.success-banner-spread {
+    align-items: center;
+    justify-content: space-between;
+}
+
+.view-logs-row {
+    justify-content: flex-end;
+    width: 100%;
+}
+
+.context-warning-banner {
+    width: 100%;
+    margin-top: 6px;
+    padding: 7px 12px;
+    background-color: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    color: #dc2626;
+    font-size: 11px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.model-not-found-title {
+    font-weight: 600;
+    color: #dc2626;
+    margin-bottom: 2px;
+}
+
+.model-not-found-detail {
+    font-size: 12px;
+    color: #64748b;
+}
+
+.pricing-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0px 6px;
+    font-size: 13px;
+    align-items: center;
+}
+
+.pricing-grid-label {
+    font-weight: 400;
+    color: #64748b;
+}
+
+.pricing-grid-value {
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.logs-modal-window {
+    width: min(92vw, 850px);
+    max-width: 850px;
+}
+
+.terminal-logs-tall {
+    max-height: 480px;
+    height: 480px;
+    font-size: 11px;
+}
+
+.logs-action-row {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    margin-top: 4px;
+}
+
+.back-button-small {
+    font-size: 14px;
+}

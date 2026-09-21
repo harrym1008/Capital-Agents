@@ -54,3 +54,24 @@ h3 {
     margin-top: 4px;
     text-align: center;
 }
+
+.landing-welcome-title {
+    margin-bottom: 30px;
+}
+
+.landing-error-spaced {
+    margin-bottom: 18px;
+}
+
+.landing-button-spacer {
+    margin: 10px 0;
+}
+
+.landing-footer {
+    padding: 20px;
+    text-align: center;
+}
+
+.landing-footer-text {
+    font-size: 1.1rem;
+}

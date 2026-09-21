@@ -222,7 +222,142 @@ header h1 {
 }
 
 .success-alert-banner {
-    color: #16a34a;
+    color: #10b981;
     font-weight: 600;
     font-size: 14px;
+}
+
+.monospace-text {
+    font-family: monospace;
+}
+
+.row-space-between {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.column-gap-large {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.button-centered-half {
+    width: 50%;
+    margin: 10px 0 0 25%;
+    font-size: 120%;
+}
+
+.header-brand-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+}
+
+.header-logo-image {
+    width: 32px;
+    height: 32px;
+    margin-right: 12px;
+}
+
+.header-title-tight {
+    margin-bottom: 4px;
+}
+
+.header-title-link {
+    color: inherit;
+    text-decoration: none;
+}
+
+.header-right-cluster {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+}
+
+.header-status-column {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    font-size: 13px;
+    line-height: 1.25;
+    font-weight: 700;
+    color: #ffffff;
+    user-select: none;
+}
+
+.header-metric-row {
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.header-label-muted {
+    color: #cbd5e1;
+    font-weight: 600;
+}
+
+.header-label-right {
+    color: #cbd5e1;
+    font-weight: 600;
+    flex: 1;
+    text-align: right;
+}
+
+.header-label-clickable {
+    color: #cbd5e1;
+    font-weight: 600;
+    flex: 1;
+    text-align: right;
+    cursor: pointer;
+}
+
+.header-status-value {
+    min-width: 95px;
+    text-align: left;
+    color: #ef4444;
+}
+
+.header-token-cell {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: #e2e8f0;
+}
+
+.header-speed-value {
+    min-width: 80px;
+    text-align: right;
+}
+
+.header-cost-value {
+    text-align: right;
+    min-width: 60px;
+}
+
+.header-metrics-column {
+    display: none;
+    flex-direction: column;
+    align-items: flex-end;
+    font-size: 13px;
+    line-height: 1.25;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.header-cost-grid {
+    display: none;
+    grid-template-columns: auto auto auto auto auto;
+    gap: 4px 12px;
+    align-items: center;
+    font-size: 13px;
+    line-height: 1.25;
+    font-weight: 700;
+    color: #ffffff;
+    font-family: system-ui, -apple-system, sans-serif;
+    user-select: none;
 }

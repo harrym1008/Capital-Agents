@@ -37,14 +37,14 @@
                     <label class="form-label" for="globalExePath">Llama Server Executable</label>
                     <div class="input-with-button">
                         <input id="globalExePath" type="text" class="form-input" placeholder="e.g. llama-server.exe or full path">
-                        <button id="browseExeBtn" class="btn-primary" style="white-space: nowrap;">Browse</button>
+                        <button id="browseExeBtn" class="btn-primary nowrap-button">Browse</button>
                     </div>
                     <div id="exePathHintMsg" class="form-hint-msg">
-                        The system will try to retrieve <span style="font-family: monospace;">llama-server.exe</span> from the system PATH environment variable.
+                        The system will try to retrieve <span class="monospace-text">llama-server.exe</span> from the system PATH environment variable.
                     </div>
                 </div>
 
-                <div style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+                <div class="args-column-fill">
                     <span class="subheading-label">Default Argument Flags</span>
                     <div class="args-list-wrapper">
                         <div id="globalArgsList" class="args-container">
@@ -68,27 +68,27 @@
                             <select id="selectedModelDropdown" class="form-select">
                                 <option value="">No models configured</option>
                             </select>
-                            <button id="addModelBtn" class="btn-primary" style="white-space: nowrap;">Add Model</button>
-                            <button id="deleteModelBtn" class="btn-danger" style="white-space: nowrap;">Delete</button>
+                            <button id="addModelBtn" class="btn-primary nowrap-button">Add Model</button>
+                            <button id="deleteModelBtn" class="btn-danger nowrap-button">Delete</button>
                         </div>
                     </div>
 
                     <div id="modelMetadataContainer" class="hidden">
-                        <div class="form-group" style="margin-top: 10px;">
+                        <div class="form-group form-group-spaced">
                             <label class="form-label" for="modelAliasInput">Alias</label>
                             <input id="modelAliasInput" type="text" class="form-input" placeholder="Model alias goes here.....">
                         </div>
 
-                        <div class="form-group" style="margin-top: 10px;">
+                        <div class="form-group form-group-spaced">
                             <label class="form-label">Model File Path</label>
-                            <span id="modelFullPathSpan" style="font-family: monospace; font-size: 12px;"></span>
+                            <span id="modelFullPathSpan" class="model-path-display"></span>
                         </div>
                     </div>
                 </div>
 
                 <!-- Lower Section: Per Model Arguments + Dedicated Sampling Parameters -->
-                <div style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
-                    <h3 class="card-title" style="margin-bottom: 8px;">Per Model Arguments</h3>
+                <div class="args-column-fill">
+                    <h3 class="card-title card-title-spaced">Per Model Arguments</h3>
 
                     <div id="noModelNotice" class="empty-state-notice hidden">
                         <span>No model selected</span>
@@ -110,7 +110,7 @@
 
                         <!-- Right Side: Dedicated Personality / Sampling Parameters -->
                         <div class="sampling-params-col">
-                            <span class="subheading-label" style="margin-top: 0; margin-bottom: 4px;">Sampling Params</span>
+                            <span class="subheading-label subheading-label-tight">Sampling Params</span>
                             <div class="sampling-param-row">
                                 <span class="sampling-param-label">Temperature:</span>
                                 <input id="paramTemp" type="text" class="sampling-param-input">

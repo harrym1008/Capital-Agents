@@ -172,11 +172,11 @@
     font-weight: 700;
 }
 
-.metric-change.positive, .val-positive {
+.metric-change.positive {
     color: #16a34a !important;
 }
 
-.metric-change.negative, .val-negative {
+.metric-change.negative {
     color: #dc2626 !important;
 }
 
@@ -301,19 +301,6 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.pos-val-primary {
-    font-weight: 700;
-    color: #0f172a;
-    font-size: 12px;
-    line-height: 1.2;
-}
-
-.pos-val-sub {
-    font-size: 10.5px;
-    font-weight: 600;
-    line-height: 1.1;
 }
 
 /* Rebalance History & System Logs Feed */
@@ -441,4 +428,616 @@
     color: #1e293b;
     background-color: #ffffff;
     cursor: pointer;
+}
+
+.capital-input-narrow {
+    width: 85px;
+}
+
+.date-input-narrow {
+    width: 125px;
+}
+
+.slider-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.bias-label-light {
+    font-size: 11px;
+    font-weight: 600;
+    color: #0284c7;
+    user-select: none;
+}
+
+.bias-label-heavy {
+    font-size: 11px;
+    font-weight: 600;
+    color: #ea580c;
+    user-select: none;
+}
+
+.bias-label-growth {
+    font-size: 11px;
+    font-weight: 600;
+    color: #10b981;
+    user-select: none;
+}
+
+.bias-label-defensive {
+    font-size: 11px;
+    font-weight: 600;
+    color: #2563eb;
+    user-select: none;
+}
+
+.bias-slider {
+    width: 75px;
+    cursor: pointer;
+    accent-color: #2563eb;
+}
+
+.milestone-select-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #475569;
+    white-space: nowrap;
+}
+
+.holdings-count-badge {
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+}
+
+.holdings-scroll-box {
+    overflow-y: auto;
+    overflow-x: hidden;
+    max-height: 240px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+}
+
+.sim-positions-table th.holdings-table-head-left {
+    text-align: left;
+    padding: 4px 2px;
+}
+
+.sim-positions-table th.holdings-table-head-right {
+    text-align: right;
+    padding: 4px 2px;
+}
+
+.sim-positions-table td.empty-holdings-message {
+    text-align: center;
+    color: #94a3b8;
+    padding: 16px 0;
+    font-size: 12px;
+}
+
+.empty-logs-message {
+    text-align: center;
+    color: #94a3b8;
+    padding: 12px 0;
+    font-size: 11px;
+}
+
+.metric-benchmark-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: #64748b;
+}
+
+.metric-value-strong {
+    font-weight: 800;
+}
+
+.tool-section-label {
+    font-weight: bold;
+    font-size: 12px;
+    color: #475569;
+    margin-bottom: 4px;
+}
+
+.tool-section-title {
+    font-weight: bold;
+    font-size: 12px;
+    color: #475569;
+    margin-bottom: 4px;
+}
+
+.tool-stream-pre {
+    margin: 0;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+}
+
+.tool-stream-pre-dark {
+    background-color: #0f172a;
+    color: #38bdf8;
+    padding: 10px;
+}
+
+.tool-stream-pre-light {
+    background-color: #f1f5f9;
+    color: #0f172a;
+    padding: 8px;
+}
+
+.tool-output-dark {
+    margin: 0;
+    background-color: #0f172a;
+    color: #38bdf8;
+    padding: 10px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+}
+
+.tool-arguments-light {
+    margin: 0;
+    background-color: #f1f5f9;
+    padding: 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    color: #0f172a;
+}
+
+.tool-result-light {
+    margin: 0;
+    background-color: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    padding: 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    color: #0f172a;
+}
+
+.variables-table {
+    border-collapse: collapse;
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    font-size: 12px;
+    background-color: #ffffff;
+}
+
+.variables-cell {
+    padding: 4px 8px;
+    font-weight: bold;
+    font-family: monospace;
+    border: 1px solid #cbd5e1;
+    vertical-align: top;
+}
+
+.variables-cell-wrapped {
+    padding: 4px 8px;
+    font-family: monospace;
+    border: 1px solid #cbd5e1;
+    vertical-align: top;
+    white-space: pre-wrap;
+}
+
+.generated-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.generated-table-compact {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11.5px;
+}
+
+.generated-table-head-row {
+    border-bottom: 2px solid #cbd5e1;
+    background: #f8fafc;
+}
+
+.generated-table-row {
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.generated-table-head-left-narrow {
+    text-align: left;
+    padding: 4px 5px;
+}
+
+.generated-table-head-right-narrow {
+    text-align: right;
+    padding: 4px 5px;
+}
+
+.generated-table-ticker-cell-narrow {
+    padding: 4px 5px;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.generated-table-accent-cell-narrow {
+    padding: 4px 5px;
+    text-align: right;
+    font-weight: 700;
+    color: #2563eb;
+}
+
+.generated-table-amount-cell-narrow {
+    padding: 4px 5px;
+    text-align: right;
+    color: #334155;
+    font-size: 11px;
+}
+
+.generated-table-muted-cell-narrow {
+    padding: 4px 5px;
+    text-align: right;
+    color: #64748b;
+    font-size: 11px;
+}
+
+.generated-table-delta-cell-narrow {
+    padding: 4px 5px;
+    text-align: right;
+    font-size: 11px;
+}
+
+.generated-table-removed-cell {
+    padding: 4px 5px;
+    text-align: right;
+    font-weight: 700;
+    color: #ef4444;
+}
+
+.generated-table-head-left {
+    text-align: left;
+    padding: 4px 6px;
+}
+
+.generated-table-head-right {
+    text-align: right;
+    padding: 4px 6px;
+}
+
+.generated-table-ticker-cell {
+    padding: 4px 6px;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.generated-table-accent-cell {
+    padding: 4px 6px;
+    text-align: right;
+    font-weight: 700;
+    color: #2563eb;
+}
+
+.generated-table-muted-cell {
+    padding: 4px 6px;
+    text-align: right;
+    color: #64748b;
+}
+
+.generated-table-amount-cell {
+    padding: 4px 6px;
+    text-align: right;
+    color: #334155;
+}
+
+.generated-table-subtext {
+    font-size: 10.5px;
+    color: #64748b;
+}
+
+.generated-table-subtext-small {
+    font-size: 10px;
+    color: #64748b;
+}
+
+.generated-table-industry-cell {
+    padding: 4px 6px;
+    color: #64748b;
+    font-size: 11px;
+}
+
+.generated-table-industry-cell-small {
+    padding: 4px 5px;
+    color: #64748b;
+    font-size: 10.5px;
+}
+
+.weight-change-new {
+    color: #10b981;
+    font-weight: 700;
+}
+
+.weight-change-dynamic {
+    font-weight: 700;
+}
+
+.weight-change-removed {
+    color: #ef4444;
+    font-weight: 700;
+}
+
+.comparison-delta-cell {
+    padding: 4px 6px;
+    text-align: right;
+    font-weight: 700;
+}
+
+.holdings-grid-row {
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.holdings-grid-cell-left {
+    padding: 5px 3px;
+    text-align: left;
+}
+
+.holdings-grid-cell {
+    padding: 5px 3px;
+    text-align: right;
+    font-weight: 600;
+    font-size: 0.52vw;
+    color: #334155;
+    white-space: nowrap;
+}
+
+.holdings-grid-price-cell {
+    padding: 5px 3px;
+    text-align: right;
+    font-size: 0.52vw;
+    color: #475569;
+    white-space: nowrap;
+}
+
+.holdings-grid-current-price-cell {
+    padding: 5px 3px;
+    text-align: right;
+    font-weight: 600;
+    font-size: 0.52vw;
+    color: #0f172a;
+    white-space: nowrap;
+}
+
+.holdings-grid-value-cell {
+    padding: 5px 3px;
+    text-align: right;
+    font-weight: 700;
+    font-size: 0.52vw;
+    color: #0f172a;
+    white-space: nowrap;
+}
+
+.holdings-grid-weight-cell {
+    padding: 5px 3px;
+    text-align: right;
+    font-weight: 600;
+    font-size: 0.52vw;
+    color: #2563eb;
+    white-space: nowrap;
+}
+
+.holdings-grid-profit-percent {
+    font-weight: 700;
+    font-size: 0.48vw;
+    line-height: 1.15;
+}
+
+.holdings-grid-profit-amount {
+    font-weight: 600;
+    font-size: 0.4vw;
+    line-height: 1.1;
+}
+
+.stage-workspace .receipt-card-narrow {
+    flex: 0 0 460px;
+    max-width: 480px;
+    min-width: 320px;
+    height: 100%;
+    border: 3px solid #000000;
+    border-radius: 8px;
+    background-color: #ffffff;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+.stage-workspace .receipt-card-wide {
+    flex: 0 0 520px;
+    max-width: 550px;
+    min-width: 340px;
+    height: 100%;
+    border: 3px solid #000000;
+    border-radius: 8px;
+    background-color: #ffffff;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+.receipt-title-small {
+    font-size: 16px;
+    font-weight: 800;
+    border-bottom: 2px solid #000000;
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+.receipt-details-grid {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 6px;
+    font-size: 12.5px;
+    margin-bottom: 8px;
+    line-height: 1.3;
+}
+
+.receipt-label-cell {
+    font-weight: 700;
+    color: #475569;
+}
+
+.receipt-value-strong {
+    font-weight: 800;
+}
+
+.receipt-value-bold {
+    font-weight: bold;
+}
+
+.receipt-chart-box {
+    width: 100%;
+    height: 210px;
+    position: relative;
+    margin: 8px 0;
+}
+
+.receipt-table-container {
+    margin-top: 10px;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 8px;
+}
+
+.receipt-waiting-message {
+    font-size: 12px;
+    color: #64748b;
+    text-align: center;
+}
+
+.markdown-code-block {
+    margin: 0;
+    background-color: #0f172a;
+    color: #ffffff;
+    padding: 12px;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 12.5px;
+    line-height: 1.45;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+.markdown-code-wrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.markdown-code-language {
+    position: absolute;
+    top: 4px;
+    right: 8px;
+    font-size: 10px;
+    color: #b8c8de;
+    font-weight: 700;
+    user-select: none;
+}
+
+.markdown-inline-code {
+    background-color: #f1f5f9;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 11.5px;
+    font-family: monospace;
+}
+
+.markdown-heading-2 {
+    font-size: 23px;
+    font-weight: bold;
+    border-bottom: 1px solid #cbd5e1;
+    padding-bottom: 4px;
+}
+
+.markdown-heading-3 {
+    font-size: 21px;
+    font-weight: bold;
+}
+
+.markdown-heading-4 {
+    font-size: 19px;
+    font-weight: bold;
+}
+
+.markdown-heading-5 {
+    font-size: 17px;
+    font-weight: bold;
+}
+
+.markdown-heading-6 {
+    font-size: 15px;
+    font-weight: bold;
+}
+
+.markdown-heading-6-large {
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.markdown-divider {
+    border: none;
+    border-top: 1.5px solid #cbd5e1;
+    margin: 10px 0 3px 0;
+}
+
+.rendered-data-table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10px 0;
+    border: 2px solid #cbd5e1;
+}
+
+.rendered-data-table-head-row {
+    background-color: #f1f5f9;
+    border-bottom: 2px solid #cbd5e1;
+    font-weight: bold;
+}
+
+.rendered-data-table-head-cell {
+    padding: 8px;
+    border: 1px solid #cbd5e1;
+    text-align: left;
+    font-weight: bold;
+    font-size: 13px;
+}
+
+.rendered-data-table-row {
+    border-bottom: 1px solid #cbd5e1;
+}
+
+.rendered-data-table-cell {
+    padding: 8px;
+    border: 1px solid #cbd5e1;
+    font-size: 13px;
+}
+
+.empty-simulation-placeholder {
+    padding: 10px 0;
+}
+
+.empty-simulation-notice {
+    color: #7c899b;
+    font-size: 14px;
+    margin: 68px 0 20px 0;
+    line-height: 2.0;
+}
+
+.empty-simulation-hint {
+    color: #7c899b;
+    font-size: 14px;
+    line-height: 1.8;
+    margin: 0;
 }

@@ -20,7 +20,7 @@
             <h1 id="pageTitle">Market Simulation Setup</h1>
 
             <!-- Configuration Setup Form -->
-            <form id="setupForm" style="display: flex; flex-direction: column; gap: 20px;" onsubmit="handleStartSimulation(event)">
+            <form id="setupForm" class="column-gap-large" onsubmit="handleStartSimulation(event)">
                 <div class="model-select-form-group">
                     <label for="setupStartDate">Starting Date:</label>
                     <input type="date" id="setupStartDate" min="2016-02-01" max="2026-09-12" value="2016-02-01" required>
@@ -28,13 +28,13 @@
 
                 <div class="model-select-form-group">
                     <label for="setupDollarAmount">Starting Balance:</label>
-                    <div style="display: flex;  align-items: center;">
-                        <span style="padding-right: 8px;">$</span>
+                    <div class="currency-input-row">
+                        <span class="currency-symbol">$</span>
                         <input type="text" id="setupDollarAmount" value="1,000,000" placeholder="1,000,000" autocomplete="off" oninput="formatDollarInput(this, 2)" required>
                     </div>
                 </div>
 
-                <button type="submit" id="startSimBtn" style="width: 50%; margin: 10px 0 0 25%; font-size: 120%;">Start Simulation</button>
+                <button type="submit" id="startSimBtn" class="button-centered-half">Start Simulation</button>
             </form>
         </div>
     </div>
@@ -52,12 +52,12 @@
                     <div class="sim-info-card-body">
                         <!-- Left Column: Metrics & Reset Control -->
                         <div class="sim-info-left">
-                            <div class="sim-info-header" style="justify-content: space-between;">
+                            <div class="sim-info-header sim-info-header-spread">
                                 <div>
                                     <span class="info-label">Date:</span>
                                     <span class="date-highlight" id="simulatedDate">--</span>
                                 </div>
-                                <button class="cancel-order-btn" style="color: #64748b; border-color: #cbd5e1;" onclick="resetSimulationSession()" title="Reset and setup a new simulation">Reset</button>
+                                <button class="cancel-order-btn cancel-order-btn-muted" onclick="resetSimulationSession()" title="Reset and setup a new simulation">Reset</button>
                             </div>
 
                             <div class="sim-metrics-summary">
@@ -162,11 +162,11 @@
 
                         <!-- Row 3: Ticker Input -->
                         <div class="form-group full-width">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
-                                <label class="small-input-label" for="orderTicker" style="margin-bottom: 0;">Ticker</label>
+                            <div class="order-ticker-row">
+                                <label class="small-input-label small-input-label-flush" for="orderTicker">Ticker</label>
                                 <button type="button" class="random-ticker-btn" onclick="fillRandomTicker()" title="Select random ticker from market list">Random</button>
                             </div>
-                            <input type="text" id="orderTicker" class="sim-input" placeholder="e.g. NVDA" value="NVDA" required style="text-transform: uppercase; font-weight: 700;" oninput="onOrderTickerInput()">
+                            <input type="text" id="orderTicker" class="sim-input order-ticker-input" placeholder="e.g. NVDA" value="NVDA" required oninput="onOrderTickerInput()">
                         </div>
 
                         <!-- Row 4: Amount & Unit -->
@@ -246,7 +246,7 @@
                     <h2 class="card-title">System Logs</h2>
                     
                     <div class="logs-container" id="systemLogsContainer">
-                        <div class="log-pill" style="text-align: center; color: #94a3b8;">Logs are empty</div>
+                        <div class="log-pill log-pill-empty">Logs are empty</div>
                     </div>
                 </div>
 
@@ -273,9 +273,9 @@
                     <img id="stockLogo" class="stock-logo" src="https://placehold.co/256x256?text=NVDA" alt="Stock Logo">
                     <h3 id="stockCompanyName" class="stock-name">NVIDIA Corp</h3>
                 </div>
-                <div class="stock-price-summary" style="text-align: right;">
-                    <div id="stockCurrentPrice" style="font-size: 1.1rem; font-weight: 800; color: #0f172a;">$0.00</div>
-                    <div id="stockPeriodReturn" style="font-size: 0.78rem; font-weight: 700; color: #16a34a;">+0.00% in last 3 months</div>
+                <div class="stock-price-summary">
+                    <div id="stockCurrentPrice" class="stock-current-price">$0.00</div>
+                    <div id="stockPeriodReturn" class="stock-period-return">+0.00% in last 3 months</div>
                 </div>
             </div>
 
@@ -331,10 +331,10 @@
                 <div class="news-feed-wrapper" id="inspectorNewsWrapper">
                     <div class="news-feed-header">
                         <span>Recent News</span>
-                        <span id="newsArticleCount" style="font-size: 0.72rem; font-weight: 600; color: #94a3b8;">0 stories</span>
+                        <span id="newsArticleCount" class="news-article-count">0 stories</span>
                     </div>
                     <div class="news-feed-scroll" id="tickerNewsContainer">
-                        <div style="font-size: 0.78rem; color: #94a3b8; text-align: center; padding: 12px 0;">No news stories fetched.</div>
+                        <div class="empty-news-message">No news stories fetched.</div>
                     </div>
                 </div>
             </div>
@@ -614,6 +614,9 @@
         }
 
         function countDecimalPlaces(num) {
+            if (window.AppUtils && window.AppUtils.countDecimalPlaces) {
+                return window.AppUtils.countDecimalPlaces(num);
+            }
             if (!num || Math.floor(num) === num) return 0;
             const str = num.toString();
             if (str.indexOf('e-') !== -1) {
@@ -626,15 +629,18 @@
         }
 
         function formatYAxisLabel(val, stepSize) {
+            if (window.AppUtils && window.AppUtils.formatLargeCurrency) {
+                return window.AppUtils.formatLargeCurrency(val, stepSize);
+            }
             if (val === 0) return '$0';
             const absVal = Math.abs(val);
             let unit = '';
             let div = 1;
 
-            if (absVal >= 1e12) { unit = 'T'; div = 1e12; }
-            else if (absVal >= 1e9) { unit = 'B'; div = 1e9; }
-            else if (absVal >= 1e6) { unit = 'M'; div = 1e6; }
-            else if (absVal >= 1e3) { unit = 'k'; div = 1e3; }
+            if (absVal >= 1e12) { unit = 'tn'; div = 1e12; }
+            else if (absVal >= 1e9) { unit = 'bn'; div = 1e9; }
+            else if (absVal >= 1e6) { unit = 'mn'; div = 1e6; }
+            else if (absVal >= 1e3) { unit = 'K'; div = 1e3; }
 
             const num = val / div;
 
@@ -1190,7 +1196,7 @@
                     const sign = snap.priceChange >= 0 ? '+' : '';
                     const suffix = TIMEFRAME_SUFFIXES[currentStockTimeframe] || `in last ${currentStockTimeframe.toUpperCase()}`;
                     retEl.textContent = `${sign}${snap.priceChange.toFixed(2)}% ${suffix}`;
-                    retEl.style.color = snap.priceChange >= 0 ? '#16a34a' : '#dc2626';
+                    retEl.style.color = snap.priceChange >= 0 ? '#10b981' : '#dc2626';
                 }
             }
             if (snap.chart && snap.chart.historical && typeof stockChartInstance !== 'undefined' && stockChartInstance) {
@@ -1279,7 +1285,7 @@
                 return;
             }
             if (metricItem.url && metricItem.url !== "#") {
-                el.innerHTML = `<a href="${metricItem.url}" target="_blank" rel="noopener noreferrer" style="color: #2563eb; text-decoration: underline;">${metricItem.value || 'Link'}</a>`;
+                el.innerHTML = `<a href="${metricItem.url}" target="_blank" rel="noopener noreferrer" class="metric-external-link">${metricItem.value || 'Link'}</a>`;
             } else {
                 el.textContent = metricItem.value !== undefined ? metricItem.value : "N/A";
             }
@@ -1294,7 +1300,7 @@
             if (countEl) countEl.textContent = `${newsList.length} stories`;
 
             if (!newsList || newsList.length === 0) {
-                container.innerHTML = '<div style="font-size: 0.78rem; color: #94a3b8; text-align: center; padding: 12px 0;">No news stories available.</div>';
+                container.innerHTML = '<div class="empty-news-message">No news stories available.</div>';
                 return;
             }
 
@@ -1639,7 +1645,7 @@
             const hasLogs = pf.log && pf.log.length > 0;
 
             if (!hasPendingOrders && !hasLogs) {
-                logsContainer.innerHTML = '<div class="log-pill" style="text-align: center; color: #94a3b8;">Logs are empty</div>';
+                logsContainer.innerHTML = '<div class="log-pill log-pill-empty">Logs are empty</div>';
             } else {
                 if (hasPendingOrders) {
                     state.pendingOrders.forEach(o => {

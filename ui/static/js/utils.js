@@ -12,9 +12,10 @@
     Utils.formatTokenCount = function(val) {
         if (val === undefined || val === null || isNaN(val) || val <= 0) return "0";
         const num = Math.abs(parseFloat(val));
-        if (num >= 1e9) return Number((num / 1e9).toPrecision(3)) + "b";
-        if (num >= 1e6) return Number((num / 1e6).toPrecision(3)) + "m";
-        if (num >= 1e3) return Number((num / 1e3).toPrecision(3)) + "k";
+        if (num >= 1e12) return Number((num / 1e12).toPrecision(3)) + "tn";
+        if (num >= 1e9) return Number((num / 1e9).toPrecision(3)) + "bn";
+        if (num >= 1e6) return Number((num / 1e6).toPrecision(3)) + "mn";
+        if (num >= 1e3) return Number((num / 1e3).toPrecision(3)) + "K";
         return Number(num.toPrecision(3)).toString();
     };
 
@@ -39,14 +40,6 @@
         return "$" + num.toFixed(2);
     };
 
-    Utils.formatPrice = function(val, decimals = 2) {
-        if (val === undefined || val === null || isNaN(val)) return "$0.00";
-        return "$" + Number(val).toLocaleString(undefined, {
-            minimumFractionDigits: decimals,
-            maximumFractionDigits: decimals
-        });
-    };
-
     Utils.formatDollarInput = function(input, decimalPlaces = 2) {
         if (!input) return;
         let val = input.value.replace(/[^0-9.]/g, '');
@@ -60,6 +53,54 @@
         const wholeParts = val.split('.');
         wholeParts[0] = wholeParts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
         input.value = wholeParts.join('.');
+    };
+
+    // --- Large Number Helpers (global K / mn / bn / tn standard) ---
+
+    Utils.countDecimalPlaces = function(num) {
+        if (!num || Math.floor(num) === num) return 0;
+        const str = num.toString();
+        if (str.indexOf('e-') !== -1) {
+            return parseInt(str.split('e-')[1], 10);
+        }
+        if (str.indexOf('.') !== -1) {
+            return str.split('.')[1].length;
+        }
+        return 0;
+    };
+
+    Utils.formatLargeCurrency = function(val, stepSize) {
+        if (val === 0) return '$0';
+        const absVal = Math.abs(val);
+        let unit = '';
+        let div = 1;
+
+        if (absVal >= 1e12) { unit = 'tn'; div = 1e12; }
+        else if (absVal >= 1e9) { unit = 'bn'; div = 1e9; }
+        else if (absVal >= 1e6) { unit = 'mn'; div = 1e6; }
+        else if (absVal >= 1e3) { unit = 'K'; div = 1e3; }
+
+        const num = val / div;
+
+        let dp = 0;
+        if (stepSize && stepSize > 0) {
+            dp = Utils.countDecimalPlaces(stepSize / div);
+        } else {
+            dp = Utils.countDecimalPlaces(num);
+        }
+        dp = Math.max(0, Math.min(6, dp));
+
+        let minDp = 0;
+        if (div === 1 && stepSize && stepSize < 1) {
+            minDp = 2;
+        }
+
+        const formattedStr = num.toLocaleString('en-US', {
+            minimumFractionDigits: minDp,
+            maximumFractionDigits: dp
+        });
+
+        return '$' + formattedStr + unit;
     };
 
     // --- Date Helpers ---
@@ -80,21 +121,6 @@
         if (isAtBottom) {
             logsEl.scrollTop = logsEl.scrollHeight;
         }
-    };
-
-    // --- Modal Overlay Dismissal Helper ---
-
-    Utils.setupModalOverlayDismissal = function(overlayEl, onCloseCallback) {
-        if (!overlayEl) return;
-        overlayEl.addEventListener('mousedown', function(event) {
-            if (event.target === overlayEl) {
-                if (typeof onCloseCallback === 'function') {
-                    onCloseCallback();
-                } else {
-                    overlayEl.style.display = 'none';
-                }
-            }
-        });
     };
 
     // Export to global window object

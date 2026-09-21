@@ -47,17 +47,17 @@
 {% block config_inputs %}
     <div class="config-group">
         <label for="initialCapitalInput">Initial Capital ($):</label>
-        <input type="number" id="initialCapitalInput" min="1000" step="5000" value="100000" style="width: 85px;">
+        <input type="number" id="initialCapitalInput" min="1000" step="5000" value="100000" class="capital-input-narrow">
     </div>
 
     <div class="config-group">
         <label for="setupStartDate">Start Date:</label>
-        <input type="date" id="setupStartDate" value="2024-09-01" min="2016-02-01" max="2026-09-12" style="width: 125px;">
+        <input type="date" id="setupStartDate" value="2024-09-01" min="2016-02-01" max="2026-09-12" class="date-input-narrow">
     </div>
 
     <div class="config-group">
         <label for="setupEndDate">End Date:</label>
-        <input type="date" id="setupEndDate" value="2026-09-01" min="2016-02-01" max="2026-09-12" style="width: 125px;">
+        <input type="date" id="setupEndDate" value="2026-09-01" min="2016-02-01" max="2026-09-12" class="date-input-narrow">
     </div>
 
     <div class="config-group" id="targetSectorCountGroup">
@@ -81,21 +81,21 @@
         </select>
     </div>
 
-    <div class="config-group" style="display: flex; align-items: center; gap: 6px;">
+    <div class="config-group slider-row">
         <label for="rebalanceAmountSlider" style="margin-right: 2px;">Rebalance Amount:</label>
-        <span style="font-size: 11px; font-weight: 600; color: #0284c7; user-select: none;">Light</span>
-        <input type="range" id="rebalanceAmountSlider" min="1" max="6" step="1" value="3" oninput="updateRebalanceAmountTooltip()" style="width: 75px; cursor: pointer; accent-color: #2563eb;" title="Level 3: Moderate Rebalance">
-        <span style="font-size: 11px; font-weight: 600; color: #ea580c; user-select: none;">Heavy</span>
+        <span class="bias-label-light">Light</span>
+        <input type="range" id="rebalanceAmountSlider" min="1" max="6" step="1" value="3" oninput="updateRebalanceAmountTooltip()" class="bias-slider" title="Level 3: Moderate Rebalance">
+        <span class="bias-label-heavy">Heavy</span>
     </div>
 
     <div class="config-group">
         <label for="allocationBiasCheckbox">Allocation Bias:</label>
         <input type="checkbox" id="allocationBiasCheckbox" onchange="toggleAllocationBias()">
     </div>
-    <div class="config-group" id="allocationBiasSliderContainer" style="display: none; align-items: center; gap: 6px;">
-        <span style="font-size: 11px; font-weight: 600; color: #16a34a; user-select: none;">Growth</span>
-        <input type="range" id="allocationBiasSlider" min="1" max="6" step="1" value="4" oninput="updateAllocationBiasTooltip()" style="width: 75px; cursor: pointer; accent-color: #2563eb;" title="Maximum Growth Bias">
-        <span style="font-size: 11px; font-weight: 600; color: #2563eb; user-select: none;">Defensive</span>
+    <div class="config-group slider-row" id="allocationBiasSliderContainer" style="display: none;">
+        <span class="bias-label-growth">Growth</span>
+        <input type="range" id="allocationBiasSlider" min="1" max="6" step="1" value="4" oninput="updateAllocationBiasTooltip()" class="bias-slider" title="Maximum Growth Bias">
+        <span class="bias-label-defensive">Defensive</span>
     </div>
 {% endblock %}
 
@@ -190,24 +190,24 @@
     <div class="report-section">
         <div class="report-section-header">
             <span class="report-section-title">Active Holdings</span>
-            <span id="holdingsCountBadge" style="font-size: 11px; font-weight: 600; color: #64748b;">0 stocks</span>
+            <span id="holdingsCountBadge" class="holdings-count-badge">0 stocks</span>
         </div>
-        <div style="overflow-y: auto; overflow-x: hidden; max-height: 240px; border: 1px solid #e2e8f0; border-radius: 6px;">
+        <div class="holdings-scroll-box">
             <table class="sim-positions-table" id="holdingsTable">
                 <thead>
                     <tr>
-                        <th style="text-align: left; padding: 4px 2px;">Ticker/Company</th>
-                        <th style="text-align: right; padding: 4px 2px;">Shares</th>
-                        <th style="text-align: right; padding: 4px 2px;">Avg Cost</th>
-                        <th style="text-align: right; padding: 4px 2px;">Mkt Price</th>
-                        <th style="text-align: right; padding: 4px 2px;">Mkt Value</th>
-                        <th style="text-align: right; padding: 4px 2px;">Weight</th>
-                        <th style="text-align: right; padding: 4px 2px;">Return</th>
+                        <th class="holdings-table-head-left">Ticker/Company</th>
+                        <th class="holdings-table-head-right">Shares</th>
+                        <th class="holdings-table-head-right">Avg Cost</th>
+                        <th class="holdings-table-head-right">Mkt Price</th>
+                        <th class="holdings-table-head-right">Mkt Value</th>
+                        <th class="holdings-table-head-right">Weight</th>
+                        <th class="holdings-table-head-right">Return</th>
                     </tr>
                 </thead>
                 <tbody id="holdingsTableBody">
                     <tr>
-                        <td colspan="7" style="text-align: center; color: #94a3b8; padding: 16px 0; font-size: 12px;">No positions yet</td>
+                        <td colspan="7" class="empty-holdings-message">No positions yet</td>
                     </tr>
                 </tbody>
             </table>
@@ -220,7 +220,7 @@
             <span class="report-section-title">Rebalance History &amp; Decisions</span>
         </div>
         <div class="timeline-list" id="rebalanceTimelineList">
-            <div style="text-align: center; color: #94a3b8; padding: 12px 0; font-size: 11px;">Logs are empty</div>
+            <div class="empty-logs-message">Logs are empty</div>
         </div>
     </div>
 
@@ -283,7 +283,7 @@
     ];
 
     function getCleanInitialCapital() {
-        const val = document.getElementById("initialCapitalInput")?.value;
+        const val = document.getElementById("initialCapitalInput").value;
         const num = parseFloat(String(val).replace(/[^0-9.]/g, ""));
         return isNaN(num) || num <= 0 ? 100000 : num;
     }
@@ -372,17 +372,17 @@
     function parseLatex(text) {
         if (typeof katex === "undefined" || !text) return text;
         text = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
-            try { return katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false }); } catch (e) { return match; }
+            return katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false });
         });
         text = text.replace(/\\\[([\s\S]+?)\\\]/g, (match, formula) => {
-            try { return katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false }); } catch (e) { return match; }
+            return katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false });
         });
         text = text.replace(/\\\(([\s\S]+?)\\\)/g, (match, formula) => {
-            try { return katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false }); } catch (e) { return match; }
+            return katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false });
         });
         text = text.replace(/(?<!\\)\$(?!\s|\d)([^\$\n]+?)(?<!\s|\\)\$(?!\d)/g, (match, formula) => {
             if (formula.includes('**') || formula.includes('__') || formula.includes('<') || formula.includes('>')) return match;
-            try { return katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false }); } catch (e) { return match; }
+            return katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false });
         });
         return text;
     }
@@ -409,10 +409,10 @@
         if (firstRowCols.length === 0) return "";
         const numCols = firstRowCols.length;
 
-        let html = '<table style="border-collapse: collapse; width: 100%; margin: 10px 0; border: 2px solid #cbd5e1;">';
-        html += '<thead><tr style="background-color: #f1f5f9; border-bottom: 2px solid #cbd5e1; font-weight: bold;">';
+        let html = '<table class="rendered-data-table">';
+        html += '<thead><tr class="rendered-data-table-head-row">';
         firstRowCols.forEach(col => {
-            html += `<th style="padding: 8px; border: 1px solid #cbd5e1; text-align: left; font-weight: bold; font-size: 13px;">${col}</th>`;
+            html += `<th class="rendered-data-table-head-cell">${col}</th>`;
         });
         html += '</tr></thead><tbody>';
 
@@ -420,11 +420,11 @@
         for (let i = startIdx; i < rows.length; i++) {
             if (isTableSeparatorRow(rows[i])) continue;
             const cols = extractTableColumns(rows[i]);
-            html += '<tr style="border-bottom: 1px solid #cbd5e1;">';
+            html += '<tr class="rendered-data-table-row">';
             const totalCols = Math.max(numCols, cols.length);
             for (let c = 0; c < totalCols; c++) {
                 const colVal = c < cols.length ? cols[c] : "";
-                html += `<td style="padding: 8px; border: 1px solid #cbd5e1; font-size: 13px;">${colVal}</td>`;
+                html += `<td class="rendered-data-table-cell">${colVal}</td>`;
             }
             html += '</tr>';
         }
@@ -464,10 +464,10 @@
 
         formattedText = formattedText.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
             const cleanCode = escapeHtml(code.replace(/^\n+|\n+$/g, ''));
-            const langBadge = lang ? `<span style="position: absolute; top: 4px; right: 8px; font-size: 10px; color: #b8c8de; font-weight: 700; user-select: none;">${lang}</span>` : '';
-            return `<div style="position: relative; display: flex; flex-direction: column;">
+            const langBadge = lang ? `<span class="markdown-code-language">${lang}</span>` : '';
+            return `<div class="markdown-code-wrapper">
                         ${langBadge}
-                        <pre style="margin: 0; background-color: #0f172a; color: #ffffff; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 12.5px; line-height: 1.45; overflow-x: auto; white-space: pre;"><code>${cleanCode}</code></pre>
+                        <pre class="markdown-code-block"><code>${cleanCode}</code></pre>
                     </div>`;
         });
 
@@ -476,16 +476,16 @@
         formattedText = formattedText.replace(/__(.*?)__/g, '<strong>$1</strong>');
         formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
         formattedText = formattedText.replace(/_(.*?)_/g, '<em>$1</em>');
-        formattedText = formattedText.replace(/`([^`]+)`/g, '<code style="background-color: #f1f5f9; padding: 2px 4px; border-radius: 3px; font-size: 11.5px; font-family: monospace;">$1</code>');
+        formattedText = formattedText.replace(/`([^`]+)`/g, '<code class="markdown-inline-code">$1</code>');
 
-        formattedText = formattedText.replace(/^######\s+(.*?)$/gm, '<h6 style="font-size: 15px; font-weight: bold;">$1</h6>');
-        formattedText = formattedText.replace(/^#####\s+(.*?)$/gm, '<h6 style="font-size: 16px; font-weight: bold;">$1</h6>');
-        formattedText = formattedText.replace(/^####\s+(.*?)$/gm, '<h5 style="font-size: 17px; font-weight: bold;">$1</h5>');
-        formattedText = formattedText.replace(/^###\s+(.*?)$/gm, '<h4 style="font-size: 19px; font-weight: bold;">$1</h4>');
-        formattedText = formattedText.replace(/^##\s+(.*?)$/gm, '<h3 style="font-size: 21px; font-weight: bold;">$1</h3>');
-        formattedText = formattedText.replace(/^#\s+(.*?)$/gm, '<h2 style="font-size: 23px; font-weight: bold; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px;">$1</h2>');
+        formattedText = formattedText.replace(/^######\s+(.*?)$/gm, '<h6 class="markdown-heading-6">$1</h6>');
+        formattedText = formattedText.replace(/^#####\s+(.*?)$/gm, '<h6 class="markdown-heading-6-large">$1</h6>');
+        formattedText = formattedText.replace(/^####\s+(.*?)$/gm, '<h5 class="markdown-heading-5">$1</h5>');
+        formattedText = formattedText.replace(/^###\s+(.*?)$/gm, '<h4 class="markdown-heading-4">$1</h4>');
+        formattedText = formattedText.replace(/^##\s+(.*?)$/gm, '<h3 class="markdown-heading-3">$1</h3>');
+        formattedText = formattedText.replace(/^#\s+(.*?)$/gm, '<h2 class="markdown-heading-2">$1</h2>');
 
-        formattedText = formattedText.replace(/^---+\s*$/gm, '<hr style="border: none; border-top: 1.5px solid #cbd5e1; margin: 10px 0 3px 0;">');
+        formattedText = formattedText.replace(/^---+\s*$/gm, '<hr class="markdown-divider">');
         formattedText = formattedText.replace(/\\\$/g, '$');
 
         return formattedText;
@@ -643,21 +643,21 @@
             if (stageNum === 3) {
                 // Stage 3 Visual Report + PM Agent Pane
                 const receiptHtml = `
-                    <div class="upload-receipt-container" id="receipt-${this.id}-stage-3" style="flex: 0 0 460px; max-width: 480px; min-width: 320px; height: 100%; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow-y: auto; box-sizing: border-box;">
-                        <h2 style="font-size: 16px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 10px; text-align: center;">${isMilestone0 ? 'CONFIRMED SECTOR ALLOCATION' : 'SECTOR REBALANCING REPORT'}</h2>
-                        <div style="display: grid; grid-template-columns: 120px 1fr; gap: 6px; font-size: 12.5px; margin-bottom: 8px; line-height: 1.3;">
-                            <div style="font-weight: 700; color: #475569;">Target Capital:</div>
-                            <div id="receipt-cap-${this.id}-3" style="font-weight: 800;">$${cleanCap.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
-                            <div style="font-weight: 700; color: #475569;">Analysis Date:</div>
-                            <div id="receipt-date-${this.id}-3" style="font-weight: bold;">${sessionDateDisplay}</div>
-                            <div style="font-weight: 700; color: #475569;">Decision Status:</div>
+                    <div class="upload-receipt-container receipt-card-narrow" id="receipt-${this.id}-stage-3">
+                        <h2 class="receipt-title-small">${isMilestone0 ? 'CONFIRMED SECTOR ALLOCATION' : 'SECTOR REBALANCING REPORT'}</h2>
+                        <div class="receipt-details-grid">
+                            <div class="receipt-label-cell">Target Capital:</div>
+                            <div id="receipt-cap-${this.id}-3" class="receipt-value-strong">$${cleanCap.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                            <div class="receipt-label-cell">Analysis Date:</div>
+                            <div id="receipt-date-${this.id}-3" class="receipt-value-bold">${sessionDateDisplay}</div>
+                            <div class="receipt-label-cell">Decision Status:</div>
                             <div><span id="receipt-status-${this.id}-3" class="tool-status-badge status-running">PENDING DECISION</span></div>
                         </div>
-                        <div style="width: 100%; height: 210px; position: relative; margin: 8px 0;">
+                        <div class="receipt-chart-box">
                             <canvas id="sectorChartCanvas-${this.id}"></canvas>
                         </div>
-                        <div id="sectorTableContainer-${this.id}" style="margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
-                            <div style="font-size: 12px; color: #64748b; text-align: center;">Waiting for Portfolio Manager sector decision...</div>
+                        <div id="sectorTableContainer-${this.id}" class="receipt-table-container">
+                            <div class="receipt-waiting-message">Waiting for Portfolio Manager sector decision...</div>
                         </div>
                     </div>
                 `;
@@ -666,23 +666,23 @@
             } else if (stageNum === 6) {
                 // Stage 6 Visual Report + PM Agent Pane
                 const receiptHtml = `
-                    <div class="upload-receipt-container" id="receipt-${this.id}-stage-6" style="flex: 0 0 520px; max-width: 550px; min-width: 340px; height: 100%; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow-y: auto; box-sizing: border-box;">
-                        <h2 style="font-size: 16px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 10px; text-align: center;">${isMilestone0 ? 'PORTFOLIO CONSTRUCTION REPORT' : 'PORTFOLIO REBALANCING REPORT'}</h2>
-                        <div style="display: grid; grid-template-columns: 120px 1fr; gap: 6px; font-size: 12.5px; margin-bottom: 8px; line-height: 1.3;">
-                            <div style="font-weight: 700; color: #475569;">Total Capital:</div>
-                            <div id="receipt-cap-${this.id}-6" style="font-weight: 800;">$${cleanCap.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
-                            <div style="font-weight: 700; color: #475569;">Analysis Date:</div>
-                            <div id="receipt-date-${this.id}-6" style="font-weight: bold;">${sessionDateDisplay}</div>
-                            <div style="font-weight: 700; color: #475569;">Holdings Count:</div>
-                            <div id="receipt-count-${this.id}-6" style="font-weight: bold;">--</div>
-                            <div style="font-weight: 700; color: #475569;">Portfolio Status:</div>
+                    <div class="upload-receipt-container receipt-card-wide" id="receipt-${this.id}-stage-6">
+                        <h2 class="receipt-title-small">${isMilestone0 ? 'PORTFOLIO CONSTRUCTION REPORT' : 'PORTFOLIO REBALANCING REPORT'}</h2>
+                        <div class="receipt-details-grid">
+                            <div class="receipt-label-cell">Total Capital:</div>
+                            <div id="receipt-cap-${this.id}-6" class="receipt-value-strong">$${cleanCap.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                            <div class="receipt-label-cell">Analysis Date:</div>
+                            <div id="receipt-date-${this.id}-6" class="receipt-value-bold">${sessionDateDisplay}</div>
+                            <div class="receipt-label-cell">Holdings Count:</div>
+                            <div id="receipt-count-${this.id}-6" class="receipt-value-bold">--</div>
+                            <div class="receipt-label-cell">Portfolio Status:</div>
                             <div><span id="receipt-status-${this.id}-6" class="tool-status-badge status-running">PENDING CONSTRUCTION</span></div>
                         </div>
-                        <div style="width: 100%; height: 210px; position: relative; margin: 8px 0;">
+                        <div class="receipt-chart-box">
                             <canvas id="portChartCanvas-${this.id}"></canvas>
                         </div>
-                        <div id="portHoldingsContainer-${this.id}" style="margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
-                            <div style="font-size: 12px; color: #64748b; text-align: center;">Waiting for Portfolio Manager execution...</div>
+                        <div id="portHoldingsContainer-${this.id}" class="receipt-table-container">
+                            <div class="receipt-waiting-message">Waiting for Portfolio Manager execution...</div>
                         </div>
                     </div>
                 `;
@@ -970,30 +970,16 @@
 
                 const sectionTitle = document.createElement("div");
                 sectionTitle.className = "tool-section-title";
-                sectionTitle.style.fontWeight = "bold";
-                sectionTitle.style.fontSize = "12px";
-                sectionTitle.style.color = "#475569";
-                sectionTitle.style.marginBottom = "4px";
                 sectionTitle.innerText = (toolName === "executePythonCalculation") ? "Python Code:" : "Arguments:";
                 content.appendChild(sectionTitle);
 
                 const pre = document.createElement("pre");
                 pre.className = "tool-stream-pre";
-                pre.style.margin = "0";
                 if (toolName === "executePythonCalculation") {
-                    pre.style.backgroundColor = "#0f172a";
-                    pre.style.color = "#38bdf8";
-                    pre.style.padding = "10px";
+                    pre.classList.add("tool-stream-pre-dark");
                 } else {
-                    pre.style.backgroundColor = "#f1f5f9";
-                    pre.style.color = "#0f172a";
-                    pre.style.padding = "8px";
+                    pre.classList.add("tool-stream-pre-light");
                 }
-                pre.style.borderRadius = "4px";
-                pre.style.fontFamily = "monospace";
-                pre.style.fontSize = "12px";
-                pre.style.overflowX = "auto";
-                pre.style.whiteSpace = "pre-wrap";
                 content.appendChild(pre);
 
                 toolBlock.appendChild(header);
@@ -1141,14 +1127,14 @@
                 }
                 const codeDiv = document.createElement("div");
                 codeDiv.style.marginBottom = "10px";
-                codeDiv.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: #475569; margin-bottom: 4px;">Python Code:</div>
-                                     <pre style="margin: 0; background-color: #0f172a; color: #38bdf8; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; overflow-x: auto; white-space: pre-wrap;">${escapeHtml(codeVal)}</pre>`;
+            codeDiv.innerHTML = `<div class="tool-section-label">Python Code:</div>
+                <pre class="tool-output-dark">${escapeHtml(codeVal)}</pre>`;
                 content.appendChild(codeDiv);
             } else {
                 const argsDiv = document.createElement("div");
                 argsDiv.style.marginBottom = "10px";
-                argsDiv.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: #475569; margin-bottom: 4px;">Arguments:</div>
-                                     <pre style="margin: 0; background-color: #f1f5f9; padding: 8px; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; color: #0f172a;">${escapeHtml(prettyArgs)}</pre>`;
+            argsDiv.innerHTML = `<div class="tool-section-label">Arguments:</div>
+                <pre class="tool-arguments-light">${escapeHtml(prettyArgs)}</pre>`;
                 content.appendChild(argsDiv);
             }
 
@@ -1241,16 +1227,16 @@
 
                     const resDiv = document.createElement("div");
                     resDiv.style.marginTop = "10px";
-                    resDiv.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: #475569; margin-bottom: 4px;">Result:</div>
-                                         <pre style="margin: 0; background-color: #f8fafc; border: 1.5px solid #e2e8f0; padding: 8px; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; color: #0f172a;">${escapeHtml(prettyResult)}</pre>`;
+            resDiv.innerHTML = `<div class="tool-section-label">Result:</div>
+                <pre class="tool-result-light">${escapeHtml(prettyResult)}</pre>`;
                     content.appendChild(resDiv);
 
                     if (stdout && String(stdout).trim()) {
                         const trimmedStdout = String(stdout).trim();
                         const stdoutDiv = document.createElement("div");
                         stdoutDiv.style.marginTop = "10px";
-                        stdoutDiv.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: #475569; margin-bottom: 4px;">STDOUT:</div>
-                                               <pre style="margin: 0; background-color: #0f172a; color: #38bdf8; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; overflow-x: auto; white-space: pre-wrap;">${escapeHtml(trimmedStdout)}</pre>`;
+            stdoutDiv.innerHTML = `<div class="tool-section-label">STDOUT:</div>
+                <pre class="tool-output-dark">${escapeHtml(trimmedStdout)}</pre>`;
                         content.appendChild(stdoutDiv);
                     }
 
@@ -1260,10 +1246,10 @@
                         let varRows = "";
                         for (const [k, v] of Object.entries(variables)) {
                             const prettyVal = tryFormatJson(typeof v === 'object' ? JSON.stringify(v) : String(v));
-                            varRows += `<tr><td style="padding: 4px 8px; font-weight: bold; font-family: monospace; border: 1px solid #cbd5e1; vertical-align: top;">${escapeHtml(k)}</td><td style="padding: 4px 8px; font-family: monospace; border: 1px solid #cbd5e1; vertical-align: top; white-space: pre-wrap;">${escapeHtml(prettyVal)}</td></tr>`;
+                            varRows += `<tr><td class="variables-cell">${escapeHtml(k)}</td><td class="variables-cell-wrapped">${escapeHtml(prettyVal)}</td></tr>`;
                         }
-                        varDiv.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: #475569; margin-bottom: 4px;">Variables:</div>
-                                             <table style="border-collapse: collapse; width: 100%; border: 1px solid #cbd5e1; font-size: 12px; background-color: #ffffff;">${varRows}</table>`;
+            varDiv.innerHTML = `<div class="tool-section-label">Variables:</div>
+                <table class="variables-table">${varRows}</table>`;
                         content.appendChild(varDiv);
                     }
                 }
@@ -1339,12 +1325,12 @@
             if (tableContainer && labels.length > 0) {
                 if (isMilestone0) {
                     let tableHtml = `
-                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                        <table class="generated-table">
                             <thead>
-                                <tr style="border-bottom: 2px solid #cbd5e1; background: #f8fafc;">
-                                    <th style="text-align: left; padding: 4px 6px;">Sector</th>
-                                    <th style="text-align: right; padding: 4px 6px;">Weight</th>
-                                    <th style="text-align: right; padding: 4px 6px;">Allocation</th>
+                                <tr class="generated-table-head-row">
+                                    <th class="generated-table-head-left">Sector</th>
+                                    <th class="generated-table-head-right">Weight</th>
+                                    <th class="generated-table-head-right">Allocation</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1353,10 +1339,10 @@
                         const pct = values[idx];
                         const amt = (cleanCapital * (pct / 100)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                         tableHtml += `
-                            <tr style="border-bottom: 1px solid #f1f5f9;">
-                                <td style="padding: 4px 6px; font-weight: 600; color: #0f172a;">${sector}</td>
-                                <td style="padding: 4px 6px; text-align: right; font-weight: 700; color: #2563eb;">${pct.toFixed(1)}%</td>
-                                <td style="padding: 4px 6px; text-align: right; color: #334155;">$${amt}</td>
+                            <tr class="generated-table-row">
+                                <td class="generated-table-ticker-cell">${sector}</td>
+                                <td class="generated-table-accent-cell">${pct.toFixed(1)}%</td>
+                                <td class="generated-table-amount-cell">$${amt}</td>
                             </tr>
                         `;
                     });
@@ -1373,13 +1359,13 @@
 
                     const allSectors = Array.from(new Set([...Object.keys(baseSectorAgg), ...labels]));
                     let tableHtml = `
-                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                        <table class="generated-table">
                             <thead>
-                                <tr style="border-bottom: 2px solid #cbd5e1; background: #f8fafc;">
-                                    <th style="text-align: left; padding: 4px 6px;">Sector</th>
-                                    <th style="text-align: right; padding: 4px 6px;">Baseline</th>
-                                    <th style="text-align: right; padding: 4px 6px;">Target</th>
-                                    <th style="text-align: right; padding: 4px 6px;">Delta</th>
+                                <tr class="generated-table-head-row">
+                                    <th class="generated-table-head-left">Sector</th>
+                                    <th class="generated-table-head-right">Baseline</th>
+                                    <th class="generated-table-head-right">Target</th>
+                                    <th class="generated-table-head-right">Delta</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1391,11 +1377,11 @@
                         const deltaColor = deltaPct > 0.05 ? "#10b981" : (deltaPct < -0.05 ? "#ef4444" : "#64748b");
                         const deltaSign = deltaPct > 0.05 ? "+" : "";
                         tableHtml += `
-                            <tr style="border-bottom: 1px solid #f1f5f9;">
-                                <td style="padding: 4px 6px; font-weight: 600; color: #0f172a;">${sec}</td>
-                                <td style="padding: 4px 6px; text-align: right; color: #64748b;">${basePct.toFixed(1)}%</td>
-                                <td style="padding: 4px 6px; text-align: right; font-weight: 700; color: #2563eb;">${targetPct.toFixed(1)}%</td>
-                                <td style="padding: 4px 6px; text-align: right; font-weight: 700; color: ${deltaColor};">${deltaSign}${deltaPct.toFixed(1)}%</td>
+                            <tr class="generated-table-row">
+                                <td class="generated-table-ticker-cell">${sec}</td>
+                                <td class="generated-table-muted-cell">${basePct.toFixed(1)}%</td>
+                                <td class="generated-table-accent-cell">${targetPct.toFixed(1)}%</td>
+                                <td class="comparison-delta-cell" style="color: ${deltaColor};">${deltaSign}${deltaPct.toFixed(1)}%</td>
                             </tr>
                         `;
                     });
@@ -1486,13 +1472,13 @@
             if (holdingsContainer && (positions.length > 0 || (this.baselinePositions && this.baselinePositions.length > 0))) {
                 if (isMilestone0) {
                     let tableHtml = `
-                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                        <table class="generated-table">
                             <thead>
-                                <tr style="border-bottom: 2px solid #cbd5e1; background: #f8fafc;">
-                                    <th style="text-align: left; padding: 4px 6px;">Holding</th>
-                                    <th style="text-align: left; padding: 4px 6px;">Industry</th>
-                                    <th style="text-align: right; padding: 4px 6px;">Weight</th>
-                                    <th style="text-align: right; padding: 4px 6px;">Allocation</th>
+                                <tr class="generated-table-head-row">
+                                    <th class="generated-table-head-left">Holding</th>
+                                    <th class="generated-table-head-left">Industry</th>
+                                    <th class="generated-table-head-right">Weight</th>
+                                    <th class="generated-table-head-right">Allocation</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1501,13 +1487,13 @@
                         const dollarVal = p.dollarAllocation ? Number(p.dollarAllocation).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "--";
                         const totalWeight = p.weightPct ? Number(p.weightPct) : (p.dollarAllocation ? (Number(p.dollarAllocation) / cleanCapital * 100) : 0);
                         tableHtml += `
-                            <tr style="border-bottom: 1px solid #f1f5f9;">
-                                <td style="padding: 4px 6px; font-weight: 600; color: #0f172a;">
-                                    <div>${p.ticker} <span style="font-size: 10.5px; color: #64748b;">(${p.companyName || p.sector})</span></div>
+                            <tr class="generated-table-row">
+                                <td class="generated-table-ticker-cell">
+                                    <div>${p.ticker} <span class="generated-table-subtext">(${p.companyName || p.sector})</span></div>
                                 </td>
-                                <td style="padding: 4px 6px; color: #64748b; font-size: 11px;">${p.industry || p.sector || 'General'}</td>
-                                <td style="padding: 4px 6px; text-align: right; font-weight: 700; color: #2563eb;">${totalWeight.toFixed(1)}%</td>
-                                <td style="padding: 4px 6px; text-align: right; color: #334155;">$${dollarVal}</td>
+                                <td class="generated-table-industry-cell">${p.industry || p.sector || 'General'}</td>
+                                <td class="generated-table-accent-cell">${totalWeight.toFixed(1)}%</td>
+                                <td class="generated-table-amount-cell">$${dollarVal}</td>
                             </tr>
                         `;
                     });
@@ -1523,15 +1509,15 @@
                     const activeTickers = new Set(positions.map(p => p.ticker));
 
                     let tableHtml = `
-                        <table style="width: 100%; border-collapse: collapse; font-size: 11.5px;">
+                        <table class="generated-table-compact">
                             <thead>
-                                <tr style="border-bottom: 2px solid #cbd5e1; background: #f8fafc;">
-                                    <th style="text-align: left; padding: 4px 5px;">Holding</th>
-                                    <th style="text-align: left; padding: 4px 5px;">Industry</th>
-                                    <th style="text-align: right; padding: 4px 5px;">Old %</th>
-                                    <th style="text-align: right; padding: 4px 5px;">New %</th>
-                                    <th style="text-align: right; padding: 4px 5px;">Delta</th>
-                                    <th style="text-align: right; padding: 4px 5px;">Allocation</th>
+                                <tr class="generated-table-head-row">
+                                    <th class="generated-table-head-left-narrow">Holding</th>
+                                    <th class="generated-table-head-left-narrow">Industry</th>
+                                    <th class="generated-table-head-right-narrow">Old %</th>
+                                    <th class="generated-table-head-right-narrow">New %</th>
+                                    <th class="generated-table-head-right-narrow">Delta</th>
+                                    <th class="generated-table-head-right-narrow">Allocation</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1544,27 +1530,27 @@
                         const newWeight = p.weightPct ? parseFloat(p.weightPct) : (p.dollarAllocation ? (parseFloat(p.dollarAllocation) / cleanCapital * 100) : 0);
                         const dollarVal = p.dollarAllocation ? Number(p.dollarAllocation).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "--";
                         
-                        let oldWeightText = (oldWeight !== null) ? `${oldWeight.toFixed(1)}%` : `<span style="color: #10b981; font-weight: 700;">New</span>`;
+                        let oldWeightText = (oldWeight !== null) ? `${oldWeight.toFixed(1)}%` : `<span class="weight-change-new">New</span>`;
                         let deltaText = "";
                         if (oldWeight !== null) {
                             const delta = newWeight - oldWeight;
                             const dSign = delta > 0.05 ? "+" : "";
                             const dColor = delta > 0.05 ? "#10b981" : (delta < -0.05 ? "#ef4444" : "#64748b");
-                            deltaText = `<span style="color: ${dColor}; font-weight: 700;">${dSign}${delta.toFixed(1)}%</span>`;
+                            deltaText = `<span style="color: ${dColor};" class="weight-change-dynamic">${dSign}${delta.toFixed(1)}%</span>`;
                         } else {
-                            deltaText = `<span style="color: #10b981; font-weight: 700;">+${newWeight.toFixed(1)}%</span>`;
+                            deltaText = `<span class="weight-change-new">+${newWeight.toFixed(1)}%</span>`;
                         }
 
                         tableHtml += `
-                            <tr style="border-bottom: 1px solid #f1f5f9;">
-                                <td style="padding: 4px 5px; font-weight: 600; color: #0f172a;">
-                                    <div>${p.ticker} <span style="font-size: 10px; color: #64748b;">(${p.companyName || p.sector})</span></div>
+                            <tr class="generated-table-row">
+                                <td class="generated-table-ticker-cell-narrow">
+                                    <div>${p.ticker} <span class="generated-table-subtext-small">(${p.companyName || p.sector})</span></div>
                                 </td>
-                                <td style="padding: 4px 5px; color: #64748b; font-size: 10.5px;">${p.industry || p.sector || '--'}</td>
-                                <td style="padding: 4px 5px; text-align: right; color: #64748b; font-size: 11px;">${oldWeightText}</td>
-                                <td style="padding: 4px 5px; text-align: right; font-weight: 700; color: #2563eb;">${newWeight.toFixed(1)}%</td>
-                                <td style="padding: 4px 5px; text-align: right; font-size: 11px;">${deltaText}</td>
-                                <td style="padding: 4px 5px; text-align: right; color: #334155; font-size: 11px;">$${dollarVal}</td>
+                                <td class="generated-table-industry-cell-small">${p.industry || p.sector || '--'}</td>
+                                <td class="generated-table-muted-cell-narrow">${oldWeightText}</td>
+                                <td class="generated-table-accent-cell-narrow">${newWeight.toFixed(1)}%</td>
+                                <td class="generated-table-delta-cell-narrow">${deltaText}</td>
+                                <td class="generated-table-amount-cell-narrow">$${dollarVal}</td>
                             </tr>
                         `;
                     });
@@ -1574,15 +1560,15 @@
                         if (!bp.ticker || activeTickers.has(bp.ticker)) return;
                         const oldWeight = parseFloat(bp.weightPct) || (bp.dollarAllocation ? (parseFloat(bp.dollarAllocation) / cleanCapital * 100) : 0);
                         tableHtml += `
-                            <tr style="border-bottom: 1px solid #f1f5f9;">
-                                <td style="padding: 4px 5px; font-weight: 600; color: #0f172a;">
-                                    <div>${bp.ticker} <span style="font-size: 10px; color: #64748b;">(${bp.companyName || bp.sector || ''})</span></div>
+                            <tr class="generated-table-row">
+                                <td class="generated-table-ticker-cell-narrow">
+                                    <div>${bp.ticker} <span class="generated-table-subtext-small">(${bp.companyName || bp.sector || ''})</span></div>
                                 </td>
-                                <td style="padding: 4px 5px; color: #64748b; font-size: 10.5px;">${bp.industry || bp.sector || '--'}</td>
-                                <td style="padding: 4px 5px; text-align: right; color: #64748b; font-size: 11px;">${oldWeight.toFixed(1)}%</td>
-                                <td style="padding: 4px 5px; text-align: right; font-weight: 700; color: #ef4444;">0.0%</td>
-                                <td style="padding: 4px 5px; text-align: right; font-size: 11px;"><span style="color: #ef4444; font-weight: 700;">-${oldWeight.toFixed(1)}%</span></td>
-                                <td style="padding: 4px 5px; text-align: right; color: #334155; font-size: 11px;">$0.00</td>
+                                <td class="generated-table-industry-cell-small">${bp.industry || bp.sector || '--'}</td>
+                                <td class="generated-table-muted-cell-narrow">${oldWeight.toFixed(1)}%</td>
+                                <td class="generated-table-removed-cell">0.0%</td>
+                                <td class="generated-table-delta-cell-narrow"><span class="weight-change-removed">-${oldWeight.toFixed(1)}%</span></td>
+                                <td class="generated-table-amount-cell-narrow">$0.00</td>
                             </tr>
                         `;
                     });
@@ -1654,14 +1640,14 @@
         reset() {
             const container = document.getElementById("panesContainer");
             if (container) {
-                container.innerHTML = `<div id="emptySimPlaceholder" style="padding: 10px 0;">
-                    <p style="color: #7c899b; font-size: 14px; margin: 68px 0 20px 0; line-height: 2.0;">
-                        This mode makes heavy usage out of pre-downloaded data. It will use the data from the <span style="font-family:monospace;">data/</span> folder if it exists.
+                container.innerHTML = `<div id="emptySimPlaceholder" class="empty-simulation-placeholder">
+                    <p class="empty-simulation-notice">
+                        This mode makes heavy usage out of pre-downloaded data. It will use the data from the <span class="monospace-text">data/</span> folder if it exists.
                         <br />
                         For the most up-to-date information, consider a global re-download of all data by running
-                        <span style="font-family:monospace;"> mass_downloader.py</span>.
+                        <span class="monospace-text"> mass_downloader.py</span>.
                     </p>
-                    <p style="color: #7c899b; font-size: 14px; line-height: 1.8; margin: 0;">
+                    <p class="empty-simulation-hint">
                         Note: Depending on the selected date span and timestep, this mode can take many hours to complete.
                     </p>
                 </div>`;
@@ -2008,7 +1994,7 @@
             container.id = "milestoneDropdownContainer";
             container.className = "milestone-selector-container";
             container.innerHTML = `
-                <label for="milestoneSelect" style="font-size: 12px; font-weight: 700; color: #475569; white-space: nowrap;">Session:</label>
+                <label for="milestoneSelect" class="milestone-select-label">Session:</label>
                 <select id="milestoneSelect" class="milestone-select" onchange="sessionMgr.switchSession(this.value)">
                     <option value="none">None yet</option>
                 </select>
@@ -2198,7 +2184,7 @@
         if (alphaEl && data.alphaPct !== undefined) {
             const alpha = Number(data.alphaPct);
             const spRet = Number(data.sp500ReturnPct || 0);
-            alphaEl.innerHTML = `<span style="font-weight: 800;">${alpha >= 0 ? '+' : ''}${alpha.toFixed(2)}%</span> <span style="font-size: 11px; font-weight: 500; color: #64748b;">(${spRet >= 0 ? '+' : ''}${spRet.toFixed(2)}%)</span>`;
+            alphaEl.innerHTML = `<span class="metric-value-strong">${alpha >= 0 ? '+' : ''}${alpha.toFixed(2)}%</span> <span class="metric-benchmark-label">(${spRet >= 0 ? '+' : ''}${spRet.toFixed(2)}%)</span>`;
             alphaEl.style.color = alpha >= 0 ? '#10b981' : '#dc2626';
         }
 
@@ -2208,7 +2194,7 @@
                 const sr = Number(data.sharpeRatio).toFixed(2);
                 const spSr = (data.sp500SharpeRatio !== undefined && data.sp500SharpeRatio !== null) ? Number(data.sp500SharpeRatio).toFixed(2) : null;
                 if (spSr !== null) {
-                    sharpeEl.innerHTML = `<span style="font-weight: 800;">${sr}</span> <span style="font-size: 11px; font-weight: 500; color: #64748b;">(vs ${spSr} for S&P 500)</span>`;
+                    sharpeEl.innerHTML = `<span class="metric-value-strong">${sr}</span> <span class="metric-benchmark-label">(vs ${spSr} for S&P 500)</span>`;
                 } else {
                     sharpeEl.textContent = sr;
                 }
@@ -2221,7 +2207,7 @@
                 const dd = Number(data.maxDrawdownPct);
                 const spDd = (data.sp500MaxDrawdownPct !== undefined && data.sp500MaxDrawdownPct !== null) ? Number(data.sp500MaxDrawdownPct) : null;
                 if (spDd !== null) {
-                    ddEl.innerHTML = `<span style="font-weight: 800; color: ${dd <= spDd ? '#10b981' : '#dc2626'};">${dd.toFixed(2)}%</span> <span style="font-size: 11px; font-weight: 500; color: #64748b;">(vs ${spDd.toFixed(2)}% for S&P 500)</span>`;
+                    ddEl.innerHTML = `<span class="metric-value-strong" style="color: ${dd <= spDd ? '#10b981' : '#dc2626'};">${dd.toFixed(2)}%</span> <span class="metric-benchmark-label">(vs ${spDd.toFixed(2)}% for S&P 500)</span>`;
                 } else {
                     ddEl.textContent = `${dd.toFixed(2)}%`;
                     ddEl.style.color = dd > 0 ? '#dc2626' : '#10b981';
@@ -2329,7 +2315,7 @@
         if (countBadge) countBadge.textContent = `${positions.length} stock${positions.length === 1 ? '' : 's'}`;
 
         if (!positions || positions.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #94a3b8; padding: 16px 0; font-size: 12px;">No positions yet</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" class="empty-holdings-message">No positions yet</td></tr>`;
             return;
         }
 
@@ -2342,19 +2328,19 @@
             const compName = p.companyName ? p.companyName : "";
 
             return `
-                <tr style="background: ${rowBg}; border-bottom: 1px solid #f1f5f9;">
-                    <td style="padding: 5px 3px; text-align: left;">
+                <tr class="holdings-grid-row" style="background: ${rowBg};">
+                    <td class="holdings-grid-cell-left">
                         <div class="pos-ticker">${p.ticker}</div>
                         <div class="pos-company-sub" title="${escapeHtml(compName)}">${escapeHtml(compName)}</div>
                     </td>
-                    <td style="padding: 5px 3px; text-align: right; font-weight: 600; font-size: 0.52vw; color: #334155; white-space: nowrap;">${sharesStr}</td>
-                    <td style="padding: 5px 3px; text-align: right; font-size: 0.52vw; color: #475569; white-space: nowrap;">$${Number(p.avgPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style="padding: 5px 3px; text-align: right; font-weight: 600; font-size: 0.52vw; color: #0f172a; white-space: nowrap;">$${Number(p.currentPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style="padding: 5px 3px; text-align: right; font-weight: 700; font-size: 0.52vw; color: #0f172a; white-space: nowrap;">$${Number(p.currentValue).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
-                    <td style="padding: 5px 3px; text-align: right; font-weight: 600; font-size: 0.52vw; color: #2563eb; white-space: nowrap;">${p.weightPct.toFixed(1)}%</td>
-                    <td style="padding: 5px 3px; text-align: right; white-space: nowrap;">
-                        <div style="font-weight: 700; font-size: 0.48vw; color: ${pnlColor}; line-height: 1.15;">${sign}${p.pnlPct.toFixed(1)}%</div>
-                        <div style="font-weight: 600; font-size: 0.4vw; color: ${pnlColor}; line-height: 1.1;">${sign}$${Math.abs(p.pnlDollar).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
+                    <td class="holdings-grid-cell">${sharesStr}</td>
+                    <td class="holdings-grid-price-cell">$${Number(p.avgPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td class="holdings-grid-current-price-cell">$${Number(p.currentPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td class="holdings-grid-value-cell">$${Number(p.currentValue).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                    <td class="holdings-grid-weight-cell">${p.weightPct.toFixed(1)}%</td>
+                    <td class="holdings-grid-cell-left" style="text-align: right; white-space: nowrap;">
+                        <div class="holdings-grid-profit-percent" style="color: ${pnlColor};">${sign}${p.pnlPct.toFixed(1)}%</div>
+                        <div class="holdings-grid-profit-amount" style="color: ${pnlColor};">${sign}$${Math.abs(p.pnlDollar).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
                     </td>
                 </tr>
             `;
@@ -2397,7 +2383,7 @@
         }
 
         if (events.length === 0) {
-            container.innerHTML = `<div style="text-align: center; color: #94a3b8; padding: 12px 0; font-size: 11px;">Logs are empty</div>`;
+            container.innerHTML = `<div class="empty-logs-message">Logs are empty</div>`;
             return;
         }
 

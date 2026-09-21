@@ -3,78 +3,13 @@
 {% block title %}CapitalAgents - Portfolio Creation Boardroom{% endblock %}
 
 {% block extra_css %}
-<style>
-    /* Remove up/down arrows (spinners) from number inputs */
-    input[type=number]::-webkit-inner-spin-button,
-    input[type=number]::-webkit-outer-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-    }
-    input[type=number] {
-        -moz-appearance: textfield;
-    }
-    .portfolio-num-input {
-        width: 50px !important;
-        text-align: center;
-        padding: 5px 6px !important;
-    }
-    .pie-toggle-btn {
-        font-size: 11px;
-        font-weight: 600;
-        padding: 3px 9px;
-        border-radius: 4px;
-        cursor: pointer;
-        border: 1px solid #cbd5e1;
-        background-color: #f8fafc;
-        color: #475569;
-        transition: all 0.15s ease;
-        line-height: 1.3;
-    }
-    .pie-toggle-btn:hover {
-        background-color: #e2e8f0;
-        color: #0f172a;
-    }
-    .pie-toggle-btn.active {
-        background-color: #2563eb;
-        color: #ffffff;
-        border-color: #2563eb;
-    }
-    .backtest-metrics-container {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-        padding: 4px 0 6px 0;
-        background: transparent;
-        border: none;
-        box-sizing: border-box;
-    }
-    .backtest-metric-item {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-    }
-    .backtest-metric-label {
-        font-size: 10.5px;
-        font-weight: 700;
-        color: #64748b;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    .backtest-metric-value {
-        font-size: 14px;
-        font-weight: 800;
-        color: #0f172a;
-        white-space: nowrap;
-        text-overflow: ellipsis;
-        overflow: hidden;
-    }
-</style>
+<link rel="stylesheet" href="/static/css/portfolio_creation.css">
 {% endblock %}
 
 {% block config_inputs %}
     <div class="config-group">
         <label for="initialCapitalInput">Initial Capital ($):</label>
-        <input type="number" id="initialCapitalInput" min="1000" step="5000" value="100000" style="width: 85px;">
+        <input type="number" id="initialCapitalInput" min="1000" step="5000" value="100000" class="capital-input-narrow">
     </div>
 
     <div class="config-group" id="targetSectorCountGroup">
@@ -105,10 +40,10 @@
         <label for="allocationBiasCheckbox">Allocation Bias:</label>
         <input type="checkbox" id="allocationBiasCheckbox" onchange="toggleAllocationBias()">
     </div>
-    <div class="config-group" id="allocationBiasSliderContainer" style="display: none; align-items: center; gap: 6px;">
-        <span style="font-size: 11.5px; font-weight: 600; color: #16a34a; user-select: none;">Growth</span>
-        <input type="range" id="allocationBiasSlider" min="1" max="6" step="1" value="4" oninput="updateAllocationBiasTooltip()" style="width: 85px; cursor: pointer; accent-color: #2563eb;" title="Maximum Growth Bias">
-        <span style="font-size: 11.5px; font-weight: 600; color: #2563eb; user-select: none;">Defensive</span>
+    <div class="config-group allocation-slider-row" id="allocationBiasSliderContainer" style="display: none;">
+        <span class="allocation-slider-label-growth">Growth</span>
+        <input type="range" id="allocationBiasSlider" min="1" max="6" step="1" value="4" oninput="updateAllocationBiasTooltip()" class="allocation-slider" title="Maximum Growth Bias">
+        <span class="allocation-slider-label-defensive">Defensive</span>
     </div>
 
     <div class="config-group">
@@ -139,30 +74,30 @@
 {% block custom_modal_overlays %}
 <!-- Allocate Sectors Modal Overlay -->
 <div id="sectorAllocationOverlay" class="setup-overlay" style="display: none;" onmousedown="handleSectorOverlayMouseDown(event)">
-    <div class="splash-load-model-window" style="position: relative; width: min(92vw, 860px); max-height: 90vh; padding: 30px 36px; overflow-y: auto;" onmousedown="event.stopPropagation()">
+    <div class="splash-load-model-window sector-modal-window" onmousedown="event.stopPropagation()">
         <button type="button" class="modal-close-btn" onclick="closeSectorAllocationModal()" title="Close">&times;</button>
-        <h1 style="margin-bottom: 24px;">Allocate Sectors</h1>
+        <h1 class="sector-modal-title">Allocate Sectors</h1>
 
-        <div style="display: flex; gap: 36px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+        <div class="modal-split-row">
             <!-- Left: 11 Sector Sliders -->
-            <div id="sectorSlidersContainer" style="flex: 1.25; min-width: 320px; display: flex; flex-direction: column; gap: 11px;">
+            <div id="sectorSlidersContainer" class="sliders-pane">
                 <!-- Dynamically populated -->
             </div>
 
             <!-- Right: Chart.js Pie Chart & Modal Buttons -->
-            <div style="flex: 1; min-width: 270px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;">
-                <div style="width: 100%; height: 260px; position: relative;">
+            <div class="donut-pane">
+                <div class="donut-chart-box">
                     <canvas id="presetSectorPieCanvas"></canvas>
                 </div>
-                <div style="display: flex; gap: 12px; width: 100%; justify-content: center; align-items: center;">
-                    <button type="button" id="resetSectorSlidersZeroBtn" onclick="resetPresetSectorsToZero()" style="padding: 10px 18px; font-size: 15px; font-weight: 600; color: #475569; background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer; text-align: center; transition: all 0.15s;" onmouseover="this.style.backgroundColor='#e2e8f0'" onmouseout="this.style.backgroundColor='#f1f5f9'">
+                <div class="modal-button-row">
+                    <button type="button" id="resetSectorSlidersZeroBtn" onclick="resetPresetSectorsToZero()" class="reset-sectors-button" onmouseover="this.style.backgroundColor='#e2e8f0'" onmouseout="this.style.backgroundColor='#f1f5f9'">
                         Set All to 0
                     </button>
-                    <button type="button" id="closeSectorModalBtn" onclick="closeSectorAllocationModal()" class="primary-btn" style="min-width: 120px; padding: 10px 24px; font-size: 16px; font-weight: 700; color: #fff; background-color: #2563eb; border: none; border-radius: 6px; cursor: pointer; text-align: center; transition: background-color 0.15s;">
+                    <button type="button" id="closeSectorModalBtn" onclick="closeSectorAllocationModal()" class="primary-btn confirm-sectors-button">
                         Done
                     </button>
                 </div>
-                <div id="sectorAllocationWarning" style="color: #ef4444; font-size: 13px; font-weight: 600; display: none; text-align: center; margin-top: -8px;">
+                <div id="sectorAllocationWarning" class="modal-warning-centered">
                     Please allocate at least one sector (> 0%) before proceeding.
                 </div>
             </div>
@@ -185,6 +120,9 @@
     let confirmedPortfolioData = null;
 
     function countDecimalPlaces(num) {
+        if (window.AppUtils && window.AppUtils.countDecimalPlaces) {
+            return window.AppUtils.countDecimalPlaces(num);
+        }
         if (!num || Math.floor(num) === num) return 0;
         const str = num.toString();
         if (str.indexOf("e-") !== -1) return parseInt(str.split("e-")[1], 10);
@@ -193,15 +131,18 @@
     }
 
     function formatYAxisLabel(val, stepSize) {
+        if (window.AppUtils && window.AppUtils.formatLargeCurrency) {
+            return window.AppUtils.formatLargeCurrency(val, stepSize);
+        }
         if (val === 0) return "$0";
         const absVal = Math.abs(val);
         let unit = "";
         let div = 1;
 
-        if (absVal >= 1e12) { unit = "T"; div = 1e12; }
-        else if (absVal >= 1e9) { unit = "B"; div = 1e9; }
-        else if (absVal >= 1e6) { unit = "M"; div = 1e6; }
-        else if (absVal >= 1e3) { unit = "k"; div = 1e3; }
+        if (absVal >= 1e12) { unit = "tn"; div = 1e12; }
+        else if (absVal >= 1e9) { unit = "bn"; div = 1e9; }
+        else if (absVal >= 1e6) { unit = "mn"; div = 1e6; }
+        else if (absVal >= 1e3) { unit = "K"; div = 1e3; }
 
         const num = val / div;
         let dp = 0;
@@ -293,12 +234,11 @@
         PRESET_GICS_SECTORS.forEach(sec => {
             const row = document.createElement("div");
             row.className = "sector-slider-row";
-            row.style.cssText = "display: flex; align-items: center; justify-content: space-between; gap: 12px;";
 
             row.innerHTML = `
-                <span style="font-weight: 700; font-size: 13.5px; color: #0f172a; width: 175px; flex-shrink: 0; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" title="${sec.name}">${sec.name}</span>
-                <input type="range" class="sector-slider" data-sector="${sec.ticker}" data-sector-name="${sec.name}" min="0" max="100" value="50" style="flex: 1; accent-color: #2563eb; cursor: pointer;">
-                <input type="text" class="sector-pct-box" id="pct_${sec.ticker}" readonly value="9.09%" style="width: 68px; text-align: center; border: none; font-size: 15px; padding: 4px; user-select: none; cursor: default;">
+                <span class="sector-slider-label" title="${sec.name}">${sec.name}</span>
+                <input type="range" class="sector-slider" data-sector="${sec.ticker}" data-sector-name="${sec.name}" min="0" max="100" value="50">
+                <input type="text" class="sector-pct-box" id="pct_${sec.ticker}" readonly value="9.09%">
             `;
 
             const slider = row.querySelector(".sector-slider");
@@ -490,12 +430,12 @@
     }
 
     // Handle evaluation mode changes
-    document.getElementById("modeSelect")?.addEventListener("change", function () {
+    document.getElementById("modeSelect").addEventListener("change", function () {
         handleModeChange(this.value);
     });
 
     function getCleanInitialCapital() {
-        const val = document.getElementById("initialCapitalInput")?.value;
+        const val = document.getElementById("initialCapitalInput").value;
         const num = parseFloat(String(val).replace(/[^0-9.]/g, ""));
         return isNaN(num) || num <= 0 ? 100000 : num;
     }
@@ -505,26 +445,26 @@
         // Stage 3: Confirmed Sector Allocation
         if (stageNum === 3 || stageName.includes("Sector Allocation Decision")) {
             workspace.innerHTML = `
-                <div class="upload-receipt-container" style="flex: 1; max-width: 460px; min-width: 320px; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 22px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); align-self: stretch; height: 100%; min-height: 0; overflow-y: auto; box-sizing: border-box;">
-                    <h2 style="font-size: 18px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 14px; text-align: center;">CONFIRMED SECTOR ALLOCATION</h2>
+                <div class="upload-receipt-container report-card">
+                    <h2 class="report-title">CONFIRMED SECTOR ALLOCATION</h2>
 
-                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; font-size: 13.5px; margin-bottom: 12px; line-height: 1.3;">
-                        <div style="font-weight: 700; color: #475569;">Target Capital:</div>
-                        <div id="allocation-capital" style="font-weight: 800;">$${getCleanInitialCapital().toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                    <div class="report-grid">
+                        <div class="report-label">Target Capital:</div>
+                        <div id="allocation-capital" class="report-value-strong">$${getCleanInitialCapital().toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
 
-                        <div style="font-weight: 700; color: #475569;">Analysis Date:</div>
-                        <div id="allocation-date" style="font-weight: bold;">${BoardroomCore.formatOrdinalDate(currentSimulatedDate)}</div>
+                        <div class="report-label">Analysis Date:</div>
+                        <div id="allocation-date" class="report-value-bold">${BoardroomCore.formatOrdinalDate(currentSimulatedDate)}</div>
 
-                        <div style="font-weight: 700; color: #475569;">Decision Status:</div>
+                        <div class="report-label">Decision Status:</div>
                         <div><span id="allocation-status" class="tool-status-badge status-running">PENDING DECISION</span></div>
                     </div>
 
-                    <div id="sectorChartWrapper" style="width: 100%; height: 210px; position: relative; margin: 10px 0;">
-                        <canvas id="sectorAllocationChartCanvas" style="display: block; width: 100%; height: 100%;"></canvas>
+                    <div id="sectorChartWrapper" class="report-chart-tall">
+                        <canvas id="sectorAllocationChartCanvas" class="report-canvas-fill"></canvas>
                     </div>
 
-                    <div id="sectorTableContainer" style="margin-top: 12px; border-top: 1px solid #e2e8f0; padding-top: 10px;">
-                        <div style="font-size: 12px; color: #64748b; text-align: center;">Waiting for Portfolio Manager sector decision...</div>
+                    <div id="sectorTableContainer" class="report-table-container">
+                        <div class="report-waiting-message">Waiting for Portfolio Manager sector decision...</div>
                     </div>
                 </div>
             `;
@@ -546,43 +486,43 @@
         // Stage 6: Final Executive Portfolio Decision Receipt
         if (stageNum === 6 || stageName.includes("Final Executive Decision")) {
             workspace.innerHTML = `
-                <div class="upload-receipt-container" style="flex: 1.35; max-width: 680px; min-width: 360px; border: 3px solid #000; border-radius: 8px; background-color: #fff; padding: 22px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); align-self: stretch; height: 100%; min-height: 0; overflow-y: auto; box-sizing: border-box;">
-                    <h2 style="font-size: 18px; font-weight: 800; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 14px; text-align: center;">PORTFOLIO CONSTRUCTION REPORT</h2>
+                <div class="upload-receipt-container report-card-wide">
+                    <h2 class="report-title">PORTFOLIO CONSTRUCTION REPORT</h2>
 
-                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; font-size: 13.5px; margin-bottom: 12px; line-height: 1.3;">
-                        <div style="font-weight: 700; color: #475569;">Total Capital:</div>
-                        <div id="portfolio-capital" style="font-weight: 800;">$${getCleanInitialCapital().toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                    <div class="report-grid">
+                        <div class="report-label">Total Capital:</div>
+                        <div id="portfolio-capital" class="report-value-strong">$${getCleanInitialCapital().toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
 
-                        <div style="font-weight: 700; color: #475569;">Analysis Date:</div>
-                        <div id="portfolio-date" style="font-weight: bold;">${BoardroomCore.formatOrdinalDate(currentSimulatedDate)}</div>
+                        <div class="report-label">Analysis Date:</div>
+                        <div id="portfolio-date" class="report-value-bold">${BoardroomCore.formatOrdinalDate(currentSimulatedDate)}</div>
 
-                        <div style="font-weight: 700; color: #475569;">Holdings Count:</div>
-                        <div id="portfolio-stock-count" style="font-weight: bold;">--</div>
+                        <div class="report-label">Holdings Count:</div>
+                        <div id="portfolio-stock-count" class="report-value-bold">--</div>
 
-                        <div style="font-weight: 700; color: #475569;">Portfolio Status:</div>
+                        <div class="report-label">Portfolio Status:</div>
                         <div><span id="portfolio-status" class="tool-status-badge status-running">PENDING CONSTRUCTION</span></div>
                     </div>
 
-                    <div id="portfolioChartSection" style="margin: 10px 0;">
-                        <div id="portfolioPieToggleContainer" style="display: none; justify-content: flex-end; align-items: center; gap: 5px; margin-bottom: 6px;">
-                            <span style="font-size: 11px; font-weight: 600; color: #64748b; margin-right: 2px;">View by:</span>
+                    <div id="portfolioChartSection" class="report-section-spacing">
+                        <div id="portfolioPieToggleContainer" class="pie-toggle-row">
+                            <span class="toggle-label">View by:</span>
                             <button type="button" class="pie-toggle-btn active" id="pieToggleSector" onclick="switchPortfolioPieBreakdown('sector')">Sector</button>
                             <button type="button" class="pie-toggle-btn" id="pieToggleIndustry" onclick="switchPortfolioPieBreakdown('industry')">Industry</button>
                             <button type="button" class="pie-toggle-btn" id="pieToggleStock" onclick="switchPortfolioPieBreakdown('stock')">Stock</button>
                         </div>
 
-                        <div id="portfolioBacktestToggleContainer" style="display: none; justify-content: flex-end; align-items: center; gap: 5px; margin-bottom: 6px;">
-                            <span style="font-size: 11px; font-weight: 600; color: #64748b; margin-right: 2px;">Horizon:</span>
+                        <div id="portfolioBacktestToggleContainer" class="pie-toggle-row">
+                            <span class="toggle-label">Horizon:</span>
                             <button type="button" class="pie-toggle-btn active" id="backtestToggleHorizon" onclick="switchPortfolioBacktestHorizon('horizon')">Hold for Horizon</button>
                             <button type="button" class="pie-toggle-btn" id="backtestToggleNow" onclick="switchPortfolioBacktestHorizon('now')">Hold until Now</button>
                         </div>
 
-                        <div id="portfolioChartWrapper" style="width: 100%; height: 270px; position: relative;">
-                            <canvas id="portfolioSectorChartCanvas" style="display: block; width: 100%; height: 100%;"></canvas>
-                            <canvas id="portfolioBacktestChartCanvas" style="display: none; width: 100%; height: 100%;"></canvas>
+                        <div id="portfolioChartWrapper" class="report-chart-grande">
+                            <canvas id="portfolioSectorChartCanvas" class="report-canvas-fill"></canvas>
+                            <canvas id="portfolioBacktestChartCanvas" class="report-canvas-fill" style="display: none;"></canvas>
                         </div>
 
-                        <div id="portfolioBacktestMetrics" class="backtest-metrics-container" style="display: none;">
+                        <div id="portfolioBacktestMetrics" class="backtest-metrics-container backtest-banner" style="display: none;">
                             <div class="backtest-metric-item">
                                 <div id="metricPortfolioReturnLabel" class="backtest-metric-label">Return as of today</div>
                                 <div id="metricPortfolioReturn" class="backtest-metric-value" style="color: #10b981;">--</div>
@@ -602,13 +542,13 @@
                         </div>
                     </div>
 
-                    <div id="portfolioHoldingsContainer" style="margin-top: 12px; border-top: 1px solid #e2e8f0; padding-top: 10px;">
-                        <div style="font-size: 12px; color: #64748b; text-align: center;">Waiting for Portfolio Manager execution...</div>
+                    <div id="portfolioHoldingsContainer" class="report-table-container">
+                        <div class="report-waiting-message">Waiting for Portfolio Manager execution...</div>
                     </div>
 
-                    <div id="finalTimeReportRow" style="margin-top: 15px; padding-top: 12px; border-top: 1px dashed #cbd5e1; display: none; text-align: center;">
-                        <div style="font-size: 15px; font-weight: 700; color: #10b981; margin-bottom: 5px;">✓ Portfolio Created Successfully</div>
-                        <div id="finalTimeReportValue" style="font-size: 13px; font-weight: 600; color: #475569;">Time Taken: Running...</div>
+                    <div id="finalTimeReportRow" class="report-time-row">
+                        <div class="report-success-title">✓ Portfolio Created Successfully</div>
+                        <div id="finalTimeReportValue" class="report-time-value">Time Taken: Running...</div>
                     </div>
                 </div>
             `;
@@ -680,12 +620,12 @@
         const tableContainer = document.getElementById("sectorTableContainer");
         if (tableContainer && labels.length > 0) {
             let tableHtml = `
-                <table style="width: 100%; border-collapse: collapse; font-size: 12.5px;">
+                <table class="sector-table">
                     <thead>
-                        <tr style="border-bottom: 2px solid #cbd5e1; background: #f8fafc;">
-                            <th style="text-align: left; padding: 6px 8px;">Sector</th>
-                            <th style="text-align: right; padding: 6px 8px;">Weight</th>
-                            <th style="text-align: right; padding: 6px 8px;">Allocation</th>
+                        <tr class="sector-table-head-row">
+                            <th class="sector-table-head-left">Sector</th>
+                            <th class="sector-table-head-right">Weight</th>
+                            <th class="sector-table-head-right">Allocation</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -694,10 +634,10 @@
                 const pct = values[idx];
                 const amt = (cleanCapital * (pct / 100)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 tableHtml += `
-                    <tr style="border-bottom: 1px solid #f1f5f9;">
-                        <td style="padding: 5px 8px; font-weight: 600; color: #0f172a;">${sector}</td>
-                        <td style="padding: 5px 8px; text-align: right; font-weight: 700; color: #2563eb;">${pct.toFixed(1)}%</td>
-                        <td style="padding: 5px 8px; text-align: right; color: #334155;">$${amt}</td>
+                    <tr class="sector-table-row">
+                        <td class="sector-table-ticker-cell">${sector}</td>
+                        <td class="sector-table-accent-cell">${pct.toFixed(1)}%</td>
+                        <td class="sector-table-amount-cell">$${amt}</td>
                     </tr>
                 `;
             });
@@ -1036,7 +976,7 @@
             if (spEl) {
                 const alpha = Number(m.alphaPct || 0);
                 const spRet = Number(m.sp500ReturnPct || 0);
-                spEl.innerHTML = `<span style="font-weight: 800;">${alpha >= 0 ? '+' : ''}${alpha.toFixed(2)}%</span> <span style="font-size: 11px; font-weight: 500; color: #64748b;">(${spRet >= 0 ? '+' : ''}${spRet.toFixed(2)}%)</span>`;
+                spEl.innerHTML = `<span class="metric-value-strong">${alpha >= 0 ? '+' : ''}${alpha.toFixed(2)}%</span> <span class="metric-benchmark-label">(${spRet >= 0 ? '+' : ''}${spRet.toFixed(2)}%)</span>`;
                 spEl.title = `S&P 500 Return: ${spRet >= 0 ? '+' : ''}${spRet.toFixed(2)}%`;
                 spEl.style.color = alpha >= 0 ? "#10b981" : "#ef4444";
             }
@@ -1044,7 +984,7 @@
                 const sr = Number(m.sharpeRatio || 0).toFixed(2);
                 const spSr = (m.sp500SharpeRatio !== undefined && m.sp500SharpeRatio !== null) ? Number(m.sp500SharpeRatio).toFixed(2) : null;
                 if (spSr !== null) {
-                    srEl.innerHTML = `<span style="font-weight: 800;">${sr}</span> <span style="font-size: 11px; font-weight: 500; color: #64748b;">(vs ${spSr} for S&P 500)</span>`;
+                    srEl.innerHTML = `<span class="metric-value-strong">${sr}</span> <span class="metric-benchmark-label">(vs ${spSr} for S&P 500)</span>`;
                 } else {
                     srEl.innerText = sr;
                 }
@@ -1054,9 +994,9 @@
                 const portDd = Math.abs(m.maxDrawdownPct !== undefined ? m.maxDrawdownPct : 0);
                 const spDd = (m.sp500MaxDrawdownPct !== undefined && m.sp500MaxDrawdownPct !== null) ? Math.abs(m.sp500MaxDrawdownPct) : null;
                 if (spDd !== null) {
-                    ddEl.innerHTML = `<span style="font-weight: 800; color: ${portDd <= spDd ? '#10b981' : '#ef4444'};">${portDd.toFixed(2)}%</span> <span style="font-size: 11px; font-weight: 500; color: #64748b;">(vs ${spDd.toFixed(2)}% for S&P 500)</span>`;
+                    ddEl.innerHTML = `<span class="metric-value-strong" style="color: ${portDd <= spDd ? '#10b981' : '#ef4444'};">${portDd.toFixed(2)}%</span> <span class="metric-benchmark-label">(vs ${spDd.toFixed(2)}% for S&P 500)</span>`;
                 } else {
-                    ddEl.innerHTML = `<span style="font-weight: 800;">${portDd.toFixed(2)}%</span>`;
+                    ddEl.innerHTML = `<span class="metric-value-strong">${portDd.toFixed(2)}%</span>`;
                     ddEl.style.color = portDd > 0 ? "#ef4444" : "#10b981";
                 }
             }
@@ -1073,15 +1013,15 @@
         const colCount = hasBacktest ? 6 : 5;
 
         let tableHtml = `
-            <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 12px;">
+            <table class="holdings-table">
                 <thead>
-                    <tr style="border-bottom: 2px solid #cbd5e1; background: #f8fafc;">
-                        <th style="text-align: left; padding: 5px 6px;">Ticker/Company</th>
-                        <th style="text-align: left; padding: 5px 6px;">Sector</th>
-                        <th style="text-align: left; padding: 5px 6px;">Industry</th>
-                        <th style="text-align: right; padding: 5px 6px;">Weight</th>
-                        <th style="text-align: right; padding: 5px 6px;">Allocation</th>
-                        ${hasBacktest ? '<th style="text-align: right; padding: 5px 6px;">Return</th>' : ''}
+                    <tr class="holdings-table-head-row">
+                        <th class="holdings-table-head-left">Ticker/Company</th>
+                        <th class="holdings-table-head-left">Sector</th>
+                        <th class="holdings-table-head-left">Industry</th>
+                        <th class="holdings-table-head-right">Weight</th>
+                        <th class="holdings-table-head-right">Allocation</th>
+                        ${hasBacktest ? '<th class="holdings-table-head-right">Return</th>' : ''}
                     </tr>
                 </thead>
                 <tbody>
@@ -1091,8 +1031,8 @@
             const dollarAmt = pos.dollarAllocation !== undefined 
                 ? Number(pos.dollarAllocation).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) 
                 : (cleanCapital * (pos.weightPct / 100)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            const compName = pos.companyName 
-                ? `<span style="font-size: 10.5px; color: #64748b; margin-left: 5px; font-weight: 400;">(${pos.companyName})</span>` 
+            const compName = pos.companyName
+                ? `<span class="company-name-suffix">(${pos.companyName})</span>`
                 : "";
             const rowBg = idx % 2 === 0 ? "#ffffff" : "#f8fafc";
             const hasRationale = Boolean(pos.rationale);
@@ -1104,28 +1044,28 @@
                     const retPct = Number(retInfo.returnPct);
                     const color = retPct > 0 ? "#10b981" : (retPct < 0 ? "#ef4444" : "#64748b");
                     const sign = retPct > 0 ? "+" : "";
-                    returnCellHtml = `<td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; text-align: right; font-weight: 700; color: ${color}; font-size: 11.5px;">${sign}${retPct.toFixed(2)}%</td>`;
+                    returnCellHtml = `<td class="holdings-return-cell" style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; color: ${color};">${sign}${retPct.toFixed(2)}%</td>`;
                 } else {
-                    returnCellHtml = `<td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; text-align: right; color: #94a3b8; font-size: 11px;">--</td>`;
+                    returnCellHtml = `<td class="holdings-empty-return-cell" style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px;">--</td>`;
                 }
             }
 
             tableHtml += `
                 <tr style="background: ${rowBg};${hasRationale ? '' : ' border-bottom: 1px solid #e2e8f0;'}">
-                    <td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; font-weight: 700; color: #0f172a;">${pos.ticker}${compName}</td>
-                    <td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; color: #475569; font-size: 11px;">${pos.sector || '--'}</td>
-                    <td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; color: #64748b; font-size: 11px;">${pos.industry || '--'}</td>
-                    <td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; text-align: right; font-weight: 700; color: #2563eb;">${Number(pos.weightPct).toFixed(0)}%</td>
-                    <td style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px; text-align: right; color: #334155;">$${dollarAmt}</td>
+                    <td class="holdings-ticker-cell" style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px;">${pos.ticker}${compName}</td>
+                    <td class="holdings-sector-cell" style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px;">${pos.sector || '--'}</td>
+                    <td class="holdings-industry-cell" style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px;">${pos.industry || '--'}</td>
+                    <td class="holdings-weight-cell" style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px;">${Number(pos.weightPct).toFixed(0)}%</td>
+                    <td class="holdings-amount-cell" style="padding: 6px 6px ${hasRationale ? '2px' : '6px'} 6px;">$${dollarAmt}</td>
                     ${returnCellHtml}
                 </tr>
             `;
 
             if (hasRationale) {
                 tableHtml += `
-                    <tr style="border-bottom: 1px solid #e2e8f0; background: ${rowBg};">
-                        <td colspan="${colCount}" style="padding: 2px 8px 10px 8px; font-size: 11px; color: #475569; line-height: 1.4;">
-                            <span style="font-weight: 700; color: #1e293b; text-transform: uppercase; font-size: 9.5px; letter-spacing: 0.5px;">Rationale: </span>
+                    <tr class="holdings-table-rationale-row" style="background: ${rowBg};">
+                        <td colspan="${colCount}" class="holdings-rationale-cell">
+                            <span class="rationale-label">Rationale: </span>
                             <span>${pos.rationale}</span>
                         </td>
                     </tr>
@@ -1137,22 +1077,22 @@
             const cashAmt = cashPos.dollarAllocation !== undefined 
                 ? Number(cashPos.dollarAllocation).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) 
                 : (cleanCapital * (cashPos.weightPct / 100)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            const etfSub = cashPos.etfSubstitute ? ` <span style="font-size: 9.5px; color: #059669; font-weight: 600;">(SPY ETF Proxy)</span>` : "";
+            const etfSub = cashPos.etfSubstitute ? ` <span class="etf-proxy-tag">(SPY ETF Proxy)</span>` : "";
             const cashBg = positions.length % 2 === 0 ? "#ffffff" : "#f8fafc";
-            const cashReturnCell = hasBacktest ? `<td style="padding: 6px 6px 2px 6px; text-align: right; font-weight: 600; color: #64748b; font-size: 11.5px;">0.00%</td>` : "";
+            const cashReturnCell = hasBacktest ? `<td class="holdings-cash-return-cell" style="padding: 6px 6px 2px 6px;">0.00%</td>` : "";
 
             tableHtml += `
                 <tr style="background: ${cashBg};">
-                    <td style="padding: 6px 6px 2px 6px; font-weight: 700; color: #059669;">USD CASH${etfSub}</td>
-                    <td style="padding: 6px 6px 2px 6px; color: #059669; font-size: 11px;">Cash & Equivalents</td>
-                    <td style="padding: 6px 6px 2px 6px; color: #059669; font-size: 11px;">Liquidity Reserve</td>
-                    <td style="padding: 6px 6px 2px 6px; text-align: right; font-weight: 700; color: #059669;">${Number(cashPos.weightPct).toFixed(0)}%</td>
-                    <td style="padding: 6px 6px 2px 6px; text-align: right; font-weight: 600; color: #059669;">$${cashAmt}</td>
+                    <td class="cash-ticker-cell" style="padding: 6px 6px 2px 6px;">USD CASH${etfSub}</td>
+                    <td class="cash-description-cell" style="padding: 6px 6px 2px 6px;">Cash & Equivalents</td>
+                    <td class="cash-description-cell" style="padding: 6px 6px 2px 6px;">Liquidity Reserve</td>
+                    <td class="cash-weight-cell" style="padding: 6px 6px 2px 6px;">${Number(cashPos.weightPct).toFixed(0)}%</td>
+                    <td class="cash-amount-cell" style="padding: 6px 6px 2px 6px;">$${cashAmt}</td>
                     ${cashReturnCell}
                 </tr>
-                <tr style="border-bottom: 1px solid #e2e8f0; background: ${cashBg};">
-                    <td colspan="${colCount}" style="padding: 2px 8px 10px 8px; font-size: 11px; color: #059669; line-height: 1.4;">
-                        <span style="font-weight: 700; text-transform: uppercase; font-size: 9.5px; letter-spacing: 0.5px;">Rationale: </span>
+                <tr class="holdings-table-rationale-row" style="background: ${cashBg};">
+                    <td colspan="${colCount}" class="cash-rationale-cell">
+                        <span class="rationale-label">Rationale: </span>
                         <span>Liquidity reserve maintained for tactical allocation, downside mitigation, and cash buffer.</span>
                     </td>
                 </tr>
@@ -1193,7 +1133,7 @@
 
         // Chart display logic: Past date -> Backtest Line Chart; Today/Not Past -> 3-view Pie Chart
         const pastDate = isDateInPast(effectiveSimDate);
-        const selectedHorizon = document.getElementById("horizonSelect")?.value || "1 year";
+        const selectedHorizon = document.getElementById("horizonSelect").value || "1 year";
         const currentBacktestData = (pastDate && cachedBacktestData && cachedBacktestData.simDate === effectiveSimDate && cachedBacktestData.timeHorizon === selectedHorizon) 
             ? ((currentBacktestHorizonMode === "horizon" && cachedBacktestData.horizon) ? cachedBacktestData.horizon : (cachedBacktestData.full || cachedBacktestData))
             : null;
@@ -1387,33 +1327,33 @@
     // Initialise Core Engine
     BoardroomCore.init({
         defaultStages: portfolioCreationStages,
-        initialMode: document.getElementById("modeSelect")?.value || "complete",
+        initialMode: document.getElementById("modeSelect").value || "complete",
         getPayload: () => {
             const capitalVal = getCleanInitialCapital();
 
-            let maxSector = parseFloat(document.getElementById("maxSectorAllocationInput")?.value);
+            let maxSector = parseFloat(document.getElementById("maxSectorAllocationInput").value);
             if (isNaN(maxSector)) maxSector = 40;
             maxSector = Math.max(20, Math.min(80, maxSector));
 
-            const targetSectorsRaw = document.getElementById("targetSectorCountInput")?.value?.trim();
+            const targetSectorsRaw = document.getElementById("targetSectorCountInput").value.trim();
             let targetSectors = (targetSectorsRaw && targetSectorsRaw !== "") ? parseInt(targetSectorsRaw, 10) : null;
             if (targetSectors !== null) targetSectors = Math.max(1, Math.min(11, targetSectors));
 
-            let maxStock = parseFloat(document.getElementById("maxStockAllocationInput")?.value);
+            let maxStock = parseFloat(document.getElementById("maxStockAllocationInput").value);
             if (isNaN(maxStock)) maxStock = 20;
             maxStock = Math.max(10, Math.min(60, maxStock));
 
-            const targetStocksRaw = document.getElementById("targetStockCountInput")?.value?.trim();
+            const targetStocksRaw = document.getElementById("targetStockCountInput").value.trim();
             let targetStocks = (targetStocksRaw && targetStocksRaw !== "") ? parseInt(targetStocksRaw, 10) : null;
             if (targetStocks !== null) targetStocks = Math.max(1, Math.min(30, targetStocks));
 
             const mode = document.getElementById("modeSelect").value;
             const horizon = document.getElementById("horizonSelect").value;
 
-            const isBiasEnabled = document.getElementById("allocationBiasCheckbox")?.checked;
+            const isBiasEnabled = document.getElementById("allocationBiasCheckbox").checked;
             let allocationBiasVal = null;
             if (isBiasEnabled) {
-                const sliderVal = parseInt(document.getElementById("allocationBiasSlider")?.value, 10);
+                const sliderVal = parseInt(document.getElementById("allocationBiasSlider").value, 10);
                 allocationBiasVal = isNaN(sliderVal) ? 1 : Math.max(1, Math.min(6, sliderVal));
             }
 
@@ -1458,7 +1398,7 @@
 
     // Initialise preset sector sliders and initial mode state
     renderPresetSectorSliders();
-    handleModeChange(document.getElementById("modeSelect")?.value || "complete");
+    handleModeChange(document.getElementById("modeSelect").value || "complete");
 </script>
 {% endblock %}
 

@@ -505,8 +505,8 @@ const BoardroomExporter = (function () {
         const meta = extractReportMetadata();
         const inlinedCss = await collectAllStylesheets();
 
-        const sources = (typeof BoardroomCore !== "undefined" && typeof BoardroomCore.getSources === "function")
-            ? BoardroomCore.getSources()
+        const sources = (window.BoardroomCore && window.BoardroomCore.getSources)
+            ? window.BoardroomCore.getSources()
             : [];
 
         // Retrieve server details and simulation runtime
