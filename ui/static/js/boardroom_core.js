@@ -1048,7 +1048,7 @@ const BoardroomCore = (function () {
         return activeAgentPanes[compoundKey];
     }
 
-    function appendRateLimitToAgentFeed(stageNum, agentRole, payload) {
+    function appendAgentErrorMsgToAgentFeed(stageNum, agentRole, payload) {
         const paneObj = getOrCreateAgentPane(stageNum, agentRole, payload.agentColor);
         if (!paneObj || !paneObj.feed) return;
 
@@ -1880,9 +1880,9 @@ const BoardroomCore = (function () {
                 endCurrentBlock(activeStage, agentRole);
                 break;
 
-            case "rateLimit":
+            case "agentErrorMsg":
                 if (agentRole) {
-                    appendRateLimitToAgentFeed(activeStage, agentRole, payload);
+                    appendAgentErrorMsgToAgentFeed(activeStage, agentRole, payload);
                 }
                 break;
 

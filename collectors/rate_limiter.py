@@ -142,10 +142,15 @@ class RateLimiter:
         return waitTime
 
 
-    def non429Error(self, e: Exception) -> None:
-        # Handle non 429 error, just wait 15 seconds
-        print(f"[{self.name}] Received non-429 error - {e.__class__.__name__}: {e}. Waiting for 15 seconds before retrying...")
-        time.sleep(15)
+    def non429Error(self, errOrTime: Exception | float) -> None:
+        if isinstance(errOrTime, Exception):
+            print(f"[{self.name}] Received non-429 error - {errOrTime.__class__.__name__}: {errOrTime}. Waiting for 15 seconds before retrying...")
+            time.sleep(15)
+        else:
+            # Handle case where a float wait time is passed instead of an exception
+            print(f"[{self.name}] Received non-429 error - wait time: {errOrTime:.2f} seconds. Waiting before retrying...")
+            time.sleep(errOrTime)
+        
 
     def getStats(self) -> Dict[str, Any]:
         """

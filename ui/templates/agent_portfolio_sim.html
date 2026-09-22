@@ -75,6 +75,7 @@
         <select id="timestepSelect">
             <option value="1 week">1 week</option>
             <option value="2 weeks">2 weeks</option>
+            <option value="3 weeks">3 weeks</option>
             <option value="1 month" selected>1 month</option>
             <option value="2 months">2 months</option>
             <option value="3 months">3 months</option>
@@ -1267,7 +1268,7 @@
             }
         }
 
-        appendRateLimit(stageNum, agentRole, payload) {
+        appendErrorMsg(stageNum, agentRole, payload) {
             const paneObj = this.getOrCreateAgentPane(stageNum, agentRole, payload.agentColor);
             if (!paneObj || !paneObj.feedEl) return;
 
@@ -2578,7 +2579,7 @@
 
         // Immediately populate Left Sidebar values
         const statusDisplay = document.getElementById("currentSimStatusDisplay");
-        if (statusDisplay) statusDisplay.textContent = `${formatFriendlyDate(startDate)} (Inception): Stage 1`;
+        if (statusDisplay) statusDisplay.textContent = `${formatFriendlyDate(startDate)}: Stage 1`;
         const dateDisplay = document.getElementById("currentSimDateDisplay");
         if (dateDisplay) dateDisplay.textContent = formatFriendlyDate(startDate);
         document.getElementById("metricCashVal").textContent = `$${capital.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -2888,10 +2889,10 @@
                 break;
             }
 
-            case "rateLimit": {
+            case "agentErrorMsg": {
                 if (!agentRole) break;
                 const session = sessionMgr.getOrCreateSession(mId);
-                session.appendRateLimit(stageNum, agentRole, payload);
+                session.appendErrorMsg(stageNum, agentRole, payload);
                 break;
             }
 

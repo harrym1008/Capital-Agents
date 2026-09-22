@@ -9,7 +9,7 @@ except AttributeError:
     pass
 
 from colorama import init as coloramaInitialise
-coloramaInitialise(autoreset=True)
+coloramaInitialise(autoreset=False)
 
 import json
 import logging

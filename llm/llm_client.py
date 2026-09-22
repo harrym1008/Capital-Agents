@@ -2,6 +2,7 @@ import json
 import re
 import time
 import threading
+import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
@@ -11,6 +12,7 @@ from openai import OpenAI, RateLimitError
 from colorama import Fore, Style
 import pandas as pd
 
+from collectors.rate_limiter import RateLimiter
 from llmtools.tool_registry import ToolRegistry, Tool
 from llm.token_cost_tracker import TokenCostTracker
 
@@ -35,6 +37,10 @@ class ResponsePrintMode(Enum):
         return self in {ResponsePrintMode.FULL, ResponsePrintMode.ONLY_RESPONSE}
 
 
+class LLMClientFailureException(Exception):
+    pass
+
+
 class BaseLLMClient(ABC):
     def __init__(self, defaultModel: str, allowParallel: bool = False, costTracker: Optional[TokenCostTracker] = None):
         self.defaultModel = defaultModel
@@ -44,7 +50,7 @@ class BaseLLMClient(ABC):
         self.allowParallel = allowParallel
         self.printLock = threading.Lock() if allowParallel else None
         if not hasattr(self, "rateLimiter"):
-            self.rateLimiter = None
+            self.rateLimiter: Optional[RateLimiter] = None
 
         if costTracker is not None:
             self.costTracker = costTracker
@@ -91,67 +97,70 @@ class BaseLLMClient(ABC):
     def _createResponseStream(self, **kwargs):
         if isStopRequested():
             raise SimulationStoppedException("Simulation stopped by user.")
-        rateLimitAttempts = 0
+        
+        retryAttempts = 0
+        maxAttempts = 8
+
         while True:
             if isStopRequested():
                 raise SimulationStoppedException("Simulation stopped by user.")
+            
             try:
                 return self.openaiClient.chat.completions.create(**kwargs)
-            except RateLimitError as rateErr:
-                rateLimitAttempts += 1
-                if rateLimitAttempts > 10:
-                    print(f"Giving up after {rateLimitAttempts - 1} retries due to rate limiting.")
-                    raise
-
-                if self.rateLimiter is not None:
-                    if hasattr(self.rateLimiter, "calculate429WaitTime"):
-                        waitTime = self.rateLimiter.calculate429WaitTime(rateLimitAttempts)
-                    else:
-                        waitTime = self.rateLimiter.period * rateLimitAttempts / 4 + 1
-                else:
-                    waitTime = rateLimitAttempts * 2
-
-                emitEvent("rateLimit", {
-                    "waitTime": round(waitTime, 1),
-                    "message": f"Received 429 \"Too Many Requests\". Waiting for {waitTime:.1f} seconds..."
-                })
-
-                if self.rateLimiter is not None:
-                    self.rateLimiter.got429(rateLimitAttempts)
-                else:
-                    time.sleep(waitTime)
+            
             except Exception as reqErr:
-                errStr = str(reqErr)
-                isRateLimit = False
-                statusCode = getattr(reqErr, "status_code", None) or getattr(getattr(reqErr, "response", None), "status_code", None)
-                if statusCode == 429:
-                    isRateLimit = True
-                elif "429" in errStr or ("rate" in errStr.lower() and "limit" in errStr.lower()):
-                    isRateLimit = True
+                if "tool_choice" in kwargs and kwargs.get("tool_choice") == "required" and "tool_choice" in str(reqErr).lower():
+                    # Catch specific error where the model does not support tool_choice="required" and retry with "auto"
+                    kwargs["tool_choice"] = "auto"
+                    continue
 
-                if isRateLimit and rateLimitAttempts < 10:
-                    rateLimitAttempts += 1
-                    if self.rateLimiter is not None:
-                        if hasattr(self.rateLimiter, "calculate429WaitTime"):
-                            waitTime = self.rateLimiter.calculate429WaitTime(rateLimitAttempts)
-                        else:
-                            waitTime = self.rateLimiter.period * rateLimitAttempts / 4 + 1
-                    else:
-                        waitTime = rateLimitAttempts * 2
+                retryAttempts += 1
+                errorCode = getattr(reqErr, "status_code", None) or getattr(getattr(reqErr, "response", None), "status_code", None)
+                httpError = True
+                if errorCode is None:
+                    httpError = False
+                    errorCode = type(reqErr).__name__       # For timeouts and other non HTTP errors
 
-                    emitEvent("rateLimit", {
+                if retryAttempts > maxAttempts:
+                    print(f"Giving up after {retryAttempts - 1} retries due to rate limiting or repeated request errors.")
+
+                    tb = "No traceback available"
+                    try:
+                        tb = traceback.format_exc()
+                    except Exception:
+                        pass
+
+                    return LLMClientFailureException(
+                        f"Failed to create LLM response after multiple attempts. \n\n"
+                        f"Error: \n"
+                        f"{f'HTTP {errorCode}' if httpError else f'{errorCode}'}: {reqErr}\n"
+                        f"\nTraceback:\n{tb}"
+                    )
+
+                if self.rateLimiter is not None:
+                    waitTime = self.rateLimiter.calculate429WaitTime(retryAttempts)
+                else:
+                    waitTime = retryAttempts * 2
+
+                # waitTime = 4
+                if errorCode == 429:
+                    emitEvent("agentErrorMsg", {
                         "waitTime": round(waitTime, 1),
-                        "message": f"Received 429 \"Too Many Requests\". Waiting for {waitTime:.1f} seconds..."
+                        "message": f"Received 429 \"Too Many Requests\". Attempt {retryAttempts} of 8. Waiting for {waitTime:.1f} seconds before retrying..."
+                    })
+                else:
+                    emitEvent("agentErrorMsg", {
+                        "waitTime": round(waitTime, 1),
+                        "message": f"Received HTTP error {errorCode}. Attempt {retryAttempts} of 8. Retrying in {waitTime:.1f} seconds..."
                     })
 
-                    if self.rateLimiter is not None:
-                        self.rateLimiter.got429(rateLimitAttempts)
+                if self.rateLimiter is not None:
+                    if str(errorCode) == "429":
+                        self.rateLimiter.got429(retryAttempts)
                     else:
-                        time.sleep(waitTime)
-                elif "tool_choice" in errStr and kwargs.get("tool_choice") == "required":
-                    kwargs["tool_choice"] = "auto"
+                        self.rateLimiter.non429Error(waitTime)
                 else:
-                    raise reqErr
+                    time.sleep(waitTime)
 
     def newTask(self):
         return self.costTracker.newTask()
@@ -458,153 +467,187 @@ class BaseLLMClient(ABC):
             toolSchemas = [tool.getToolSchema() for tool in permittedTools]
         else:
             toolSchemas = [tool.getToolSchema() for tool in toolRegistry.tools.values()] if toolRegistry else []
+
         currentIteration = 0
-        accumulatedContent = ""
+        responseStreamErrorCount = 0
 
-        while currentIteration < maxIterations:
-            currentIteration += 1
+        originalMessageHistory = [msg.copy() for msg in messageHistory]
 
-            if currentIteration == 1 and requireInitialTools and toolSchemas:
-                toolChoiceSetting = "required"
-                # Thinking mode on certain providers (e.g. OpenRouter / Alibaba / Qwen) does not support tool_choice="required"
-                if thinkingBudget is not None and thinkingBudget > 0:
-                    toolChoiceSetting = "auto"
-            else:
-                toolChoiceSetting = "auto" if toolSchemas else None
+
+        while True:
+            messageHistory = [msg.copy() for msg in originalMessageHistory]
+            accumulatedContent = ""
+
+            while currentIteration < maxIterations:
+                currentIteration += 1
+
+                if currentIteration == 1 and requireInitialTools and toolSchemas:
+                    toolChoiceSetting = "required"
+                    # Thinking mode on certain providers (e.g. OpenRouter / Alibaba / Qwen) does not support tool_choice="required"
+                    if thinkingBudget is not None and thinkingBudget > 0:
+                        toolChoiceSetting = "auto"
+                else:
+                    toolChoiceSetting = "auto" if toolSchemas else None
+
+                self._applyRateLimit()
+                responseKwargs = dict(
+                    model=self.defaultModel,
+                    messages=messageHistory,
+                    tools=toolSchemas if toolSchemas else None,
+                    tool_choice=toolChoiceSetting,
+                    temperature=temperature,
+                    max_tokens=(thinkingBudget or 0) + 8192,
+                    stream=True,
+                )
+                streamOptions = self._getStreamOptions()
+                if streamOptions is not None:
+                    responseKwargs["stream_options"] = streamOptions
+
+                extraBody = self._getExtraBody(thinkingBudget) if thinkingBudget is not None else None
+                if extraBody is not None:
+                    responseKwargs["extra_body"] = extraBody
+
+                emitEvent("promptProcessing", {
+                    "iteration": currentIteration
+                })
+
+                responseStream = self._createResponseStream(**responseKwargs)
+                if isinstance(responseStream, LLMClientFailureException):
+                    responseStreamErrorCount += 1
+
+                    if responseStreamErrorCount > 3:
+                        raise finalResponseStream
+                    
+                    emitEvent("agentErrorMsg", {
+                        "waitTime": 0,
+                        "message": f"Errors continually being received. Will remove the recent message chain and try again."
+                    })
+                    messageHistory = [msg.copy() for msg in originalMessageHistory]
+                    continue
+
+                content, reasoning, toolCallsList, usage = self.handleResponseStream(responseStream, responsePrint)
+                self.costTracker.recordUsage(usage)
+
+                if content and content.strip():
+                    accumulatedContent += content + "\n"
+
+                if not toolCallsList:
+                    return accumulatedContent.strip()
+                
+                for idx, call in enumerate(toolCallsList):
+                    rawId = call.get("id") or f"call_{idx}"
+                    if not "_" in rawId:
+                        uniqueTimestamp = str(time.perf_counter()).replace(".", "_")
+                        call["id"] = f"{rawId}_{uniqueTimestamp}"
+
+                assistantMessageDict = {
+                    "role": "assistant",
+                    "content": content or "",
+                    "tool_calls": toolCallsList
+                }
+                if reasoning:
+                    if self.__class__.__name__ == "LlamaCppClient":
+                        assistantMessageDict["reasoning_content"] = reasoning
+                    else:
+                        assistantMessageDict["reasoning"] = reasoning
+
+                messageHistory.append(assistantMessageDict)
+                
+                parentAgent = getCurrentAgent()
+                agentRole = parentAgent.get("role")
+                agentColor = parentAgent.get("color")
+                currentStageNum = getCurrentStage()
+
+
+                resultsByIndex = [None] * len(toolCallsList)
+                with ThreadPoolExecutor(max_workers=len(toolCallsList)) as executor:
+                    futureToIndex =  {executor.submit(
+                        self.executeSingleToolCall, 
+                        call, toolRegistry, timestamp, agentRole, agentColor, currentStageNum, idx, permittedTools): idx
+                                    for idx, call in enumerate(toolCallsList)}
+                    for future in as_completed(futureToIndex):
+                        idx = futureToIndex[future]
+                        try:
+                            toolCallId, stringResult, status = future.result()
+                        except SimulationStoppedException:
+                            # Cancel remaining futures and propagate the stop
+                            for f in futureToIndex:
+                                f.cancel()
+                            raise
+                        resultsByIndex[idx] = (toolCallId, stringResult, status)
+
+                    for entry in resultsByIndex:
+                        if entry is None:
+                            continue
+                        toolCallId, stringResult, status = entry
+                        messageHistory.append({
+                            "role": "tool",
+                            "tool_call_id": toolCallId,
+                            "content": stringResult
+                        })
+
+                    # Check for 'confirm*' or 'transferToAgent' tool call and handle early completion
+                    for toolCall in toolCallsList:
+                        toolName = toolCall["function"]["name"]
+                        if toolName.startswith("confirm") or toolName == "transferToAgent":
+                            # Find this tool call's id from messageHistory and if its status is 'success' or 'transferred' assume completion
+                            for msg in messageHistory:
+                                if msg.get("role") == "tool" and msg.get("tool_call_id") == toolCall["id"]:
+                                    if msg.get("content"):
+                                        try:
+                                            resultData = json.loads(msg["content"])
+                                            if isinstance(resultData, dict) and (resultData.get("status") in ["success", "transferred"]):
+                                                return accumulatedContent.strip()
+                                        except json.JSONDecodeError:
+                                            pass
+                                    break
+
+            # If this code is reached, it means the maximum number of iterations was reached without a final response
+            print(f"Max iterations reached, going to force no tools in final request")
+            messageHistory.append({
+                "role": "user",
+                "content": "You have reached the maximum number of iterations without providing a final response. Do not run any more tools, "
+                        "provide your final response based on the accumulated information after thinking steps."
+            })
 
             self._applyRateLimit()
-            maxTokensToUse = max(8192, (thinkingBudget or 0) + 4096)
-            responseKwargs = dict(
+            finalResponseKwargs = dict(
                 model=self.defaultModel,
                 messages=messageHistory,
                 tools=toolSchemas if toolSchemas else None,
-                tool_choice=toolChoiceSetting,
+                tool_choice="none",
                 temperature=temperature,
-                max_tokens=maxTokensToUse,
+                max_tokens=(thinkingBudget or 0) + 8192,
                 stream=True,
             )
-            streamOptions = self._getStreamOptions()
-            if streamOptions is not None:
-                responseKwargs["stream_options"] = streamOptions
+            finalStreamOptions = self._getStreamOptions()
+            if finalStreamOptions is not None:
+                finalResponseKwargs["stream_options"] = finalStreamOptions
 
-            extraBody = self._getExtraBody(thinkingBudget) if thinkingBudget is not None else None
-            if extraBody is not None:
-                responseKwargs["extra_body"] = extraBody
+            finalExtraBody = self._getExtraBody(thinkingBudget) if thinkingBudget is not None else None
+            if finalExtraBody is not None:
+                finalResponseKwargs["extra_body"] = finalExtraBody
 
-            emitEvent("promptProcessing", {
-                "iteration": currentIteration
-            })
+                
+            finalResponseStream = self._createResponseStream(**finalResponseKwargs)
+            if isinstance(finalResponseStream, LLMClientFailureException):
+                responseStreamErrorCount += 1
 
-            responseStream = self._createResponseStream(**responseKwargs)
-            content, reasoning, toolCallsList, usage = self.handleResponseStream(responseStream, responsePrint)
-            self.costTracker.recordUsage(usage)
-
-            if content and content.strip():
-                accumulatedContent += content + "\n"
-
-            if not toolCallsList:
-                return accumulatedContent.strip()
+                if responseStreamErrorCount > 3:
+                    raise finalResponseStream
+                
+                emitEvent("agentErrorMsg", {
+                    "waitTime": 0,
+                    "message": f"Errors continually being received. Will remove the recent message chain and try again."
+                })
+                
+                messageHistory = [msg.copy() for msg in originalMessageHistory]
+                continue
             
-            for idx, call in enumerate(toolCallsList):
-                rawId = call.get("id") or f"call_{idx}"
-                if not "_" in rawId:
-                    uniqueTimestamp = str(time.perf_counter()).replace(".", "_")
-                    call["id"] = f"{rawId}_{uniqueTimestamp}"
-
-            assistantMessageDict = {
-                "role": "assistant",
-                "content": content or "",
-                "tool_calls": toolCallsList
-            }
-            if reasoning:
-                if self.__class__.__name__ == "LlamaCppClient":
-                    assistantMessageDict["reasoning_content"] = reasoning
-                else:
-                    assistantMessageDict["reasoning"] = reasoning
-
-            messageHistory.append(assistantMessageDict)
+            finalContent, _, _, finalUsage = self.handleResponseStream(finalResponseStream, responsePrint)
+            self.costTracker.recordUsage(finalUsage)
             
-            parentAgent = getCurrentAgent()
-            agentRole = parentAgent.get("role")
-            agentColor = parentAgent.get("color")
-            currentStageNum = getCurrentStage()
+            if finalContent and finalContent.strip():
+                accumulatedContent += finalContent
 
-
-            resultsByIndex = [None] * len(toolCallsList)
-            with ThreadPoolExecutor(max_workers=len(toolCallsList)) as executor:
-                futureToIndex =  {executor.submit(
-                    self.executeSingleToolCall, 
-                    call, toolRegistry, timestamp, agentRole, agentColor, currentStageNum, idx, permittedTools): idx
-                                  for idx, call in enumerate(toolCallsList)}
-                for future in as_completed(futureToIndex):
-                    idx = futureToIndex[future]
-                    try:
-                        toolCallId, stringResult, status = future.result()
-                    except SimulationStoppedException:
-                        # Cancel remaining futures and propagate the stop
-                        for f in futureToIndex:
-                            f.cancel()
-                        raise
-                    resultsByIndex[idx] = (toolCallId, stringResult, status)
-
-                for entry in resultsByIndex:
-                    if entry is None:
-                        continue
-                    toolCallId, stringResult, status = entry
-                    messageHistory.append({
-                        "role": "tool",
-                        "tool_call_id": toolCallId,
-                        "content": stringResult
-                    })
-
-                # Check for 'confirm*' or 'transferToAgent' tool call and handle early completion
-                for toolCall in toolCallsList:
-                    toolName = toolCall["function"]["name"]
-                    if toolName.startswith("confirm") or toolName == "transferToAgent":
-                        # Find this tool call's id from messageHistory and if its status is 'success' or 'transferred' assume completion
-                        for msg in messageHistory:
-                            if msg.get("role") == "tool" and msg.get("tool_call_id") == toolCall["id"]:
-                                if msg.get("content"):
-                                    try:
-                                        resultData = json.loads(msg["content"])
-                                        if isinstance(resultData, dict) and (resultData.get("status") in ["success", "transferred"]):
-                                            return accumulatedContent.strip()
-                                    except json.JSONDecodeError:
-                                        pass
-                                break
-
-        # If this code is reached, it means the maximum number of iterations was reached without a final response
-        print(f"Max iterations reached, going to force no tools in final request")
-        messageHistory.append({
-            "role": "user",
-            "content": "You have reached the maximum number of iterations without providing a final response. Do not run any more tools, "
-                       "provide your final response based on the accumulated information after thinking steps."
-        })
-
-        self._applyRateLimit()
-        maxTokensToUse = max(8192, (thinkingBudget or 0) + 4096)
-        finalResponseKwargs = dict(
-            model=self.defaultModel,
-            messages=messageHistory,
-            tools=toolSchemas if toolSchemas else None,
-            tool_choice="none",
-            temperature=temperature,
-            max_tokens=maxTokensToUse,
-            stream=True,
-        )
-        finalStreamOptions = self._getStreamOptions()
-        if finalStreamOptions is not None:
-            finalResponseKwargs["stream_options"] = finalStreamOptions
-
-        finalExtraBody = self._getExtraBody(thinkingBudget) if thinkingBudget is not None else None
-        if finalExtraBody is not None:
-            finalResponseKwargs["extra_body"] = finalExtraBody
-            
-        finalResponseStream = self._createResponseStream(**finalResponseKwargs)
-        finalContent, _, _, finalUsage = self.handleResponseStream(finalResponseStream, responsePrint)
-        self.costTracker.recordUsage(finalUsage)
-        
-        if finalContent and finalContent.strip():
-            accumulatedContent += finalContent
-
-        return accumulatedContent.strip()
+            return accumulatedContent.strip()

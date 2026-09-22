@@ -57,22 +57,25 @@ def getSp500PriceOnDate(dateTs: pd.Timestamp, sp500Df: pd.DataFrame) -> float:
 
 # Calculate the next milestone date
 def computeNextMilestoneDate(currentTs: pd.Timestamp, timestep: SimulationTimestep) -> pd.Timestamp:
-    """Calculates the target timestamp for the subsequent simulation review milestone."""
-    if timestep == SimulationTimestep.ONE_WEEK:
-        res = currentTs + pd.Timedelta(weeks=1)
-    elif timestep == SimulationTimestep.TWO_WEEKS:
-        res = currentTs + pd.Timedelta(weeks=2)
-    elif timestep == SimulationTimestep.TWO_MONTHS:
-        res = currentTs + pd.DateOffset(months=2)
-    elif timestep == SimulationTimestep.THREE_MONTHS:
-        res = currentTs + pd.DateOffset(months=3)
-    else:  # ONE_MONTH default
-        res = currentTs + pd.DateOffset(months=1)
-    return res.normalize()
+    match timestep:
+        case SimulationTimestep.ONE_WEEK:
+            return currentTs + pd.Timedelta(weeks=1)
+        case SimulationTimestep.TWO_WEEKS:
+            return currentTs + pd.Timedelta(weeks=2)
+        case SimulationTimestep.THREE_WEEKS:
+            return currentTs + pd.Timedelta(weeks=3)
+        case SimulationTimestep.ONE_MONTH:
+            return currentTs + pd.DateOffset(months=1)
+        case SimulationTimestep.TWO_MONTHS:
+            return currentTs + pd.DateOffset(months=2)
+        case SimulationTimestep.THREE_MONTHS:
+            return currentTs + pd.DateOffset(months=3)
+        case _:
+            return currentTs + pd.DateOffset(months=1)
 
 
+# Truncates a string to a maximum number of words
 def truncateToWords(text: str, maxWords: int = 500) -> str:
-    """Truncates string to a maximum number of words to fit in LLM context."""
     if not text:
         return ""
     words = text.split()

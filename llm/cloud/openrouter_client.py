@@ -13,9 +13,9 @@ class OpenRouterClient(BaseLLMClient):
         self.providerRouter = providerRouter
         super().__init__(defaultModel=model, allowParallel=True, costTracker=costTracker)
         if model.endswith(":free"):
-            self.rateLimiter = RateLimiter("openrouter", 20, 60)  # 20 requests per minute max for free tier
+            self.rateLimiter = RateLimiter("openrouter", 20, 60)    # 20 requests per minute max for free tier
         else:
-            self.rateLimiter = RateLimiter("openrouter", 10, 1)  # No limit for paid tier (10 a second is safe)
+            self.rateLimiter = RateLimiter("openrouter", 10, 1)     # No limit for paid tier (10 a second is safe)
 
     def _createOpenaiClient(self) -> OpenAI:
         return OpenAI(

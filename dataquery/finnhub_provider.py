@@ -16,10 +16,10 @@ class FinnhubDataProvider:
         self.keyedLocks = KeyedLockManager()
 
 
-    def fetchRawMetrics(self, ticker: str) -> Optional[Dict[str, Any]]:
+    def fetchRawLookAheadMetrics(self, ticker: str) -> Optional[Dict[str, Any]]:
         cleanTicker = ticker.strip().upper()
         now = pd.Timestamp.now(tz="UTC")
-        cacheKey = f"finnhub|rawMetrics_{cleanTicker}_{now.strftime('%Y-%m-%dH%H')}"
+        cacheKey = f"finnhub|rawMetrics_{cleanTicker}_{now.strftime('%Y-%m-%d')}"   # Reject cache after 1 day to avoid stale data
 
         # 1. Check in-memory LRU cache
         cachedMem = self.cache.get(cacheKey)
@@ -62,7 +62,7 @@ class FinnhubDataProvider:
 
 
     def getPointInTimeMetrics(self, ticker: str, asOfDate: pd.Timestamp) -> Dict[str, Any]:
-        raw = self.fetchRawMetrics(ticker)
+        raw = self.fetchRawLookAheadMetrics(ticker)
         if not raw:
             return {}
 

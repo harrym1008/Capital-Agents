@@ -1332,7 +1332,7 @@
             const capitalVal = getCleanInitialCapital();
 
             let maxSector = parseFloat(document.getElementById("maxSectorAllocationInput").value);
-            if (isNaN(maxSector)) maxSector = 40;
+            if (isNaN(maxSector)) maxSector = 75;
             maxSector = Math.max(20, Math.min(80, maxSector));
 
             const targetSectorsRaw = document.getElementById("targetSectorCountInput").value.trim();
@@ -1340,7 +1340,7 @@
             if (targetSectors !== null) targetSectors = Math.max(1, Math.min(11, targetSectors));
 
             let maxStock = parseFloat(document.getElementById("maxStockAllocationInput").value);
-            if (isNaN(maxStock)) maxStock = 20;
+            if (isNaN(maxStock)) maxStock = 40;
             maxStock = Math.max(10, Math.min(60, maxStock));
 
             const targetStocksRaw = document.getElementById("targetStockCountInput").value.trim();

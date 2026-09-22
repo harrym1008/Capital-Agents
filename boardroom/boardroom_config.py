@@ -273,8 +273,8 @@ class PortfolioCreationConfig(BoardroomConfig):
 
     # Configurable portfolio constraints
     targetSectorCount: Optional[int] = None
-    maxSectorAllocation: float = 40.0
-    maxStockAllocation: float = 20.0
+    maxSectorAllocation: float = 75.0
+    maxStockAllocation: float = 40.0
     targetStockCount: Optional[int] = None
     presetSectorAllocations: Optional[Dict[str, float]] = None
     allocationBias: Optional[int] = None
@@ -387,8 +387,8 @@ class PortfolioRebalancingConfig(BoardroomConfig):
 
     # Configurable rebalancing constraints
     targetSectorCount: Optional[int] = None
-    maxSectorAllocation: Optional[float] = None
-    maxStockAllocation: Optional[float] = None
+    maxSectorAllocation: float = 75.0
+    maxStockAllocation: float = 40.0
     targetStockCount: Optional[int] = None
     allocationBias: Optional[int] = None
     rebalanceAmount: int = 3
@@ -587,6 +587,7 @@ class PortfolioRebalancingConfig(BoardroomConfig):
 class SimulationTimestep(str, Enum):
     ONE_WEEK = "1 week"
     TWO_WEEKS = "2 weeks"
+    THREE_WEEKS = "3 weeks"
     ONE_MONTH = "1 month"
     TWO_MONTHS = "2 months"
     THREE_MONTHS = "3 months"
@@ -617,8 +618,8 @@ class AgentPortfolioSimulationConfig(BoardroomConfig):
 
     targetSectorCount: Optional[int] = None
     targetStockCount: Optional[int] = None
-    maxSectorAllocation: float = 40.0
-    maxStockAllocation: float = 20.0
+    maxSectorAllocation: float = 75.0
+    maxStockAllocation: float = 40.0
 
     @property
     def modeName(self) -> str:
@@ -689,7 +690,7 @@ class AgentPortfolioSimulationConfig(BoardroomConfig):
         if targetSectorCount is not None:
             targetSectorCount = max(1, min(11, targetSectorCount))
 
-        maxSectorAllocation = float(data.get("maxSectorAllocation", 40.0))
+        maxSectorAllocation = float(data.get("maxSectorAllocation", 75.0))
         maxSectorAllocation = max(20.0, min(80.0, maxSectorAllocation))
 
         targetStockCountRaw = data.get("targetStockCount") if data.get("targetStockCount") is not None else data.get("targetStocks")
@@ -697,7 +698,7 @@ class AgentPortfolioSimulationConfig(BoardroomConfig):
         if targetStockCount is not None:
             targetStockCount = max(1, min(50, targetStockCount))
 
-        maxStockAllocation = float(data.get("maxStockAllocation", 20.0))
+        maxStockAllocation = float(data.get("maxStockAllocation", 40.0))
         maxStockAllocation = max(10.0, min(60.0, maxStockAllocation))
 
         allocationBiasRaw = data.get("allocationBias")

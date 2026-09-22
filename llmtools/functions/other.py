@@ -87,7 +87,7 @@ def executePythonCalculation(tool: Tool, data: DataProviders, timestamp: pd.Time
             return output
         
         except SyntaxError:     # The code contains statements, it is not just a pure expression
-            localScope = {}
+            localScope = dict(safeGlobals) 
             exec(strippedCode, safeGlobals, localScope)
             capturedStdout = redirectedOutput.getvalue()
 
