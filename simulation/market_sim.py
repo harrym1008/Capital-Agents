@@ -59,8 +59,8 @@ class MarketSimulation:
 
 
 
-    def addOrder(self, order, username):
-        userOrder = UserOrder(order, username)
+    def addOrder(self, order, username, executionTime=ExecutionTime.OPEN):
+        userOrder = UserOrder(order, username, executionTime)
         self.pendingOrders.append(userOrder)
         order.setSubmittedTimestamp(self.currentDate)
 
@@ -87,7 +87,7 @@ class MarketSimulation:
         return segments
     
 
-    def checkOrderInSegment(self, segmentStart, segmentEnd, userOrder: UserOrder):
+    def checkOrderInSegment(self, segmentStart, segmentEnd, userOrder: UserOrder, isLastSegment=False):
         order = userOrder.order
         isIncreasing = segmentEnd > segmentStart
 
@@ -97,7 +97,10 @@ class MarketSimulation:
             if execTime == ExecutionTime.OPEN:
                 return SegmentExecutionResult(True, segmentStart)
             elif execTime == ExecutionTime.CLOSE:
-                return SegmentExecutionResult(True, segmentEnd)
+                # Fill at the close: only the final segment ends at the close price
+                if isLastSegment:
+                    return SegmentExecutionResult(True, segmentEnd)
+                return SegmentExecutionResult(False)
             
         # Process LimitOrder
         elif isinstance(order, LimitOrder):
@@ -198,7 +201,7 @@ class MarketSimulation:
                     return SegmentExecutionResult(False)
 
 
-    def processSegment(self, segmentStart, segmentEnd, pendingOrders, ticker):
+    def processSegment(self, segmentStart, segmentEnd, pendingOrders, ticker, isLastSegment=False):
         executedOrders = []
         remainingOrders = []
 
@@ -209,7 +212,7 @@ class MarketSimulation:
                 remainingOrders.append(userOrder)
                 continue
 
-            result = self.checkOrderInSegment(segmentStart, segmentEnd, userOrder)
+            result = self.checkOrderInSegment(segmentStart, segmentEnd, userOrder, isLastSegment)
 
             if result.filled:
                 executedOrders.append((userOrder, result.executionPrice))
@@ -275,8 +278,9 @@ class MarketSimulation:
 
             segments = self._buildIntradayPath(ohlc)
 
-            for segmentStart, segmentEnd in segments:
-                executed, remaining = self.processSegment(segmentStart, segmentEnd, remainingOrders, ticker)
+            for segIdx, (segmentStart, segmentEnd) in enumerate(segments):
+                executed, remaining = self.processSegment(segmentStart, segmentEnd, remainingOrders, ticker,
+                                                          isLastSegment=(segIdx == len(segments) - 1))
                 executedThisDay.extend(executed)
                 remainingOrders = remaining
 
@@ -508,7 +512,7 @@ class MarketSimulation:
             if tomorrow > self.endDate:
                 return
 
-        todayNyTs = self.dailyPriceProvider.timestampToNyDay(today)
+        # todayNyTs = self.dailyPriceProvider.timestampToNyDay(today)
         tomorrowNyTs = self.dailyPriceProvider.timestampToNyDay(tomorrow)
 
         # Delistings are stored in the ALL_TICKERS_FILE

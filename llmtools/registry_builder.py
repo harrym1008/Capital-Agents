@@ -110,7 +110,7 @@ SCHEMAS = {
             "sectorAllocations": {
                 "type": "object",
                 "description": (
-                    "Dictionary mapping each confirmed GICS sector name or ETF ticker (e.g. 'example_sector_1', 'example_sector_2') "
+                    "Dictionary mapping each confirmed GICS sector name (e.g. 'example_sector_1', 'example_sector_2') "
                     "to a list of allocated stock objects within that sector. All confirmed sectors must be present. "
                     "The 'perSectorWeight' values within each sector list must sum to 100.0%."
                 ),
@@ -220,7 +220,7 @@ SCHEMAS = {
             "tickers": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "List of stock ticker symbols to query (e.g. ['TCKR', 'COMP']). Maximum 15 tickers."
+                "description": "List of stock ticker symbols to query (e.g. ['TCKR', 'COMP']). Maximum 30 tickers."
             }
         },
         "required": ["tickers"]
@@ -569,8 +569,6 @@ def buildToolRegistry(initMacroThread=False):
             "Comprehensive point-in-time fundamental and financial overview for multiple candidates in a single batch call. "
             "Returns company summary, valuation multiples (P/E, P/B, P/S, EV/EBITDA), profitability margins, growth rates (EPS/revenue QoQ and YoY), "
             "leverage ratios, price returns (1mo/3mo/6mo/1y), beta, 30-day volatility, recent news headlines with sentiment scoring, and short interest data. "
-            "MANDATORY WORKFLOW RULE: Must ALWAYS be executed immediately after running 'fetchStocksInSector' with your candidate tickers "
-            "to ground stock selection in real quantitative financial metrics."
         ),
         parameterSchema=SCHEMAS["batchTickers"],
         storeIntoSources=True
@@ -579,7 +577,8 @@ def buildToolRegistry(initMacroThread=False):
     toolReg.registerTool(Tool(
         toolFunction=fetchShortInterestHistory,
         toolName="fetchShortInterestHistory",
-        toolDescription="Retrieves short interest history for a stock over a specified number of months. Shows FINRA short positions, changes, days-to-cover, and overall trend direction for squeeze risk and sentiment analysis.",
+        toolDescription="Retrieves short interest history for a stock over a specified number of months. Shows FINRA short positions, changes, days-to-cover, "
+                        "and overall trend direction for squeeze risk and sentiment analysis.",
         parameterSchema=SCHEMAS["shortInterestHistory"],
         storeIntoSources=True
     ))

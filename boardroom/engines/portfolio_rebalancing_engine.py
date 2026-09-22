@@ -590,6 +590,7 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
                 toolMap["fetchCompanyProfile"],
                 toolMap["fetchStockPricePerformance"],
                 toolMap["fetchCompanyRecentNews"],
+                toolMap["fetchShortInterestHistory"],
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
@@ -606,6 +607,7 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
                 toolMap["fetchStockPricePerformance"],
                 toolMap["fetchCompanyRecentNews"],
                 toolMap["fetchCashFlowStatement"],
+                toolMap["fetchShortInterestHistory"],
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
@@ -619,6 +621,7 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
                 toolMap["fetchBatchStockOverviews"],
                 toolMap["fetchStockPricePerformance"],
                 toolMap["fetchCompanyRecentNews"],
+                toolMap["fetchShortInterestHistory"],
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
@@ -632,6 +635,7 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
                 toolMap["fetchBatchStockOverviews"],
                 toolMap["fetchStockPricePerformance"],
                 toolMap["fetchCompanyRecentNews"],
+                toolMap["fetchShortInterestHistory"],
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],

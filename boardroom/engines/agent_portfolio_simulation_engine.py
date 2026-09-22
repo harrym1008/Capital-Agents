@@ -7,6 +7,7 @@ import numpy as np
 from collectors.constants import NEW_YORK
 from dataquery.macro_provider import MacroSeries
 from llmtools.tool_registry import ToolRegistry, Tool
+from llmtools.functions.company import calculateSharpeRatio
 from llmtools.functions.confirmation import (
     confirmSectorAllocation,
     confirmPortfolioAllocation,
@@ -19,7 +20,7 @@ from boardroom.boardroom_config import (
     BoardroomPace
 )
 from boardroom.boardroom_engine import BoardroomEngine
-from simulation.market_sim import MarketSimulation
+from simulation.market_sim import MarketSimulation, ExecutionTime
 from simulation.orders import MarketOrder, OrderSide
 from ui.ui_hooks import setCurrentStage,  setCurrentMilestoneId, emitEvent, SimulationStoppedException, isStopRequested
 
@@ -519,9 +520,22 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             drawdown = (series / runningMax) - 1.0
             maxDrawdownPct = float(abs(drawdown.min())) * 100.0
 
-            pctChange = series.pct_change().dropna()
-            if len(pctChange) >= 3 and pctChange.std() > 0:
-                sharpeRatio = float((pctChange.mean() / pctChange.std()) * np.sqrt(252))
+            # Calculate sharpe ratio based on excess returns over the 2-year treasury yield
+            if len(self.portfolioHistoryPoints) >= 3:
+                try:
+                    portDf = pd.DataFrame({
+                        "date": pd.to_datetime([p["x"] for p in self.portfolioHistoryPoints]),
+                        "close": [float(p["y"]) for p in self.portfolioHistoryPoints],
+                    })
+                    currentDateTs = self.marketSim.currentDate if self.marketSim else None
+                    treasDf = self.toolRegistry.dataProviders.macro.getSeries(
+                        MacroSeries.TREAS_2Y,
+                        startDate=pd.to_datetime(self.portfolioHistoryPoints[0]["x"]),
+                        endDate=currentDateTs,
+                    )
+                    sharpeRatio = float(calculateSharpeRatio(portDf, treasDf))
+                except Exception:
+                    sharpeRatio = 0.0
 
         # Build active positions list
         positionsList = []
@@ -1140,7 +1154,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
 
             if dollarAlloc > 0:
                 order = MarketOrder(ticker, OrderSide.BUY, cashValue=dollarAlloc)
-                self.marketSim.addOrder(order, username)
+                self.marketSim.addOrder(order, username, executionTime=ExecutionTime.CLOSE)
 
         # Run day trades to fill inception orders at start date close
         self.marketSim.processDaysTrades(startDateTs)
@@ -1522,7 +1536,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 if targetWeight <= 0.0:
                     # Liquidate entire holding
                     order = MarketOrder(ticker, OrderSide.SELL, quantity=-1)
-                    self.marketSim.addOrder(order, username)
+                    self.marketSim.addOrder(order, username, executionTime=ExecutionTime.CLOSE)
                     sellsExecuted.append(f"Sold 100% of {ticker} (${curVal:,.2f})")
                 elif curVal > idealTargetVal:
                     # Trim holding
@@ -1530,7 +1544,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                     qtyToSell = dollarToSell / curPrice if curPrice > 0 else 0
                     if qtyToSell > 0:
                         order = MarketOrder(ticker, OrderSide.SELL, quantity=qtyToSell)
-                        self.marketSim.addOrder(order, username)
+                        self.marketSim.addOrder(order, username, executionTime=ExecutionTime.CLOSE)
                         sellsExecuted.append(f"Trimmed {ticker} by ${dollarToSell:,.2f}")
 
             # Execute all SELL orders first to realise cash proceeds
@@ -1570,7 +1584,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
 
                     if dollarToBuy > 0:
                         order = MarketOrder(ticker, OrderSide.BUY, cashValue=dollarToBuy)
-                        self.marketSim.addOrder(order, username)
+                        self.marketSim.addOrder(order, username, executionTime=ExecutionTime.CLOSE)
                         if ticker in currentHoldings and currentHoldings[ticker].quantity > 0:
                             buysExecuted.append(f"Expanded {ticker} by +${dollarToBuy:,.2f}")
                         else:

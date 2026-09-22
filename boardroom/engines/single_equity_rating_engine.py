@@ -534,6 +534,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
                 toolMap["fetchCompanyRecentNews"],
                 toolMap["fetchTickerSentimentHistory"],
                 toolMap["fetchSentimentDivergence"],
+                toolMap["fetchShortInterestHistory"],
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
@@ -556,6 +557,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
                 toolMap["fetchCompanyRecentNews"],
                 toolMap["fetchTickerSentimentHistory"],
                 toolMap["fetchSentimentDivergence"],
+                toolMap["fetchShortInterestHistory"],
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
@@ -577,6 +579,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
                 toolMap["fetchCompanyRecentNews"],
                 toolMap["fetchTickerSentimentHistory"],
                 toolMap["fetchSentimentDivergence"],
+                toolMap["fetchShortInterestHistory"],
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
@@ -598,6 +601,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
                 toolMap["fetchCompanyRecentNews"],
                 toolMap["fetchTickerSentimentHistory"],
                 toolMap["fetchSentimentDivergence"],
+                toolMap["fetchShortInterestHistory"],
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
@@ -636,6 +640,7 @@ class SingleEquityBoardroomEngine(BoardroomEngine):
                 toolMap["fetchCompanyRecentNews"],
                 toolMap["fetchTickerSentimentHistory"],
                 toolMap["fetchSentimentDivergence"],
+                toolMap["fetchShortInterestHistory"],
                 toolMap["calculateDistFromCurrPrice"],
                 toolMap["executePythonCalculation"]
             ],
