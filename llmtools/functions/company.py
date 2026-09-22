@@ -540,8 +540,8 @@ def fetchStockPricePerformance(tool: Tool, data: DataProviders, timestamp: pd.Ti
     maxDrawdown = (priceData["close"] / runningMax - 1).min()
 
     macdData = calculateMacd(priceData, fast=12, slow=26, signal=9)
-    treasuryData = data.macro.getSeries(MacroSeries.TREAS_2Y, startDate=startDate, endDate=timestamp)
-    sharpeRatio = calculateSharpeRatio(priceData, treasuryData)
+    sharpeComparison = data.macro.getSeries(MacroSeries.TREAS_3MO, startDate=startDate, endDate=timestamp)
+    sharpeRatio = calculateSharpeRatio(priceData, sharpeComparison)
 
     periods = {
         "5d": timestamp - pd.DateOffset(days=5),
