@@ -55,10 +55,12 @@ class SingleEquityOneShotAnalysisStage(BoardroomStage):
         oneShotPrompt = (
             f"Target Asset: {targetTicker}\n"
             f"Time Horizon: {timeHorizonInfo['label']}\n\n"
-            f"Task: Conduct your complete analysis of macro conditions, single-stock reserach, risk assessment and final "
+            f"Task: Conduct your complete analysis of macro conditions, single-stock research, risk assessment and final "
             f"executive decision in one go for the ticker: {targetTicker} over the {timeHorizonInfo['label']} time horizon.\n"
+            f"Stay even-handed: consider upside, sideways and downside paths rather than extrapolating a slight price move.\n"
             f"Execute your data tools (macro, financials, valuation, statements, stock performance, news) to retrieve hard facts. "
-            f"Present your final executive decision with explicit rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and {timeHorizonInfo['llmFinalLinePriceTargets']}."
+            f"Present your final executive decision with explicit rating (BUY/HOLD/SELL), "
+            f"weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and {timeHorizonInfo['llmFinalLinePriceTargets']}."
         )
 
         oneShotRaw, _ = engine.oneShotAnalyst.analyseAndReply(
@@ -89,7 +91,8 @@ class SingleEquityOneShotUploadStage(BoardroomStage):
             f"Target Asset: {targetTicker}\n"
             f"Decision:\n{oneShotRaw}\n\n"
             f"Task: Upload and log the final boardroom verdict for {targetTicker}.\n"
-            f"Execute the {finalSubmitToolName} tool with ticker='{targetTicker}', rating, weighting and the {timeHorizonInfo['llmFinalLinePriceTargets']} based on your final decision."
+            f"Execute the {finalSubmitToolName} tool with ticker='{targetTicker}', rating, "
+            f"weighting and the {timeHorizonInfo['llmFinalLinePriceTargets']} based on your final decision."
         )
 
         origTools = list(engine.oneShotAnalyst.tools)
@@ -143,6 +146,7 @@ class SingleEquityMacroStage(BoardroomStage):
         macroPrompt = (
             f"Time Horizon: {timeHorizonInfo['label']}\n\n"
             f"Task: Conduct top-down macroeconomic analysis for the US financial markets over the {timeHorizonInfo['label']} time horizon.\n"
+            f"Look through near-term volatility to the horizon the user actually cares about.\n"
             f"Use your macro-specific tools to retrieve economic indicators, headlines, and sentiment history. "
             f"Present a narrative macro summary and explicitly output your overall market regime classification as BULLISH, BEARISH, or NEUTRAL."
         )
@@ -175,8 +179,10 @@ class SingleEquityResearchStage(BoardroomStage):
             f"Macroeconomic Context:\n{macroRaw}\n\n"
             f"Time Horizon: {timeHorizonInfo['label']}\n\n"
             f"Task: Conduct single-stock research on ticker {targetTicker} over the {timeHorizonInfo['label']} time horizon.\n"
+            f"Consider upside, sideways and downside paths over the horizon rather than extrapolating a slight price move.\n"
             f"Execute your data tools (valuation metrics, financial statements, stock price performance, company profile, etc.) to retrieve hard facts. "
-            f"Present your thesis and state: explicit rating ({{permittedRatings}}), OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT weight, and preliminary {timeHorizonInfo['llmPriceTargets']}."
+            f"Present your thesis and state: explicit rating ({{permittedRatings}}), "
+            f"OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT weight, and preliminary {timeHorizonInfo['llmPriceTargets']}."
         )
 
         (bullThesisRaw, bullThesisUISummary), (bearThesisRaw, bearThesisUISummary) = engine.runAgentsConcurrently(
@@ -218,12 +224,14 @@ class SingleEquityDebateStage(BoardroomStage):
             f"Macroeconomic Context:\n{macroRaw}\n\n"
             f"Bearish Analyst's Thesis on {targetTicker}:\n{bearThesisRaw}\n\n"
             f"Task: Challenge the Bearish Analyst's stance on {targetTicker}.\n"
+            f"Probe whether downside fears would survive a recovery or re-rating, not just a further sell-off.\n"
             f"Formulate 2-3 quantitative questions challenging their downside assumptions."
         )
         consDebatePrompt = (
             f"Macroeconomic Context:\n{macroRaw}\n\n"
             f"Bullish Analyst's Thesis on {targetTicker}:\n{bullThesisRaw}\n\n"
             f"Task: Challenge the Bullish Analyst's stance on {targetTicker}.\n"
+            f"Test whether growth promises survive downside and sideways paths, not just the central success story.\n"
             f"Formulate 2-3 quantitative questions challenging their upside assumptions."
         )
 
@@ -262,12 +270,16 @@ class SingleEquityDefenseStage(BoardroomStage):
         bullDefensePrompt = (
             f"Questions Posed by Conservative Risk Analyst:\n{consQuestionsRaw}\n\n"
             f"Task: Defend your bullish thesis and price targets for {targetTicker}.\n"
-            f"Answer each question quantitatively using your tools or Python models if needed. Revise your thesis, targets, or rating if substantiated deficiencies were highlighted."
+            f"Hold your nerve on short-term softness unless the evidence impairs forward cash generation.\n"
+            f"Answer each question quantitatively using your tools or Python models if needed. "
+            f"Revise your thesis, targets, or rating if substantiated deficiencies were highlighted."
         )
         bearDefensePrompt = (
             f"Questions Posed by Aggressive Risk Analyst:\n{aggQuestionsRaw}\n\n"
             f"Task: Defend your bearish risk analysis and price targets for {targetTicker}.\n"
-            f"Answer each question quantitatively using your tools or Python models if needed. Revise your risk assessment, targets, or rating if substantiated upside catalysts were highlighted."
+            f"Concede genuine upside catalysts where evidenced; anchor every judgement in solvency and valuation discipline.\n"
+            f"Answer each question quantitatively using your tools or Python models if needed. "
+            f"Revise your risk assessment, targets, or rating if substantiated upside catalysts were highlighted."
         )
 
         (bullDefenseRaw, bullDefenseUISummary), (bearDefenseRaw, bearDefenseUISummary) = engine.runAgentsConcurrently(
@@ -306,11 +318,13 @@ class SingleEquityProposalStage(BoardroomStage):
         aggProposalPrompt = (
             f"Bearish Analyst's Defense:\n{bearDefenseRaw}\n\n"
             f"Task: Formulate your final aggressive allocation proposal for {targetTicker}.\n"
+            f"Favour measured optimism: look for credible upside paths before abandoning a holding on recent softness.\n"
             f"Propose your {timeHorizonInfo['llmPriceTargets']} and position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), justifying your high-upside growth assumptions."
         )
         consProposalPrompt = (
             f"Bullish Analyst's Defense:\n{bullDefenseRaw}\n\n"
             f"Task: Formulate your final conservative allocation proposal for {targetTicker}.\n"
+            f"Favour steadiness over haste: tolerate modest price softness where solvency and dividend cover remain sound.\n"
             f"Propose your {timeHorizonInfo['llmPriceTargets']} and position weight (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), incorporating a robust margin of safety."
         )
 
@@ -358,6 +372,7 @@ class SingleEquityDecisionStage(BoardroomStage):
                 f"Aggressive Allocation Case:\n{bullThesisRaw}\n\n"
                 f"Conservative Allocation Case:\n{bearThesisRaw}\n\n"
                 f"Task: Produce the final executive investment decision for {targetTicker} over the {timeHorizonInfo['label']} time horizon.\n"
+                f"Stay dispassionate: let distances to targets and solvency evidence decide, not the latest tick.\n"
                 f"Weigh upside potential against solvency risks. You MUST verify your final price targets using the 'calculateDistFromCurrPrice' tool. "
                 f"Include a definitive rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and {timeHorizonInfo['llmFinalLinePriceTargets']}."
             )
@@ -372,6 +387,7 @@ class SingleEquityDecisionStage(BoardroomStage):
                 f"Aggressive Allocation Case:\n{aggProposalRaw}\n\n"
                 f"Conservative Allocation Case:\n{consProposalRaw}\n\n"
                 f"Task: Produce the final executive investment decision for {targetTicker} over the {timeHorizonInfo['label']} time horizon.\n"
+                f"Stay dispassionate: let distances to targets and solvency evidence decide, not the latest tick.\n"
                 f"Weigh upside potential against solvency risks. You MUST verify your final price targets using the 'calculateDistFromCurrPrice' tool. "
                 f"Include a definitive rating (BUY/HOLD/SELL), weighting (OVERWEIGHT/EQUAL-WEIGHT/UNDERWEIGHT), and {timeHorizonInfo['llmFinalLinePriceTargets']}."
             )
@@ -409,7 +425,8 @@ class SingleEquityDecisionUploadStage(BoardroomStage):
             f"Target Asset: {targetTicker}\n"
             f"Final Decision Summary:\n{finalDecisionRaw}\n\n"
             f"Task: Upload and log the final boardroom verdict for {targetTicker}.\n"
-            f"Execute the {finalSubmitToolName} tool with ticker='{targetTicker}', rating, weighting and the {timeHorizonInfo['llmFinalLinePriceTargets']} based on your final decision."
+            f"Execute the {finalSubmitToolName} tool with ticker='{targetTicker}', rating, "
+            f"weighting and the {timeHorizonInfo['llmFinalLinePriceTargets']} based on your final decision."
         )
 
         engine.portManager.clearTools()

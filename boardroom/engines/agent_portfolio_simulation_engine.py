@@ -651,8 +651,9 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         self.emitNewPhase(1, "Macro Environment Analysis", BoardroomPace.COMPLETE)
         macroPrompt = (
             f"Task: Conduct top-down macroeconomic analysis to guide initial portfolio inception for a {promptArgs['initialCapital']} portfolio.\n"
+            f"Judge regimes on forward fundamentals, not yesterday's price noise.\n"
             f"Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n\n"
-            f"1. Use 'fetchAllSectorRankings', 'fetchMacroContext', and 'fetchMacroNews' to analyze market regime, rates, and leading sectors.\n"
+            f"1. Use 'fetchAllSectorRankings', 'fetchMacroContext', and 'fetchMacroNews' to analyse market regime, rates, and leading sectors.\n"
             f"2. Output your economic indicator table, macro narrative, and market regime classification."
         )
         macroRaw, _ = self.macroAnalyst.analyseAndReply(
@@ -673,6 +674,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         bullPrompt = (
             f"Macro Context:\n{macroRaw}\n\n"
             f"Task: Propose an aggressive, growth-oriented sector allocation for a {promptArgs['initialCapital']} portfolio.\n"
+            f"Champion durable compounding over fleeting momentum, judging each sector across upside, sideways and stress paths.\n"
             f"Mandatory Constraints:\n"
             f"- Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n"
             f"- {promptArgs['sectorDiversityRule']}\n"
@@ -683,6 +685,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         bearPrompt = (
             f"Macro Context:\n{macroRaw}\n\n"
             f"Task: Propose a defensive, risk-mitigated sector allocation for a {promptArgs['initialCapital']} portfolio.\n"
+            f"Demand evidence of resilience through the cycle rather than reacting to recent price softness alone.\n"
             f"Mandatory Constraints:\n"
             f"- Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n"
             f"- {promptArgs['sectorDiversityRule']}\n"
@@ -706,7 +709,9 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"Macro Context:\n{macroRaw}\n\n"
             f"Bullish Sector Proposal:\n{bullSectorRaw}\n\n"
             f"Bearish Sector Proposal:\n{bearSectorRaw}\n\n"
-            f"Task: As the Impartial Portfolio Manager, reconcile Bullish and Bearish proposals to determine the initial executive sector allocation for this {promptArgs['initialCapital']} portfolio.\n"
+            f"Task: As the Impartial Portfolio Manager, reconcile Bullish and Bearish proposals to determine "
+            f"the initial executive sector allocation for this {promptArgs['initialCapital']} portfolio.\n"
+            f"Balance conviction with humility, sizing for bull, base and bear paths rather than a single forecast.\n"
             f"Mandatory Constraints:\n"
             f"- Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n"
             f"- {promptArgs['sectorDiversityRule']}\n"
@@ -748,6 +753,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         growthPrompt = (
             f"Confirmed Portfolio Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
             f"Task: As the Growth Stock Hunter, scout high-conviction growth equities within confirmed sectors.\n"
+            f"Favour forward earnings power and catalyst runway over a single soft quarter, weighing recovery and acceleration scenarios.\n"
             f"Constraints: Target stock count: {promptArgs['targetStockCount']}. Max stock allocation: {promptArgs['maxStockAllocation']}.\n"
             f"1. Use 'fetchStocksInSector' (style='growth') for confirmed sectors.\n"
             f"2. Use 'fetchBatchStockOverviews' on top conviction candidates."
@@ -755,6 +761,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         valuePrompt = (
             f"Confirmed Portfolio Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
             f"Task: As the Value/Defensive Stock Hunter, scout high-conviction defensive and dividend equities within confirmed sectors.\n"
+            f"Require proven solvency and margin of safety through the cycle, tolerating modest underperformance where the balance sheet endures.\n"
             f"Constraints: Target stock count: {promptArgs['targetStockCount']}. Max stock allocation: {promptArgs['maxStockAllocation']}.\n"
             f"1. Use 'fetchStocksInSector' (style='defensive') for confirmed sectors.\n"
             f"2. Use 'fetchBatchStockOverviews' on top conviction candidates."
@@ -775,6 +782,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"Growth Candidates:\n{growthRaw}\n\n"
             f"Defensive Candidates:\n{valueRaw}\n\n"
             f"Task: Review candidates from both hunters and construct an aggressive stock allocation proposal for {promptArgs['initialCapital']}.\n"
+            f"Press for genuine upside optionality while respecting evidence; do not churn holdings on noise.\n"
             f"Group stock proposals under confirmed sectors, assigning whole integer weights summing to 100% per sector."
         )
         consProposalPrompt = (
@@ -782,6 +790,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"Growth Candidates:\n{growthRaw}\n\n"
             f"Defensive Candidates:\n{valueRaw}\n\n"
             f"Task: Review candidates from both hunters and construct a conservative stock allocation proposal for {promptArgs['initialCapital']}.\n"
+            f"Protect compounding first: prefer seasoned cash generators unless a challenger clearly improves safety.\n"
             f"Group stock proposals under confirmed sectors, assigning whole integer weights summing to 100% per sector."
         )
         (aggProposalRaw, _), (consProposalRaw, _) = self.runAgentsConcurrently(
@@ -805,7 +814,9 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"Aggressive Risk Proposal:\n{aggProposalRaw}\n\n"
             f"Conservative Risk Proposal:\n{consProposalRaw}\n\n"
             f"Task: As the Impartial Portfolio Manager, reconcile proposals to construct the definitive inception portfolio.\n"
-            f"Mandatory: Call 'confirmPortfolioAllocation' with your allocated stock positions across confirmed sectors, 'portfolioRationale', and 'initialCapital'={config.initialCapital}.\n"
+            f"Balance conviction with humility: size positions for bull, base and bear paths rather than a single forecast.\n"
+            f"Mandatory: Call 'confirmPortfolioAllocation' with your allocated stock positions across "
+            f"confirmed sectors, 'portfolioRationale', and 'initialCapital'={config.initialCapital}.\n"
             f"You may also call 'recordJournalEntry' with your 30-50 word executive rationale summarizing portfolio inception."
         )
         pmResponse, _ = self.executeMandatedToolStage(
@@ -848,8 +859,14 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             self.currentSimStatus = f"{friendlyDate}: Stage 2"
             self.emitSimulationState(config, sp500Df)
             self.emitNewPhase(2, "Sector Allocation Analysis", pace)
-            bullSectorPrompt = f"Macro Context:\n{macroRaw}\n\nTask: As the Bullish Analyst, identify leading growth and expansion sectors."
-            bearSectorPrompt = f"Macro Context:\n{macroRaw}\n\nTask: As the Bearish Analyst, identify vulnerable sectors facing headwinds."
+            bullSectorPrompt = (
+                f"Macro Context:\n{macroRaw}\n\nTask: As the Bullish Analyst, identify leading growth and expansion sectors. "
+                f"Weigh whether incumbents can recover and compound before urging rotation on recent softness."
+            )
+            bearSectorPrompt = (
+                f"Macro Context:\n{macroRaw}\n\nTask: As the Bearish Analyst, identify vulnerable sectors facing headwinds. "
+                f"Distinguish temporary price weakness from genuine solvency deterioration before urging exits."
+            )
             (bullRaw, _), (bearRaw, _) = self.runAgentsConcurrently(
                 lambda: self.bullAnalyst.analyseAndReply(bullSectorPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioRebalancing"),
                 lambda: self.bearAnalyst.analyseAndReply(bearSectorPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioRebalancing")
@@ -869,6 +886,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"{sectorContextForPM}\n\n"
             f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
             f"Task: As the Impartial Portfolio Manager, determine the target rebalanced sector allocations.\n"
+            f"Balance conviction with humility, sizing for bull, base and bear paths rather than a single forecast.\n"
             f"Mandatory Constraints:\n"
             f"- Rebalance Amount Mandate: {promptArgs['rebalanceAmountGuidance']}\n"
             f"- Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n"
@@ -910,12 +928,18 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"Target Rebalanced Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
             f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
             f"Task: As the Growth Stock Hunter, evaluate existing growth holdings and scout high-conviction momentum/growth replacements.\n"
+            f"Think as a growth owner: do not recommend replacing an incumbent on a modest dip alone; require a clearly superior forward path.\n"
+            f"PORTFOLIO CONTINUITY MANDATE: Your shortlisted candidate tickers fed into 'fetchBatchStockOverviews' MUST include ALL "
+            f"of the companies that exist right now inside CURRENT HOLDINGS above. Extract every ticker dynamically from that list at run time.\n"
             f"Constraints: Target stock count: {promptArgs['targetStockCount']}. Max stock allocation: {promptArgs['maxStockAllocation']}."
         )
         valuePrompt = (
             f"Target Rebalanced Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
             f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
             f"Task: As the Value/Defensive Stock Hunter, evaluate defensive holdings and scout margin-of-safety replacements.\n"
+            f"Think as a defensive steward: retain sound incumbents through soft patches unless overview metrics show the cushion is gone.\n"
+            f"PORTFOLIO CONTINUITY MANDATE: Your shortlisted candidate tickers fed into 'fetchBatchStockOverviews' MUST include ALL "
+            f"of the companies that exist right now inside CURRENT HOLDINGS above. Extract every ticker dynamically from that list at run time.\n"
             f"Constraints: Target stock count: {promptArgs['targetStockCount']}. Max stock allocation: {promptArgs['maxStockAllocation']}."
         )
         (growthRaw, _), (valueRaw, _) = self.runAgentsConcurrently(
@@ -933,7 +957,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
                 f"Growth Candidates from Hunter:\n{growthRaw}\n\n"
                 f"Defensive Candidates from Hunter:\n{valueRaw}\n\n"
-                f"Task: Review current holdings and scouted candidates from both hunters, then construct an assertive alpha-maximizing stock allocation proposal.\n"
+                f"Task: Review current holdings and scouted candidates from both hunters, then construct an assertive alpha-maximising stock allocation proposal.\n"
+                f"Seek alpha through disciplined upgrades, not restless trading; model recovery as well as momentum for each incumbent.\n"
                 f"Group stock proposals under confirmed sectors, assigning whole integer weights summing to 100% per sector."
             )
             consPrompt = (
@@ -942,6 +967,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 f"Growth Candidates from Hunter:\n{growthRaw}\n\n"
                 f"Defensive Candidates from Hunter:\n{valueRaw}\n\n"
                 f"Task: Review current holdings and scouted candidates from both hunters, then construct a risk-controlled defensive stock allocation proposal.\n"
+                f"Default to keeping proven incumbents; demand clear evidence of impaired safety before endorsing turnover.\n"
                 f"Group stock proposals under confirmed sectors, assigning whole integer weights summing to 100% per sector."
             )
             (aggRaw, _), (consRaw, _) = self.runAgentsConcurrently(
@@ -969,7 +995,9 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"- Target stock count: {promptArgs['targetStockCount']}\n"
             f"- Max stock allocation: {promptArgs['maxStockAllocation']}\n\n"
             f"{scoutContextForPM}\n\n"
-            f"Task: Construct the rebalanced portfolio. Execute 'confirmPortfolioAllocation' with your 'sectorAllocations' dictionary, 'portfolioRationale', and 'initialCapital'={currentPortfolioTotalVal:.2f}.\n"
+            f"Task: Construct the rebalanced portfolio. Execute 'confirmPortfolioAllocation' with your 'sectorAllocations' "
+            f"dictionary, 'portfolioRationale', and 'initialCapital'={currentPortfolioTotalVal:.2f}.\n"
+            f"Minimise needless turnover: retain incumbents whose overview metrics remain sound, justifying every exit against the mandate.\n"
             f"You may also call 'recordJournalEntry' with your 30-50 word rationale detailing portfolio shifts."
         )
         pmResponse, _ = self.executeMandatedToolStage(
@@ -1273,10 +1301,12 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             macroAuditPrompt = (
                 f"Milestone Date: {currentDateStr} ({currentDateFormatted})\n"
                 f"Portfolio Capital: ${perfState.get('totalValue', config.initialCapital):,.2f} | "
-                f"Return Since Inception: {perfState.get('totalReturnPct', 0.0):+.2f}% vs S&P 500: {perfState.get('sp500ReturnPct', 0.0):+.2f}% (Alpha: {perfState.get('alphaPct', 0.0):+.2f}%)\n"
+                f"Return Since Inception: {perfState.get('totalReturnPct', 0.0):+.2f}% vs S&P 500: "
+                f"{perfState.get('sp500ReturnPct', 0.0):+.2f}% (Alpha: {perfState.get('alphaPct', 0.0):+.2f}%)\n"
                 f"Consecutive Skipped Rebalance Reviews: {self.consecutiveSkippedSteps} / 3\n\n"
                 f"CURRENT PORTFOLIO HOLDINGS:\n{currentHoldingsStr}\n\n"
                 f"Task: As the Macro Analyst, audit current portfolio holdings against prevailing macroeconomic regime, inflation, yields, and sector leadership.\n"
+                f"Judge holdings on forward regime exposure rather than punishing brief price softness.\n"
                 f"1. Use 'fetchMacroContext', 'fetchMacroNews', and 'fetchAllSectorRankings' to evaluate the macro environment.\n"
                 f"2. You may use 'readJournal' to inspect previous journal entries.\n"
                 f"3. Deliver your economic indicator table, macro narrative, and portfolio vulnerability audit."
@@ -1305,7 +1335,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                     f"Macro Context & Audit:\n{macroRaw}\n\n"
                     f"Task: Execute the 'decideRebalanceNecessity' tool to formally determine whether the portfolio should rebalance at this milestone.\n"
                     f"Valid decision options:\n"
-                    f"- 'noBalanceRequired': Existing holdings are performing soundly, macro regime remains stable, and no rebalancing is needed (advances directly to next timestep).\n"
+                    f"- 'noBalanceRequired': Existing holdings are performing soundly, macro regime remains stable, "
+                    f"and no rebalancing is needed (advances directly to next timestep).\n"
                     f"- 'balanceRequired': Standard 4-stage fast rebalance to adjust sector tilts or replace lagging names.\n"
                     f"- 'extendedBalanceRequired': Full 6-stage comprehensive overhaul due to major macro/cyclical regime rotation."
                 )
@@ -1708,7 +1739,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"Initial Capital: ${config.initialCapital:,.2f}\n"
             f"Final Portfolio Assets: ${perfMetrics.get('totalValue', config.initialCapital):,.2f} "
             f"(Cash: ${perfMetrics.get('cashValue', 0.0):,.2f}, Equities: ${perfMetrics.get('stockValue', 0.0):,.2f})\n"
-            f"Total Return: {perfMetrics.get('totalReturnPct', 0.0):+.2f}% (${perfMetrics.get('totalReturnDollar', 0.0):+,.2f}) vs S&P 500: {perfMetrics.get('sp500ReturnPct', 0.0):+.2f}% (${perfMetrics.get('sp500ReturnDollar', 0.0):+,.2f})\n"
+            f"Total Return: {perfMetrics.get('totalReturnPct', 0.0):+.2f}% (${perfMetrics.get('totalReturnDollar', 0.0):+,.2f}) vs S&P 500: "
+            f"{perfMetrics.get('sp500ReturnPct', 0.0):+.2f}% (${perfMetrics.get('sp500ReturnDollar', 0.0):+,.2f})\n"
             f"Alpha Generated: {perfMetrics.get('alphaPct', 0.0):+.2f}%\n"
             f"Portfolio Sharpe Ratio: {perfMetrics.get('sharpeRatio', 0.0):.2f}\n"
             f"Portfolio Max Drawdown: {perfMetrics.get('maxDrawdownPct', 0.0):.2f}%\n\n"
@@ -1721,7 +1753,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"1. Executive Summary: Overarching assessment of performance vs S&P 500 benchmark and initial investment mandate.\n"
             f"2. Winning Themes & Successful Bets: Highlight top-contributing stock picks, sector allocations, and well-timed entries/expansions.\n"
             f"3. Strategic Shortcomings & Underperformers: Frank analysis of lagging equities, sector drags, mistimed trims, and severe drawdown episodes.\n"
-            f"4. Mandate & Risk Discipline Audit: Evaluation of how consistently the portfolio adhered to target risk tolerances, diversification constraints, and market regime shifts.\n"
+            f"4. Mandate & Risk Discipline Audit: Evaluation of how consistently the portfolio adhered "
+            f"to target risk tolerances, diversification constraints, and market regime shifts.\n"
             f"5. Definitive Conclusion: Final verdict on fund performance and lessons learned across the entire simulated lifecycle."
         )
 
