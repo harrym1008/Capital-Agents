@@ -519,10 +519,11 @@ def buildToolRegistry(initMacroThread=False):
         toolName="fetchStocksInSector",
         toolDescription=(
             "Screens and returns equity candidates within a specified GICS sector, sorted by market capitalisation or style (value, defensive, or all). "
+            "Each stock returns both a 'growthScore' and a 'defensiveScore' where HIGHER growthScore is BETTER for growth, and LOWER defensiveScore is BETTER for defensive."
             "MANDATORY WORKFLOW RULE: This tool only provides preliminary screening indicators without deep financial metrics. "
             "Immediately after conducting 'fetchStocksInSector', you MUST ALWAYS run 'fetchBatchStockOverviews' on your shortlisted candidate stocks "
             "to retrieve real financial metrics (valuation multiples, profitability margins, revenue/EPS growth, leverage, news sentiment, and company summary) "
-            "before presenting your candidate table or making any selection decisions."
+            "before presenting your candidate table or making any selection decisions. "
         ),
         parameterSchema=SCHEMAS["fetchStocksInSector"],
         storeIntoSources=True

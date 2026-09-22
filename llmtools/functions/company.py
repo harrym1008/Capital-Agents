@@ -10,7 +10,7 @@ from collectors.constants import IPO_BEFORE_START_DATE
 
 from llmtools.tool_registry import DataProviders, Tool
 from llmtools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, formatArticleAge, NumberType
-from llmtools.functions.sentiment_main import scoreTextsWithCache, deriveSentimentRating
+from llmtools.functions.sentiment_main import scoreTextsWithCache, aggregateSentiment
 
 
 def fetchCompanyProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str):
@@ -252,40 +252,16 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
                 if displayHeadlines:
                     stockResult["recentHeadlines"] = displayHeadlines
 
-                # Score up to 50 headlines for weighted sentiment
+                # Score up to 50 headlines with the decay-weighted aggregation
                 if headlines:
                     sentimentScores = scoreTextsWithCache(headlines[:50], data)
                     if sentimentScores:
-                        weightedSum = 0.0
-                        weightSum = 0.0
-                        for score, dt in zip(sentimentScores, headlineDates[:50]):
-                            if score is None or dt is None:
-                                continue
-                            try:
-                                artDate = pd.to_datetime(dt)
-                                if artDate.tzinfo is not None:
-                                    artDate = artDate.tz_localize(None)
-                                ageDays = (tsNorm - artDate).days
-                            except Exception:
-                                ageDays = 0
-
-                            # Temporal decay: full weight 0-3mo, linear decay 3-9mo, zero 9mo+
-                            if ageDays <= 90:
-                                weight = 1.0
-                            elif ageDays <= 270:
-                                weight = 1.0 - (ageDays - 90) / 180.0
-                            else:
-                                weight = 0.0
-
-                            if weight > 0:
-                                netScore = score.get("positive", 0) - score.get("negative", 0)
-                                weightedSum += netScore * weight
-                                weightSum += weight
-
-                        if weightSum > 0:
-                            finalSentiment = weightedSum / weightSum
+                        finalSentiment, rating = aggregateSentiment(
+                            sentimentScores, headlineDates[:50], tsNorm
+                        )
+                        if finalSentiment is not None:
                             stockResult["newsSentimentScore"] = cleanNumber(finalSentiment, NumberType.DECIMAL)
-                            stockResult["newsSentimentRating"] = deriveSentimentRating(finalSentiment)
+                            stockResult["newsSentimentRating"] = rating
         except Exception:
             pass
 

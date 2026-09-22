@@ -589,7 +589,7 @@ class BaseLLMClient(ABC):
                     # Check for 'confirm*' or 'transferToAgent' tool call and handle early completion
                     for toolCall in toolCallsList:
                         toolName = toolCall["function"]["name"]
-                        if toolName.startswith("confirm") or toolName == "transferToAgent":
+                        if toolName.startswith("confirm") or toolName in ["transferToAgent", "decideBalanceNecessity"]:
                             # Find this tool call's id from messageHistory and if its status is 'success' or 'transferred' assume completion
                             for msg in messageHistory:
                                 if msg.get("role") == "tool" and msg.get("tool_call_id") == toolCall["id"]:

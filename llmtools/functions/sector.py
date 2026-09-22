@@ -11,7 +11,7 @@ from dataquery.macro_provider import MacroSeries
 from llmtools.tool_registry import DataProviders, Tool
 from llmtools.functions.helpers import cleanData, formatArticleAge, cleanHtmlContent
 from llmtools.functions.stock_search import parseMarketCapValue
-from llmtools.functions.sentiment_main import scoreTextsWithCache, deriveSentimentRating, getSentimentEngine
+from llmtools.functions.sentiment_main import scoreTextsWithCache, deriveSentimentRating, getSentimentEngine, aggregateSentiment
 from finbert.finbert_engines import TrtCudaInferenceEngine, OnnxCudaInferenceEngine, PytorchCudaInferenceEngine
 
 
@@ -759,13 +759,16 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
             }
 
             if not newsDf.empty and "headline" in newsDf.columns:
-                hls = newsDf["headline"].dropna().tolist()
+                validRows = newsDf.dropna(subset=["headline"])
+                hls = validRows["headline"].tolist()
+                hldates = validRows["date"].tolist() if "date" in validRows.columns else [None] * len(hls)
                 preds = scoreTextsWithCache(hls, data=data)
                 if preds:
-                    labelWeights = {"bullish": 1.0, "bearish": -1.0, "neutral": 0.0}
-                    netScores = [p["score"] * labelWeights.get(p["label"].lower(), 0.0) for p in preds]
-                    avgScore = round(float(np.mean(netScores)), 4) if netScores else 0.0
-                    rating = deriveSentimentRating(avgScore)
+                    aggScore, aggRating = aggregateSentiment(preds, hldates, effectiveTs)
+                    if aggScore is None:
+                        aggScore, aggRating = 0.0, deriveSentimentRating(0.0)
+                    avgScore = round(float(aggScore), 4)
+                    rating = aggRating
 
                     dMin = str(newsDf["date"].min())[:10]
                     dMax = str(newsDf["date"].max())[:10]
