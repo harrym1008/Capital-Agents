@@ -22,7 +22,6 @@ from collectors.rate_limiter import GlobalRateLimiters, RateLimiter
 from collectors.constants import *
 
 
-
 # When delistDate is None, it means the stock is still trading as of endDate
 class SingleTickerDataCollector:
     def __init__(self, ticker, exchange, isAdrc, cik, startDate, endDate, delistDate, 
@@ -472,7 +471,7 @@ class SingleTickerDataCollector:
         # On price splits, outstanding shares must be multiplied by the split factor to reflect the change in shares outstanding
         # until the next date with a split adjusted outstanding shares value.
         # Note: if a split occurred on or after the latest SEC filing date, and yfinance already calibrated the post-split shares,
-        # we do not re-multiply post-filing dates.
+        # we do not re-multiply post-filing dates
         latestFilingDate = sharesDf["date"].max()
         for action in actions["splits"]:
             splitDate = pd.Timestamp(action["date"], tz=NEW_YORK)
@@ -521,6 +520,7 @@ class SingleTickerDataCollector:
 
     
 def threadWorker(ticker, exchange, isAdrc, cik, startDate, endDate, delistDate, priceClient, corpActionsClient, alpacaLimiter, edgarLimiter):
+    # Create a SingleTickerDataCollector instance for the given ticker and collect its data
     collector = SingleTickerDataCollector(
         ticker=ticker,
         exchange=exchange,
@@ -610,7 +610,7 @@ class OHLCVDataClient:
         tickersDf = pd.read_parquet(ALL_TICKERS_FILE)
         totalTickers = len(tickersDf) if not self.testedTickers else len(self.testedTickers)
 
-
+        # Prepare a list of ticker rows to process
         tickerRows = []
         for idx, row in tickersDf.iterrows():
             if self.testedTickers and row["ticker"] not in self.testedTickers:
@@ -712,8 +712,6 @@ class OHLCVDataClient:
 
         # Export all corporate actions to one parquet file
         actionsDf = exportActions(allActionRows)
-        # pbar.set_description(f"OHLCV: Saved {len(actionsDf)} corporate actions")
-
 
         tickerChangeMap = {}
         tickerChangeRows = []

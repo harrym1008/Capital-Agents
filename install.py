@@ -73,10 +73,11 @@ def downloadOnnxModel(targetDir: str = "finbert/models") -> None:
 
 
 def setupFinbertEnvironment(installTensorRt: bool = True) -> None:
-    print("=" * 60)
-    print("     FinBERT Environment Installer (CUDA 13.2 / CPU)")
-    print(f"     Target Venv: {venvPython}")
-    print("=" * 60)
+    equalsWidth = max(39, len(venvPython) + 17)
+    print("=" * equalsWidth)
+    print( "  CapitalAgents Environment Installer")
+    print(f"  Target Venv: {venvPython}")
+    print("=" * equalsWidth)
 
     hasGpu = isNvidiaGpuPresent()
     cudaActive = False
@@ -92,6 +93,12 @@ def setupFinbertEnvironment(installTensorRt: bool = True) -> None:
                 print("[Installer] PyTorch cu132 installed, but torch.cuda.is_available() returned False.")
         except Exception as error:
             print(f"[Installer] Failed to install PyTorch cu132: {error}")
+
+    if cudaActive:
+        print("CUDA is available. FinBERT will use GPU acceleration.")
+    else:
+        print("CUDA is not avaliable. FinBERT will use CPU fallback.")
+
 
     # Fallback to CPU if no GPU or CUDA installation failed
     if not cudaActive:
@@ -128,14 +135,14 @@ def setupFinbertEnvironment(installTensorRt: bool = True) -> None:
     # Base dependencies
     print("\n[Installer] Installing base dependencies from requirements-base.txt...")
     runPipInstall(["-r", "requirements-base.txt"])
-    
+
     # Download pre-built ONNX model
     downloadOnnxModel()
 
     # Final Engine Verification
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 50)
     print("[Installer] Verifying FinBERT Engine Selection...")
-    print("=" * 60)
+    print("=" * 50)
     testCode = ("""
 from finbert.finbert_engines import getBestInferenceEngine
 engine = getBestInferenceEngine()

@@ -48,11 +48,8 @@ def splitDateRange(startDate, endDate, threadCount):
 
 
 
-def _processChunk(chunk):
-    """
-    Worker for ProcessPoolExecutor. Cleans and filters one chunk of the
-    dataframe. Must be a module-level function so it is picklable.
-    """
+def processChunk(chunk):
+    # Make a copy of the chunk to avoid modifying the original DataFrame in place
     chunk = chunk.copy()
 
     chunk["wordCount"] = chunk["content"].apply(lambda x: len(str(x).split()))
@@ -71,15 +68,15 @@ def _processChunk(chunk):
 
 
 def cleanAndFilterArticlesDf(df):
-    # Parallelise the CPU-bound cleaning + filtering across every core.
+    # Parallelise the CPU-bound cleaning + filtering across every core
     numWorkers = os.cpu_count() or 1
-    if len(df) < numWorkers * 2:
-        # Too small to bother spawning processes.
-        results = [_processChunk(df)]
+    if len(df) < numWorkers * 10:
+        # Too small to bother spawning processes
+        results = [processChunk(df)]
     else:
         chunks = np.array_split(df, numWorkers)
         with concurrent.futures.ProcessPoolExecutor(max_workers=numWorkers) as executor:
-            results = list(executor.map(_processChunk, chunks))
+            results = list(executor.map(processChunk, chunks))
 
     processed = pd.concat(results, ignore_index=True)
 
@@ -103,10 +100,8 @@ class NewsClient:
 
         self.startDate = datetime.strptime(startDate, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         self.endDate = datetime.strptime(endDate, "%Y-%m-%d").replace(
-            hour=23, minute=59, second=59, tzinfo=timezone.utc
-        )
-        
-
+            hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc
+        )       
 
     def threadedMassDownload(self, threads=4, pbar=None):
         os.makedirs(NEWS_BATCHES_DIR, exist_ok=True)
@@ -135,6 +130,7 @@ class NewsClient:
         totalBatchCount = 0
         sharedLock = threading.Lock()
 
+        # Track progress by the latest article timestamp, the total num of articles is not known
         startUnix = int(self.startDate.timestamp())
         endUnix = int(self.endDate.timestamp())
 
@@ -167,6 +163,7 @@ class NewsClient:
                 pbar.n = progressValue
                 pbar.refresh()
 
+        # Worker function for each thread to fetch news articles in its assigned time window
         def worker(threadId, windowStart, windowEnd):
             nonlocal totalFetched, totalBatchCount
 
@@ -268,6 +265,7 @@ class NewsClient:
 
             refreshProgress(threadId, int(windowEnd.timestamp()))
 
+        # Initiate a worker for every single window
         threads = []
         for threadId, (windowStart, windowEnd) in enumerate(windows):
             thread = threading.Thread(
@@ -331,6 +329,7 @@ class NewsClient:
         return totalFetched, totalBatchCount
 
 
+    # Write the final consolidated DataFrame to a parquet file
     def writeNewsParquet(self, df, path):
         if len(df) == 0:
             table = pa.table({

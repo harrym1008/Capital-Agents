@@ -13,7 +13,7 @@ from collectors.rate_limiter import GlobalRateLimiters
 from collectors.market_calendar import MarketCalendar
 
 CSV_URL_FEED = "https://cdn.finra.org/equity/otcmarket/biweekly/shrt{dateStr}.csv"
-CSV_CUTOFF = date(2021, 5, 31)
+CSV_CUTOFF = date(2021, 5, 31)      # The FINRA short interest data is only available from 1 Jun 2021 onwards
 
 
 class ShortDataClient:
@@ -42,6 +42,7 @@ class ShortDataClient:
 
 
     def getSettlementDates(self) -> list[date]:
+        # Get all settlement dates (mid-month and end-of-month) between the start and end dates, adjusted to the last market open day
         dates = []    
 
         def getLastMarketOpenDay(d: date) -> date:
@@ -74,6 +75,7 @@ class ShortDataClient:
 
 
     def fetchReport(self, session: requests.Session, url: str) -> pd.DataFrame:
+        # Fetch the CSV report from the given URL with retries and return it as a DataFrame
         for attempt in range(1, 5):
             try:
                 # self.rateLimiter.wait()
@@ -107,6 +109,7 @@ class ShortDataClient:
 
 
     def cleanDataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        # Clean and filter the DataFrame to keep only relevant columns and rows, and standardise column names
         if df.empty:
             return df
 
@@ -142,6 +145,7 @@ class ShortDataClient:
 
 
     def processSingleDate(self, d: date, session: requests.Session) -> pd.DataFrame:
+        # Process a single settlement date: fetch the report, clean it, and return the DataFrame
         dStr = d.strftime("%Y%m%d")
         url = CSV_URL_FEED.format(dateStr=dStr)
 
@@ -157,6 +161,7 @@ class ShortDataClient:
             if self.shortDataPath.exists():
                 self.shortDataPath.unlink()
 
+        # Get all settlement dates and process them in parallel using a thread pool
         settlementDates = self.getSettlementDates()
         if pbar is None:
             pbar = tqdm(
@@ -175,7 +180,7 @@ class ShortDataClient:
 
         dataframes = [None] * len(settlementDates)
 
-
+        # Run through all settlement dates in in parallel, fetching and processing 
         with ThreadPoolExecutor(max_workers=8) as executor:
             futureToIndex = {
                 executor.submit(self.processSingleDate, d, session): i 
@@ -191,6 +196,7 @@ class ShortDataClient:
                     dataframes[index] = pd.DataFrame()
                 pbar.update(1)
 
+        # Store all results into a single df
         combined = pd.concat(dataframes, ignore_index=True, sort=False)
         numericCols = ["currentShortPositions", "previousShortPositions", "avgDailyVolume", "daysToCover", "changePercent"]
         for col in numericCols:

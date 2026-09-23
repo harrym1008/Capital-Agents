@@ -1,5 +1,6 @@
 import exchange_calendars as xcals
 
+# Tracks the open days of the NYSE market between a given start and end date 
 class MarketCalendar:
     def __init__(self, startDate, endDate):
         self.nyseCalendar = xcals.get_calendar("XNYS")

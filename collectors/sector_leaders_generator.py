@@ -1,31 +1,22 @@
 import os
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import concurrent.futures
 import pandas as pd
-import numpy as np
 import pyarrow.parquet as pq
 from tqdm import tqdm
 from typing import Optional, Dict, List
 
-from collectors.constants import (
-    ALL_TICKERS_FILE,
-    NYSE_DIRECTORY,
-    NASDAQ_DIRECTORY,
-    SECTOR_LEADERS_PARQUET_PATH,
-    NEW_YORK,
-    UTC
-)
-from collectors.sector_dl_client import DB_SECTOR_TO_TICKER, GICS_SECTORS
+from collectors.constants import ALL_TICKERS_FILE, NYSE_DIRECTORY, NASDAQ_DIRECTORY, SECTOR_LEADERS_PARQUET_PATH, NEW_YORK
+from collectors.sector_dl_client import DB_SECTOR_TO_TICKER
 
 
+# Generates a parquet file containing the top 25 tickers by market cap for each sector on each trading day
 class SectorLeadersGenerator:
     def __init__(self, outputParquetPath: str = SECTOR_LEADERS_PARQUET_PATH):
         self.outputParquetPath = outputParquetPath
         self.tickerPaths = self.buildTickerPathsMap()
 
     def buildTickerPathsMap(self) -> Dict[str, str]:
+        # Build a mapping of tickers to their corresponding parquet file paths in the NYSE and NASDAQ directories
         paths = {}
         if os.path.exists(NYSE_DIRECTORY):
             for fname in os.listdir(NYSE_DIRECTORY):
@@ -68,6 +59,7 @@ class SectorLeadersGenerator:
         if not validPaths:
             return {}
 
+        # Read market cap data for each ticker in parallel using a thread pool
         with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
             futureToTicker = {executor.submit(self.readTickerMarketCaps, t, path): t for t, path in validPaths}
             for future in concurrent.futures.as_completed(futureToTicker):
@@ -83,11 +75,12 @@ class SectorLeadersGenerator:
 
         sectorDateMap = {}
         for dateVal, group in combined.groupby("date", sort=True):
-            topGroup = group.head(25)
+            topGroup = group.head(25)       # Get the top 25 tickers by market cap for this date
             topTickers = topGroup["ticker"].tolist()
             sectorDateMap[dateVal] = topTickers
 
         return sectorDateMap
+
 
     def generateSectorLeaders(self, pbar: Optional[tqdm] = None) -> str:
         if not os.path.exists(ALL_TICKERS_FILE):
@@ -108,7 +101,7 @@ class SectorLeadersGenerator:
                 (tickersDf["sector"] == dbKey) &
                 (tickersDf["industry"].notna()) &
                 (tickersDf["industry"].str.lower() != "unknown")
-            ]
+            ]   # Only consider tickers with a valid industry for this sector
             sectorTickers = subset["ticker"].dropna().unique().tolist()
             dateMap = self.processSingleSector(dbKey, sectorTickers)
             sectorResults[dbKey] = dateMap
@@ -135,17 +128,3 @@ class SectorLeadersGenerator:
         os.makedirs(os.path.dirname(self.outputParquetPath), exist_ok=True)
         resultDf.to_parquet(self.outputParquetPath, engine="pyarrow", index=False)
         return self.outputParquetPath
-
-
-def runSectorLeadersGeneration():
-    print("=" * 60)
-    print("  Generating Sector Leaders Parquet")
-    print("=" * 60, "\n")
-    generator = SectorLeadersGenerator()
-    with tqdm(total=11, desc="[SECTOR LEADERS]") as pbar:
-        outputPath = generator.generateSectorLeaders(pbar=pbar)
-    print(f"\nCompleted! Saved to: {outputPath}")
-
-
-if __name__ == "__main__":
-    runSectorLeadersGeneration()
