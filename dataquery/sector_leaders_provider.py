@@ -10,6 +10,7 @@ from dataquery.lru_cache import LRUCache
 from dataquery.keyed_lock import KeyedLockManager
 
 
+# Provider querying point-in-time sector market cap leaders from parquet
 class SectorLeadersProvider:
     def __init__(self, cache: Optional[LRUCache] = None, parquetPath: str = SECTOR_LEADERS_PARQUET_PATH):
         self.cache = cache
@@ -18,6 +19,7 @@ class SectorLeadersProvider:
         self.keyedLocks = KeyedLockManager()
 
     def normaliseTimestamp(self, date: pd.Timestamp) -> pd.Timestamp:
+        # Normalise timestamp to NY calendar day boundary
         ts = pd.Timestamp(date)
         if ts.tzinfo is None:
             ts = ts.tz_localize(NEW_YORK)
@@ -26,9 +28,12 @@ class SectorLeadersProvider:
         return ts.normalize().tz_localize(None)
 
     def isDataAvailable(self) -> bool:
+        # Check if parquet database file exists on disk
         return os.path.exists(self.parquetPath)
 
+
     def getSectorLeaders(self, sector: str, asOfDate: pd.Timestamp, limit: int = 25) -> List[str]:
+        # Return list of leading tickers for a specific sector as of target date
         allLeaders = self.getAllSectorLeaders(asOfDate, limit=limit)
         cleanSec = sector.upper()
         if cleanSec in allLeaders:
@@ -36,7 +41,9 @@ class SectorLeadersProvider:
         secLower = sector.lower().replace(" ", "_")
         return allLeaders.get(secLower, [])
 
+
     def getAllSectorLeaders(self, asOfDate: pd.Timestamp, limit: int = 25) -> Dict[str, List[str]]:
+        # Fetch dictionary mapping all sectors to ranked leader ticker lists
         if not self.isDataAvailable():
             return {}
 
@@ -57,6 +64,7 @@ class SectorLeadersProvider:
 
             cursor = self.con.cursor()
             escapedPath = self.parquetPath.replace("\\", "/")
+            # Query the closest snapshot prior to or on asOfDate
             query = f"""
                 SELECT *
                 FROM read_parquet('{escapedPath}')
@@ -83,6 +91,7 @@ class SectorLeadersProvider:
                     else:
                         tickers = []
 
+                    # Truncate to desired rank limit
                     if limit and len(tickers) > limit:
                         tickers = tickers[:limit]
 

@@ -15,6 +15,7 @@ from dataquery.lru_cache import LRUCache
 CSV_URL_FEED = "https://cdn.finra.org/equity/otcmarket/biweekly/shrt{dateStr}.csv"
 
 
+# Container for short interest metrics
 @dataclass
 class ShortInterest:
     date: pd.Timestamp
@@ -26,6 +27,7 @@ class ShortInterest:
     daysToCover: float
 
 
+# Provider querying FINRA bi-weekly equity short interest data
 class ShortDataProvider:
     def __init__(self, cache: LRUCache, rateLimiters: GlobalRateLimiters):
         self.cache = cache
@@ -36,6 +38,7 @@ class ShortDataProvider:
         self.maxLocalDate = self.getMaxLocalDate()
 
     def normaliseTimestamp(self, before: pd.Timestamp) -> pd.Timestamp:
+        # Convert timestamp to UTC naive representation
         ts = pd.Timestamp(before)
         if ts.tzinfo is None:
             ts = ts.tz_localize(UTC)
@@ -44,6 +47,7 @@ class ShortDataProvider:
         return ts.tz_localize(None)
 
     def getMaxLocalDate(self) -> pd.Timestamp:
+        # Find maximum settlement date present in local short interest parquet
         if os.path.exists(self.shortDataPath):
             try:
                 res = self.con.execute(f"SELECT MAX(date) FROM read_parquet('{self.shortDataPath}')").fetchone()
@@ -57,6 +61,7 @@ class ShortDataProvider:
         return self.maxLocalDate
 
     def downloadNonLocalShortInterest(self, startDate: pd.Timestamp, endDate: pd.Timestamp):
+        # Fetch biweekly short interest CSV files directly from FINRA feed
         session = requests.Session()
         session.headers.update({"User-Agent": "Mozilla/5.0 (CapitalAgents)"})
 
@@ -81,6 +86,7 @@ class ShortDataProvider:
                 try:
                     resp = session.get(url, timeout=10)
                     if resp.status_code == 200 and resp.text.strip():
+                        # Read the response CSV into a DataFrame and standardise columns
                         df = pd.read_csv(StringIO(resp.text), sep="|", engine="python")
                         if not df.empty and "settlementDate" in df.columns:
                             colsToKeep = ["settlementDate", "symbolCode", "marketClassCode", 
@@ -108,6 +114,7 @@ class ShortDataProvider:
             else:
                 cur = date(cur.year, cur.month + 1, 1)
 
+        # Ingest incremental records into DuckDB in-memory table
         if fetched:
             dfInc = pd.concat(fetched, ignore_index=True)
             self.con.register("temp_inc", dfInc)
@@ -116,6 +123,7 @@ class ShortDataProvider:
             self.con.unregister("temp_inc")
 
     def ensureCoverage(self, targetTimestamp: pd.Timestamp):
+        # Trigger incremental fetch if target date exceeds local max date
         maxLocal = self.getMaxLocalDate()
         if targetTimestamp > maxLocal:
             with self.lock:
@@ -123,6 +131,7 @@ class ShortDataProvider:
                 self.maxLocalDate = targetTimestamp
 
     def getQueryRelationSql(self) -> str:
+        # Construct DuckDB relation unifying local parquet and incremental buffer
         hasInc = False
         try:
             res = self.con.execute("SELECT COUNT(*) FROM inc_short_table").fetchone()
@@ -148,6 +157,7 @@ class ShortDataProvider:
         startDate: pd.Timestamp = None,
         endDate: pd.Timestamp = None
     ) -> pd.DataFrame:
+        # Retrieve short interest history for a single ticker
         if startDate is None and endDate is None:
             raise ValueError("At least one of startDate or endDate must be provided.")
 
@@ -213,6 +223,7 @@ class ShortDataProvider:
         startDate: pd.Timestamp = None,
         endDate: pd.Timestamp = None
     ) -> pd.DataFrame:
+        # Query short interest histories across a list of tickers
         if not tickers:
             return pd.DataFrame()
         if startDate is None and endDate is None:
@@ -225,6 +236,7 @@ class ShortDataProvider:
         return output 
 
     def getLatestShortInterestForTicker(self, ticker: str, before: pd.Timestamp) -> ShortInterest | None:
+        # Retrieve latest short interest record prior to cut-off date
         df = self.getShortInterestForTicker(ticker, endDate=before)
         if df.empty:
             return None

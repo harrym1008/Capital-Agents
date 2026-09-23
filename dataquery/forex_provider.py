@@ -10,6 +10,7 @@ from dataquery.lru_cache import LRUCache
 from collectors.forex_dl_client import Currency, CURRENCY_MAP
 
 
+# Provider querying daily foreign exchange rates converted to USD
 class ForexDataProvider:
     def __init__(self, startDate: pd.Timestamp, endDate: pd.Timestamp, cache: LRUCache, rateLimiters: GlobalRateLimiters):
         self.startDate = self.normaliseTimestamp(startDate)
@@ -22,6 +23,7 @@ class ForexDataProvider:
         self.availableCurrencies["USD"] = None
 
     def normaliseTimestamp(self, ts: pd.Timestamp) -> pd.Timestamp:
+        # Convert timestamp to UTC naive representation
         ts = pd.Timestamp(ts)
         if ts.tzinfo is None:
             ts = ts.tz_localize(UTC)
@@ -30,6 +32,7 @@ class ForexDataProvider:
         return ts.tz_localize(None)
 
     def buildForexIndex(self):
+        # Index locally available FX parquet files
         available = {}
         if not os.path.isdir(FOREX_DIRECTORY):
             return available
@@ -42,6 +45,7 @@ class ForexDataProvider:
         return available
 
     def downloadNonLocalForex(self, currencyCode: str, startDate: pd.Timestamp, endDate: pd.Timestamp) -> pd.DataFrame:
+        # Download missing FX rate data via Yahoo Finance
         currency = CURRENCY_MAP.get(currencyCode)
         if not currency or not currency.yfinanceTicker:
             return pd.DataFrame()
@@ -79,9 +83,11 @@ class ForexDataProvider:
             return pd.DataFrame()
 
     def loadCurrToUsdData(self, currencyCode: str) -> pd.DataFrame:
+        # Load full historical FX series for currency from parquet or cache
         if currencyCode not in self.availableCurrencies:
             return pd.DataFrame()
 
+        # Constant 1.0 exchange rate baseline for USD
         if currencyCode == "USD":
             df = pd.DataFrame({
                 "date": pd.date_range(start=self.startDate, end=self.endDate, freq="D"),
@@ -118,6 +124,7 @@ class ForexDataProvider:
             return df
 
     def ensureCoverage(self, currencyCode: str, targetDate: pd.Timestamp) -> pd.DataFrame:
+        # Ensure FX data covers up to target date, fetching incremental updates if required
         targetNorm = self.normaliseTimestamp(targetDate)
         with self.lock:
             df = self.loadCurrToUsdData(currencyCode)
@@ -137,6 +144,7 @@ class ForexDataProvider:
             return df
 
     def getCurrToUsdSeries(self, currencyCode: str, startDate: pd.Timestamp, endDate: pd.Timestamp) -> Optional[pd.DataFrame]:
+        # Retrieve date-filtered FX rate series
         with self.lock:
             if endDate is not None:
                 df = self.ensureCoverage(currencyCode, endDate)
@@ -156,6 +164,7 @@ class ForexDataProvider:
             return df.reset_index(drop=True)
 
     def getLatestCurrToUsd(self, currencyCode: str, before: pd.Timestamp) -> Optional[float]:
+        # Fetch most recent closing exchange rate prior to or on cut-off timestamp
         beforeNorm = self.normaliseTimestamp(before)
         if beforeNorm < self.startDate:
             return None

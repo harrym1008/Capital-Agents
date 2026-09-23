@@ -17,6 +17,7 @@ from collectors.sector_dl_client import GICS_SECTORS, DB_SECTOR_TO_TICKER
 load_dotenv()
 
 
+# Provider for financial news querying and downloading where necessary
 class NewsDataProvider:
     def __init__(self, cache: LRUCache, rateLimiters: GlobalRateLimiters):
         self.cache = cache
@@ -27,7 +28,9 @@ class NewsDataProvider:
         self.lastAttemptTime = {}
         self.maxLocalDate = self.getMaxLocalDate()
 
+
     def normaliseTimestamp(self, before: pd.Timestamp) -> pd.Timestamp:
+        # Convert timestamp to UTC naive representation
         ts = pd.Timestamp(before)
         if ts.tzinfo is None:
             ts = ts.tz_localize(UTC)
@@ -36,6 +39,7 @@ class NewsDataProvider:
         return ts.tz_localize(None)
 
     def getMaxLocalDate(self) -> pd.Timestamp:
+        # Inspect local news parquet and memory table to find latest timestamp
         maxDate = None
         if os.path.exists(NEWS_PARQUET_PATH):
             try:
@@ -63,10 +67,9 @@ class NewsDataProvider:
 
 
     def downloadNonLocalNews(self, startDate: pd.Timestamp, endDate: pd.Timestamp, 
-                             tickers: list[str] = None, 
-                             maxPages: Optional[int] = None, 
-                             sort: str = "asc",
-                             onProgressCallback: Optional[Callable[[float], None]] = None):
+                             tickers: list[str] = None, maxPages: Optional[int] = None, 
+                             sort: str = "asc", onProgressCallback: Optional[Callable[[float], None]] = None):
+        # Fetch news batches from Alpaca API, clean articles, and insert into in-memory table
         apiKeyId = os.getenv("ALPACA_API_KEY_2") or os.getenv("ALPACA_API_KEY")
         apiKeySecret = os.getenv("ALPACA_API_SECRET_2") or os.getenv("ALPACA_API_SECRET")
         if not apiKeyId or not apiKeySecret:
@@ -107,17 +110,18 @@ class NewsDataProvider:
                     break
                 newsData = resp.json()
                 articles = newsData.get("news", [])
-                for art in articles:
-                    artId = str(art.get("id", ""))
-                    rawDate = art.get("updated_at") or art.get("created_at") or art.get("date")
+
+                for article in articles:
+                    articleId = str(article.get("id", ""))
+                    rawDate = article.get("updated_at") or article.get("created_at") or article.get("date")
                     parsedDate = pd.to_datetime(rawDate).tz_convert("UTC").tz_localize(None) if rawDate else endDate
-                    headline = art.get("headline", "")
-                    content = art.get("content", "")
-                    author = art.get("author", "").strip()
-                    symbols = art.get("symbols", [])
+                    headline = article.get("headline", "")
+                    content = article.get("content", "")
+                    author = article.get("author", "").strip()
+                    symbols = article.get("symbols", [])
 
                     fetched.append({
-                        "id": artId,
+                        "id": articleId,
                         "date": parsedDate,
                         "headline": headline,
                         "content": content,
@@ -132,6 +136,7 @@ class NewsDataProvider:
                         elapsed = (latestArticleDate - startDate).total_seconds()
                     else:
                         elapsed = (endDate - latestArticleDate).total_seconds()
+                    # Update callback with percentage of time range covered
                     pct = min(99.0, max(0.0, (elapsed / totalSeconds) * 100.0))
                     try:
                         onProgressCallback(pct)
@@ -166,6 +171,7 @@ class NewsDataProvider:
     def ensureCoverage(self, targetTimestamp: pd.Timestamp, tickers: list[str] = None,
                        maxPages: Optional[int] = None, sort: str = "asc",
                        onProgressCallback: Optional[Callable[[float], None]] = None):
+        # Check date coverage and download incremental news batches if necessary
         maxLocal = self.getMaxLocalDate()
         if targetTimestamp <= maxLocal:
             if onProgressCallback:
@@ -231,6 +237,7 @@ class NewsDataProvider:
 
 
     def getQueryRelationSql(self) -> str:
+        # Build DuckDB SQL source combining local parquet archive and incremental table
         hasInc = False
         try:
             cursor = self.con.cursor()
@@ -252,6 +259,7 @@ class NewsDataProvider:
                 return None
 
     def truncateDfContent(self, df: pd.DataFrame, summaryMaxChars: int) -> pd.DataFrame:
+        # Truncate long article body text to maximum character length
         if df is None or df.empty or "content" not in df.columns:
             return df
         if summaryMaxChars is not None and summaryMaxChars > 0:
@@ -267,10 +275,10 @@ class NewsDataProvider:
         return df
 
     def getRecentNewsForTicker(self, ticker: str, before: pd.Timestamp, 
-                               limit: int = 12, 
-                               mustHaveContent: bool = False, 
+                               limit: int = 12, mustHaveContent: bool = False, 
                                maxReferencedTickers: int = 5,
                                summaryMaxChars: int = 2500) -> pd.DataFrame:
+        # Query most recent news articles for a single ticker prior to cut-off
         if limit < 1:
             return pd.DataFrame()
 
@@ -333,11 +341,10 @@ class NewsDataProvider:
             return df
 
     def getRecentNewsForTickers(self, tickers: list[str], before: pd.Timestamp, 
-                               limit: int = 12, 
-                               mustHaveContent: bool = False, 
-                               maxReferencedTickers: int = 5,
-                               summaryMaxChars: int = 2500,
+                               limit: int = 12, mustHaveContent: bool = False, 
+                               maxReferencedTickers: int = 5, summaryMaxChars: int = 2500,
                                onProgressCallback=None) -> pd.DataFrame:
+        # Retrieve recent news covering any ticker in provided list
         if limit < 1:
             return pd.DataFrame()
 
@@ -408,10 +415,9 @@ class NewsDataProvider:
             return df
 
     def getNewsForTickerBetweenTimes(self, ticker: str, start: pd.Timestamp, end: pd.Timestamp, 
-                                     mustHaveContent: bool = False, 
-                                     maxReferencedTickers: int = 5,
-                                     summaryMaxChars: int = 2500,
-                                     onProgressCallback: Optional[Callable[[float], None]] = None) -> pd.DataFrame:
+                                     mustHaveContent: bool = False, maxReferencedTickers: int = 5,
+                                     summaryMaxChars: int = 2500, onProgressCallback: Optional[Callable[[float], None]] = None) -> pd.DataFrame:
+        # Fetch news articles for ticker within a bounded time window
         ticker = ticker.upper()
         startNorm = self.normaliseTimestamp(start)
         endNorm = self.normaliseTimestamp(end)
@@ -442,6 +448,7 @@ class NewsDataProvider:
             if relationSql is None:
                 return pd.DataFrame()
 
+            # Build content filtering conditions based on parameters
             if summaryMaxChars is not None and summaryMaxChars > 0:
                 if mustHaveContent:
                     contentCond = "COALESCE(LENGTH(content), 0) > 0 AND contains(substr(content, 1, ?), ?)"
@@ -480,10 +487,9 @@ class NewsDataProvider:
             return df
 
     def getNewsForTickersBetweenTimes(self, tickers: list[str], start: pd.Timestamp, end: pd.Timestamp, 
-                                      mustHaveContent: bool = False, 
-                                      maxReferencedTickers: int = 5,
-                                      summaryMaxChars: int = 2500,
-                                      onProgressCallback: Optional[Callable[[float], None]] = None) -> pd.DataFrame:
+                                      mustHaveContent: bool = False, maxReferencedTickers: int = 5,
+                                      summaryMaxChars: int = 2500, onProgressCallback: Optional[Callable[[float], None]] = None) -> pd.DataFrame:
+        # Fetch articles for multiple tickers within a bounded time window
         tickerSet = sorted({t.upper() for t in tickers if t})
         if not tickerSet:
             return pd.DataFrame()
@@ -517,6 +523,7 @@ class NewsDataProvider:
             if relationSql is None:
                 return pd.DataFrame()
 
+            # Build content filtering conditions based on parameters
             if summaryMaxChars is not None and summaryMaxChars > 0:
                 if mustHaveContent:
                     contentCond = "COALESCE(LENGTH(content), 0) > 0 AND len(list_filter(?, t -> contains(substr(content, 1, ?), t))) > 0"
@@ -556,12 +563,10 @@ class NewsDataProvider:
             return df
 
     def getRecentSectorNews(self, sectorOrTicker: str, before: pd.Timestamp, 
-                            limit: int = 20, 
-                            startDate: Optional[pd.Timestamp] = None,
-                            maxOtherSectorTickers: Optional[int] = 2, 
-                            mustHaveContent: bool = False, 
-                            maxReferencedTickers: Optional[int] = 12,
-                            summaryMaxChars: int = 2500) -> pd.DataFrame:
+                            limit: int = 20, startDate: Optional[pd.Timestamp] = None,
+                            maxOtherSectorTickers: Optional[int] = 2,  mustHaveContent: bool = False, 
+                            maxReferencedTickers: Optional[int] = 12, summaryMaxChars: int = 2500) -> pd.DataFrame:
+        # Retrieve sector-focused news whilst filtering out article with too much overlap from other sectors
         if limit < 1:
             return pd.DataFrame()
 
@@ -692,6 +697,7 @@ class NewsDataProvider:
                                   startDate: Optional[pd.Timestamp] = None,
                                   maxReferencedTickers: int = 10,
                                   summaryMaxChars: int = 500) -> pd.DataFrame:
+        # Retrieve news articles mentioning any ticker within a sector's candidate universe
         if not candidateTickers or limit < 1:
             return pd.DataFrame()
 
@@ -747,5 +753,3 @@ class NewsDataProvider:
             df = self.truncateDfContent(df, summaryMaxChars)
             self.cache.put(key, df)
             return df
-
-

@@ -15,6 +15,7 @@ from dataquery.macro_provider import MacroSeries, MacroDataProvider
 from dataquery.ticker_provider import TickerDataProvider
 
 
+# Provider for sector resolution and sector ETF OHLCV price series
 class SectorDataProvider:
     def __init__(self, cache: LRUCache, rateLimiters: GlobalRateLimiters, 
                  macroProvider: MacroDataProvider, tickerProvider: TickerDataProvider):
@@ -30,6 +31,7 @@ class SectorDataProvider:
 
 
     def normaliseTimestamp(self, ts: pd.Timestamp) -> pd.Timestamp:
+        # Convert timestamp to UTC naive representation
         ts = pd.Timestamp(ts)
         if ts.tzinfo is None:
             ts = ts.tz_localize(UTC)
@@ -39,6 +41,7 @@ class SectorDataProvider:
 
 
     def resolveSector(self, sectorOrTicker: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
+        # Resolve sector identifier or company ticker to GICS sector ETF symbol and canonical name
         if sectorOrTicker is None:
             return None, "Unknown", "Sector not specified"
 
@@ -48,25 +51,25 @@ class SectorDataProvider:
 
         # Catch explicit unknown tokens
         if lower == "unknown":
-            pass    # Give up, return list of permitted sectors after this block
+            pass    # Reject unknown token and return list of permitted sectors
 
         else:
             # Direct GICS ETF ticker match
             if upper in GICS_SECTORS:
                 return upper, GICS_SECTORS[upper].name, None
 
-            # Direct DB underscored key match
+            # Direct database underscored key match
             if lower in DB_SECTOR_TO_TICKER:
                 etfTicker = DB_SECTOR_TO_TICKER[lower]
                 return etfTicker, GICS_SECTORS[etfTicker].name, None
 
-            # Space-separated lower match like "health care"
+            # Space-separated lower match (e.g. 'health care')
             spaced = lower.replace("_", " ")
             if spaced in SECTOR_NAME_TO_TICKER:
                 etfTicker = SECTOR_NAME_TO_TICKER[spaced]
                 return etfTicker, GICS_SECTORS[etfTicker].name, None
 
-            # Check if the query is a company ticker like NVDA, AAPL etc
+            # Check if query matches a company ticker (e.g. NVDA, AAPL)
             compProfile = self.tickerProvider.getTickerProfile(upper)
             if compProfile is not None:
                 compSector = (compProfile.sector or "").strip().lower()
@@ -76,16 +79,18 @@ class SectorDataProvider:
                     etfTicker = DB_SECTOR_TO_TICKER[compSector]
                     return etfTicker, GICS_SECTORS[etfTicker].name, f"Resolved from company ticker '{upper}' (sector: '{compSector}')."
 
-        # Give up!
+        # Fallback error with valid sector list
         allowedList = "'" + "', '".join(sorted(DB_SECTOR_TO_TICKER.keys())) + "'."
         return None, None, f"Sector or ticker '{sectorOrTicker}' not recognised. Choose from this list of sectors:\n{allowedList}"
 
     def resolveTicker(self, sectorOrTicker: str) -> Optional[str]:
+        # Return ETF symbol for sector or company ticker
         ticker, _, _ = self.resolveSector(sectorOrTicker)
         return ticker
 
 
     def buildSectorIndex(self) -> Dict[str, Optional[str]]:
+        # Index local parquet files for GICS sector ETFs
         available = {}
         for ticker in GICS_SECTORS:
             path = os.path.join(self.sectorDir, f"{ticker}.parquet")
@@ -96,6 +101,7 @@ class SectorDataProvider:
         return available
 
     def downloadNonLocalSector(self, ticker: str, startDate: pd.Timestamp, endDate: pd.Timestamp) -> pd.DataFrame:
+        # Download missing sector ETF OHLCV data from Yahoo Finance
         self.rateLimiters.yFinanceLimiter.wait()
         try:
             rawDf = yf.download(
@@ -129,6 +135,7 @@ class SectorDataProvider:
 
 
     def loadSector(self, ticker: str) -> pd.DataFrame:
+        # Load full sector ETF history from parquet or cache
         now = pd.Timestamp.now(tz="UTC")
         key = f"sector|full_{ticker}_{now.strftime('%Y-%m-%dH%H')}"
         cached = self.cache.get(key)
@@ -158,6 +165,7 @@ class SectorDataProvider:
             return df
 
     def ensureCoverage(self, ticker: str, targetDate: pd.Timestamp):
+        # Ensure sector ETF coverage up to target date with rate-limited cooldown
         targetNorm = self.normaliseTimestamp(targetDate)
         currentTime = time.time()
         cooldownSeconds = 1800  # 30 min cooldown per ticker
@@ -191,6 +199,7 @@ class SectorDataProvider:
 
     def getSectorData(self, sectorOrTicker: str, startDate: Optional[pd.Timestamp] = None, 
                       endDate: Optional[pd.Timestamp] = None) -> pd.DataFrame:
+        # Retrieve date-filtered sector ETF prices
         ticker = self.resolveTicker(sectorOrTicker)
         if not ticker:
             return pd.DataFrame()
@@ -211,4 +220,3 @@ class SectorDataProvider:
             filteredDf = filteredDf[filteredDf["date"] <= endNorm]
 
         return filteredDf.sort_values("date").reset_index(drop=True)
-

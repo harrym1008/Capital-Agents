@@ -11,6 +11,7 @@ import pandas as pd
 
 
 def getSize(obj):
+    # Calculate/estimate in-memory size of object in bytes
     if obj is None:
         return 0
 
@@ -21,7 +22,7 @@ def getSize(obj):
             return int(mem.sum())
         return int(mem)
 
-    # Numpy arrays
+    # NumPy arrays
     if isinstance(obj, np.ndarray):
         return int(obj.nbytes)
 
@@ -29,12 +30,12 @@ def getSize(obj):
     if isinstance(obj, (bytes, bytearray, memoryview)):
         return len(obj)
 
-    # Estimate via pympler
+    # Estimate via pympler if available
     try:
         from pympler import asizeof
         return asizeof.asizeof(obj)
     except ImportError:
-        # Final resort... may heavily underestimate, not much choice
+        # Fallback to sys.getsizeof if pympler is unavailable
         return sys.getsizeof(obj)
     
 
@@ -47,11 +48,11 @@ class CacheEntry:
 
 
 PERSIST_FILE_PATH = "_cache/persist_lru_cache.bin"
-PERSIST_DEBOUNCE = 60   # seconds
+PERSIST_DEBOUNCE = 60   # seconds to wait after last addition before persisting to disk (lowers I/O usage)
 
 
 
-# Least recently used cache
+# In-memory least recently used cache
 class LRUCache:
     def __init__(self, maxSizeBytes, main=False):
         self.maxSizeBytes = maxSizeBytes
@@ -74,6 +75,7 @@ class LRUCache:
 
 
     def persistLoop(self):
+        # Background worker thread debouncing disk saves
         while not self.stopEvent.is_set():
             self.addEvent.wait()
             if self.stopEvent.is_set():
@@ -94,9 +96,10 @@ class LRUCache:
 
 
     def loadFromDisk(self):
+        # Deserialise cached entries from disk on startup
         if not os.path.exists(PERSIST_FILE_PATH):
             print(f"LRUCache: No persisted cache file found at {PERSIST_FILE_PATH}. Starting with empty cache...")
-            return      # No persisted cache file exists, nothing to load
+            return
 
         try:
             with open(PERSIST_FILE_PATH, "rb") as f:
@@ -110,13 +113,14 @@ class LRUCache:
 
 
     def saveToDisk(self):
+        # Serialise valid cached entries to temporary file then atomically replace
         with self.lock:
             snapshot = OrderedDict()
             for key, entry in self.entries.items():
                 try:
                     pickle.dumps(entry.value)
                 except Exception:
-                    # Value cannot be pickled
+                    # Skip unpickleable objects
                     continue
                 snapshot[key] = entry
 
@@ -145,6 +149,7 @@ class LRUCache:
     
     
     def put(self, key, value):
+        # Store entry in cache and evict oldest items if exceeding size limit
         if value is None:
             # Store None values without calculating memory usage
             with self.lock:

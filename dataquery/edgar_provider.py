@@ -27,6 +27,7 @@ class FormType(Enum):
         self.formCode = formCode
 
 
+# Reference wrapper resolving company ticker and CIK
 class CompanyRef:
     def __init__(self, ticker: Optional[str], cik: Optional[str] = None):
         if ticker is None and cik is None:
@@ -35,6 +36,7 @@ class CompanyRef:
         self.cik = str(cik).strip().zfill(10) if cik else None
 
     def loadCik(self, data: TickerDataProvider):
+        # Resolve CIK from ticker provider if not already populated
         if self.cik is not None:
             return self.cik
         if self.ticker is None:
@@ -50,6 +52,7 @@ class CompanyRef:
         return self.cik or self.ticker or None
 
 
+# SEC EDGAR filings query provider with rate-limited downloads and caching
 class EdgarDataProvider:
     def __init__(self, tickerProvider: TickerDataProvider, cache: LRUCache, rateLimiter: RateLimiter):
         self.tickerProvider = tickerProvider
@@ -59,6 +62,7 @@ class EdgarDataProvider:
         set_identity(SEC_EDGAR_IDENTITY) 
 
     def normaliseTimestamp(self, before: pd.Timestamp) -> pd.Timestamp:
+        # Convert timestamp to UTC naive representation
         ts = pd.Timestamp(before)
         if ts.tzinfo is None:
             ts = ts.tz_localize(UTC)
@@ -67,6 +71,7 @@ class EdgarDataProvider:
         return ts.tz_localize(None)
 
     def loadFilingRefsForCompany(self, companyRef: CompanyRef, formType: FormType|List[FormType] = None) -> List[Filing]:
+        # Fetch filing references for company matching specified form types
         companyRef.loadCik(self.tickerProvider)
         formCodes = [formType.formCode] if isinstance(formType, FormType) else [f.formCode for f in formType]
 
@@ -99,6 +104,7 @@ class EdgarDataProvider:
                 return None
 
     def getLatestFilingRef(self, companyRef: CompanyRef, formType: FormType = None, before: pd.Timestamp = None) -> Filing:
+        # Retrieve latest filing reference strictly on or prior to target date
         companyRef.loadCik(self.tickerProvider)
         if before is None:
             before = pd.Timestamp.now(tz=UTC)
@@ -126,6 +132,7 @@ class EdgarDataProvider:
                     fDate = fDate.tz_convert(UTC)
                 fDate = fDate.tz_localize(None)
 
+                # Strictly filter filings released before or on the cut-off date
                 if fDate <= beforeNorm:
                     validFilings.append((fDate, filing))
             except Exception:
@@ -142,6 +149,7 @@ class EdgarDataProvider:
         return latestFiling
 
     def getFilingRefBeforeAnother(self, companyRef: CompanyRef, formType: FormType, beforeFiling: Filing) -> Filing:
+        # Retrieve filing preceding a given baseline filing
         if beforeFiling is None:
             return None
 
@@ -158,6 +166,7 @@ class EdgarDataProvider:
         return self.getLatestFilingRef(companyRef, formType=formType, before=beforeDate)
 
     def downloadFilingObjects(self, filing: Filing) -> Tuple[CompanyReport, XBRL]:
+        # Download parsed report and XBRL objects for specified filing
         if filing is None:
             return None, None
 
@@ -180,6 +189,7 @@ class EdgarDataProvider:
                 return None, None
 
     def findRefAndDownloadFilingObjects(self, companyRef: CompanyRef, formType: FormType, before: pd.Timestamp = None):
+        # Locate most recent filing reference and download its parsed objects
         latestFiling = self.getLatestFilingRef(companyRef, formType=formType, before=before)
         if latestFiling is None:
             return None

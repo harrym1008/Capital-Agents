@@ -29,7 +29,7 @@ class CompanyProfile:
     isin: str
 
 
-
+# Provider for company metadata, listing statuses, and logos
 class TickerDataProvider:
     def __init__(self):
         self.tickerIndex = self.buildTickerIndex()
@@ -37,6 +37,7 @@ class TickerDataProvider:
 
 
     def buildTickerIndex(self):
+        # Load local universe of tickers into memory index
         allTickersDf = pd.read_parquet(ALL_TICKERS_FILE)
 
         tickerIndex = {}
@@ -60,10 +61,12 @@ class TickerDataProvider:
     
 
     def getTickerProfile(self, ticker) -> CompanyProfile:
+        # Fetch company profile object for given ticker
         return self.tickerIndex.get(ticker)
     
 
     def getTickerProfileData(self, ticker, *fields):
+        # Return subset of company profile attributes as a dictionary
         profile = self.getTickerProfile(ticker)
         if profile is None:
             return None
@@ -72,6 +75,7 @@ class TickerDataProvider:
     
 
     def isTickerListed(self, ticker, date):
+        # Check whether ticker was actively listed on a specific date
         profile = self.getTickerProfile(ticker)
         if profile is None:
             return False
@@ -93,6 +97,7 @@ class TickerDataProvider:
 
 
     def getCompanyLogoFromFinnhub(self, ticker):
+        # Query Finnhub profile endpoint for company logo URL with fallback placeholder
         if ticker in self.logoIndex:
             return self.logoIndex[ticker]
 

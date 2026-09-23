@@ -16,6 +16,7 @@ from dataquery.keyed_lock import KeyedLockManager
 
 load_dotenv()
 
+# Mapping of macro indicators to FRED series IDs
 FRED_SERIES_MAP = {
     "CPI": "CPIAUCSL",
     "CORECPI": "CPILFESL",
@@ -29,6 +30,7 @@ FRED_SERIES_MAP = {
 }
 
 
+# Supported macroeconomic indicators and market benchmarks
 class MacroSeries(Enum):
     SP500 = ("SP500", "yfinance", "close")
     NDQ100 = ("NDQ100", "yfinance", "close")
@@ -61,6 +63,7 @@ class MacroSeries(Enum):
         self.valueCol = valueCol
 
 
+# Provider for querying macroeconomic metrics and index benchmark time-series
 class MacroDataProvider:
     def __init__(self, cache: LRUCache, rateLimiters: GlobalRateLimiters):
         self.cache = cache
@@ -74,6 +77,7 @@ class MacroDataProvider:
 
 
     def normaliseTimestamp(self, ts: pd.Timestamp) -> pd.Timestamp:
+        # Convert timestamp to UTC naive representation
         ts = pd.Timestamp(ts)
         if ts.tzinfo is None:
             ts = ts.tz_localize(UTC)
@@ -82,6 +86,7 @@ class MacroDataProvider:
         return ts.tz_localize(None)
 
     def buildMacroIndex(self):
+        # Index local parquet file paths for macro series
         available = {}
         for series in MacroSeries:
             path = os.path.join(self.macroDir, f"{series.parquetName}.parquet")
@@ -92,6 +97,7 @@ class MacroDataProvider:
         return available
 
     def downloadBatchYfinance(self, seriesList: list, startDate: pd.Timestamp, endDate: pd.Timestamp, onProgressCallback=None) -> dict:
+        # Batch download market index time-series via Yahoo Finance
         results = {}
         if not seriesList:
             return results
@@ -111,6 +117,7 @@ class MacroDataProvider:
             return results
 
         try:
+            # One bulk download for all tickers, to reduce API calls
             rawDf = yf.download(
                 tickers=yfTickers,
                 start=startDate.strftime("%Y-%m-%d"),
@@ -132,6 +139,7 @@ class MacroDataProvider:
                         seriesDf = rawDf.copy()
                     else:
                         if isinstance(rawDf.columns, pd.MultiIndex):
+                            # Extract the relevant series data from multi-index columns
                             seriesDf = rawDf.xs(yfTicker, axis=1, level=1).copy()
                         else:
                             continue
@@ -160,10 +168,12 @@ class MacroDataProvider:
         return results
 
     def downloadBatchFred(self, seriesList: list, startDate: pd.Timestamp, endDate: pd.Timestamp, onProgressCallback=None) -> dict:
+        # Download multiple FRED series concurrently using thread pool
         results = {}
         if not seriesList or not self.fredClient:
             return results
 
+        # Helper function to fetch a single FRED series 
         def fetchSingleFred(series: MacroSeries):
             fredId = FRED_SERIES_MAP.get(series.parquetName)
             if not fredId:
@@ -192,6 +202,7 @@ class MacroDataProvider:
             except Exception:
                 return series, pd.DataFrame()
 
+        # Use thread pool to fetch multiple FRED series concurrently
         with ThreadPoolExecutor(max_workers=min(len(seriesList), 8)) as executor:
             futureToSeries = {executor.submit(fetchSingleFred, s): s for s in seriesList}
             for future in as_completed(futureToSeries):
@@ -207,6 +218,7 @@ class MacroDataProvider:
         return results
 
     def downloadNonLocalMacro(self, name: MacroSeries, startDate: pd.Timestamp, endDate: pd.Timestamp) -> pd.DataFrame:
+        # Route download requests to appropriate data provider
         if name.source == "yfinance":
             res = self.downloadBatchYfinance([name], startDate, endDate)
             return res.get(name, pd.DataFrame())
@@ -217,6 +229,7 @@ class MacroDataProvider:
 
 
     def loadSeries(self, name: MacroSeries) -> pd.DataFrame:
+        # Load time-series dataframe for requested macro indicator from cache or disk
         key = f"macro|full_{name.parquetName}"
         cached = self.cache.get(key)
         if cached is not None:
@@ -247,6 +260,7 @@ class MacroDataProvider:
             return df
 
     def ensureBulkCoverage(self, names: list, targetDate: pd.Timestamp, onProgressCallback=None):
+        # Verify coverage for multiple series and trigger batched downloads for stale series
         targetNorm = self.normaliseTimestamp(targetDate)
         now = time.time()
         cooldownSeconds = 3600  # 1 hour cooldown per series/target date
@@ -270,9 +284,9 @@ class MacroDataProvider:
             elif name.parquetName in ["CPI", "CORECPI", "UNEMPLOYMENT", "FEDFUNDS"]:
                 staleThreshold = 32  # Monthly series
             elif targetNorm.weekday() in [5, 6]:
-                staleThreshold = 3  # Weekend gap for daily series
+                staleThreshold = 3   # Weekend gap for daily series
             else:
-                staleThreshold = 1  # Daily series
+                staleThreshold = 1   # Daily series
 
             if daysDiff > staleThreshold:
                 checkKey = (name.parquetName, targetNorm.strftime("%Y-%m-%d"))
@@ -329,16 +343,16 @@ class MacroDataProvider:
 
 
     def ensureCoverage(self, name: MacroSeries, targetDate: pd.Timestamp) -> pd.DataFrame:
+        # Ensure single series coverage up to target date
         self.ensureBulkCoverage([name], targetDate)
         return self.loadSeries(name)
 
     def getAllSeries(self) -> list:
+        # Return list of all available MacroSeries enum items
         return list(MacroSeries)
 
-    def getSeries(self, 
-                  name: MacroSeries, 
-                  startDate: pd.Timestamp,
-                  endDate: pd.Timestamp) -> pd.DataFrame:
+    def getSeries(self, name: MacroSeries, startDate: pd.Timestamp, endDate: pd.Timestamp) -> pd.DataFrame:
+        # Retrieve date-bounded time-series for macro indicator
         df = self.ensureCoverage(name, endDate)
 
         if df.empty:
@@ -353,9 +367,8 @@ class MacroDataProvider:
 
         return df.reset_index(drop=True)
 
-    def getLatestValue(self, 
-                       name: MacroSeries, 
-                       before: pd.Timestamp):
+    def getLatestValue(self, name: MacroSeries, before: pd.Timestamp):
+        # Fetch single latest reading strictly on or prior to cut-off date
         df = self.ensureCoverage(name, before)
         if df.empty:
             return None
@@ -368,6 +381,7 @@ class MacroDataProvider:
         return prior.iloc[-1][name.valueCol]
 
     def getSnapshot(self, names: list, before: pd.Timestamp, onProgressCallback=None) -> pd.DataFrame:
+        # Retrieve snapshot of latest values across multiple macro series
         self.ensureBulkCoverage(names, before, onProgressCallback=onProgressCallback)
         beforeNorm = self.normaliseTimestamp(before)
 
@@ -391,7 +405,6 @@ class MacroDataProvider:
                 "value": last[name.valueCol]
             })
 
-
         if not rows:
             return pd.DataFrame(columns=["series", "date", "value"])
 
@@ -399,6 +412,7 @@ class MacroDataProvider:
 
 
     def getLowest(self, name: MacroSeries, startDate: pd.Timestamp, endDate: pd.Timestamp):
+        # Find minimum value and corresponding timestamp in date range
         df = self.getSeries(name, startDate=startDate, endDate=endDate)
         if df.empty:
             return None, None
@@ -412,6 +426,7 @@ class MacroDataProvider:
         return row["date"], row[valueCol]
 
     def getHighest(self, name: MacroSeries, startDate: pd.Timestamp, endDate: pd.Timestamp):
+        # Find maximum value and corresponding timestamp in date range
         df = self.getSeries(name, startDate=startDate, endDate=endDate)
         if df.empty:
             return None, None

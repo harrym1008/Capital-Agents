@@ -11,6 +11,7 @@ from dataquery.lru_cache import LRUCache
 from dataquery.ticker_provider import TickerDataProvider
 
 
+# Provider for daily stock OHLCV prices, corporate actions, and split adjustments
 class DailyPriceProvider:
     def __init__(self, tickerDataProvider: TickerDataProvider, cache: LRUCache, rateLimiters: GlobalRateLimiters, allowOnlineDownloads: bool = True):
         self.cache = cache
@@ -23,6 +24,7 @@ class DailyPriceProvider:
         self.allowOnlineDownloads = allowOnlineDownloads
 
     def timestampToNyDay(self, ts):
+        # Convert timestamp to normalised NY trading calendar day
         ts = pd.Timestamp(ts)
         if ts.tzinfo is None:
             ts = ts.tz_localize(NEW_YORK)
@@ -31,6 +33,7 @@ class DailyPriceProvider:
         return ts.normalize()
 
     def downloadNonLocalOhlcv(self, ticker: str, startDate: pd.Timestamp, endDate: pd.Timestamp) -> pd.DataFrame:
+        # Download recent daily OHLCV bars from Yahoo Finance when exceeding local date range
         if not self.allowOnlineDownloads:
             return pd.DataFrame()
 
@@ -59,6 +62,7 @@ class DailyPriceProvider:
 
             dfOnline["date"] = dateCol
 
+            # Populate fallback defaults for missing columns
             if "vwap" not in dfOnline.columns:
                 dfOnline["vwap"] = dfOnline["close"]
             if "volume" not in dfOnline.columns:
@@ -76,6 +80,7 @@ class DailyPriceProvider:
                 dfOnline["outstandingShares"] = 0.0
 
             def formatMarketCap(marketCap):
+                # Format market cap number into human-readable compact string
                 def clean(number):
                     if number >= 100:
                         return f"{number:.0f}"
@@ -110,6 +115,7 @@ class DailyPriceProvider:
             return pd.DataFrame()
 
     def adjustPriceDataSplits(self, df: pd.DataFrame, ticker: str, referenceDate: pd.Timestamp = None) -> pd.DataFrame:
+        # Rebase historical price series to reference date split factor
         if df.empty or "splitFactor" not in df.columns:
             return df
 
@@ -130,6 +136,7 @@ class DailyPriceProvider:
         if refSplitFactor is None or pd.isna(refSplitFactor):
             refSplitFactor = df["splitFactor"].iloc[-1]
 
+        # Apply multiplier across price columns
         if pd.notna(refSplitFactor) and refSplitFactor != 0:
             for col in ["open", "high", "low", "close", "vwap"]:
                 if col in df.columns:
@@ -138,17 +145,20 @@ class DailyPriceProvider:
         return df
 
     def getSingleDayTickerData(self, ticker: str, date: pd.Timestamp, referenceDate: pd.Timestamp = None):
+        # Fetch single trading day OHLCV record with split adjustment
         if not self.tickerDataProvider.isTickerListed(ticker, date):
             return None
 
         dateNy = self.timestampToNyDay(date)
         key = f"ohlcv|single_{ticker}_{dateNy.strftime('%Y-%m-%dH%H')}"
+
         with self.lock:
             cached = self.cache.get(key)
             result = None
             if cached is not None:
                 result = cached
             elif self.allowOnlineDownloads and dateNy > self.endDate:
+                # We need to download the data from Yahoo Finance for dates beyond local coverage
                 dfOnline = self.downloadNonLocalOhlcv(ticker, dateNy - pd.Timedelta(days=7), dateNy)
                 if not dfOnline.empty and dateNy in dfOnline.index:
                     row = dfOnline.loc[dateNy]
@@ -164,6 +174,7 @@ class DailyPriceProvider:
 
             if result is None:
                 dfYear = self.getYear(ticker, date.year)
+                # Load previous year data for first week boundary lookup
                 if dateNy.dayofyear <= 7 and dateNy.year >= 2016:
                     dfPrevYear = self.getYear(ticker, dateNy.year - 1)
                     dfYear = pd.concat([dfPrevYear, dfYear]).sort_index()        
@@ -172,7 +183,7 @@ class DailyPriceProvider:
                     if dateNy in dfYear.index:
                         row = dfYear.loc[dateNy]
                         result = row.iloc[0] if isinstance(row, pd.DataFrame) else row
-                        self.cache.put(key, result)
+                        self.cache.put(key, result)     # Cache the result for future lookups
                     else:
                         validDates = dfYear.index[dfYear.index < dateNy]
                         if not validDates.empty:
@@ -182,6 +193,7 @@ class DailyPriceProvider:
                                 result = row.iloc[0] if isinstance(row, pd.DataFrame) else row
                                 self.cache.put(key, result)
 
+            # Apply split adjustment relative to reference date if provided
             if referenceDate is not None and result is not None and "splitFactor" in result:
                 refRow = self.getSingleDayTickerData(ticker, referenceDate)
                 if refRow is not None and "splitFactor" in refRow:
@@ -196,6 +208,7 @@ class DailyPriceProvider:
             return result
 
     def getPeriodDailyTickerData(self, ticker: str, startDate: pd.Timestamp, endDate: pd.Timestamp, referenceDate: pd.Timestamp = None):
+        # Fetch daily OHLCV dataframe over date range stitching annual parquet slices
         if not self.tickerDataProvider.isTickerListed(ticker, startDate) and  \
            not self.tickerDataProvider.isTickerListed(ticker, endDate):
             return pd.DataFrame()
@@ -212,6 +225,7 @@ class DailyPriceProvider:
                 df = cached
             else:
                 parts = []
+                # Load parquet slices for years covered within local dataset range
                 if startNy <= self.endDate:
                     localEndNy = min(endNy, self.endDate)
                     years = range(startNy.year, localEndNy.year + 1)
@@ -220,6 +234,7 @@ class DailyPriceProvider:
                         if not dfYear.empty:
                             parts.append(dfYear)
 
+                # Fetch online updates for period past local end date
                 if self.allowOnlineDownloads and endNy > self.endDate:
                     gapStart = max(startNy, self.endDate)
                     dfOnline = self.downloadNonLocalOhlcv(ticker, gapStart, endNy)
@@ -239,6 +254,7 @@ class DailyPriceProvider:
             return self.adjustPriceDataSplits(df, ticker, referenceDate=referenceDate)
 
     def getYear(self, ticker: str, year: int):
+        # Load annual parquet partition for ticker
         key = f"ohlcv|{ticker}_{year}"
         now = pd.Timestamp.now(tz="UTC")
         if year == now.year:
@@ -278,16 +294,19 @@ class DailyPriceProvider:
             df["date"] = dateCol
             dateNy = dateCol.dt.tz_convert(NEW_YORK).dt.normalize()
             df = df.assign(dateNy=dateNy).set_index("dateNy").sort_index()
-        
+
+            # Put the whole year into cache for future lookups
             self.cache.put(key, df)
             return df
 
     def getSingleDayCorpActions(self, date):
+        # Fetch corporate actions taking place on target date
         actions = self.getYearCorporateActions(date.year)
         dateNy = self.timestampToNyDay(date)
         return actions[actions["date"].dt.normalize() == dateNy]
 
     def getYearCorporateActions(self, year: int):
+        # Load corporate action records for given calendar year
         key = f"corpActions|{year}"
         now = pd.Timestamp.now(tz="UTC")
         if year == now.year:
@@ -307,6 +326,7 @@ class DailyPriceProvider:
             return result
 
     def buildTickerPathIndex(self):
+        # Index local parquet file paths across exchanges
         allTickersDf = pd.read_parquet(ALL_TICKERS_FILE)
 
         tickerPaths = {}
