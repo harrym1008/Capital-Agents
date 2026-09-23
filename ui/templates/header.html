@@ -11,7 +11,12 @@
     {% set currentPath = request.path.rstrip('/') if request else '' %}
     {% set pageDocs = {
         '/server-config': 'server-config',
-        '/llamacpp-setup': 'llamacpp-setup'
+        '/llamacpp-setup': 'llamacpp-setup',
+        '/single-equity-rating': 'single-equity-rating',
+        '/portfolio-creation': 'portfolio-creation',
+        '/portfolio-rebalancing': 'portfolio-rebalancing',
+        '/agent-portfolio-sim': 'agent-portfolio-sim',
+        '/user-portfolio-sim': 'user-portfolio-sim'
     } %}
     {% set docName = pageDocs.get(currentPath) %}
     {% if docName %}

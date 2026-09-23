@@ -1,13 +1,34 @@
-# CapitalAgents 
-A multi-agent, locally run, portfolio management system using multiple roles which LLM agents will complete their analyses under.
+# CapitalAgents
+CapitalAgents is a local-first, multi-agent financial intelligence and portfolio management platform. It convenes specialised teams of AI financial analysts - such as Macro Analysts, Bullish Value Analysts, Bearish Risk Analysts, Senior Risk Analysts, Stock Hunters, and Impartial Portfolio Managers - inside a structured Boardroom deliberation system. The agents perform deep fundamental research, debate risk-reward trade-offs, cite real financial data, and formulate equity ratings, asset allocations, and rebalancing decisions without temporal look-ahead bias. The platform also provides both user-driven paper-trading and autonomous agent-driven multi-period historical backtesting simulations.
 
 # Current Page: Server Configuration Page
 
-User can select from one of three main LLM servers:
-1. Llama.cpp - Runs LLMs locally through the llama.cpp project. This is the most common and recommended option for most users for privacy and local performance. Users must download llamacpp from https://github.com/ggerganov/llama.cpp, using their specific OS and AI acceleration hardware (CUDA, Vulkan, Metal, ROCm, etc.). Users must download GGUF model files from https://huggingface.co/. Models and their specific parameters can be setup into the platform by clicking the `Configure Llama.cpp` button. Clicking this button, then clicking the help button in that page will inform the user of a list of models they should consider using. The `Two Slots in Parallel` option can be used where `-np` > 1, which allows for multiple agents to run in parallel, speeding up the overall analysis time. The `Clear VRAM before Loading` is experimental and can cause system crashes, so don't recommend using it unless the user knows what they are doing (it fills up VRAM then clears it out immediately, hopefully making room for the LLM model to fit into VRAM). If the user asks about what models to run, or you wish to know more information, consider reading the page https://github.com/harrym1008/Capital-Agents/blob/main/gptdocs/llamacpp-setup.md. This recommends models that are confirmed to work very well with CapitalAgents itself (as of 15 September 2026).
+The Server Configuration page allows the user to select, configure, and launch the LLM server backend that powers all boardroom agent deliberations.
 
-2. OpenRouter - Runs LLMs through the OpenRouter API. Requires an API key from OpenRouter. This should be stored in the `.env` file as `OPENROUTER_API_KEY`. This option is recommended for users who want to use OpenRouter's hosted LLMs. Free models can be used here but are heavily rate limited to 50 requests per day, unless you have an account that has had $10 or more added to it. At this point, free model rate limits go up to 1000 requests a day. You can choose a model to use from the dropdown list or by searching, and each model has a list of providers you can force too. Token costs and cache hit costs are displayed for each model. This option is recommended for users who want to use OpenRouter's hosted LLMs.
+### Supported LLM Providers
+1. Llama.cpp (Recommended for local inference and privacy)
+   - Runs LLMs locally on the user's hardware via llama.cpp.
+   - Requires downloading llama-server.exe and GGUF model files (for example from HuggingFace).
+   - Click Configure Llama.cpp to set up executables, context sizes, GPU offloading, and per-model sampling parameters.
+   - Options include:
+     - Two Slots in Parallel: Enables -np 2, allowing two agents to generate concurrently to accelerate boardroom sessions.
+     - Clear VRAM before Loading: Experimental memory recovery feature.
+2. OpenRouter (Cloud-hosted API)
+   - Connects to OpenRouter's catalogue of hosted models.
+   - Requires setting OPENROUTER_API_KEY in the .env file.
+   - Provides searchable model selector, token pricing, prompt caching metrics, and optional provider routing overrides.
+   - Free models are supported but subject to daily rate limits.
+3. OpenAI Compatible (Universal API)
+   - Connects to any OpenAI-compatible endpoint, such as Ollama (very straightforward local setup), vLLM, LM Studio, OpenAI, or Google AI Studio.
+   - Requires entering the API Base URL, optional API key, and model ID.
 
-3. OpenAI Compatible - Runs LLMs through any OpenAI-compatible API, including OpenAI, Google AI Studio, Ollama and others. Requires that the base URL of the API be entered, the API key (if required, can be entered in the webpage itself), and the model name to be used. This option can be used with Ollama, which is a very easy-to-set-up local server for LLMs.
+### Operational Workflow
+- After selecting and configuring the provider, click Start Server.
+- Once running, connection status turns green in the top header and real-time logs stream in the logs panel.
+- To change providers or models, click Stop Server and reconfigure.
 
-Once a server is selected, the user clicks the `Start Server` button to start the server. The server will begin running, the user will be able to read the logs in the logs window. Tell them if they have any errors, that they should ask you for help. Running servers can be closed in this page by clicking `Stop Server`, where the user can select again from the beginning.
+### ChatGPT Guidance
+When assisting the user:
+- Ask what hardware they have (GPU VRAM, CPU, RAM) or whether they prefer local execution vs cloud APIs.
+- Recommend Llama.cpp for privacy and zero marginal cost, or Ollama / OpenAI-compatible if they want an easy local setup.
+- If the server fails to connect, guide them through port conflicts (default 8080 for llama-server, 9091/9092 for UI/WebSocket), missing executable paths, or missing API keys.
