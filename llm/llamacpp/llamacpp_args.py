@@ -175,8 +175,8 @@ def buildLlamaCppCommandLine(
     commandArgs.extend(["--host", "127.0.0.1"])
     commandArgs.extend(["--port", str(LLAMACPP_PORT)])
     commandArgs.extend(["-lv", "4"])
-    commandArgs.append("--context-shift")
-    commandArgs.append(["--reasoning-budget-message", "... my thinking allowance has been exhausted. I shall now produce my final response."])
+    commandArgs.extend(["--context-shift"])
+    commandArgs.extend(["--reasoning-budget-message", "... my thinking allowance has been exhausted. I shall now produce my final response."])
     
     # 2. Add -m <modelPath>
     commandArgs.extend(["-m", modelPath])
