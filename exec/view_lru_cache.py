@@ -12,6 +12,7 @@ CACHE_FILENAME = "_cache/persist_lru_cache.bin"
 
 
 def findCacheFile():
+    # Traverse upwards from working directory to locate persisted cache file
     dirpath = os.path.abspath(os.getcwd())
     while True:
         candidate = os.path.join(dirpath, CACHE_FILENAME)
@@ -24,6 +25,7 @@ def findCacheFile():
 
 
 def isJsonable(obj):
+    # Check if object can be serialised to JSON
     try:
         json.dumps(obj)
         return True
@@ -32,7 +34,7 @@ def isJsonable(obj):
 
 
 def safeStr(obj):
-    """Best-effort string conversion that never raises (some __repr__ hit the network)."""
+    # Best-effort string conversion that avoids unhandled network or representation errors
     for fn in (str, repr):
         try:
             return fn(obj)
@@ -42,7 +44,7 @@ def safeStr(obj):
 
 
 def convert(obj):
-    """Best-effort textual conversion for non-table values."""
+    # Format non-table objects into readable text or JSON representation
     if isinstance(obj, np.ndarray):
         return np.array2string(obj, max_line_width=200)
     if isinstance(obj, (bytes, bytearray)):
@@ -56,6 +58,7 @@ def convert(obj):
 
 
 def formatBytes(size):
+    # Format byte count into human-readable memory units
     for unit in ["B", "KB", "MB", "GB"]:
         if size < 1024:
             return f"{size:.2f} {unit}"
@@ -64,6 +67,7 @@ def formatBytes(size):
 
 
 def loadEntries(path):
+    # Deserialise cache tuples from disk
     if not os.path.exists(path):
         return []
     with open(path, "rb") as f:
@@ -79,6 +83,7 @@ def loadEntries(path):
     return entries
 
 
+# Debugging viewer designed to inspect content of the LRU cache on disk
 class Viewer(tk.Tk):
     def __init__(self, entries):
         super().__init__()
@@ -90,11 +95,11 @@ class Viewer(tk.Tk):
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
 
-        # Draggable split between left and right panes
+        # Draggable horizontal split between entry list and value preview
         self.panes = ttk.PanedWindow(self, orient="horizontal")
         self.panes.grid(row=0, column=0, sticky="nsew")
 
-        # ---- Left: entry list ----
+        # Left pane... cache key list
         left = ttk.Frame(self.panes, padding=5)
         left.columnconfigure(0, weight=1)
         left.rowconfigure(1, weight=1)
@@ -110,7 +115,7 @@ class Viewer(tk.Tk):
         for i, (key, _, _) in enumerate(entries):
             self.listbox.insert(tk.END, f"[{i}] {key}")
 
-        # ---- Right: value display ----
+        # Right pane... value inspection panel
         right = ttk.Frame(self.panes, padding=5)
         right.columnconfigure(0, weight=1)
         right.rowconfigure(1, weight=1)
@@ -126,7 +131,7 @@ class Viewer(tk.Tk):
         self.text = scrolledtext.ScrolledText(self.displayFrame, width=80)
         self.text.grid(row=0, column=0, sticky="nsew")
 
-        self.tree = None  # created lazily for dataframes
+        self.tree = None
 
         self.panes.add(left, weight=1)
         self.panes.add(right, weight=3)
@@ -137,14 +142,16 @@ class Viewer(tk.Tk):
             self.listbox.selection_set(0)
             self.updateDisplay(0)
 
-    def _clearDisplay(self):
+    def clearDisplay(self):
+        # Reset display widgets
         if self.tree is not None:
             self.tree.destroy()
             self.tree = None
         self.text.grid(row=0, column=0, sticky="nsew")
         self.text.delete("1.0", tk.END)
 
-    def _showDataFrame(self, df):
+    def showDataFrame(self, df):
+        # Render pandas DataFrame inside interactive Treeview table
         self.text.grid_remove()
         if self.tree is None:
             self.tree = ttk.Treeview(self.displayFrame, show="headings")
@@ -172,21 +179,23 @@ class Viewer(tk.Tk):
         self.updateDisplay(sel[0])
 
     def updateDisplay(self, index):
+        # Update detail view with selected entry contents
         value = self.values[index]
         size = self.sizes[index]
         self.valueLabel.config(text=f"Value  ({type(value).__name__})  |  {formatBytes(size)}")
 
         if isinstance(value, pd.DataFrame):
-            self._showDataFrame(value)
+            self.showDataFrame(value)
         elif isinstance(value, pd.Series):
-            self._clearDisplay()
+            self.clearDisplay()
             self.text.insert(tk.END, value.to_string())
         else:
-            self._clearDisplay()
+            self.clearDisplay()
             self.text.insert(tk.END, convert(value))
 
 
 def main():
+    # Discover cache file and launch Tkinter GUI
     cachePath, cacheRoot = findCacheFile()
     if cachePath is None:
         print(f"No persisted cache file found at {CACHE_FILENAME}.")

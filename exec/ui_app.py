@@ -34,6 +34,7 @@ from boardroom.boardroom_config import SingleEquityRatingConfig, PortfolioCreati
 from boardroom.boardroom_mgr import boardroomManager
 
 
+# Suppress super noisy polling requests in Werkzeug server logs
 class MetricsFilter(logging.Filter):
     def filter(self, record):
         return "/api/metrics" not in record.getMessage()
@@ -49,6 +50,7 @@ app.secret_key = "capital_agents_secret_key"
 registerApiRoutes(app)
 registerSimulationWsRoutes()
 
+# HTML page routes
 @app.route("/")
 def landingPage():
     return render_template("landing_page.html")
@@ -71,6 +73,7 @@ def userMarketSimPage():
 
 
 def routeOnlyIfModelLoaded(location):
+    # Require loaded LLM backend before accessing simulation views
     if serverManager.loadedModelType == LoadedModelType.NONE:
         return redirect("/")
     return render_template(location) 
@@ -93,12 +96,14 @@ def portfolioRebalancingPage():
 
 
 
-# Track connected websockets and the asyncio event loop
+# Connected WebSocket clients and event loop state
 connectedWebsockets = set()
 connectedWebsocketsLock = threading.Lock()
 eventLoop = None
 
+
 def broadcastEvent(eventData):
+    # Broadcast event payload across active WebSocket connections
     global connectedWebsockets, eventLoop
     if not eventLoop:
         return
@@ -121,16 +126,19 @@ def broadcastEvent(eventData):
 
 @app.route("/api/boardroom/status")
 def apiBoardroomStatus():
+    # Return active state of boardroom manager
     return jsonify({"isRunning": boardroomManager.isBoardroomActive()})
 
 
 @app.route("/api/boardroom/stop", methods=["POST"])
 def apiBoardroomStop():
+    # Request stop for running boardroom session
     stopped = boardroomManager.stopBoardroom(timeout=5.0)
     return jsonify({"ok": True, "stopped": stopped, "isRunning": boardroomManager.isBoardroomActive()})
 
 
 def handleBoardroomStart(data, websocket, eventLoop):
+    # Initialise and dispatch boardroom workflow based on configuration type
     engineType = data.get("engineType")
     if engineType == "portfolio_rebalancing":
         config = PortfolioRebalancingConfig.fromDict(data)
@@ -145,13 +153,16 @@ def handleBoardroomStart(data, websocket, eventLoop):
 
 
 def handleBoardroomStop(data, websocket, eventLoop):
+    # Signal boardroom manager to halt active agent execution
     stopped = boardroomManager.stopBoardroom(timeout=5.0)
     return {"ok": True, "stopped": stopped, "isRunning": boardroomManager.isBoardroomActive(), "message": "Stop requested."}
 
 def handleBoardroomStatus(data, websocket, eventLoop):
+    # Return current status flag for boardroom
     return {"ok": True, "action": "status", "isRunning": boardroomManager.isBoardroomActive()}
 
 def handleQaQuery(data, websocket, eventLoop):
+    # Dispatch Q&A query to boardroom agent in background worker thread
     query = data.get("query", "").strip()
     if not query:
         return {"ok": False, "error": "Query cannot be empty."}
@@ -171,6 +182,7 @@ def handleQaQuery(data, websocket, eventLoop):
 
 
 def handleQaDeleteTurn(data, websocket, eventLoop):
+    # Delete specific turn from active Q&A transcript
     turnIndex = data.get("turnIndex")
     if turnIndex is not None:
         ok = boardroomManager.deleteQnATurn(int(turnIndex))
@@ -179,12 +191,14 @@ def handleQaDeleteTurn(data, websocket, eventLoop):
 
 
 def handleGetSources(data, websocket, eventLoop):
+    # Fetch list of referenced citation sources from active boardroom session
     toolReg = boardroomManager.getToolRegistry()
     if hasattr(toolReg, "sourcesManager") and toolReg.sourcesManager:
         return {"ok": True, "sources": toolReg.sourcesManager.getSources()}
     return {"ok": True, "sources": []}
 
 
+# Register WebSocket action handlers
 registerWsAction("start", handleBoardroomStart)
 registerWsAction("stop", handleBoardroomStop)
 registerWsAction("status", handleBoardroomStatus)
@@ -195,6 +209,7 @@ registerWsAction("get_sources", handleGetSources)
 
 
 async def websocketHandler(websocket):
+    # Handle incoming WebSocket client connections and message routing
     global connectedWebsockets, eventLoop
     eventLoop = asyncio.get_running_loop()
     with connectedWebsocketsLock:
@@ -223,18 +238,17 @@ async def websocketHandler(websocket):
         print(f"Client disconnected from Boardroom WebSocket (remaining: {len(connectedWebsockets)})")
 
 def startWebsocketServer():
+    # Run async WebSocket server on dedicated port
     async def main():
         async with websockets.serve(websocketHandler, "127.0.0.1", WS_PORT) as server:
-            await asyncio.Future()  # run forever
-
+            await asyncio.Future()      # Run server loop forever
     asyncio.run(main())
 
 
 def startServer(debug: bool = True, useReloader: bool = False):
-    # Register global callback for agent simulation events
+    # Start background WebSocket listener and launch Flask application
     setEventCallback(broadcastEvent)
 
-    # Start WebSocket background server thread
     if not useReloader or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
         websocketThread = threading.Thread(
             target=startWebsocketServer,

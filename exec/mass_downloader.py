@@ -1,16 +1,8 @@
 import os, sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from collectors.ohlcv_dl_client import OHLCVDataClient
-from collectors.ticker_dl_client import TickerDataClient
-from collectors.news_dl_client import NewsClient
-from collectors.macro_dl_client import MacroDataClient
-from collectors.forex_dl_client import CurrencyDataClient
-from collectors.shortdata_dl_client import ShortDataClient
-from collectors.sector_dl_client import SectorDataClient
-from collectors.sector_leaders_generator import SectorLeadersGenerator
-
-from collectors.rate_limiter import GlobalRateLimiters
+from collectors import OHLCVDataClient, TickerDataClient, NewsClient, MacroDataClient, CurrencyDataClient, ShortDataClient, \
+    SectorDataClient, SectorLeadersGenerator, GlobalRateLimiters
 from collectors.constants import *
 
 from tqdm import tqdm
@@ -175,7 +167,6 @@ def runMassDownloadTool():
     print("=" * 60)
 
     # Step 3: Post download generators
-
     if downloading["sectorleaders"]["confirm"]:
         if os.path.exists(ALL_TICKERS_FILE):
             pbarLeaders = tqdm(total=11, desc="[SECTOR LEADERS]", position=0, leave=True)
