@@ -14,7 +14,8 @@ DISALLOWED_USER_KEYS = {
     "--host", "-h",
     "--port", "-p",
     "--log-verbosity", "-lv",
-    "-m", "--model"
+    "-m", "--model",
+    "--reasoning-budget-message"
 }
 
 SAMPLING_FLAGS = {
@@ -175,6 +176,7 @@ def buildLlamaCppCommandLine(
     commandArgs.extend(["--port", str(LLAMACPP_PORT)])
     commandArgs.extend(["-lv", "4"])
     commandArgs.append("--context-shift")
+    commandArgs.append(["--reasoning-budget-message", "... my thinking allowance has been exhausted. I shall now produce my final response."])
     
     # 2. Add -m <modelPath>
     commandArgs.extend(["-m", modelPath])

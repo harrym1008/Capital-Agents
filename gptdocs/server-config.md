@@ -1,0 +1,13 @@
+# CapitalAgents 
+A multi-agent, locally run, portfolio management system using multiple roles which LLM agents will complete their analyses under.
+
+# Current Page: Server Configuration Page
+
+User can select from one of three main LLM servers:
+1. Llama.cpp - Runs LLMs locally through the llama.cpp project. This is the most common and recommended option for most users for privacy and local performance. Users must download llamacpp from https://github.com/ggerganov/llama.cpp, using their specific OS and AI acceleration hardware (CUDA, Vulkan, Metal, ROCm, etc.). Users must download GGUF model files from https://huggingface.co/. Models and their specific parameters can be setup into the platform by clicking the `Configure Llama.cpp` button. Clicking this button, then clicking the help button in that page will inform the user of a list of models they should consider using. The `Two Slots in Parallel` option can be used where `-np` > 1, which allows for multiple agents to run in parallel, speeding up the overall analysis time. The `Clear VRAM before Loading` is experimental and can cause system crashes, so don't recommend using it unless the user knows what they are doing (it fills up VRAM then clears it out immediately, hopefully making room for the LLM model to fit into VRAM).
+
+2. OpenRouter - Runs LLMs through the OpenRouter API. Requires an API key from OpenRouter. This should be stored in the `.env` file as `OPENROUTER_API_KEY`. This option is recommended for users who want to use OpenRouter's hosted LLMs. Free models can be used here but are heavily rate limited to 50 requests per day, unless you have an account that has had $10 or more added to it. At this point, free model rate limits go up to 1000 requests a day. You can choose a model to use from the dropdown list or by searching, and each model has a list of providers you can force too. Token costs and cache hit costs are displayed for each model. This option is recommended for users who want to use OpenRouter's hosted LLMs.
+
+3. OpenAI Compatible - Runs LLMs through any OpenAI-compatible API, including OpenAI, Google AI Studio, Ollama and others. Requires that the base URL of the API be entered, the API key (if required, can be entered in the webpage itself), and the model name to be used. This option can be used with Ollama, which is a very easy-to-set-up local server for LLMs.
+
+Once a server is selected, the user clicks the `Start Server` button to start the server. The server will begin running, the user will be able to read the logs in the logs window. Tell them if they have any errors, that they should ask you for help. Running servers can be closed in this page by clicking `Stop Server`, where the user can select again from the beginning.

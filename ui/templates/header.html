@@ -8,6 +8,18 @@
         <a href="/" class="header-title-link">CapitalAgents</a>
     </h1>
 
+    {% set currentPath = request.path.rstrip('/') if request else '' %}
+    {% set pageDocs = {
+        '/server-config': 'server-config',
+        '/llamacpp-setup': 'llamacpp-setup'
+    } %}
+    {% set docName = pageDocs.get(currentPath) %}
+    {% if docName %}
+    <a id="headerHelpBtn" class="btn-primary header-help-btn" 
+       href="https://chatgpt.com/?prompt={{ ('Please read the markdown document for this page, accessed via github https://github.com/harrym1008/Capital-Agents/tree/main/gptdocs/' ~ docName ~ '.md and help me with this page.') | urlencode }}" 
+       target="_blank" rel="noopener noreferrer" title="Ask ChatGPT for help with this page" aria-label="Help">Help from ChatGPT</a>
+    {% endif %}
+
     <div class="header-right-cluster">
         <div id="connectionStatusReadout" class="header-status-column">
             <div class="header-metric-row">
@@ -290,4 +302,39 @@
         }
     }
     window.updateCostUI = updateCostUI;
+
+    // Initialize ChatGPT help button for supported documentation pages
+    (function initHeaderHelp() {
+        const pageDocs = {
+            "/server-config": "server-config",
+            "/llamacpp-setup": "llamacpp-setup"
+        };
+        const currentPath = (window.location.pathname || "").replace(/\/+$/, "") || "/";
+        const docName = pageDocs[currentPath];
+        let helpBtn = document.getElementById("headerHelpBtn");
+        if (docName) {
+            const githubUrl = `https://github.com/harrym1008/Capital-Agents/tree/main/gptdocs/${docName}.md`;
+            const promptText = `Please read the markdown document for this page, accessed via github ${githubUrl} and help me with this page.`;
+            const targetUrl = `https://chatgpt.com/?prompt=${encodeURIComponent(promptText)}`;
+            if (helpBtn) {
+                helpBtn.href = targetUrl;
+            } else {
+                const titleHeading = document.querySelector(".header-title-tight");
+                if (titleHeading) {
+                    helpBtn = document.createElement("a");
+                    helpBtn.id = "headerHelpBtn";
+                    helpBtn.className = "header-help-btn";
+                    helpBtn.href = targetUrl;
+                    helpBtn.target = "_blank";
+                    helpBtn.rel = "noopener noreferrer";
+                    helpBtn.title = "Ask ChatGPT for help with this page";
+                    helpBtn.setAttribute("aria-label", "Help");
+                    helpBtn.textContent = "?";
+                    titleHeading.parentNode.insertBefore(helpBtn, titleHeading.nextSibling);
+                }
+            }
+        } else if (helpBtn) {
+            helpBtn.remove();
+        }
+    })();
 </script>

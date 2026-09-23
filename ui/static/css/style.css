@@ -271,6 +271,12 @@ header h1 {
     text-decoration: none;
 }
 
+.header-help-btn {
+    border-radius: 16px;
+    margin-left: 25px;
+    background-color: #0030a2;
+}
+
 .header-right-cluster {
     margin-left: auto;
     display: flex;
