@@ -17,6 +17,7 @@ pyarrow
 pynvml
 python-dotenv
 requests
+tkinter
 tqdm
 transformers>=4.40.0
 yfinance

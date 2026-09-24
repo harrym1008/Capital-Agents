@@ -63,7 +63,7 @@ class FinnhubDataProvider:
             return None
 
 
-    def getPointInTimeMetrics(self, ticker: str, asOfDate: pd.Timestamp) -> Dict[str, Any]:
+    def getPointInTimeMetrics(self, ticker: str, asOfDate: pd.Timestamp, currentPrice: Optional[float] = None) -> Dict[str, Any]:
         # Extract point-in-time financial metrics strictly prior to asOfDate to prevent lookahead
         raw = self.fetchRawLookAheadMetrics(ticker)
         if not raw:
@@ -106,6 +106,19 @@ class FinnhubDataProvider:
                 return None
             return items[-1][1]
 
+        def extractTTM(metricKey: str) -> Optional[float]:
+            # Sum the 4 most recent quarterly readings strictly before asOfDate
+            items = getValidItems(metricKey, preferQuarterly=True)
+            validVals = [v for _, v in items if v is not None]
+            if len(validVals) >= 4:
+                return float(sum(validVals[-4:]))
+            elif len(validVals) > 0:
+                annualVal = extractLatest(metricKey, preferQuarterly=False)
+                if annualVal is not None:
+                    return float(annualVal)
+                return float(sum(validVals) * (4.0 / len(validVals)))
+            return None
+
         def extractGrowthQoQ(metricKey: str, preferQuarterly: bool = True) -> Optional[float]:
             # Compute quarter-over-quarter percentage growth from the two latest readings
             items = getValidItems(metricKey, preferQuarterly)
@@ -137,12 +150,53 @@ class FinnhubDataProvider:
                 return None
             return ((latestVal - priorVal) / abs(priorVal)) * 100
 
-        # Extract point-in-time metrics from series only
-        # Price to earnings, price to book, price to sales, EV/EBITDA
-        peVal = extractLatest("peTTM") or extractLatest("pe", preferQuarterly=False)
-        pbVal = extractLatest("pb") or extractLatest("pbQuarterly")
-        psTtmVal = extractLatest("psTTM") or extractLatest("ps", preferQuarterly=False)
-        evEbitdaTtmVal = extractLatest("evEbitdaTTM") or extractLatest("evEbitda", preferQuarterly=False)
+
+        # Trailing 12-month per-share fundamental denominators strictly prior to asOfDate
+        epsTTM = extractTTM("eps")
+        salesPerShareTTM = extractTTM("salesPerShare")
+
+        # Quarter-end snapshot multiples strictly prior to asOfDate
+        quarterEndPe = extractLatest("peTTM") or extractLatest("pe", preferQuarterly=False)
+        quarterEndPb = extractLatest("pb") or extractLatest("pbQuarterly")
+        quarterEndPs = extractLatest("psTTM") or extractLatest("ps", preferQuarterly=False)
+        quarterEndEvEbitda = extractLatest("evEbitdaTTM") or extractLatest("evEbitda", preferQuarterly=False)
+
+        # Implied quarter-end stock price used when Finnhub recorded the quarter-end series ratios
+        quarterEndPrice = None
+        if quarterEndPe is not None and epsTTM is not None and epsTTM != 0 and quarterEndPe > 0:
+            quarterEndPrice = quarterEndPe * epsTTM
+        elif quarterEndPs is not None and salesPerShareTTM is not None and salesPerShareTTM > 0 and quarterEndPs > 0:
+            quarterEndPrice = quarterEndPs * salesPerShareTTM
+
+        # Dynamic valuation multiples computed using daily stock price
+        if currentPrice is not None and currentPrice > 0:
+            # P/E: current price divided by trailing 12-month EPS (negative values allowed per user preference)
+            if epsTTM is not None and epsTTM != 0:
+                peVal = currentPrice / epsTTM
+            else:
+                peVal = quarterEndPe
+
+            # P/S: current price divided by trailing 12-month sales per share
+            if salesPerShareTTM is not None and salesPerShareTTM != 0:
+                psTtmVal = currentPrice / salesPerShareTTM
+            else:
+                psTtmVal = quarterEndPs
+
+            # P/B and EV/EBITDA: rebase from quarter-end ratio using daily price ratio
+            if quarterEndPb is not None and quarterEndPrice is not None and quarterEndPrice > 0:
+                pbVal = quarterEndPb * (currentPrice / quarterEndPrice)
+            else:
+                pbVal = quarterEndPb
+
+            if quarterEndEvEbitda is not None and quarterEndPrice is not None and quarterEndPrice > 0:
+                evEbitdaTtmVal = quarterEndEvEbitda * (currentPrice / quarterEndPrice)
+            else:
+                evEbitdaTtmVal = quarterEndEvEbitda
+        else:
+            peVal = quarterEndPe
+            pbVal = quarterEndPb
+            psTtmVal = quarterEndPs
+            evEbitdaTtmVal = quarterEndEvEbitda
 
         # Profitability metrics: gross margin, operating margin, net margin, free cash flow per share, free cash flow margin
         grossMarginVal = extractLatest("grossMargin")
@@ -196,6 +250,8 @@ class FinnhubDataProvider:
             "quickRatio": quickRatioVal,
             
             "eps": epsVal,
+            "epsTTM": epsTTM,
+            "salesPerShareTTM": salesPerShareTTM,
             "ebitda": ebitdaVal,
             "payoutRatioTTM": payoutRatioTtmVal,
             

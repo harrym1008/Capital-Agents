@@ -1,18 +1,7 @@
-import time
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Tuple, Union, Callable, TYPE_CHECKING
-
-import pandas as pd
-
+from typing import Dict, Any, Optional, List, Tuple, Union, Callable
 from ui.ui_hooks import isStopRequested, SimulationStoppedException
-from boardroom.boardroom_engine import BoardroomModelLoopException
-
-if TYPE_CHECKING:
-    from boardroom.boardroom_engine import BoardroomEngine
-    from boardroom.boardroom_config import BoardroomConfig
-    from llm.agents.agent import FinancialAgent
-    from llmtools.tool_registry import ToolRegistry
 
 
 # Boardroom Context represents the state and data shared across different stages of the boardroom simulation

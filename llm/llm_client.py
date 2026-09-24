@@ -56,7 +56,7 @@ class BaseLLMClient(ABC):
         if costTracker is not None:
             self.costTracker = costTracker
         else:
-            from llm.server_manager import serverManager
+            from llm.server_manager import serverManager      # Import here to avoid circular dependency
             self.costTracker = serverManager.costTracker
 
         self.activeStreams = set()

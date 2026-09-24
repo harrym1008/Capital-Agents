@@ -6,8 +6,10 @@ import numpy as np
 import pandas as pd
 from flask import request, jsonify
 
-from collectors.constants import NEW_YORK
-from llm.llamacpp.llamacpp_args import LLAMACPP_PORT, loadConfig, saveConfig, validateGGUFPath, getLlamaCppModelsList, openNativeGGUFFileDialog, openNativeExecutableFileDialog
+from collectors.sector_dl_client import GICS_SECTORS
+from collectors.constants import NEW_YORK, START_DATE_STR, END_DATE_STR, FIRST_TRAD_DAY_AFTER_START_STR
+
+from llm.llamacpp.llamacpp_args import loadConfig, saveConfig, validateGGUFPath, getLlamaCppModelsList, openNativeGGUFFileDialog, openNativeExecutableFileDialog
 from llm.server_manager import serverManager
 from llm.server_config_store import loadServerConfig, saveServerConfig
 
@@ -275,7 +277,6 @@ def registerApiRoutes(app):
                 })
 
             rawSector = profile.sector or "Unknown"
-            from collectors.sector_dl_client import GICS_SECTORS
             resolvedSector = simulationManager.formatSectorOrIndustry(rawSector)
             sectorTicker = "SPY"
             for sTick, sInfo in GICS_SECTORS.items():
@@ -343,7 +344,6 @@ def registerApiRoutes(app):
     def apiGetCollectorsConstants():
         # Expose global market simulation constants to frontend UI
         try:
-            from collectors.constants import START_DATE_STR, END_DATE_STR, FIRST_TRAD_DAY_AFTER_START_STR
             return jsonify({
                 "ok": True,
                 "startDate": START_DATE_STR,

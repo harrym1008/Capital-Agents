@@ -13,11 +13,14 @@ from llm.llamacpp.llamacpp_init import LlamaCppProcessInitiator, rudimentaryVram
 from llm.llamacpp.llamacpp_client import LlamaCppClient
 from llm.cloud.openrouter_client import OpenRouterClient
 from llm.cloud.openai_compatible_client import OpenAICompatibleClient
+
 from llm.server_config_store import setSectionValues
+from llm.llamacpp.llamacpp_args import loadConfig, saveConfig
 
 from llm.llm_client import BaseLLMClient
 from llm.token_cost_tracker import TokenCostTracker
 from llmtools.tool_registry import ToolRegistry
+from llmtools.registry_builder import buildToolRegistry
 
 from finbert.finbert_engines import getSentimentEngine, unloadSentimentEngine
 from ui.ui_hooks import emitEvent
@@ -189,7 +192,6 @@ class ServerManager:
         # Lazy initialise shared tool registry instance
         with self.serverLock:
             if self.sharedToolRegistry is None:
-                from llmtools.registry_builder import buildToolRegistry
                 self.sharedToolRegistry = buildToolRegistry()
             return self.sharedToolRegistry
 
@@ -377,7 +379,6 @@ class ServerManager:
 
                         # Update last used model ID in configuration
                         try:
-                            from llm.llamacpp.llamacpp_args import loadConfig, saveConfig
                             currCfg = loadConfig()
                             if getattr(serverProcess, "modelConfig", None) and serverProcess.modelConfig.get("id"):
                                 currCfg["lastUsedModelId"] = serverProcess.modelConfig.get("id")

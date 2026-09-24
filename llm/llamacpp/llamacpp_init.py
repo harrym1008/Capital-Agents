@@ -50,7 +50,7 @@ def rudimentaryVramClear() -> float:
         print(f"[VRAM Clear] Note: Sentiment unload failed or not loaded: {e}")
 
     try:
-        import sys, gc, time, psutil
+        import gc, time, psutil
         import torch
         from pynvml import (
             nvmlInit,
@@ -262,7 +262,7 @@ class LlamaCppProcessInitiator:
                 if self.getState() == ServerState.STARTING:
                     self.printToTerminal(cleanLine)
                 try:
-                    from llm.server_manager import serverManager
+                    from llm.server_manager import serverManager      # Import here to avoid circular dependency
                     serverManager.recordLog(cleanLine)
                 except Exception:
                     emitEvent("llamaCppLog", {"log": cleanLine})

@@ -10,6 +10,7 @@ from collectors.constants import IPO_BEFORE_START_DATE
 
 from llmtools.tool_registry import DataProviders, Tool
 from llmtools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, formatArticleAge, NumberType
+from llmtools.functions.stock_search import parseMarketCapValue
 from llmtools.functions.sentiment_main import scoreTextsWithCache, aggregateSentiment
 
 
@@ -92,8 +93,6 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
             pass
 
         # ===== STAGE 1: Fundamentals + Price =====
-        m = data.finnhub.getPointInTimeMetrics(ticker, timestamp)
-
         # OHLCV current day data
         todayRow = data.ohlcv.getSingleDayTickerData(ticker, timestamp)
         price = todayRow.get("close") if (todayRow is not None and not todayRow.empty) else None
@@ -104,12 +103,15 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
         stockResult["price"] = cleanNumber(price, NumberType.STOCK_PRICE)
 
         # Market cap from OHLCV
+        marketCapNum = None
         marketCapRaw = todayRow.get("marketCap") if (todayRow is not None and not todayRow.empty) else None
         if marketCapRaw:
-            from llmtools.functions.stock_search import parseMarketCapValue
-            mcNum = parseMarketCapValue(marketCapRaw)
-            if mcNum > 0:
-                stockResult["marketCap"] = cleanNumber(mcNum, NumberType.LARGE_NUMBER)
+            marketCapNum = parseMarketCapValue(marketCapRaw)
+            if marketCapNum > 0:
+                stockResult["marketCap"] = cleanNumber(marketCapNum, NumberType.LARGE_NUMBER)
+
+        # Point-in-time fundamentals using today's price and market cap for dynamic valuation ratios
+        m = data.finnhub.getPointInTimeMetrics(ticker, timestamp, currentPrice=float(price), currentMarketCap=marketCapNum)
 
         # 1-year price data for returns, beta, volatility
         priceData = data.ohlcv.getPeriodDailyTickerData(ticker, startDate=oneYearAgo, endDate=timestamp)
@@ -219,9 +221,9 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
             if m.get("quickRatio") is not None:
                 stockResult["quickRatio"] = cleanNumber(m["quickRatio"], NumberType.DECIMAL)
 
-            # Dividend yield (computed from payoutRatio × EPS / price - all from series)
+            # Dividend yield (computed from payoutRatio × EPS TTM / price - all point-in-time)
             payoutRatio = m.get("payoutRatioTTM")
-            epsVal = m.get("eps")
+            epsVal = m.get("epsTTM") or m.get("eps")
             if payoutRatio is not None and epsVal is not None and epsVal > 0 and price and price > 0:
                 divPerShare = epsVal * (payoutRatio / 100.0)
                 if divPerShare > 0:
