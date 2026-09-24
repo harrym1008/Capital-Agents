@@ -21,13 +21,13 @@
         {% include 'header.html' %}
     {% endwith %}
 
-    <!-- Generation Settings Modal Overlay -->
+    <!-- Generation settings modal overlay -->
     <div id="settingsOverlay" class="setup-overlay" style="display: none;" onmousedown="BoardroomCore.handleSettingsOverlayMouseDown(event)">
         <div class="splash-load-model-window" style="position: relative;" onmousedown="event.stopPropagation()">
             <button type="button" class="modal-close-btn" onclick="BoardroomCore.closeSettingsModal()" title="Close">&times;</button>
             <h1 id="pageTitle">Generation Settings</h1>
 
-            <!-- Configuration Setup Form -->
+            <!-- Configuration setup form -->
             <div class="column-gap-large">
                 <div class="model-select-form-group">
                     <label for="maxItersInput">Max Thinking Iterations:</label>
@@ -60,7 +60,7 @@
         </div>
     </div>
 
-    <!-- Active Boardroom Running Modal Overlay -->
+    <!-- Active boardroom running modal overlay -->
     <div id="activeBoardroomOverlay" class="setup-overlay" style="display: none;">
         <div class="splash-load-model-window modal-window-centered-text">
             <h1 class="simulation-running-title">Boardroom Simulation Running</h1>
@@ -78,7 +78,7 @@
 
     {% block custom_modal_overlays %}{% endblock %}
 
-    <!-- Universal Config Bar Container -->
+    <!-- Universal config bar container -->
     <div class="config-bar">
         <div class="config-inputs-container" id="configInputsContainer">
             {% block config_inputs %}{% endblock %}
@@ -101,7 +101,7 @@
         </div>
     </div>
 
-    <!-- Universal Stages Bar -->
+    <!-- Universal stages bar -->
     <div class="stages-bar" id="stagesBar">
         <div class="stages-scroll-container" id="stagesScrollContainer">
             <!-- Stages will be populated dynamically -->
@@ -117,7 +117,7 @@
         </div>
     </div>
 
-    <!-- Universal Workspace Layout -->
+    <!-- Universal workspace layout -->
     <div class="main-layout">
         <div class="workspace">
             <div class="panes-container" id="panesContainer">
@@ -133,7 +133,7 @@
             </div>
         </div>
 
-        <!-- Collapsible Summary Sidebar -->
+        <!-- Collapsible summary sidebar -->
         <div id="summarySidebar" class="summary-sidebar collapsed">
             <div class="sidebar-tabs-bar" id="sidebarTabsBar">
                 <div class="sidebar-tab-item viewing" id="sidebarTab-summaries" onclick="BoardroomCore.switchSidebarTab('summaries')">
@@ -171,7 +171,7 @@
         </div>
     </div>
 
-    <!-- Shared Core Boardroom Logic & Exporter -->
+    <!-- Shared core boardroom logic and exporter -->
     <script src="/static/js/boardroom_core.js"></script>
     <script src="/static/js/boardroom_exporter.js"></script>
 

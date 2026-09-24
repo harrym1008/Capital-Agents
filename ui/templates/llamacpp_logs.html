@@ -14,9 +14,7 @@
     {% include 'header.html' %}
 
     <div class="main-layout server-main-layout">
-
         <div class="splash-container">
-
             <div class="splash-load-model-window logs-modal-window">
                 <h1 id="pageTitle">Llama.cpp Server Logs</h1>
 
@@ -27,14 +25,12 @@
                 <div class="logs-action-row">
                     <a href="/server-config" class="aref-button btn-secondary back-button-small">Back to Server Configuration</a>
                 </div>
-
             </div>
-
         </div>
-
     </div>
 
     <script>
+        // Append log line to terminal output display
         function appendLog(line) {
             if (typeof appendTerminalLog === 'function') {
                 appendTerminalLog("terminalLogs", line);
@@ -47,21 +43,25 @@
             }
         }
 
+        // Handle streaming server log events from websocket
         function handleSimulationEvent(payload) {
             if (payload.type === "llamaCppStartupLog" || payload.type === "llamaCppLog") {
                 appendLog(payload.log);
             }
         }
 
+        // Fetch and render historical server startup logs
         async function loadExistingLogs() {
             try {
                 const res = await fetch('/api/llamacpp/logs');
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.logs && Array.isArray(data.logs) && data.logs.length > 0) {
+                    if (data.logs?.length) {
                         const logsPre = document.getElementById("terminalLogs");
-                        logsPre.textContent = data.logs.join("\n") + "\n";
-                        logsPre.scrollTop = logsPre.scrollHeight;
+                        if (logsPre) {
+                            logsPre.textContent = data.logs.join("\n") + "\n";
+                            logsPre.scrollTop = logsPre.scrollHeight;
+                        }
                     }
                 }
             } catch (e) {
@@ -69,6 +69,7 @@
             }
         }
 
+        // Initialise websocket connection and retrieve backlog
         connectWebsocket();
         loadExistingLogs();
     </script>

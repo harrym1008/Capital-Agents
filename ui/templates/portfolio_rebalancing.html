@@ -34,6 +34,7 @@
         <label for="allocationBiasCheckbox">Allocation Bias:</label>
         <input type="checkbox" id="allocationBiasCheckbox" onchange="toggleAllocationBias()">
     </div>
+
     <div class="config-group allocation-slider-row" id="allocationBiasSliderContainer" style="display: none;">
         <span class="allocation-slider-label-growth">Growth</span>
         <input type="range" id="allocationBiasSlider" min="1" max="6" step="1" value="4" oninput="updateAllocationBiasTooltip()" class="allocation-slider" title="Maximum Growth Bias">
@@ -65,13 +66,12 @@
 {% endblock %}
 
 {% block custom_modal_overlays %}
-<!-- Current Portfolio Input Modal Overlay -->
+<!-- Current baseline portfolio holdings configuration modal overlay -->
 <div id="currentPortfolioModalOverlay" class="setup-overlay" style="display: none;" onmousedown="handlePortfolioOverlayMouseDown(event)">
     <div class="splash-load-model-window current-portfolio-modal-window" onmousedown="event.stopPropagation()">
         <button type="button" class="modal-close-btn" onclick="attemptCloseCurrentPortfolioModal()" title="Close">&times;</button>
         <h1 class="current-portfolio-modal-title">Current Portfolio Holdings</h1>
 
-        <!-- Positions Entry Table -->
         <div class="positions-scroll-box">
             <table class="positions-entry-table" id="positionsTable">
                 <thead>
@@ -85,25 +85,20 @@
                         <th class="positions-table-action-head"></th>
                     </tr>
                 </thead>
-                <tbody id="positionsTableBody">
-                    <!-- Rows dynamically generated -->
-                </tbody>
+                <tbody id="positionsTableBody"></tbody>
             </table>
         </div>
 
-        <!-- Add Stock Button anchored to right-hand side of table -->
         <div class="add-row-bar">
             <button type="button" class="grey-btn add-position-button" onclick="addNewPositionRow()">
                 + Add Stock
             </button>
         </div>
 
-        <!-- Warning Alert Banner -->
         <div id="currentPortfolioModalWarning" class="modal-warning-banner" style="display: none;">
             Please correct the errors in your portfolio before proceeding.
         </div>
 
-        <!-- Action Buttons Row -->
         <div class="modal-footer-row">
             <div></div>
             <div class="modal-total-bar">
@@ -126,47 +121,45 @@
     let portfolioBacktestChartInstance = null;
     let cachedBacktestData = null;
     let currentBacktestHorizonMode = "horizon";
-    let currentCompareBenchmarkMode = "original"; // "original" or "sp500"
+    let currentCompareBenchmarkMode = "original";
     let confirmedSectorData = null;
     let confirmedPortfolioData = null;
 
-    // Baseline portfolio positions array: [{ ticker, companyName, sector, sectorTicker, industry, price, dollarAmount, weightPct, valid }]
     let currentPortfolioPositions = [];
     let isPortfolioValidated = false;
 
-    // Validation cache to avoid redundant API hits
     const tickerValidationCache = {};
 
+    // Resolves current simulated date or defaults to today
     function getCleanSimDate() {
-        const simDateVal = BoardroomCore.getSimulatedDate();
-        if (simDateVal) return simDateVal;
-        return new Date().toISOString().split('T')[0];
+        return BoardroomCore.getSimulatedDate() || new Date().toISOString().split("T")[0];
     }
 
+    // Determines if a date string falls in the past relative to local midnight
     function isDateInPast(dateStr) {
         if (!dateStr) return false;
         try {
-            const simTime = new Date(dateStr + "T00:00:00").getTime();
-            const todayTime = new Date().setHours(0, 0, 0, 0);
-            return simTime < todayTime;
+            return new Date(dateStr + "T00:00:00").getTime() < new Date().setHours(0, 0, 0, 0);
         } catch (e) {
             return false;
         }
     }
 
+    // Counts fractional decimal digits for numeric formatting
     function countDecimalPlaces(num) {
-        if (window.AppUtils && window.AppUtils.countDecimalPlaces) {
+        if (window.AppUtils?.countDecimalPlaces) {
             return window.AppUtils.countDecimalPlaces(num);
         }
         if (!num || Math.floor(num) === num) return 0;
         const str = num.toString();
-        if (str.indexOf("e-") !== -1) return parseInt(str.split("e-")[1], 10);
-        if (str.indexOf(".") !== -1) return str.split(".")[1].length;
+        if (str.includes("e-")) return parseInt(str.split("e-")[1], 10);
+        if (str.includes(".")) return str.split(".")[1].length;
         return 0;
     }
 
+    // Formats numeric currency tick labels with dynamic metric suffixes
     function formatYAxisLabel(val, stepSize) {
-        if (window.AppUtils && window.AppUtils.formatLargeCurrency) {
+        if (window.AppUtils?.formatLargeCurrency) {
             return window.AppUtils.formatLargeCurrency(val, stepSize);
         }
         if (val === 0) return "$0";
@@ -180,15 +173,8 @@
         else if (absVal >= 1e3) { unit = "K"; div = 1e3; }
 
         const num = val / div;
-        let dp = 0;
-        if (stepSize && stepSize > 0) {
-            dp = countDecimalPlaces(stepSize / div);
-        } else {
-            dp = countDecimalPlaces(num);
-        }
-        dp = Math.max(0, Math.min(6, dp));
-
-        let minDp = (div === 1 && stepSize && stepSize < 1) ? 2 : 0;
+        const dp = Math.max(0, Math.min(6, stepSize && stepSize > 0 ? countDecimalPlaces(stepSize / div) : countDecimalPlaces(num)));
+        const minDp = (div === 1 && stepSize && stepSize < 1) ? 2 : 0;
         const formattedStr = num.toLocaleString("en-US", {
             minimumFractionDigits: minDp,
             maximumFractionDigits: dp
@@ -197,7 +183,6 @@
         return "$" + formattedStr + unit;
     }
 
-    // Register custom agent roles for portfolio rebalancing
     BoardroomCore.registerRole("Growth Stock Hunter", { class: "green", initials: "GH", name: "Growth Stock Hunter" });
     BoardroomCore.registerRole("Defensive Stock Hunter", { class: "blue", initials: "DH", name: "Defensive Stock Hunter" });
     BoardroomCore.registerRole("Aggressive Risk Analyst", { class: "yellow", initials: "AR", name: "Aggressive Risk Analyst" });
@@ -221,10 +206,7 @@
         ]
     };
 
-    // ==========================================
-    // CURRENT PORTFOLIO MODAL & VALIDATION LOGIC
-    // ==========================================
-
+    // Opens baseline portfolio modal dialog
     function openCurrentPortfolioModal() {
         const overlay = document.getElementById("currentPortfolioModalOverlay");
         if (overlay) {
@@ -237,12 +219,14 @@
         }
     }
 
+    // Handles modal backdrop dismiss clicks
     function handlePortfolioOverlayMouseDown(event) {
-        if (event.target && event.target.id === "currentPortfolioModalOverlay") {
+        if (event.target?.id === "currentPortfolioModalOverlay") {
             attemptCloseCurrentPortfolioModal();
         }
     }
 
+    // Validates and closes baseline portfolio modal dialog
     function attemptCloseCurrentPortfolioModal() {
         const overlay = document.getElementById("currentPortfolioModalOverlay");
         const warningEl = document.getElementById("currentPortfolioModalWarning");
@@ -255,6 +239,7 @@
         return true;
     }
 
+    // Appends new stock position record to baseline collection
     function addNewPositionRow(initialData = null) {
         const newPos = initialData || {
             ticker: "",
@@ -268,11 +253,12 @@
         };
         currentPortfolioPositions.push(newPos);
         renderPositionsTable();
-        if (initialData && initialData.ticker) {
+        if (initialData?.ticker) {
             validateTickerRow(currentPortfolioPositions.length - 1, initialData.ticker);
         }
     }
 
+    // Removes position record at specified index
     function removePositionRow(index) {
         if (index >= 0 && index < currentPortfolioPositions.length) {
             currentPortfolioPositions.splice(index, 1);
@@ -281,6 +267,7 @@
         }
     }
 
+    // Renders interactive positions entry table rows
     function renderPositionsTable() {
         const tbody = document.getElementById("positionsTableBody");
         if (!tbody) return;
@@ -333,6 +320,8 @@
     }
 
     let tickerDebounceTimers = {};
+
+    // Handles live ticker input keystrokes with debounce
     function onTickerInputChanged(index, val) {
         const cleanTicker = (val || "").trim().toUpperCase();
         if (currentPortfolioPositions[index]) {
@@ -348,13 +337,15 @@
         }, 100);
     }
 
+    // Handles ticker input blur validation trigger
     function onTickerInputBlur(index, val) {
         const cleanTicker = (val || "").trim().toUpperCase();
-        if (cleanTicker.length >= 1 && (!currentPortfolioPositions[index] || !currentPortfolioPositions[index].valid)) {
+        if (cleanTicker.length >= 1 && !currentPortfolioPositions[index]?.valid) {
             validateTickerRow(index, cleanTicker);
         }
     }
 
+    // Handles position dollar allocation adjustments
     function onDollarAmountChanged(index, val) {
         const amt = parseFloat(val) || 0;
         if (currentPortfolioPositions[index]) {
@@ -363,17 +354,13 @@
         recalculatePortfolioTotals();
     }
 
+    // Validates ticker symbol existence against simulated date
     function validateTickerRow(index, ticker) {
         if (!ticker) return;
         const simDate = getCleanSimDate();
         const cacheKey = `${ticker}_${simDate}`;
 
         const iconEl = document.getElementById(`tickerStatusIcon_${index}`);
-        const errEl = document.getElementById(`tickerError_${index}`);
-        const nameEl = document.getElementById(`nameCell_${index}`);
-        const secEl = document.getElementById(`sectorCell_${index}`);
-        const indEl = document.getElementById(`industryCell_${index}`);
-
         if (iconEl) iconEl.innerText = "…";
 
         if (tickerValidationCache[cacheKey]) {
@@ -387,11 +374,12 @@
                 tickerValidationCache[cacheKey] = data;
                 applyValidationResult(index, data);
             })
-            .catch(err => {
+            .catch(() => {
                 applyValidationResult(index, { ok: false, valid: false, error: "Validation server error" });
             });
     }
 
+    // Applies ticker validation result to position row UI elements
     function applyValidationResult(index, data) {
         const pos = currentPortfolioPositions[index];
         if (!pos) return;
@@ -402,7 +390,7 @@
         const secEl = document.getElementById(`sectorCell_${index}`);
         const indEl = document.getElementById(`industryCell_${index}`);
 
-        if (data && data.valid) {
+        if (data?.valid) {
             pos.valid = true;
             pos.companyName = data.companyName;
             pos.sector = data.sector;
@@ -427,10 +415,10 @@
         recalculatePortfolioTotals();
     }
 
+    // Recalculates aggregate capital and percentage weights
     function recalculatePortfolioTotals() {
         const totalCapital = currentPortfolioPositions.reduce((sum, p) => sum + (parseFloat(p.dollarAmount) || 0), 0);
 
-        // Update weights
         currentPortfolioPositions.forEach((p, idx) => {
             const pDollar = parseFloat(p.dollarAmount) || 0;
             p.weightPct = totalCapital > 0 ? (pDollar / totalCapital * 100.0) : 0;
@@ -440,13 +428,13 @@
             }
         });
 
-        // Update total value display
         const totalEl = document.getElementById("modalTotalPortfolioValue");
         if (totalEl) {
             totalEl.innerText = `$${totalCapital.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         }
     }
 
+    // Validates baseline portfolio integrity and position constraints
     function validateEntirePortfolio() {
         if (currentPortfolioPositions.length === 0) {
             return { valid: false, error: "Portfolio cannot be empty. Please add at least one stock holding." };
@@ -455,7 +443,7 @@
         let totalVal = 0;
         for (let i = 0; i < currentPortfolioPositions.length; i++) {
             const p = currentPortfolioPositions[i];
-            if (!p.ticker || !p.ticker.trim()) {
+            if (!p.ticker?.trim()) {
                 return { valid: false, error: `Row ${i + 1} has an empty ticker symbol.` };
             }
             if (!p.valid) {
@@ -475,10 +463,7 @@
         return { valid: true, totalCapital: totalVal };
     }
 
-    /**
-     * Helper to populate an example baseline portfolio from console or dev tools.
-     * Default holdings: NVDA ($15k), ASTS ($18k), SPCX ($12k), NBIS ($20k), NFLX ($12k), UNH ($21k), WMT ($11k), F ($8k).
-     */
+    // Populates standard baseline portfolio example holdings
     function setExamplePortfolio(customHoldings = null) {
         const defaultHoldings = [
             { ticker: "NVDA", dollarAmount: 15000 },
@@ -506,20 +491,15 @@
             });
         });
         recalculatePortfolioTotals();
-        const totalCapital = holdings.reduce((sum, h) => sum + (parseFloat(h.dollarAmount) || 0), 0);
-        console.log("Example portfolio populated");
         return currentPortfolioPositions;
     }
 
     window.setExamplePortfolio = setExamplePortfolio;
 
-    // ==========================================
-    // STAGE LAYOUTS & VISUALS (Stages 3 & 6)
-    // ==========================================
-
+    // Registers custom boardroom visual layout handlers for stages 3 and 6
     BoardroomCore.setCustomStageLayoutHandler(({ stageNum, stageName, agents, workspace }) => {
         // Stage 3: Sector Rebalancing Decision
-        if (stageNum === 3 || (stageName && stageName.includes("Sector Rebalancing Decision"))) {
+        if (stageNum === 3 || stageName?.includes("Sector Rebalancing Decision")) {
             const totalBaseCapital = currentPortfolioPositions.reduce((sum, p) => sum + (parseFloat(p.dollarAmount) || 0), 0);
             const origStockCount = currentPortfolioPositions.filter(p => p.valid).length;
 
@@ -551,7 +531,7 @@
                 </div>
             `;
 
-            if (agents && agents.length > 0) {
+            if (agents?.length > 0) {
                 agents.forEach(agent => {
                     BoardroomCore.createAgentPane(stageNum, agent.role, agent.color, agent.name);
                 });
@@ -566,10 +546,10 @@
         }
 
         // Stage 6: Final Executive Rebalancing Decision
-        if (stageNum === 6 || (stageName && stageName.includes("Final Executive Decision"))) {
+        if (stageNum === 6 || stageName?.includes("Final Executive Decision")) {
             const totalBaseCapital = currentPortfolioPositions.reduce((sum, p) => sum + (parseFloat(p.dollarAmount) || 0), 0);
             const origStockCount = currentPortfolioPositions.filter(p => p.valid).length;
-            const horizonStr = document.getElementById("horizonSelect").value || "1 year";
+            const horizonStr = document.getElementById("horizonSelect")?.value || "1 year";
 
             workspace.innerHTML = `
                 <div class="upload-receipt-container report-card-wide">
@@ -592,18 +572,15 @@
                         <div><span id="portfolio-status" class="tool-status-badge status-running">PENDING REBALANCE</span></div>
                     </div>
 
-                    <!-- Performance Chart & Comparison Toggles -->
+                    <!-- Performance Chart and Comparative Metric Toggles -->
                     <div id="portfolioChartSection" class="report-section-spacing">
-                        <!-- Toggle row: Benchmark comparisons on Left, Horizon on Right -->
                         <div id="portfolioBacktestToggleContainer" class="compare-toggle-row" style="display: none;">
-                            <!-- Left: Benchmark comparison toggles -->
                             <div class="toggle-group-row">
                                 <span class="toggle-label">Compare:</span>
                                 <button type="button" class="pie-toggle-btn active" id="compareToggleOriginal" onclick="switchRebalanceCompareMode('original')">vs Original Portfolio</button>
                                 <button type="button" class="pie-toggle-btn" id="compareToggleSp500" onclick="switchRebalanceCompareMode('sp500')">vs S&amp;P 500</button>
                             </div>
 
-                            <!-- Right: Horizon toggles -->
                             <div id="rebalanceHorizonToggleGroup" class="toggle-group-row" style="display: none;">
                                 <span class="toggle-label">Horizon:</span>
                                 <button type="button" class="pie-toggle-btn active" id="backtestToggleHorizon" onclick="switchPortfolioBacktestHorizon('horizon')">Hold for ${horizonStr}</button>
@@ -611,12 +588,12 @@
                             </div>
                         </div>
 
-                        <!-- 3-Series Performance Chart Canvas -->
+                        <!-- Multi-series Performance Chart Canvas -->
                         <div id="portfolioChartWrapper" class="report-chart-grande" style="display: none;">
                             <canvas id="portfolioBacktestChartCanvas" class="report-canvas-fill"></canvas>
                         </div>
 
-                        <!-- Dynamic Metrics Cards -->
+                        <!-- Backtest Performance Metric Cards -->
                         <div id="rebalanceBacktestMetrics" class="backtest-metrics-container backtest-banner" style="display: none;">
                             <div class="backtest-metric-item">
                                 <div id="metricReturnLabel" class="backtest-metric-label">Rebalanced Return</div>
@@ -637,7 +614,7 @@
                         </div>
                     </div>
 
-                    <!-- Rebalanced Holdings Table -->
+                    <!-- Final Rebalanced Holdings Table -->
                     <div id="portfolioHoldingsContainer" class="report-table-container">
                         <div class="report-waiting-message">Waiting for Portfolio Manager execution...</div>
                     </div>
@@ -649,7 +626,7 @@
                 </div>
             `;
 
-            if (agents && agents.length > 0) {
+            if (agents?.length > 0) {
                 agents.forEach(agent => {
                     BoardroomCore.createAgentPane(stageNum, agent.role, agent.color, agent.name);
                 });
@@ -666,10 +643,7 @@
         return false;
     });
 
-    // ==========================================
-    // STAGE 3: SECTOR REBALANCING VISUALS
-    // ==========================================
-
+    // Renders stage 3 sector rebalancing donut chart and comparative table
     function renderSectorRebalanceVisuals(allocationData) {
         confirmedSectorData = allocationData;
         const statusEl = document.getElementById("allocation-status");
@@ -678,11 +652,7 @@
             statusEl.className = "tool-status-badge status-success";
         }
 
-        let payloadRecord = allocationData;
-        if (allocationData && allocationData.confirmedAllocation) {
-            payloadRecord = allocationData.confirmedAllocation;
-        }
-
+        const payloadRecord = allocationData?.confirmedAllocation || allocationData;
         const secDict = payloadRecord.sectorAllocations || {};
         const labels = [];
         const values = [];
@@ -705,7 +675,6 @@
             }
         }
 
-        // Render Donut Chart matching portfolio_creation style
         const canvas = document.getElementById("rebalanceSectorPieCanvas");
         if (canvas && labels.length > 0) {
             if (sectorChartInstance) {
@@ -747,10 +716,8 @@
             });
         }
 
-        // Render Comparative Table (Baseline vs Target Rebalanced) with identical table styling
         const tableContainer = document.getElementById("sectorComparisonTableContainer");
         if (tableContainer) {
-            // Aggregate baseline sectors
             const baseSectorAgg = {};
             const totalBaseCapital = currentPortfolioPositions.reduce((sum, p) => sum + (parseFloat(p.dollarAmount) || 0), 0);
             currentPortfolioPositions.forEach(p => {
@@ -802,10 +769,7 @@
         }
     }
 
-    // ==========================================
-    // STAGE 6: FINAL SCREEN, BACKTEST & TABLE
-    // ==========================================
-
+    // Renders stage 6 final rebalanced portfolio visualisations and backtest
     function renderPortfolioVisuals(payload) {
         confirmedPortfolioData = payload;
         const statusEl = document.getElementById("portfolio-status");
@@ -817,9 +781,9 @@
         const data = payload.confirmedPortfolio || payload;
         const positions = data.positions || [];
         const totalBaseCapital = currentPortfolioPositions.reduce((sum, p) => sum + (parseFloat(p.dollarAmount) || 0), 0);
-        const cleanCapital = totalBaseCapital > 0 ? totalBaseCapital : ((data.initialCapital) ? parseFloat(data.initialCapital) : 100000.0);
+        const cleanCapital = totalBaseCapital > 0 ? totalBaseCapital : (data.initialCapital ? parseFloat(data.initialCapital) : 100000.0);
 
-        const effectiveSimDate = currentSimulatedDate || (data && data.asOfDate) || BoardroomCore.getSimulatedDate() || getCleanSimDate();
+        const effectiveSimDate = currentSimulatedDate || data?.asOfDate || BoardroomCore.getSimulatedDate() || getCleanSimDate();
 
         const capitalEl = document.getElementById("portfolio-capital");
         const countEl = document.getElementById("portfolio-stock-count");
@@ -830,7 +794,7 @@
         const chartWrapper = document.getElementById("portfolioChartWrapper");
         const metricsContainer = document.getElementById("rebalanceBacktestMetrics");
 
-        // Fetch 3-series multi-benchmark backtest
+        // Fetch 3-series multi-benchmark comparative backtest
         if (effectiveSimDate && isDateInPast(effectiveSimDate)) {
             const timeHorizonVal = document.getElementById("horizonSelect")?.value || "1 year";
             fetch("/api/portfolio/backtest", {
@@ -847,7 +811,7 @@
             })
             .then(res => res.json())
             .then(backtestRes => {
-                if (backtestRes && backtestRes.ok) {
+                if (backtestRes?.ok) {
                     cachedBacktestData = backtestRes;
                     updateHorizonButtons(backtestRes);
                     if (toggleContainer) toggleContainer.style.display = "flex";
@@ -858,15 +822,13 @@
                     updateMetricsCards(activeSlice);
                     renderRebalancedHoldingsTable(positions, cleanCapital, activeSlice);
                 } else {
-                    console.error("Backtest failed:", backtestRes?.error);
                     if (toggleContainer) toggleContainer.style.display = "none";
                     if (chartWrapper) chartWrapper.style.display = "none";
                     if (metricsContainer) metricsContainer.style.display = "none";
                     renderRebalancedHoldingsTable(positions, cleanCapital, null);
                 }
             })
-            .catch(err => {
-                console.error("Backtest API error:", err);
+            .catch(() => {
                 if (toggleContainer) toggleContainer.style.display = "none";
                 if (chartWrapper) chartWrapper.style.display = "none";
                 if (metricsContainer) metricsContainer.style.display = "none";
@@ -880,6 +842,7 @@
         }
     }
 
+    // Updates backtest time horizon toggle button labels and visibility
     function updateHorizonButtons(backtestRes) {
         const horizonGroup = document.getElementById("rebalanceHorizonToggleGroup");
         const btnHorizon = document.getElementById("backtestToggleHorizon");
@@ -888,22 +851,14 @@
 
         if (!horizonGroup) return;
 
-        if (backtestRes && backtestRes.canToggle) {
+        if (backtestRes?.canToggle) {
             if (btnHorizon) {
                 btnHorizon.innerText = `Hold for ${horizonStr}`;
-                if (currentBacktestHorizonMode === "horizon") {
-                    btnHorizon.classList.add("active");
-                } else {
-                    btnHorizon.classList.remove("active");
-                }
+                btnHorizon.classList.toggle("active", currentBacktestHorizonMode === "horizon");
             }
             if (btnNow) {
                 btnNow.innerText = "Hold until Now";
-                if (currentBacktestHorizonMode === "now") {
-                    btnNow.classList.add("active");
-                } else {
-                    btnNow.classList.remove("active");
-                }
+                btnNow.classList.toggle("active", currentBacktestHorizonMode === "now");
             }
             horizonGroup.style.display = "flex";
         } else {
@@ -911,6 +866,7 @@
         }
     }
 
+    // Switches active benchmark comparison mode
     function switchRebalanceCompareMode(mode) {
         currentCompareBenchmarkMode = mode;
         const btnOrig = document.getElementById("compareToggleOriginal");
@@ -930,6 +886,7 @@
         }
     }
 
+    // Switches active backtesting time window mode
     function switchPortfolioBacktestHorizon(mode) {
         currentBacktestHorizonMode = mode;
         const btnHorizon = document.getElementById("backtestToggleHorizon");
@@ -958,7 +915,7 @@
     const hoverCrosshairPlugin = {
         id: "hoverCrosshair",
         afterDraw: (chart) => {
-            if (chart.tooltip && chart.tooltip._active && chart.tooltip._active.length > 0) {
+            if (chart.tooltip?._active?.length > 0) {
                 const activePoint = chart.tooltip._active[0];
                 const xPixel = activePoint.element.x;
                 const ctx = chart.ctx;
@@ -975,6 +932,7 @@
         }
     };
 
+    // Renders 3-series comparative performance line chart
     function render3SeriesChart(sliceData) {
         const canvas = document.getElementById("portfolioBacktestChartCanvas");
         if (!canvas) return;
@@ -1076,8 +1034,9 @@
         });
     }
 
+    // Updates backtest summary performance metric cards
     function updateMetricsCards(sliceData) {
-        if (!sliceData || !sliceData.metrics) return;
+        if (!sliceData?.metrics) return;
         const m = sliceData.metrics;
 
         const retLabelEl = document.getElementById("metricReturnLabel");
@@ -1121,7 +1080,6 @@
                 ddEl.innerHTML = `<span class="metric-value-bold" style="color: ${color};">${portDd}%</span> <span class="metric-benchmark-label">(vs ${origDd}% for Original)</span>`;
             }
         } else {
-            // vs S&P 500
             if (relLabelEl) relLabelEl.innerText = "Relative vs S&P 500";
             if (relValEl) {
                 const sign = m.alphaPct >= 0 ? "+" : "";
@@ -1141,17 +1099,15 @@
         }
     }
 
-    // Render Holdings Table replicating exact styles from portfolio_creation.html
-    // Includes Original Portfolio comparison column
+    // Renders final rebalanced holdings comparative table
     function renderRebalancedHoldingsTable(positions, cleanCapital, backtestData = null) {
         const container = document.getElementById("portfolioHoldingsContainer");
         if (!container) return;
 
-        const hasBacktest = Boolean(backtestData && backtestData.holdingReturns);
+        const hasBacktest = Boolean(backtestData?.holdingReturns);
         const holdingReturns = hasBacktest ? backtestData.holdingReturns : {};
         const colCount = hasBacktest ? 7 : 6;
 
-        // Build baseline map
         const baseMap = {};
         currentPortfolioPositions.forEach(p => {
             if (p.ticker) baseMap[p.ticker] = p;
@@ -1191,7 +1147,7 @@
             let returnCellHtml = "";
             if (hasBacktest) {
                 const retInfo = holdingReturns[ticker];
-                if (retInfo && retInfo.returnPct !== undefined) {
+                if (retInfo?.returnPct !== undefined) {
                     const retPct = Number(retInfo.returnPct);
                     const color = retPct > 0 ? "#10b981" : (retPct < 0 ? "#ef4444" : "#64748b");
                     const sign = retPct > 0 ? "+" : "";
@@ -1225,7 +1181,7 @@
             }
         });
 
-        // 2. Render previously held positions that got removed (liquidated to 0%)
+        // Render liquidated baseline holdings (reduced to 0% weight)
         let exitedRowIdx = positions.length;
         currentPortfolioPositions.forEach((basePos) => {
             if (!basePos.valid || !basePos.ticker || activeTickers.has(basePos.ticker)) return;
@@ -1237,7 +1193,7 @@
             const rowBg = exitedRowIdx % 2 === 0 ? "#ffffff" : "#f8fafc";
             exitedRowIdx++;
 
-            let returnCellHtml = hasBacktest ? `<td class="holdings-empty-return-cell" style="padding: 6px 6px;">--</td>` : "";
+            const returnCellHtml = hasBacktest ? `<td class="holdings-empty-return-cell" style="padding: 6px 6px;">--</td>` : "";
 
             tableHtml += `
                 <tr style="background: ${rowBg}; border-bottom: 1px solid #e2e8f0;">
@@ -1256,10 +1212,7 @@
         container.innerHTML = tableHtml;
     }
 
-    // ==========================================
-    // LIFECYCLE & SSE EVENT LISTENERS (BACKPORTED)
-    // ==========================================
-
+    // Listens for boardroom simulation start events to reset UI state
     BoardroomCore.on("simulationStarted", () => {
         confirmedSectorData = null;
         confirmedPortfolioData = null;
@@ -1286,19 +1239,21 @@
         if (horizonGroup) horizonGroup.style.display = "none";
     });
 
+    // Listens for sector allocation confirmation events
     BoardroomCore.on("sectorAllocationConfirmed", (payload) => {
-        if (payload && payload.confirmedAllocation) {
+        if (payload?.confirmedAllocation) {
             renderSectorRebalanceVisuals(payload.confirmedAllocation);
         }
     });
 
+    // Listens for portfolio creation confirmation events
     BoardroomCore.on("portfolioCreated", (payload) => {
-        if (payload && payload.confirmedPortfolio) {
+        if (payload?.confirmedPortfolio) {
             renderPortfolioVisuals(payload.confirmedPortfolio);
         }
     });
 
-    // Also catch tool confirmation events directly if tool finishes
+    // Listens for tool call completions to capture confirmation results
     BoardroomCore.on("toolCallEnd", (payload) => {
         if (payload.toolName === "confirmSectorAllocation" && payload.status === "success") {
             try {
@@ -1318,21 +1273,19 @@
         }
     });
 
+    // Listens for simulation completion events to display total elapsed duration
     BoardroomCore.on("simComplete", (payload) => {
         const finalTimeRow = document.getElementById("finalTimeReportRow");
         if (finalTimeRow) {
             finalTimeRow.style.display = "block";
             const finalTimeVal = document.getElementById("finalTimeReportValue");
-            if (finalTimeVal && payload.totalTime) {
+            if (finalTimeVal && payload?.totalTime) {
                 finalTimeVal.innerText = "Time Taken: " + payload.totalTime;
             }
         }
     });
 
-    // ==========================================
-    // INITIALIZATION & BOARDROOM CORE HOOKS
-    // ==========================================
-
+    // Attaches change listener to clamp numeric input within range
     function clampInput(inputEl, minVal, maxVal, allowEmpty = false) {
         if (!inputEl) return;
         inputEl.addEventListener("change", function () {
@@ -1352,6 +1305,7 @@
     clampInput(document.getElementById("targetSectorCountInput"), 1, 11, true);
     clampInput(document.getElementById("targetStockCountInput"), 1, 30, true);
 
+    // Toggles visibility of investment style allocation bias slider
     function toggleAllocationBias() {
         const checkbox = document.getElementById("allocationBiasCheckbox");
         const container = document.getElementById("allocationBiasSliderContainer");
@@ -1360,6 +1314,7 @@
         }
     }
 
+    // Updates allocation bias slider tooltip description
     function updateAllocationBiasTooltip() {
         const slider = document.getElementById("allocationBiasSlider");
         if (!slider) return;
@@ -1374,6 +1329,7 @@
         slider.title = tooltips[slider.value] || "";
     }
 
+    // Updates rebalance magnitude slider tooltip description
     function updateRebalanceAmountTooltip() {
         const slider = document.getElementById("rebalanceAmountSlider");
         if (!slider) return;
@@ -1388,7 +1344,7 @@
         slider.title = tooltips[slider.value] || "";
     }
 
-    // Initialise BoardroomCore
+    // Initialise BoardroomCore runner
     BoardroomCore.init({
         defaultStages: portfolioRebalancingStages,
         initialMode: document.getElementById("modeSelect")?.value || "complete",

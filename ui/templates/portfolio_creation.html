@@ -40,6 +40,7 @@
         <label for="allocationBiasCheckbox">Allocation Bias:</label>
         <input type="checkbox" id="allocationBiasCheckbox" onchange="toggleAllocationBias()">
     </div>
+
     <div class="config-group allocation-slider-row" id="allocationBiasSliderContainer" style="display: none;">
         <span class="allocation-slider-label-growth">Growth</span>
         <input type="range" id="allocationBiasSlider" min="1" max="6" step="1" value="4" oninput="updateAllocationBiasTooltip()" class="allocation-slider" title="Maximum Growth Bias">
@@ -72,19 +73,15 @@
 {% endblock %}
 
 {% block custom_modal_overlays %}
-<!-- Allocate Sectors Modal Overlay -->
+<!-- Preset sector allocation configuration modal overlay -->
 <div id="sectorAllocationOverlay" class="setup-overlay" style="display: none;" onmousedown="handleSectorOverlayMouseDown(event)">
     <div class="splash-load-model-window sector-modal-window" onmousedown="event.stopPropagation()">
         <button type="button" class="modal-close-btn" onclick="closeSectorAllocationModal()" title="Close">&times;</button>
         <h1 class="sector-modal-title">Allocate Sectors</h1>
 
         <div class="modal-split-row">
-            <!-- Left: 11 Sector Sliders -->
-            <div id="sectorSlidersContainer" class="sliders-pane">
-                <!-- Dynamically populated -->
-            </div>
+            <div id="sectorSlidersContainer" class="sliders-pane"></div>
 
-            <!-- Right: Chart.js Pie Chart & Modal Buttons -->
             <div class="donut-pane">
                 <div class="donut-chart-box">
                     <canvas id="presetSectorPieCanvas"></canvas>
@@ -119,19 +116,21 @@
     let confirmedSectorData = null;
     let confirmedPortfolioData = null;
 
+    // Counts fractional decimal digits for numeric formatting
     function countDecimalPlaces(num) {
-        if (window.AppUtils && window.AppUtils.countDecimalPlaces) {
+        if (window.AppUtils?.countDecimalPlaces) {
             return window.AppUtils.countDecimalPlaces(num);
         }
         if (!num || Math.floor(num) === num) return 0;
         const str = num.toString();
-        if (str.indexOf("e-") !== -1) return parseInt(str.split("e-")[1], 10);
-        if (str.indexOf(".") !== -1) return str.split(".")[1].length;
+        if (str.includes("e-")) return parseInt(str.split("e-")[1], 10);
+        if (str.includes(".")) return str.split(".")[1].length;
         return 0;
     }
 
+    // Formats numeric currency tick labels with dynamic metric suffixes
     function formatYAxisLabel(val, stepSize) {
-        if (window.AppUtils && window.AppUtils.formatLargeCurrency) {
+        if (window.AppUtils?.formatLargeCurrency) {
             return window.AppUtils.formatLargeCurrency(val, stepSize);
         }
         if (val === 0) return "$0";
@@ -145,15 +144,8 @@
         else if (absVal >= 1e3) { unit = "K"; div = 1e3; }
 
         const num = val / div;
-        let dp = 0;
-        if (stepSize && stepSize > 0) {
-            dp = countDecimalPlaces(stepSize / div);
-        } else {
-            dp = countDecimalPlaces(num);
-        }
-        dp = Math.max(0, Math.min(6, dp));
-
-        let minDp = (div === 1 && stepSize && stepSize < 1) ? 2 : 0;
+        const dp = Math.max(0, Math.min(6, stepSize && stepSize > 0 ? countDecimalPlaces(stepSize / div) : countDecimalPlaces(num)));
+        const minDp = (div === 1 && stepSize && stepSize < 1) ? 2 : 0;
         const formattedStr = num.toLocaleString("en-US", {
             minimumFractionDigits: minDp,
             maximumFractionDigits: dp
@@ -162,18 +154,16 @@
         return "$" + formattedStr + unit;
     }
 
+    // Determines if a date string falls in the past relative to local midnight
     function isDateInPast(dateStr) {
         if (!dateStr) return false;
         try {
-            const simTime = new Date(dateStr + "T00:00:00").getTime();
-            const todayTime = new Date().setHours(0, 0, 0, 0);
-            return simTime < todayTime;
+            return new Date(dateStr + "T00:00:00").getTime() < new Date().setHours(0, 0, 0, 0);
         } catch (e) {
             return false;
         }
     }
 
-    // Register custom agent roles for portfolio creation
     BoardroomCore.registerRole("Growth Stock Hunter", { class: "green", initials: "GH", name: "Growth Stock Hunter" });
     BoardroomCore.registerRole("Defensive Stock Hunter", { class: "blue", initials: "DH", name: "Defensive Stock Hunter" });
     BoardroomCore.registerRole("Aggressive Risk Analyst", { class: "yellow", initials: "AR", name: "Aggressive Risk Analyst" });
@@ -203,7 +193,6 @@
         ]
     };
 
-    // Preset Sector Allocation Modal Data & Handlers
     const PRESET_GICS_SECTORS = [
         { ticker: "XLK", name: "Information Technology" },
         { ticker: "XLF", name: "Financials" },
@@ -226,6 +215,7 @@
 
     let presetSectorChartInstance = null;
 
+    // Renders interactive slider rows for each GICS sector in preset modal
     function renderPresetSectorSliders() {
         const container = document.getElementById("sectorSlidersContainer");
         if (!container) return;
@@ -247,6 +237,7 @@
         });
     }
 
+    // Computes integer percentage allocations summing to target total using Largest Remainder Method
     function computeIntegerAllocations(values, totalTarget = 100) {
         const total = values.reduce((sum, v) => sum + (parseFloat(v) || 0), 0);
         if (total <= 0) {
@@ -263,6 +254,7 @@
         return floors;
     }
 
+    // Initialises interactive pie chart for preset sector weightings
     function initPresetSectorChart() {
         const canvas = document.getElementById("presetSectorPieCanvas");
         if (!canvas) return;
@@ -299,6 +291,7 @@
         });
     }
 
+    // Recalculates and updates preset sector percentage readouts and pie chart
     function updatePresetSectorAllocations() {
         const sliders = Array.from(document.querySelectorAll(".sector-slider"));
         const rawValues = sliders.map(s => parseFloat(s.value) || 0);
@@ -343,6 +336,7 @@
         }
     }
 
+    // Resets all sector sliders to zero allocation
     function resetPresetSectorsToZero() {
         const sliders = document.querySelectorAll(".sector-slider");
         sliders.forEach(s => { s.value = 0; });
@@ -351,6 +345,7 @@
         if (warning) warning.style.display = "block";
     }
 
+    // Opens preset sector allocation modal dialog
     function openSectorAllocationModal() {
         const overlay = document.getElementById("sectorAllocationOverlay");
         if (overlay) {
@@ -362,6 +357,7 @@
         }
     }
 
+    // Validates and closes sector allocation modal dialog
     function closeSectorAllocationModal() {
         const sliders = document.querySelectorAll(".sector-slider");
         let total = 0;
@@ -380,12 +376,14 @@
         return true;
     }
 
+    // Handles modal backdrop dismiss clicks
     function handleSectorOverlayMouseDown(event) {
         if (event.target === document.getElementById("sectorAllocationOverlay")) {
             closeSectorAllocationModal();
         }
     }
 
+    // Updates form visibility and stage bar to match selected boardroom mode
     function handleModeChange(mode) {
         const targetSectorGroup = document.getElementById("targetSectorCountGroup");
         const maxSectorGroup = document.getElementById("maxSectorAllocationGroup");
@@ -413,6 +411,7 @@
         6: "Maximum Defensive Bias"
     };
 
+    // Updates allocation bias slider tooltip description
     function updateAllocationBiasTooltip() {
         const slider = document.getElementById("allocationBiasSlider");
         if (!slider) return;
@@ -421,6 +420,7 @@
         slider.title = label;
     }
 
+    // Toggles visibility of investment style allocation bias slider
     function toggleAllocationBias() {
         const checkbox = document.getElementById("allocationBiasCheckbox");
         const container = document.getElementById("allocationBiasSliderContainer");
@@ -429,20 +429,20 @@
         updateAllocationBiasTooltip();
     }
 
-    // Handle evaluation mode changes
-    document.getElementById("modeSelect").addEventListener("change", function () {
+    document.getElementById("modeSelect")?.addEventListener("change", function () {
         handleModeChange(this.value);
     });
 
+    // Parses and validates initial capital input value
     function getCleanInitialCapital() {
-        const val = document.getElementById("initialCapitalInput").value;
+        const val = document.getElementById("initialCapitalInput")?.value;
         const num = parseFloat(String(val).replace(/[^0-9.]/g, ""));
         return isNaN(num) || num <= 0 ? 100000 : num;
     }
 
-    // Custom Stage Layout Handler: Stage 3 (Sector Allocation) and Stage 6 (Final Portfolio)
+    // Registers custom boardroom visual layout handlers for stages 3 and 6
     BoardroomCore.setCustomStageLayoutHandler(({ stageNum, stageName, agents, workspace }) => {
-        // Stage 3: Confirmed Sector Allocation
+        // Stage 3: Sector Allocation Decision
         if (stageNum === 3 || stageName.includes("Sector Allocation Decision")) {
             workspace.innerHTML = `
                 <div class="upload-receipt-container report-card">
@@ -469,7 +469,7 @@
                 </div>
             `;
 
-            if (agents && agents.length > 0) {
+            if (agents?.length) {
                 agents.forEach(agent => {
                     BoardroomCore.createAgentPane(stageNum, agent.role, agent.color, agent.name);
                 });
@@ -483,7 +483,7 @@
             return true;
         }
 
-        // Stage 6: Final Executive Portfolio Decision Receipt
+        // Stage 6: Final Executive Decision
         if (stageNum === 6 || stageName.includes("Final Executive Decision")) {
             workspace.innerHTML = `
                 <div class="upload-receipt-container report-card-wide">
@@ -503,6 +503,7 @@
                         <div><span id="portfolio-status" class="tool-status-badge status-running">PENDING CONSTRUCTION</span></div>
                     </div>
 
+                    <!-- Performance Chart, Donut Breakdown, and Toggle Controls -->
                     <div id="portfolioChartSection" class="report-section-spacing">
                         <div id="portfolioPieToggleContainer" class="pie-toggle-row">
                             <span class="toggle-label">View by:</span>
@@ -517,11 +518,13 @@
                             <button type="button" class="pie-toggle-btn" id="backtestToggleNow" onclick="switchPortfolioBacktestHorizon('now')">Hold until Now</button>
                         </div>
 
+                        <!-- Donut Breakdown and Backtest Trajectory Canvas Elements -->
                         <div id="portfolioChartWrapper" class="report-chart-grande">
                             <canvas id="portfolioSectorChartCanvas" class="report-canvas-fill"></canvas>
                             <canvas id="portfolioBacktestChartCanvas" class="report-canvas-fill" style="display: none;"></canvas>
                         </div>
 
+                        <!-- Backtest Performance Metric Cards -->
                         <div id="portfolioBacktestMetrics" class="backtest-metrics-container backtest-banner" style="display: none;">
                             <div class="backtest-metric-item">
                                 <div id="metricPortfolioReturnLabel" class="backtest-metric-label">Return as of today</div>
@@ -542,6 +545,7 @@
                         </div>
                     </div>
 
+                    <!-- Final Portfolio Holdings Table -->
                     <div id="portfolioHoldingsContainer" class="report-table-container">
                         <div class="report-waiting-message">Waiting for Portfolio Manager execution...</div>
                     </div>
@@ -553,7 +557,7 @@
                 </div>
             `;
 
-            if (agents && agents.length > 0) {
+            if (agents?.length) {
                 agents.forEach(agent => {
                     BoardroomCore.createAgentPane(stageNum, agent.role, agent.color, agent.name);
                 });
@@ -570,7 +574,7 @@
         return false;
     });
 
-    // Render Sector Allocation Donut Chart and Breakdown Table (Stage 3)
+    // Renders stage 3 sector allocation donut chart and tabular breakdown
     function renderSectorAllocationVisuals(allocationData) {
         confirmedSectorData = allocationData;
         const cleanCapital = getCleanInitialCapital();
@@ -585,15 +589,11 @@
             statusEl.className = "tool-status-badge status-success";
         }
 
-        let payloadRecord = allocationData;
-        if (allocationData && allocationData.confirmedAllocation) {
-            payloadRecord = allocationData.confirmedAllocation;
-        }
-
+        let payloadRecord = allocationData?.confirmedAllocation || allocationData;
         let labels = [];
         let values = [];
 
-        if (payloadRecord && payloadRecord.sectorAllocations) {
+        if (payloadRecord?.sectorAllocations) {
             const secDict = payloadRecord.sectorAllocations;
             for (const [secKey, secObj] of Object.entries(secDict)) {
                 const name = (typeof secObj === "object" && secObj.sector) ? secObj.sector : secKey;
@@ -601,7 +601,7 @@
                 labels.push(name);
                 values.push(pct || 0);
             }
-        } else if (payloadRecord && payloadRecord.allocations) {
+        } else if (payloadRecord?.allocations) {
             const secDict = payloadRecord.allocations;
             for (const [secKey, pctVal] of Object.entries(secDict)) {
                 labels.push(secKey);
@@ -616,7 +616,6 @@
             }
         }
 
-        // Render Table
         const tableContainer = document.getElementById("sectorTableContainer");
         if (tableContainer && labels.length > 0) {
             let tableHtml = `
@@ -645,7 +644,6 @@
             tableContainer.innerHTML = tableHtml;
         }
 
-        // Render Donut Chart
         const canvas = document.getElementById("sectorAllocationChartCanvas");
         if (!canvas || labels.length === 0) return;
 
@@ -693,21 +691,18 @@
         });
     }
 
+    // Switches active breakdown view between sector, industry, and stock
     function switchPortfolioPieBreakdown(mode) {
         currentPieBreakdownMode = mode || "sector";
         const buttons = ["sector", "industry", "stock"];
         buttons.forEach(b => {
             const btn = document.getElementById("pieToggle" + b.charAt(0).toUpperCase() + b.slice(1));
             if (btn) {
-                if (b === currentPieBreakdownMode) {
-                    btn.classList.add("active");
-                } else {
-                    btn.classList.remove("active");
-                }
+                btn.classList.toggle("active", b === currentPieBreakdownMode);
             }
         });
 
-        if (!currentPieBreakdowns || !currentPieBreakdowns[currentPieBreakdownMode]) return;
+        if (!currentPieBreakdowns?.[currentPieBreakdownMode]) return;
 
         const canvas = document.getElementById("portfolioSectorChartCanvas");
         if (!canvas) return;
@@ -768,7 +763,7 @@
     const hoverCrosshairPlugin = {
         id: "hoverCrosshair",
         afterDraw: (chart) => {
-            if (chart.tooltip && chart.tooltip._active && chart.tooltip._active.length > 0) {
+            if (chart.tooltip?._active?.length) {
                 const activePoint = chart.tooltip._active[0];
                 const xPixel = activePoint.element.x;
                 const ctx = chart.ctx;
@@ -785,6 +780,7 @@
         }
     };
 
+    // Updates backtest time horizon toggle button labels and visibility
     function updatePortfolioBacktestToggle(backtestPayload) {
         const toggleContainer = document.getElementById("portfolioBacktestToggleContainer");
         const btnHorizon = document.getElementById("backtestToggleHorizon");
@@ -792,23 +788,15 @@
 
         if (!toggleContainer) return;
 
-        if (backtestPayload && backtestPayload.canToggle) {
+        if (backtestPayload?.canToggle) {
             const horizonLabel = backtestPayload.timeHorizon ? `Hold for ${backtestPayload.timeHorizon}` : "Hold for Horizon";
             if (btnHorizon) {
                 btnHorizon.innerText = horizonLabel;
-                if (currentBacktestHorizonMode === "horizon") {
-                    btnHorizon.classList.add("active");
-                } else {
-                    btnHorizon.classList.remove("active");
-                }
+                btnHorizon.classList.toggle("active", currentBacktestHorizonMode === "horizon");
             }
             if (btnNow) {
                 btnNow.innerText = "Hold until Now";
-                if (currentBacktestHorizonMode === "now") {
-                    btnNow.classList.add("active");
-                } else {
-                    btnNow.classList.remove("active");
-                }
+                btnNow.classList.toggle("active", currentBacktestHorizonMode === "now");
             }
             toggleContainer.style.display = "flex";
         } else {
@@ -816,18 +804,14 @@
         }
     }
 
+    // Switches active backtesting time window mode
     function switchPortfolioBacktestHorizon(mode) {
         currentBacktestHorizonMode = mode;
         const btnHorizon = document.getElementById("backtestToggleHorizon");
         const btnNow = document.getElementById("backtestToggleNow");
 
-        if (mode === "horizon") {
-            if (btnHorizon) btnHorizon.classList.add("active");
-            if (btnNow) btnNow.classList.remove("active");
-        } else {
-            if (btnNow) btnNow.classList.add("active");
-            if (btnHorizon) btnHorizon.classList.remove("active");
-        }
+        if (btnHorizon) btnHorizon.classList.toggle("active", mode === "horizon");
+        if (btnNow) btnNow.classList.toggle("active", mode !== "horizon");
 
         if (!cachedBacktestData) return;
 
@@ -841,11 +825,12 @@
             const data = confirmedPortfolioData.confirmedPortfolio || confirmedPortfolioData;
             const positions = data.positions || [];
             const cashPos = data.cashPosition || { weightPct: 0, dollarAllocation: 0 };
-            const cleanCapital = (data.initialCapital) ? parseFloat(data.initialCapital) : getCleanInitialCapital();
+            const cleanCapital = data.initialCapital ? parseFloat(data.initialCapital) : getCleanInitialCapital();
             renderHoldingsTable(positions, cashPos, cleanCapital, activeData);
         }
     }
 
+    // Renders historical backtest comparative performance line chart
     function renderPortfolioBacktestChart(chartData, mode = null) {
         const canvas = document.getElementById("portfolioBacktestChartCanvas");
         if (!canvas) return;
@@ -947,7 +932,6 @@
             }
         });
 
-        // Update the 4 text elements under the chart
         if (chartData.metrics) {
             const m = chartData.metrics;
             const retLabelEl = document.getElementById("metricPortfolioReturnLabel");
@@ -1003,12 +987,12 @@
         }
     }
 
-    // Render Holdings Table with optional Backtest Return column
+    // Renders finalised portfolio holdings table with individual position returns
     function renderHoldingsTable(positions, cashPos, cleanCapital, backtestData = null) {
         const holdingsContainer = document.getElementById("portfolioHoldingsContainer");
         if (!holdingsContainer) return;
 
-        const hasBacktest = Boolean(backtestData && backtestData.holdingReturns);
+        const hasBacktest = Boolean(backtestData?.holdingReturns);
         const holdingReturns = hasBacktest ? backtestData.holdingReturns : {};
         const colCount = hasBacktest ? 6 : 5;
 
@@ -1103,20 +1087,17 @@
         holdingsContainer.innerHTML = tableHtml;
     }
 
-    // Render Final Portfolio Construction Report Card (Stage 6)
+    // Renders stage 6 final created portfolio visualisations and backtest
     function renderPortfolioVisuals(portfolioData) {
         confirmedPortfolioData = portfolioData;
-        let data = portfolioData;
-        if (portfolioData && portfolioData.confirmedPortfolio) {
-            data = portfolioData.confirmedPortfolio;
-        }
+        const data = portfolioData?.confirmedPortfolio || portfolioData;
 
-        const cleanCapital = (data && data.initialCapital) ? parseFloat(data.initialCapital) : getCleanInitialCapital();
-        const positions = (data && data.positions) ? data.positions : [];
-        const cashPos = (data && data.cashPosition) ? data.cashPosition : { weightPct: 0, dollarAllocation: 0 };
-        const sectorBreakdown = (data && data.sectorBreakdown) ? data.sectorBreakdown : {};
+        const cleanCapital = data?.initialCapital ? parseFloat(data.initialCapital) : getCleanInitialCapital();
+        const positions = data?.positions || [];
+        const cashPos = data?.cashPosition || { weightPct: 0, dollarAllocation: 0 };
+        const sectorBreakdown = data?.sectorBreakdown || {};
 
-        const effectiveSimDate = currentSimulatedDate || (data && data.asOfDate) || BoardroomCore.getSimulatedDate();
+        const effectiveSimDate = currentSimulatedDate || data?.asOfDate || BoardroomCore.getSimulatedDate();
 
         const capitalEl = document.getElementById("portfolio-capital");
         const dateEl = document.getElementById("portfolio-date");
@@ -1131,9 +1112,8 @@
             statusEl.className = "tool-status-badge status-success";
         }
 
-        // Chart display logic: Past date -> Backtest Line Chart; Today/Not Past -> 3-view Pie Chart
         const pastDate = isDateInPast(effectiveSimDate);
-        const selectedHorizon = document.getElementById("horizonSelect").value || "1 year";
+        const selectedHorizon = document.getElementById("horizonSelect")?.value || "1 year";
         const currentBacktestData = (pastDate && cachedBacktestData && cachedBacktestData.simDate === effectiveSimDate && cachedBacktestData.timeHorizon === selectedHorizon) 
             ? ((currentBacktestHorizonMode === "horizon" && cachedBacktestData.horizon) ? cachedBacktestData.horizon : (cachedBacktestData.full || cachedBacktestData))
             : null;
@@ -1173,7 +1153,7 @@
                 })
                 .then(res => res.json())
                 .then(resData => {
-                    if (resData && resData.ok) {
+                    if (resData?.ok) {
                         cachedBacktestData = resData;
                         updatePortfolioBacktestToggle(resData);
                         const activeData = (currentBacktestHorizonMode === "horizon" && resData.horizon)
@@ -1194,8 +1174,6 @@
             if (backtestCanvas) backtestCanvas.style.display = "none";
             if (backtestMetrics) backtestMetrics.style.display = "none";
 
-            // Prepare 3 breakdown datasets: Sector, Industry, Stock
-            // 1. Sector breakdown
             const secLabels = Object.keys(sectorBreakdown);
             const secValues = secLabels.map(k => parseFloat(sectorBreakdown[k]) || 0);
             if (cashPos.weightPct > 0) {
@@ -1203,7 +1181,6 @@
                 secValues.push(parseFloat(cashPos.weightPct));
             }
 
-            // 2. Industry breakdown
             const indDict = {};
             positions.forEach(p => {
                 const ind = p.industry || "General Equities";
@@ -1216,7 +1193,6 @@
                 indValues.push(parseFloat(cashPos.weightPct));
             }
 
-            // 3. Stock breakdown
             const stLabels = positions.map(p => p.ticker);
             const stValues = positions.map(p => parseFloat(p.weightPct) || 0);
             const stSubs = positions.map(p => p.companyName || "");
@@ -1236,7 +1212,7 @@
         }
     }
 
-    // Lifecycle Listeners
+    // Listens for boardroom simulation start events to reset UI state
     BoardroomCore.on("simulationStarted", () => {
         confirmedSectorData = null;
         confirmedPortfolioData = null;
@@ -1258,19 +1234,21 @@
         if (finalTimeRow) finalTimeRow.style.display = "none";
     });
 
+    // Listens for sector allocation confirmation events
     BoardroomCore.on("sectorAllocationConfirmed", (payload) => {
-        if (payload && payload.confirmedAllocation) {
+        if (payload?.confirmedAllocation) {
             renderSectorAllocationVisuals(payload.confirmedAllocation);
         }
     });
 
+    // Listens for portfolio creation confirmation events
     BoardroomCore.on("portfolioCreated", (payload) => {
-        if (payload && payload.confirmedPortfolio) {
+        if (payload?.confirmedPortfolio) {
             renderPortfolioVisuals(payload.confirmedPortfolio);
         }
     });
 
-    // Also catch tool confirmation events directly if tool finishes
+    // Listens for tool call completions to capture confirmation results
     BoardroomCore.on("toolCallEnd", (payload) => {
         if (payload.toolName === "confirmSectorAllocation" && payload.status === "success") {
             try {
@@ -1290,6 +1268,7 @@
         }
     });
 
+    // Listens for simulation completion events to display total elapsed duration
     BoardroomCore.on("simComplete", (payload) => {
         const finalTimeRow = document.getElementById("finalTimeReportRow");
         if (finalTimeRow) {
@@ -1301,7 +1280,7 @@
         }
     });
 
-    // Enforce bounds on blur and input for numerical constraints
+    // Attaches change listener to clamp numeric input within range
     function clampInput(inputEl, minVal, maxVal, allowEmpty = false) {
         if (!inputEl) return;
         inputEl.addEventListener("change", function () {
@@ -1324,36 +1303,36 @@
     clampInput(document.getElementById("targetStockCountInput"), 1, 30, true);
     clampInput(document.getElementById("maxStockAllocationInput"), 10, 60);
 
-    // Initialise Core Engine
+    // Initialise BoardroomCore runner
     BoardroomCore.init({
         defaultStages: portfolioCreationStages,
-        initialMode: document.getElementById("modeSelect").value || "complete",
+        initialMode: document.getElementById("modeSelect")?.value || "complete",
         getPayload: () => {
             const capitalVal = getCleanInitialCapital();
 
-            let maxSector = parseFloat(document.getElementById("maxSectorAllocationInput").value);
+            let maxSector = parseFloat(document.getElementById("maxSectorAllocationInput")?.value);
             if (isNaN(maxSector)) maxSector = 75;
             maxSector = Math.max(20, Math.min(80, maxSector));
 
-            const targetSectorsRaw = document.getElementById("targetSectorCountInput").value.trim();
+            const targetSectorsRaw = document.getElementById("targetSectorCountInput")?.value.trim();
             let targetSectors = (targetSectorsRaw && targetSectorsRaw !== "") ? parseInt(targetSectorsRaw, 10) : null;
             if (targetSectors !== null) targetSectors = Math.max(1, Math.min(11, targetSectors));
 
-            let maxStock = parseFloat(document.getElementById("maxStockAllocationInput").value);
+            let maxStock = parseFloat(document.getElementById("maxStockAllocationInput")?.value);
             if (isNaN(maxStock)) maxStock = 40;
             maxStock = Math.max(10, Math.min(60, maxStock));
 
-            const targetStocksRaw = document.getElementById("targetStockCountInput").value.trim();
+            const targetStocksRaw = document.getElementById("targetStockCountInput")?.value.trim();
             let targetStocks = (targetStocksRaw && targetStocksRaw !== "") ? parseInt(targetStocksRaw, 10) : null;
             if (targetStocks !== null) targetStocks = Math.max(1, Math.min(30, targetStocks));
 
-            const mode = document.getElementById("modeSelect").value;
-            const horizon = document.getElementById("horizonSelect").value;
+            const mode = document.getElementById("modeSelect")?.value;
+            const horizon = document.getElementById("horizonSelect")?.value;
 
-            const isBiasEnabled = document.getElementById("allocationBiasCheckbox").checked;
+            const isBiasEnabled = document.getElementById("allocationBiasCheckbox")?.checked;
             let allocationBiasVal = null;
             if (isBiasEnabled) {
-                const sliderVal = parseInt(document.getElementById("allocationBiasSlider").value, 10);
+                const sliderVal = parseInt(document.getElementById("allocationBiasSlider")?.value, 10);
                 allocationBiasVal = isNaN(sliderVal) ? 1 : Math.max(1, Math.min(6, sliderVal));
             }
 
@@ -1396,9 +1375,7 @@
         }
     });
 
-    // Initialise preset sector sliders and initial mode state
     renderPresetSectorSliders();
-    handleModeChange(document.getElementById("modeSelect").value || "complete");
+    handleModeChange(document.getElementById("modeSelect")?.value || "complete");
 </script>
 {% endblock %}
-

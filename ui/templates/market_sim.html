@@ -14,7 +14,7 @@
 
     {% include 'header.html' %}
 
-    <!-- Setup Dialog Overlay (Emulating server.html) -->
+    <!-- Setup Dialog Overlay for Initial Simulation Parameters -->
     <div id="setupOverlay" class="setup-overlay">
         <div class="splash-load-model-window">
             <h1 id="pageTitle">Market Simulation Setup</h1>
@@ -39,18 +39,18 @@
         </div>
     </div>
 
-    <!-- Main Market Simulation Layout -->
+    <!-- Main Market Simulation Dashboard Layout -->
     <div class="marketsim-container">
         <!-- Left Main Area (75% Width) -->
         <main class="marketsim-main">
             
-            <!-- Top Grid Row -->
+            <!-- Top Dashboard Row -->
             <div class="grid-row top-row">
                 
-                <!-- Card 1: Simulation Info & Responsive Embedded Graph -->
+                <!-- Card 1: Simulation Info and Responsive Embedded Performance Graph -->
                 <div class="sim-card sim-info-card">
                     <div class="sim-info-card-body">
-                        <!-- Left Column: Metrics & Reset Control -->
+                        <!-- Left Column: Metrics and Reset Control -->
                         <div class="sim-info-left">
                             <div class="sim-info-header sim-info-header-spread">
                                 <div>
@@ -100,7 +100,7 @@
                         </div>
                     </div>
 
-                    <!-- Advance Controls -->
+                    <!-- Advance Simulation Timeline Controls -->
                     <div class="sim-advance-section">
                         <span class="advance-section-label">Advance Simulation:</span>
                         <div class="advance-btn-group">
@@ -128,7 +128,7 @@
                     
                     <form class="order-form-vertical" onsubmit="handleQueueOrder(event)">
                         
-                        <!-- Row 1: Side & Type -->
+                        <!-- Row 1: Side and Type -->
                         <div class="form-row-2col">
                             <div class="form-group flex-half">
                                 <label class="small-input-label" for="orderAction">Side</label>
@@ -169,7 +169,7 @@
                             <input type="text" id="orderTicker" class="sim-input order-ticker-input" placeholder="e.g. NVDA" required oninput="onOrderTickerInput()">
                         </div>
 
-                        <!-- Row 4: Amount & Unit -->
+                        <!-- Row 4: Amount and Unit -->
                         <div class="form-row-2col">
                             <div class="form-group flex-half">
                                 <label class="small-input-label" for="orderQuantity">Amount</label>
@@ -200,7 +200,7 @@
                             </div>
                         </div>
 
-                        <!-- Submit Button -->
+                        <!-- Order Submit Button -->
                         <button type="submit" id="queueOrderBtn" class="submit-order-btn-full" title="Queue Order">
                             <span>Queue Order</span>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
@@ -212,7 +212,7 @@
 
             </div>
 
-            <!-- Bottom Grid Row: Positions Table + System Logs / Queued Orders Panel -->
+            <!-- Bottom Grid Row: Positions Table and System Logs / Queued Orders Panel -->
             <div class="grid-row bottom-row">
 
                 <!-- Card 3: Positions Table -->
@@ -241,7 +241,7 @@
                     </div>
                 </div>
 
-                <!-- Card 4: System Logs Card -->
+                <!-- Card 4: System Logs and Queued Orders Card -->
                 <div class="sim-card logs-card" id="systemLogsCard">
                     <h2 class="card-title">System Logs</h2>
                     
@@ -254,7 +254,7 @@
 
         </main>
 
-        <!-- Right Side Panel (25% Width) -->
+        <!-- Right Side Panel: Ticker Inspector (25% Width) -->
         <aside class="marketsim-sidebar">
             <div class="sidebar-header-row">
                 <div class="sidebar-title">Ticker Inspector</div>
@@ -267,7 +267,7 @@
                 </div>
             </div>
 
-            <!-- Stock Info Header -->
+            <!-- Stock Identity and Price Header -->
             <div class="stock-header">
                 <div class="stock-title">
                     <img id="stockLogo" class="stock-logo" src="https://placehold.co/256x256?text=NVDA" alt="Stock Logo">
@@ -279,13 +279,13 @@
                 </div>
             </div>
 
-            <!-- Stock Chart Area -->
+            <!-- Stock Chart Visualisation Section -->
             <div class="chart-section">
                 <div class="chart-canvas-wrapper">
                     <canvas id="marketSimChart"></canvas>
                 </div>
 
-                <!-- Timeframe Selector Buttons (Right Side) -->
+                <!-- Stock Chart Timeframe Selectors -->
                 <div class="chart-timeframe-controls" id="stockChartTimeframeControls">
                     <button class="tf-btn" onclick="updateStockChartTimeframe('1m', this)">1M</button>
                     <button class="tf-btn active" onclick="updateStockChartTimeframe('3m', this)">3M</button>
@@ -295,13 +295,13 @@
                 </div>
             </div>
 
-            <!-- Inspector Content Container (with blur overlay support) -->
+            <!-- Inspector Content Container with Blur Loading State -->
             <div class="inspector-container" id="inspectorContainer">
                 <div id="inspectorLoadingOverlay" class="inspector-overlay-badge" style="display: none;">
                     <div class="inspector-spinner"></div>
                 </div>
 
-                <!-- 2-Column Metrics Container (Half and Half Sideways Divs) -->
+                <!-- 2-Column Fundamental and Price Metrics Grid -->
                 <div class="inspector-metrics-container" id="inspectorMetricsGrid">
                     <div class="metrics-column">
                         <div class="datapair"><span class="datapair-label">Exchange:</span><span class="datapair-val" id="metricExchange">NASDAQ</span></div>
@@ -327,7 +327,7 @@
                     </div>
                 </div>
 
-                <!-- Benzinga News Feed -->
+                <!-- Historical Financial News Feed -->
                 <div class="news-feed-wrapper" id="inspectorNewsWrapper">
                     <div class="news-feed-header">
                         <span>Recent News</span>
@@ -341,32 +341,48 @@
         </aside>
     </div>
 
-    <!-- Simulation Web API Script -->
+    
+    <!-- Simulation Web API and Interaction Script -->
+
     <script>
+        // Current simulation runtime state record
         let currentState = null;
+        // Chart.js instance for portfolio asset value line graph
         let portfolioChartInstance = null;
+        // Chart.js instance for single ticker price history
         let stockChartInstance = null;
+        // Unique simulation session identifier
         let sessionId = localStorage.getItem("sim_session_id") || ("sess_" + Math.random().toString(36).substring(2, 10));
         localStorage.setItem("sim_session_id", sessionId);
 
+        // Active ticker price cache for order form
         let orderTickerPriceState = { ticker: "", exists: false, lastPrice: null };
+        // Debounce timer for order ticker symbol inputs
         let orderTickerTimer = null;
+        // Cached array of active market tickers
         let availableTickersList = [];
+        // Flag indicating whether simulation timeline advance is active
         let isAdvancing = false;
 
+        // WebSocket request-response callback registry
         const pendingWsRequests = new Map();
+        // Target date for ticker inspector background retrieval
         let currentInspectorTargetDate = null;
+        // Monotonically increasing job identifier for inspector push requests
         let currentInspectorJobId = 0;
+        // Fallback timer for inspector loading overlay
         let inspectorTimeoutTimer = null;
+        // Staged inspector data held during multi-day step animations
         let pendingInspectorData = null;
 
+        // Register WebSocket subscription for async inspector pushes and request responses
         if (typeof window.wsSubscribe === 'function') {
             window.wsSubscribe((data) => {
-                if (data && data.action === "sim_ticker_info_push") {
+                if (data?.action === "sim_ticker_info_push") {
                     handleInspectorPushReceived(data);
                     return;
                 }
-                if (data && data.requestId && pendingWsRequests.has(data.requestId)) {
+                if (data?.requestId && pendingWsRequests.has(data.requestId)) {
                     const resolver = pendingWsRequests.get(data.requestId);
                     pendingWsRequests.delete(data.requestId);
                     resolver(data);
@@ -374,6 +390,7 @@
             });
         }
 
+        // Clears active inspector fallback timeout timer
         function clearInspectorTimeout() {
             if (inspectorTimeoutTimer) {
                 clearTimeout(inspectorTimeoutTimer);
@@ -381,33 +398,29 @@
             }
         }
 
+        // Arms fallback timeout to prevent inspector from staying blurred indefinitely
         function armInspectorTimeout() {
             clearInspectorTimeout();
-            // Safety net: if the bottom-half data never arrives (e.g. thread error or
-            // dropped websocket), unblur with whatever we have instead of blurring forever.
             inspectorTimeoutTimer = setTimeout(() => {
                 setInspectorBlurState(false);
             }, 30000);
         }
 
+        // Dispatches asynchronous background inspector data request via WebSocket
         function initiateBackgroundInspector(targetDate, tickerOverride = null) {
-            const currentTicker = (tickerOverride || document.getElementById('tickerSearchInput').value).trim().toUpperCase();
-            if (!targetDate) {
-                targetDate = currentState ? currentState.currentDate : "2016-06-01";
-            }
+            const currentTicker = (tickerOverride || document.getElementById('tickerSearchInput')?.value || "").trim().toUpperCase();
+            const effectiveDate = targetDate || currentState?.currentDate || "2016-06-01";
 
             setInspectorBlurState(true);
             currentInspectorJobId++;
-            currentInspectorTargetDate = targetDate;
+            currentInspectorTargetDate = effectiveDate;
             armInspectorTimeout();
 
-            // Send the request as a raw WS message. The actual data arrives later via the
-            // separate "sim_ticker_info_push" message, so there is no request/response to await.
             const msgData = {
                 action: "sim_ticker_info",
                 sessionId: sessionId,
                 ticker: currentTicker,
-                targetDate: targetDate,
+                targetDate: effectiveDate,
                 timeframe: currentStockTimeframe,
                 jobId: currentInspectorJobId
             };
@@ -417,26 +430,23 @@
             }
         }
 
+        // Handles async ticker inspector push notification data
         function handleInspectorPushReceived(data) {
             if (!data) return;
-            // Ignore out-of-date responses (e.g. after multiple button presses or target date change)
             if (data.targetDate !== currentInspectorTargetDate || (data.jobId && data.jobId !== currentInspectorJobId)) {
                 return;
             }
             clearInspectorTimeout();
 
             if (!data.ok) {
-                // Background data retrieval failed; unblur with whatever we have (N/A)
                 setInspectorBlurState(false);
                 return;
             }
 
             const inspector = data.inspector || data;
-            if (data.profile) inspector.companyName = data.profile.name || inspector.companyName;
+            if (data.profile?.name) inspector.companyName = data.profile.name;
             if (data.chart) inspector.chart = data.chart;
 
-            // If the simulation is still advancing, hold the bottom-half data until it
-            // completes so the ticker data doesn't appear before the advance finishes.
             if (isAdvancing) {
                 pendingInspectorData = inspector;
                 return;
@@ -444,7 +454,7 @@
             applyInspectorData(inspector);
         }
 
-
+        // Sends asynchronous request over WebSocket and awaits response payload
         function requestWs(action, payload = {}, timeoutMs = 15000) {
             return new Promise((resolve, reject) => {
                 const requestId = "req_" + Math.random().toString(36).substring(2, 11) + "_" + Date.now();
@@ -476,27 +486,29 @@
             });
         }
 
+        // Fetches full list of valid active market tickers
         async function fetchAvailableTickersList() {
             try {
                 const data = await requestWs("sim_available_tickers");
-                if (data && data.tickers && Array.isArray(data.tickers)) {
+                if (data?.tickers && Array.isArray(data.tickers)) {
                     availableTickersList = data.tickers;
                 }
-            } catch(e) {}
+            } catch (e) {}
         }
 
+        // Fills random ticker symbol from market universe into order form
         async function fillRandomTicker() {
             try {
                 const data = await requestWs("sim_random_ticker");
-                if (data.ok && data.ticker) {
+                if (data?.ok && data.ticker) {
                     const input = document.getElementById('orderTicker');
                     if (input) {
                         input.value = data.ticker;
                         onOrderTickerInput();
                     }
                 }
-            } catch(e) {
-                if (availableTickersList && availableTickersList.length > 0) {
+            } catch (e) {
+                if (availableTickersList.length > 0) {
                     const rand = availableTickersList[Math.floor(Math.random() * availableTickersList.length)];
                     const input = document.getElementById('orderTicker');
                     if (input) {
@@ -507,30 +519,26 @@
             }
         }
 
+        // Toggles disabled state of timeline advance action buttons
         function setAdvanceButtonsDisabled(disabled) {
             const btns = document.querySelectorAll('.advance-chip-btn');
             btns.forEach(b => {
                 b.disabled = disabled;
-                if (disabled) b.classList.add('disabled');
-                else b.classList.remove('disabled');
+                b.classList.toggle('disabled', disabled);
             });
 
             const dateInput = document.getElementById('advanceToDateInput');
             if (dateInput) {
                 dateInput.disabled = disabled;
-                if (disabled) {
-                    dateInput.style.opacity = '0.5';
-                    dateInput.style.cursor = 'not-allowed';
-                } else {
-                    dateInput.style.opacity = '1';
-                    dateInput.style.cursor = 'auto';
-                }
+                dateInput.style.opacity = disabled ? '0.5' : '1';
+                dateInput.style.cursor = disabled ? 'not-allowed' : 'auto';
             }
         }
 
-        // --- Stock chart timeframe lock (forced to 3m while advancing) ---
+        // Saved stock timeframe variable used to restore user preference after advance
         let savedStockTimeframe = null;
 
+        // Updates active stock timeframe selection and button visual state
         function setStockTimeframe(tf) {
             currentStockTimeframe = tf.toLowerCase();
             const controls = document.getElementById('stockChartTimeframeControls');
@@ -542,6 +550,7 @@
             }
         }
 
+        // Enables or disables stock timeframe selector buttons
         function setStockTimeframeButtonsDisabled(disabled) {
             const controls = document.getElementById('stockChartTimeframeControls');
             if (controls) {
@@ -553,23 +562,25 @@
             }
         }
 
+        // Locks stock timeframe to 3M during step advancement
         function beginAdvanceTimeframeLock() {
             savedStockTimeframe = currentStockTimeframe;
             setStockTimeframe('3m');
             setStockTimeframeButtonsDisabled(true);
         }
 
+        // Restores previous user stock timeframe preference after advance
         function endAdvanceTimeframeLock() {
             const restoreTf = savedStockTimeframe;
             savedStockTimeframe = null;
             setStockTimeframeButtonsDisabled(false);
             if (restoreTf) {
-                // Update the active button AND re-fetch the chart for the restored timeframe.
                 setStockTimeframe(restoreTf);
                 updateStockChartTimeframe(restoreTf);
             }
         }
 
+        // Formats date string for chart axis display
         function formatChartDateLabel(dateStr) {
             if (!dateStr) return dateStr;
             const parts = dateStr.split('-');
@@ -585,17 +596,17 @@
             return dateStr;
         }
 
-        // Initialise on load: Always prompt setup on page refresh
+        // Initialises market simulation view on DOM load
         window.addEventListener('DOMContentLoaded', async () => {
             initCharts();
             fetchAvailableTickersList();
             fetchTickerInfo("NVDA");
 
-            // Fetch collectors constants to dynamically set maximum Sim/End Date bounds
+            // Fetch collectors constants to set maximum Sim and End Date bounds
             fetch("/api/constants")
                 .then(res => res.json())
                 .then(data => {
-                    if (data && data.endDate) {
+                    if (data?.endDate) {
                         const startInp = document.getElementById("setupStartDate");
                         const advInp = document.getElementById("advanceToDateInput");
                         if (startInp) startInp.setAttribute("max", data.endDate);
@@ -607,29 +618,28 @@
             await resetSimulationSession(true);
         });
 
+        // Formats dollar currency input fields with thousand separators
         function formatDollarInput(input, decimalPlaces) {
-            if (window.AppUtils && window.AppUtils.formatDollarInput) {
+            if (window.AppUtils?.formatDollarInput) {
                 window.AppUtils.formatDollarInput(input, decimalPlaces);
             }
         }
 
+        // Counts fractional decimal places of a numeric value
         function countDecimalPlaces(num) {
-            if (window.AppUtils && window.AppUtils.countDecimalPlaces) {
+            if (window.AppUtils?.countDecimalPlaces) {
                 return window.AppUtils.countDecimalPlaces(num);
             }
             if (!num || Math.floor(num) === num) return 0;
             const str = num.toString();
-            if (str.indexOf('e-') !== -1) {
-                return parseInt(str.split('e-')[1], 10);
-            }
-            if (str.indexOf('.') !== -1) {
-                return str.split('.')[1].length;
-            }
+            if (str.includes('e-')) return parseInt(str.split('e-')[1], 10);
+            if (str.includes('.')) return str.split('.')[1].length;
             return 0;
         }
 
+        // Formats large numeric currency values for chart y-axis tick marks
         function formatYAxisLabel(val, stepSize) {
-            if (window.AppUtils && window.AppUtils.formatLargeCurrency) {
+            if (window.AppUtils?.formatLargeCurrency) {
                 return window.AppUtils.formatLargeCurrency(val, stepSize);
             }
             if (val === 0) return '$0';
@@ -643,20 +653,8 @@
             else if (absVal >= 1e3) { unit = 'K'; div = 1e3; }
 
             const num = val / div;
-
-            let dp = 0;
-            if (stepSize && stepSize > 0) {
-                const stepInUnit = stepSize / div;
-                dp = countDecimalPlaces(stepInUnit);
-            } else {
-                dp = countDecimalPlaces(num);
-            }
-            dp = Math.max(0, Math.min(6, dp));
-
-            let minDp = 0;
-            if (div === 1 && stepSize && stepSize < 1) {
-                minDp = 2;
-            }
+            const dp = Math.max(0, Math.min(6, stepSize && stepSize > 0 ? countDecimalPlaces(stepSize / div) : countDecimalPlaces(num)));
+            const minDp = (div === 1 && stepSize && stepSize < 1) ? 2 : 0;
 
             const formattedStr = num.toLocaleString('en-US', {
                 minimumFractionDigits: minDp,
@@ -666,6 +664,7 @@
             return '$' + formattedStr + unit;
         }
 
+        // Calculates rounded chart y-axis minimum, maximum and step intervals
         function getNiceAxisBounds(minVal, maxVal, targetTicks = 5) {
             const minStep = 0.01;
 
@@ -692,28 +691,27 @@
             else if (fraction <= 5.0) niceFraction = 5.0;
             else niceFraction = 10.0;
 
-            let stepSize = niceFraction * Math.pow(10, exponent);
-            stepSize = Math.max(minStep, Math.round(stepSize * 100) / 100);
-
+            let stepSize = Math.max(minStep, Math.round((niceFraction * Math.pow(10, exponent)) * 100) / 100);
             let niceMin = Math.floor(minBound / stepSize) * stepSize;
             let niceMax = Math.ceil(maxBound / stepSize) * stepSize;
 
             if (minVal >= 0 && niceMin < 0) niceMin = 0;
             if (niceMax <= maxVal) niceMax += stepSize;
 
-            niceMin = Math.round(niceMin * 100) / 100;
-            niceMax = Math.round(niceMax * 100) / 100;
-
-            return { min: niceMin, max: niceMax, stepSize: stepSize };
+            return {
+                min: Math.round(niceMin * 100) / 100,
+                max: Math.round(niceMax * 100) / 100,
+                stepSize: stepSize
+            };
         }
 
+        // Builds dynamic date label mapping based on selected timeframe
         function buildDateLabelMap(labels, timeframe, fullLabels = null) {
             const map = {};
             if (!labels || labels.length === 0) return map;
 
             const allDates = (fullLabels && fullLabels.length >= labels.length) ? fullLabels : labels;
-            let tf = (timeframe || '3m').toLowerCase();
-
+            const tf = (timeframe || '3m').toLowerCase();
             const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
             const formatDayMonth = (dateStr) => {
@@ -753,19 +751,13 @@
 
             const formatYearOnly = (dateStr) => {
                 const parts = dateStr.split('-');
-                if (parts.length >= 1) {
-                    return parts[0];
-                }
-                return dateStr;
+                return parts.length >= 1 ? parts[0] : dateStr;
             };
 
             const getWeekKey = (dateStr) => {
                 const parts = dateStr.split('-');
                 if (parts.length !== 3) return dateStr;
-                const year = parseInt(parts[0], 10);
-                const month = parseInt(parts[1], 10) - 1;
-                const day = parseInt(parts[2], 10);
-                const d = new Date(Date.UTC(year, month, day));
+                const d = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)));
                 const dayOfWeek = d.getUTCDay();
                 const diffToMonday = (dayOfWeek + 6) % 7;
                 d.setUTCDate(d.getUTCDate() - diffToMonday);
@@ -775,10 +767,7 @@
             const getAbsoluteWeekNumber = (dateStr) => {
                 const parts = dateStr.split('-');
                 if (parts.length !== 3) return 0;
-                const year = parseInt(parts[0], 10);
-                const month = parseInt(parts[1], 10) - 1;
-                const day = parseInt(parts[2], 10);
-                const d = new Date(Date.UTC(year, month, day));
+                const d = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)));
                 const dayOfWeek = d.getUTCDay();
                 const diffToMonday = (dayOfWeek + 6) % 7;
                 d.setUTCDate(d.getUTCDate() - diffToMonday);
@@ -789,10 +778,7 @@
 
             const getMonthKey = (dateStr) => {
                 const parts = dateStr.split('-');
-                if (parts.length >= 2) {
-                    return `${parts[0]}-${parts[1]}`;
-                }
-                return dateStr;
+                return parts.length >= 2 ? `${parts[0]}-${parts[1]}` : dateStr;
             };
 
             const lastAllowedIndex = labels.length - 3;
@@ -809,9 +795,7 @@
                         if (!seenYears.has(yr)) {
                             seenYears.add(yr);
                             if (idx === 0) {
-                                if (mo <= 2) {
-                                    firstDaysOfYear.push(d);
-                                }
+                                if (mo <= 2) firstDaysOfYear.push(d);
                             } else if (mo === 1) {
                                 firstDaysOfYear.push(d);
                             }
@@ -838,9 +822,7 @@
                             if (parts.length === 3) {
                                 const dt = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)));
                                 const dow = dt.getUTCDay();
-                                if (dow === 1 || dow === 2) {
-                                    firstDaysOfWeek.push(d);
-                                }
+                                if (dow === 1 || dow === 2) firstDaysOfWeek.push(d);
                             }
                         } else {
                             firstDaysOfWeek.push(d);
@@ -858,9 +840,7 @@
                 } else {
                     const targetSet = new Set();
                     firstDaysOfWeek.forEach(d => {
-                        if (getAbsoluteWeekNumber(d) % 2 === 0) {
-                            targetSet.add(d);
-                        }
+                        if (getAbsoluteWeekNumber(d) % 2 === 0) targetSet.add(d);
                     });
                     labels.forEach((d, idx) => {
                         if (targetSet.has(d) && idx <= lastAllowedIndex) {
@@ -880,9 +860,7 @@
                             const parts = d.split('-');
                             if (parts.length === 3) {
                                 const dom = parseInt(parts[2], 10);
-                                if (dom <= 7) {
-                                    firstDaysOfMonth.push(d);
-                                }
+                                if (dom <= 7) firstDaysOfMonth.push(d);
                             }
                         } else {
                             firstDaysOfMonth.push(d);
@@ -919,7 +897,7 @@
             return map;
         }
 
-        // Initialise Charts
+        // Initialises Chart.js line charts for portfolio and ticker views
         function initCharts() {
             const portCtx = document.getElementById('portfolioChart');
             if (portCtx && typeof Chart !== 'undefined') {
@@ -946,14 +924,8 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         animation: false,
-                        layout: {
-                            padding: { left: 5, right: 25, top: 5, bottom: 0 }
-                        },
-                        interaction: {
-                            mode: 'index',
-                            intersect: false,
-                            axis: 'x'
-                        },
+                        layout: { padding: { left: 5, right: 25, top: 5, bottom: 0 } },
+                        interaction: { mode: 'index', intersect: false, axis: 'x' },
                         plugins: {
                             legend: { display: false },
                             tooltip: {
@@ -973,8 +945,7 @@
                                     autoSkip: false,
                                     maxRotation: 0,
                                     callback: function(val) {
-                                        const label = this.getLabelForValue(val);
-                                        return formatChartDateLabel(label);
+                                        return formatChartDateLabel(this.getLabelForValue(val));
                                     }
                                 }
                             },
@@ -984,7 +955,7 @@
                                     font: { size: 11, weight: '600' },
                                     color: '#64748b',
                                     callback: function(val) {
-                                        const step = this.options && this.options.stepSize ? this.options.stepSize : 0.01;
+                                        const step = this.options?.stepSize || 0.01;
                                         const rem = Math.abs(val % step);
                                         if (rem > 1e-4 && Math.abs(rem - step) > 1e-4) return '';
                                         return formatYAxisLabel(val, step);
@@ -1018,14 +989,8 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         animation: false,
-                        layout: {
-                            padding: { left: 5, right: 25, top: 5, bottom: 0 }
-                        },
-                        interaction: {
-                            mode: 'index',
-                            intersect: false,
-                            axis: 'x'
-                        },
+                        layout: { padding: { left: 5, right: 25, top: 5, bottom: 0 } },
+                        interaction: { mode: 'index', intersect: false, axis: 'x' },
                         plugins: {
                             legend: { display: false },
                             tooltip: {
@@ -1045,8 +1010,7 @@
                                     autoSkip: false,
                                     maxRotation: 0,
                                     callback: function(val) {
-                                        const label = this.getLabelForValue(val);
-                                        return formatChartDateLabel(label);
+                                        return formatChartDateLabel(this.getLabelForValue(val));
                                     }
                                 }
                             },
@@ -1056,7 +1020,7 @@
                                     font: { size: 10, weight: '600' },
                                     color: '#64748b',
                                     callback: function(val) {
-                                        const step = this.options && this.options.stepSize ? this.options.stepSize : 0.01;
+                                        const step = this.options?.stepSize || 0.01;
                                         const rem = Math.abs(val % step);
                                         if (rem > 1e-4 && Math.abs(rem - step) > 1e-4) return '';
                                         return formatYAxisLabel(val, step);
@@ -1069,21 +1033,24 @@
             }
         }
 
-        // Start Simulation handler from modal setup
+        // Handles starting simulation from setup modal overlay
         async function handleStartSimulation(e) {
             if (e) e.preventDefault();
-            const startDate = document.getElementById('setupStartDate').value;
-            const rawBalanceStr = document.getElementById('setupDollarAmount').value.replace(/,/g, '');
+            const startDate = document.getElementById('setupStartDate')?.value || "2016-02-01";
+            const rawBalanceStr = (document.getElementById('setupDollarAmount')?.value || "1,000,000").replace(/,/g, '');
             const dollarAmount = parseInt(rawBalanceStr, 10) || 1000000;
 
             const btn = document.getElementById('startSimBtn');
-            btn.disabled = true;
-            btn.textContent = "Starting...";
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = "Starting...";
+            }
 
             try {
                 const data = await requestWs("sim_start", { portfolioName: "My Portfolio", startDate, dollarAmount });
-                if (data.ok) {
-                    document.getElementById('setupOverlay').style.display = 'none';
+                if (data?.ok) {
+                    const overlay = document.getElementById('setupOverlay');
+                    if (overlay) overlay.style.display = 'none';
                     currentState = data.state;
                     updateUI(data.state);
                     if (data.inspector) {
@@ -1094,35 +1061,39 @@
                     }
                     onOrderTickerInput();
                 } else {
-                    alert("Failed to start simulation: " + data.error);
+                    alert("Failed to start simulation: " + data?.error);
                 }
             } catch (err) {
                 alert("Error connecting to server: " + err.message);
             } finally {
-                btn.disabled = false;
-                btn.textContent = "Start Simulation";
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = "Start Simulation";
+                }
             }
         }
 
-        // Reset simulation
+        // Resets current simulation session back to setup dialog
         async function resetSimulationSession(silent = false) {
             try {
                 await requestWs("sim_reset");
-            } catch(e) {}
+            } catch (e) {}
             sessionId = "sess_" + Math.random().toString(36).substring(2, 10);
             localStorage.setItem("sim_session_id", sessionId);
             currentState = null;
-            document.getElementById('setupOverlay').style.display = 'flex';
+            const overlay = document.getElementById('setupOverlay');
+            if (overlay) overlay.style.display = 'flex';
         }
 
+        // Computes target date string by adding time increment to base date
         function computeTargetDate(currentDateStr, incrementStr) {
             if (!currentDateStr) return '';
             const parts = currentDateStr.split('-');
-            let year = parseInt(parts[0], 10);
-            let month = parseInt(parts[1], 10) - 1;
-            let day = parseInt(parts[2], 10);
+            const year = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            const day = parseInt(parts[2], 10);
 
-            let d = new Date(Date.UTC(year, month, day));
+            const d = new Date(Date.UTC(year, month, day));
 
             if (incrementStr === '1d') {
                 d.setUTCDate(d.getUTCDate() + 1);
@@ -1145,6 +1116,7 @@
             return d.toISOString().split('T')[0];
         }
 
+        // Step delay millisecond mapping for multi-day advances
         const INCREMENT_DELAYS = {
             '1d': 0,
             '1wk': 60,
@@ -1156,26 +1128,24 @@
             '2y': 3
         };
 
+        // Toggles blur loading overlay for inspector metrics and news panels
         function setInspectorBlurState(isBlurred) {
             const grid = document.getElementById('inspectorMetricsGrid');
             const news = document.getElementById('inspectorNewsWrapper');
             const overlay = document.getElementById('inspectorLoadingOverlay');
 
             if (isBlurred) {
-                if (grid) grid.classList.add('inspector-blur-overlay');
-                if (news) news.classList.add('inspector-blur-overlay');
-                if (overlay) {
-                    overlay.style.display = 'flex';
-                }
+                grid?.classList.add('inspector-blur-overlay');
+                news?.classList.add('inspector-blur-overlay');
+                if (overlay) overlay.style.display = 'flex';
             } else {
-                if (grid) grid.classList.remove('inspector-blur-overlay');
-                if (news) news.classList.remove('inspector-blur-overlay');
+                grid?.classList.remove('inspector-blur-overlay');
+                news?.classList.remove('inspector-blur-overlay');
                 if (overlay) overlay.style.display = 'none';
             }
         }
 
-        // Updates the top half of the inspector (name, current price, price change, chart).
-        // The current price is authoritative and never changes with the timeframe.
+        // Updates top half of ticker inspector (company name, current price, return and chart)
         function applyTopHalf(snap) {
             if (!snap) return;
             if (snap.logoUrl) {
@@ -1199,7 +1169,7 @@
                     retEl.style.color = snap.priceChange >= 0 ? '#10b981' : '#dc2626';
                 }
             }
-            if (snap.chart && snap.chart.historical && typeof stockChartInstance !== 'undefined' && stockChartInstance) {
+            if (snap.chart?.historical && stockChartInstance) {
                 const pts = snap.chart.historical;
                 const labels = pts.map(p => p.x);
                 const values = pts.map(p => p.y);
@@ -1217,8 +1187,7 @@
                 const dateMap = buildDateLabelMap(labels, currentStockTimeframe);
                 stockChartInstance.options.scales.x.ticks.autoSkip = false;
                 stockChartInstance.options.scales.x.ticks.callback = function(val) {
-                    const label = this.getLabelForValue(val);
-                    return dateMap[label] || '';
+                    return dateMap[this.getLabelForValue(val)] || '';
                 };
 
                 stockChartInstance.data.labels = labels;
@@ -1227,12 +1196,11 @@
             }
         }
 
-        // Applies the bottom-half (metrics + news) from the inspector push, plus the top
-        // half for the initial load / ticker-change case (when there is no sim state yet).
+        // Applies full inspector metadata payload including fundamentals and news
         function applyInspectorData(data) {
             if (!data) return;
 
-            const pts = (data.chart && data.chart.historical) || [];
+            const pts = data.chart?.historical || [];
             let priceChange = null;
             if (pts.length >= 2 && data.lastPrice !== null && data.lastPrice !== undefined) {
                 const startPrice = pts[0].y;
@@ -1276,6 +1244,7 @@
             setInspectorBlurState(false);
         }
 
+        // Renders single metric entry in fundamentals grid
         function renderMetricField(elementId, metricItem) {
             const el = document.getElementById(elementId);
             if (!el) return;
@@ -1292,6 +1261,7 @@
             el.className = "datapair-val" + (metricItem.colorClass ? " " + metricItem.colorClass : "");
         }
 
+        // Renders news articles in inspector news list
         function renderInspectorNews(newsList) {
             const container = document.getElementById('tickerNewsContainer');
             const countEl = document.getElementById('newsArticleCount');
@@ -1324,38 +1294,39 @@
             container.innerHTML = html;
         }
 
+        // Advances simulation forward by standard time increment
         async function advanceIncrement(incrementStr) {
-            if (!currentState || !currentState.active || isAdvancing) return;
+            if (!currentState?.active || isAdvancing) return;
 
             beginAdvanceTimeframeLock();
 
-            let targetDateStr = "";
             if (incrementStr === '1d') {
-                targetDateStr = computeTargetDate(currentState.currentDate, '1d');
+                const targetDateStr = computeTargetDate(currentState.currentDate, '1d');
                 initiateBackgroundInspector(targetDateStr);
                 await advanceSingleTradingDay();
                 return;
             }
 
-            targetDateStr = computeTargetDate(currentState.currentDate, incrementStr);
+            const targetDateStr = computeTargetDate(currentState.currentDate, incrementStr);
             initiateBackgroundInspector(targetDateStr);
-            const delayMs = INCREMENT_DELAYS[incrementStr] !== undefined ? INCREMENT_DELAYS[incrementStr] : 3;
+            const delayMs = INCREMENT_DELAYS[incrementStr] ?? 3;
 
             await advanceToTargetDateCutoff(targetDateStr, delayMs);
         }
 
+        // Advances simulation forward by single trading day
         async function advanceSingleTradingDay() {
-            if (!currentState || !currentState.active || isAdvancing) return;
+            if (!currentState?.active || isAdvancing) return;
             isAdvancing = true;
             setAdvanceButtonsDisabled(true);
 
             try {
                 const data = await requestWs("sim_advance", { days: 1 });
-                if (data.ok && data.state) {
+                if (data?.ok && data.state) {
                     currentState = data.state;
                     updateUI(data.state);
                 } else {
-                    alert("Error advancing simulation: " + (data.error || "Unknown error"));
+                    alert("Error advancing simulation: " + (data?.error || "Unknown error"));
                 }
             } catch (err) {
                 alert("Error advancing simulation: " + err.message);
@@ -1370,8 +1341,9 @@
             }
         }
 
+        // Loops day-by-day simulation advance until target date cutoff is reached
         async function advanceToTargetDateCutoff(targetDate, delayMs = 3) {
-            if (!targetDate || !currentState || !currentState.active || isAdvancing) return;
+            if (!targetDate || !currentState?.active || isAdvancing) return;
             
             isAdvancing = true;
             setAdvanceButtonsDisabled(true);
@@ -1381,8 +1353,8 @@
                     if (currentState.currentDate >= targetDate || currentState.isEnded) break;
 
                     const data = await requestWs("sim_advance", { days: 1, targetDateCutoff: targetDate });
-                    if (!data.ok) {
-                        alert("Error advancing simulation: " + (data.error || "Unknown error"));
+                    if (!data?.ok) {
+                        alert("Error advancing simulation: " + (data?.error || "Unknown error"));
                         break;
                     }
                     if (!data.state || data.executedDays === 0) break;
@@ -1411,13 +1383,12 @@
             }
         }
 
+        // Advances simulation forward to custom date chosen via date input
         async function advanceToTargetDate() {
-            const targetDateInput = document.getElementById('advanceToDateInput');
-            const targetDate = targetDateInput ? targetDateInput.value : '';
-            if (!targetDate || !currentState || !currentState.active || isAdvancing) return;
+            const targetDate = document.getElementById('advanceToDateInput')?.value;
+            if (!targetDate || !currentState?.active || isAdvancing) return;
 
             beginAdvanceTimeframeLock();
-
             initiateBackgroundInspector(targetDate);
 
             const curMs = new Date(currentState.currentDate).getTime();
@@ -1430,23 +1401,22 @@
             else if (diffDays <= 30) stepDelay = 20;
             else if (diffDays <= 90) stepDelay = 10;
             else if (diffDays <= 180) stepDelay = 5;
-            else stepDelay = 3;
 
             await advanceToTargetDateCutoff(targetDate, stepDelay);
         }
 
-        // Queue order submit
+        // Handles order submission from manual order form
         async function handleQueueOrder(e) {
             if (e) e.preventDefault();
-            if (!currentState || !currentState.active) return;
+            if (!currentState?.active) return;
 
-            const ticker = document.getElementById('orderTicker').value.trim().toUpperCase();
-            const side = document.getElementById('orderAction').value;
-            const type = document.getElementById('orderType').value;
-            const unit = document.getElementById('orderUnit').value;
-            const amountVal = document.getElementById('orderQuantity').value.replace(/,/g, '');
-            const stopPrice = document.getElementById('stopPriceInput').value;
-            const limitPrice = document.getElementById('limitPriceInput').value;
+            const ticker = (document.getElementById('orderTicker')?.value || "").trim().toUpperCase();
+            const side = document.getElementById('orderAction')?.value || "BUY";
+            const type = document.getElementById('orderType')?.value || "market";
+            const unit = document.getElementById('orderUnit')?.value || "usd";
+            const amountVal = (document.getElementById('orderQuantity')?.value || "").replace(/,/g, '');
+            const stopPrice = document.getElementById('stopPriceInput')?.value || "";
+            const limitPrice = document.getElementById('limitPriceInput')?.value || "";
 
             try {
                 const data = await requestWs("sim_order", {
@@ -1458,41 +1428,41 @@
                     stopPrice: stopPrice,
                     limitPrice: limitPrice
                 });
-                if (data.ok) {
+                if (data?.ok) {
                     currentState = data.state;
                     updateUI(data.state);
                 } else {
-                    alert("Order submission error: " + data.error);
+                    alert("Order submission error: " + data?.error);
                 }
             } catch (err) {
                 alert("Error submitting order: " + err.message);
             }
         }
 
-        // Cancel order from queue
+        // Cancels pending order by index in execution queue
         async function cancelOrder(idx) {
             try {
                 const data = await requestWs("sim_cancel_order", { index: idx });
-                if (data.ok) {
+                if (data?.ok) {
                     currentState = data.state;
                     updateUI(data.state);
                 } else {
-                    alert("Cancel failed: " + data.error);
+                    alert("Cancel failed: " + data?.error);
                 }
             } catch (err) {
                 alert("Error cancelling order: " + err.message);
             }
         }
 
+        // Inspects specific holding ticker clicked in positions table
         function inspectPositionTicker(ticker) {
             if (!ticker) return;
             const input = document.getElementById('tickerSearchInput');
-            if (input) {
-                input.value = ticker;
-            }
+            if (input) input.value = ticker;
             fetchTickerInfo(ticker);
         }
 
+        // Timeframe suffix mapping for percentage return label
         const TIMEFRAME_SUFFIXES = {
             '1m': 'last month',
             '3m': 'in last 3 months',
@@ -1501,50 +1471,49 @@
             'all': 'since start'
         };
 
+        // Active stock chart timeframe variable
         let currentStockTimeframe = '3m';
 
+        // Updates single stock chart timeframe display without triggering full reload
         async function updateStockChartTimeframe(tf, btnElement) {
-            // Block changing the timeframe while the simulation is animating/advancing.
             if (isAdvancing) return;
             currentStockTimeframe = tf.toLowerCase();
             if (btnElement) {
                 const parent = btnElement.parentElement;
-                if (parent) {
-                    parent.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
-                    btnElement.classList.add('active');
-                }
+                parent?.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+                btnElement.classList.add('active');
             }
-            const currentTicker = (document.getElementById('tickerSearchInput').value || "NVDA").trim().toUpperCase();
-            // Only refresh the chart + price change for the new timeframe - do NOT blur/re-fetch
-            // the whole inspector, and do NOT change the authoritative current price.
+            const currentTicker = (document.getElementById('tickerSearchInput')?.value || "NVDA").trim().toUpperCase();
             try {
                 const data = await requestWs("sim_ticker_chart", { ticker: currentTicker, timeframe: currentStockTimeframe });
-                if (data.ok && data.chart) {
+                if (data?.ok && data.chart) {
                     applyTopHalf({ priceChange: data.priceChange, chart: data.chart });
                 }
-            } catch(e) {}
+            } catch (e) {}
         }
 
-        // Fetch Ticker Info for Sidebar Inspector
+        // Fetches ticker profile and initiates inspector background query
         async function fetchTickerInfo(ticker, targetDateOverride = null) {
             if (!ticker) return;
-            ticker = ticker.trim().toUpperCase();
+            const cleanTicker = ticker.trim().toUpperCase();
             const input = document.getElementById('tickerSearchInput');
-            if (input) input.value = ticker;
-            const targetDate = targetDateOverride || (currentState ? currentState.currentDate : (document.getElementById('setupStartDate').value || "2016-02-01"));
-            initiateBackgroundInspector(targetDate, ticker);
+            if (input) input.value = cleanTicker;
+            const targetDate = targetDateOverride || currentState?.currentDate || document.getElementById('setupStartDate')?.value || "2016-02-01";
+            initiateBackgroundInspector(targetDate, cleanTicker);
         }
 
+        // Handles Enter key press on ticker search input
         function handleTickerSearchKey(e) {
             if (e.key === 'Enter') {
                 fetchTickerInfo(e.target.value);
             }
         }
 
+        // Handles ticker input keystrokes on order form with debounce
         function onOrderTickerInput() {
             clearTimeout(orderTickerTimer);
             orderTickerTimer = setTimeout(() => {
-                const ticker = document.getElementById('orderTicker').value.trim().toUpperCase();
+                const ticker = (document.getElementById('orderTicker')?.value || "").trim().toUpperCase();
                 if (ticker) {
                     fetchOrderTickerPrice(ticker);
                 } else {
@@ -1554,171 +1523,179 @@
             }, 100);
         }
 
+        // Fetches current market price for order ticker symbol
         async function fetchOrderTickerPrice(ticker) {
-            ticker = ticker.trim().toUpperCase();
-            if (!ticker) return;
+            const cleanTicker = ticker.trim().toUpperCase();
+            if (!cleanTicker) return;
             try {
-                const data = await requestWs("sim_ticker_price", { ticker: ticker });
-                if (data.ok) {
+                const data = await requestWs("sim_ticker_price", { ticker: cleanTicker });
+                if (data?.ok) {
                     orderTickerPriceState = {
-                        ticker: ticker,
-                        exists: data.exists && (data.lastPrice !== null && data.lastPrice !== undefined),
+                        ticker: cleanTicker,
+                        exists: data.exists && data.lastPrice !== null && data.lastPrice !== undefined,
                         lastPrice: data.lastPrice
                     };
                 } else {
-                    orderTickerPriceState = { ticker: ticker, exists: false, lastPrice: null };
+                    orderTickerPriceState = { ticker: cleanTicker, exists: false, lastPrice: null };
                 }
-            } catch(e) {
-                orderTickerPriceState = { ticker: ticker, exists: false, lastPrice: null };
+            } catch (e) {
+                orderTickerPriceState = { ticker: cleanTicker, exists: false, lastPrice: null };
             }
             updateOrderSummary();
         }
 
-        // Dynamic UI Update
+        // Updates full dashboard UI components to reflect new simulation state
         function updateUI(state, isRapidStep = false) {
-            if (!state || !state.portfolio) return;
+            if (!state?.portfolio) return;
             currentState = state;
 
             const pf = state.portfolio;
 
-            document.getElementById('simulatedDate').textContent = state.currentDateFriendly || state.currentDate;
+            const simDateEl = document.getElementById('simulatedDate');
+            if (simDateEl) simDateEl.textContent = state.currentDateFriendly || state.currentDate;
+
             const advanceDateInput = document.getElementById('advanceToDateInput');
             if (advanceDateInput && state.currentDate) {
                 const nextDateStr = new Date(new Date(state.currentDate).getTime() + 86400000).toISOString().split('T')[0];
                 advanceDateInput.min = nextDateStr;
             }
 
-
-            // const pf = state.portfolio;
-            document.getElementById('cashVal').textContent = formatCurrency(pf.cash);
-            document.getElementById('stockVal').textContent = formatCurrency(pf.stockValue);
-            document.getElementById('assetsVal').textContent = formatCurrency(pf.totalValue);
+            const cashEl = document.getElementById('cashVal');
+            const stockEl = document.getElementById('stockVal');
+            const assetsEl = document.getElementById('assetsVal');
+            if (cashEl) cashEl.textContent = formatCurrency(pf.cash);
+            if (stockEl) stockEl.textContent = formatCurrency(pf.stockValue);
+            if (assetsEl) assetsEl.textContent = formatCurrency(pf.totalValue);
 
             const retEl = document.getElementById('assetsReturn');
             const pct = pf.pctReturn;
-            if (pct !== null && !isNaN(pct)) {
-                retEl.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '% (' + formatCurrency(pf.absReturn) + ')';
-                retEl.className = 'metric-change ' + (pct >= 0 ? 'positive' : 'negative');
-            } else {
-                retEl.textContent = '0.00%';
-                retEl.className = 'metric-change';
+            if (retEl) {
+                if (pct !== null && !isNaN(pct)) {
+                    retEl.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '% (' + formatCurrency(pf.absReturn) + ')';
+                    retEl.className = 'metric-change ' + (pct >= 0 ? 'positive' : 'negative');
+                } else {
+                    retEl.textContent = '0.00%';
+                    retEl.className = 'metric-change';
+                }
             }
 
-            // Positions Table
+            // Positions Table rendering
             const tbody = document.getElementById('positionsTableBody');
-            tbody.innerHTML = '';
-            const posKeys = Object.keys(pf.positions);
-            if (posKeys.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="empty-queue-msg">No positions</td></tr>';
-            } else {
-                posKeys.forEach(t => {
-                    const pos = pf.positions[t];
-                    const posPct = pos.pctReturn;
-                    const posClass = posPct >= 0 ? 'positive' : 'negative';
-                    const sign = posPct >= 0 ? '+' : '';
-                    const mktPriceVal = (pos.mktPrice !== undefined && pos.mktPrice !== null && !isNaN(pos.mktPrice)) ? pos.mktPrice : pos.currentPrice;
-                    const mktPriceStr = (mktPriceVal !== null && mktPriceVal !== undefined && !isNaN(mktPriceVal)) ? formatCurrency(mktPriceVal) : (pos.averagePrice ? formatCurrency(pos.averagePrice) : '--');
-                    const mktValue = pos.value !== undefined ? pos.value : (pos.quantity * (mktPriceVal || pos.averagePrice || 0));
+            if (tbody) {
+                tbody.innerHTML = '';
+                const posKeys = Object.keys(pf.positions || {});
+                if (posKeys.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty-queue-msg">No positions</td></tr>';
+                } else {
+                    posKeys.forEach(t => {
+                        const pos = pf.positions[t];
+                        const posPct = pos.pctReturn;
+                        const posClass = posPct >= 0 ? 'positive' : 'negative';
+                        const sign = posPct >= 0 ? '+' : '';
+                        const mktPriceVal = (pos.mktPrice !== undefined && pos.mktPrice !== null && !isNaN(pos.mktPrice)) ? pos.mktPrice : pos.currentPrice;
+                        const mktPriceStr = (mktPriceVal !== null && mktPriceVal !== undefined && !isNaN(mktPriceVal)) ? formatCurrency(mktPriceVal) : (pos.averagePrice ? formatCurrency(pos.averagePrice) : '--');
+                        const mktValue = pos.value !== undefined ? pos.value : (pos.quantity * (mktPriceVal || pos.averagePrice || 0));
 
-                    const tr = document.createElement('tr');
-                    tr.style.cursor = 'pointer';
-                    tr.title = `Click to inspect ${t} in Ticker Inspector`;
-                    tr.onclick = () => inspectPositionTicker(t);
-                    tr.innerHTML = `
-                        <td class="ticker-col">${t}</td>
-                        <td class="positions-value">${formatNumber(pos.quantity)}</td>
-                        <td class="positions-value thin">${formatCurrency(pos.averagePrice)}</td>
-                        <td class="positions-value thin">${mktPriceStr}</td>
-                        <td class="positions-value">${formatCurrency(mktValue)}</td>
-                        <td class="return-amt ${posClass}">${sign}${formatCurrency(pos.absReturn)}</td>
-                        <td class="return-pct ${posClass}">${sign}${posPct ? posPct.toFixed(2) : 0.00}%</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
+                        const tr = document.createElement('tr');
+                        tr.style.cursor = 'pointer';
+                        tr.title = `Click to inspect ${t} in Ticker Inspector`;
+                        tr.onclick = () => inspectPositionTicker(t);
+                        tr.innerHTML = `
+                            <td class="ticker-col">${t}</td>
+                            <td class="positions-value">${formatNumber(pos.quantity)}</td>
+                            <td class="positions-value thin">${formatCurrency(pos.averagePrice)}</td>
+                            <td class="positions-value thin">${mktPriceStr}</td>
+                            <td class="positions-value">${formatCurrency(mktValue)}</td>
+                            <td class="return-amt ${posClass}">${sign}${formatCurrency(pos.absReturn)}</td>
+                            <td class="return-pct ${posClass}">${sign}${posPct ? posPct.toFixed(2) : 0.00}%</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
             }
 
-            // System Logs & Queued Orders
+            // System Logs and Queued Orders rendering
             const logsContainer = document.getElementById('systemLogsContainer');
-            logsContainer.innerHTML = '';
+            if (logsContainer) {
+                logsContainer.innerHTML = '';
 
-            const hasPendingOrders = state.pendingOrders && state.pendingOrders.length > 0;
-            const hasLogs = pf.log && pf.log.length > 0;
+                const hasPendingOrders = state.pendingOrders && state.pendingOrders.length > 0;
+                const hasLogs = pf.log && pf.log.length > 0;
 
-            if (!hasPendingOrders && !hasLogs) {
-                logsContainer.innerHTML = '<div class="log-pill log-pill-empty">Logs are empty</div>';
-            } else {
-                if (hasPendingOrders) {
-                    state.pendingOrders.forEach(o => {
-                        const amountStr = o.isQuantityBased ? `${formatNumber(o.quantity)} shares` : formatCurrency(o.cashValue);
-                        const badgeClass = o.side === 'BUY' ? 'badge-action-buy' : 'badge-action-sell';
+                if (!hasPendingOrders && !hasLogs) {
+                    logsContainer.innerHTML = '<div class="log-pill log-pill-empty">Logs are empty</div>';
+                } else {
+                    if (hasPendingOrders) {
+                        state.pendingOrders.forEach(o => {
+                            const amountStr = o.isQuantityBased ? `${formatNumber(o.quantity)} shares` : formatCurrency(o.cashValue);
+                            const badgeClass = o.side === 'BUY' ? 'badge-action-buy' : 'badge-action-sell';
 
-                        let paramHtml = '';
-                        if (o.type === 'Limit' && o.limitPrice) {
-                            paramHtml = `<div class="order-type-param">Limit: $${formatNumber(o.limitPrice)}</div>`;
-                        } else if (o.type === 'Stop' && o.stopPrice) {
-                            paramHtml = `<div class="order-type-param">Stop: $${formatNumber(o.stopPrice)}</div>`;
-                        } else if (o.type === 'Stop Limit') {
-                            if (o.stopPrice) paramHtml += `<div class="order-type-param">Stop: $${formatNumber(o.stopPrice)}</div>`;
-                            if (o.limitPrice) paramHtml += `<div class="order-type-param">Limit: $${formatNumber(o.limitPrice)}</div>`;
-                        }
+                            let paramHtml = '';
+                            if (o.type === 'Limit' && o.limitPrice) {
+                                paramHtml = `<div class="order-type-param">Limit: $${formatNumber(o.limitPrice)}</div>`;
+                            } else if (o.type === 'Stop' && o.stopPrice) {
+                                paramHtml = `<div class="order-type-param">Stop: $${formatNumber(o.stopPrice)}</div>`;
+                            } else if (o.type === 'Stop Limit') {
+                                if (o.stopPrice) paramHtml += `<div class="order-type-param">Stop: $${formatNumber(o.stopPrice)}</div>`;
+                                if (o.limitPrice) paramHtml += `<div class="order-type-param">Limit: $${formatNumber(o.limitPrice)}</div>`;
+                            }
 
-                        const pill = document.createElement('div');
-                        pill.className = 'queued-order-pill';
-                        pill.innerHTML = `
-                            <div class="queued-order-info">
-                                <span class="queued-tag">QUEUED ORDER</span>
-                                <span class="${badgeClass}">${o.side}</span>
-                                <span class="queued-ticker">${o.ticker}</span>
-                                <div class="queued-type">
-                                    <div class="order-type-title">${o.type}</div>
-                                    ${paramHtml}
+                            const pill = document.createElement('div');
+                            pill.className = 'queued-order-pill';
+                            pill.innerHTML = `
+                                <div class="queued-order-info">
+                                    <span class="queued-tag">QUEUED ORDER</span>
+                                    <span class="${badgeClass}">${o.side}</span>
+                                    <span class="queued-ticker">${o.ticker}</span>
+                                    <div class="queued-type">
+                                        <div class="order-type-title">${o.type}</div>
+                                        ${paramHtml}
+                                    </div>
+                                    <span class="queued-amount">${amountStr}</span>
                                 </div>
-                                <span class="queued-amount">${amountStr}</span>
-                            </div>
-                            <button class="cancel-order-btn" onclick="cancelOrder(${o.index})">Cancel</button>
-                        `;
-                        logsContainer.appendChild(pill);
-                    });
-                }
+                                <button class="cancel-order-btn" onclick="cancelOrder(${o.index})">Cancel</button>
+                            `;
+                            logsContainer.appendChild(pill);
+                        });
+                    }
 
-                if (hasLogs) {
-                    pf.log.slice().reverse().forEach(entry => {
-                        const dateStr = entry.dateStr || entry.timestamp || '';
-                        const ticker = entry.ticker || '';
-                        const title = entry.title || 'System Log';
-                        const message = entry.message || (typeof entry === 'string' ? entry : '');
+                    if (hasLogs) {
+                        pf.log.slice().reverse().forEach(entry => {
+                            const dateStr = entry.dateStr || entry.timestamp || '';
+                            const ticker = entry.ticker || '';
+                            const title = entry.title || 'System Log';
+                            const message = entry.message || (typeof entry === 'string' ? entry : '');
 
-                        let titleBadgeClass = 'badge-action-log';
-                        const titleLower = title.toLowerCase();
-                        if (titleLower.includes('buy')) titleBadgeClass = 'badge-action-buy';
-                        else if (titleLower.includes('sell')) titleBadgeClass = 'badge-action-sell';
-                        else if (titleLower.includes('fail') || titleLower.includes('error') || titleLower.includes('cancel')) titleBadgeClass = 'badge-action-cancel';
+                            let titleBadgeClass = 'badge-action-log';
+                            const titleLower = title.toLowerCase();
+                            if (titleLower.includes('buy')) titleBadgeClass = 'badge-action-buy';
+                            else if (titleLower.includes('sell')) titleBadgeClass = 'badge-action-sell';
+                            else if (titleLower.includes('fail') || titleLower.includes('error') || titleLower.includes('cancel')) titleBadgeClass = 'badge-action-cancel';
 
-                        const pill = document.createElement('div');
-                        pill.className = 'log-pill';
-                        pill.innerHTML = `
-                            <div>
-                                <span class="log-date-tag">${dateStr}</span>
-                                <span class="${titleBadgeClass}">${title}</span>
-                                <span class="log-ticker-tag">${ticker}</span>
-                                <span class="log-message-body">${message}</span>
-                            </div>
-                        `;
-                        logsContainer.appendChild(pill);
-                    });
+                            const pill = document.createElement('div');
+                            pill.className = 'log-pill';
+                            pill.innerHTML = `
+                                <div>
+                                    <span class="log-date-tag">${dateStr}</span>
+                                    <span class="${titleBadgeClass}">${title}</span>
+                                    <span class="log-ticker-tag">${ticker}</span>
+                                    <span class="log-message-body">${message}</span>
+                                </div>
+                            `;
+                            logsContainer.appendChild(pill);
+                        });
+                    }
                 }
             }
 
-            // Portfolio Chart Update - always update, even during rapid steps (pure JS, no network cost)
+            // Portfolio chart real-time refresh
             if (state.history && portfolioChartInstance) {
                 const activeBtn = document.querySelector('#portfolioChartTimeframeControls .tf-btn.active');
                 const range = activeBtn ? activeBtn.textContent.toLowerCase() : '3m';
                 updatePortfolioChartRange(range);
             }
 
-            // Ticker Inspector Top Half - real-time update from the state snapshot
-            // (name, current price, price change, chart). The bottom half (metrics + news)
-            // is updated separately when the inspector push arrives.
+            // Ticker Inspector top half snapshot update
             if (state.inspectedSnapshot) {
                 applyTopHalf(state.inspectedSnapshot);
             }
@@ -1728,60 +1705,62 @@
             }
         }
 
-        // Order Form Type Toggle
+        // Toggles visibility of stop and limit input controls based on selected order type
         function handleOrderTypeChange() {
-            const orderType = document.getElementById('orderType').value;
+            const orderType = document.getElementById('orderType')?.value || "market";
             const priceInputsRow = document.getElementById('priceInputsRow');
             const stopGroup = document.getElementById('stopPriceGroup');
             const limitGroup = document.getElementById('limitPriceGroup');
 
             if (orderType === 'market') {
-                priceInputsRow.style.display = 'none';
-                stopGroup.style.display = 'none';
-                limitGroup.style.display = 'none';
+                if (priceInputsRow) priceInputsRow.style.display = 'none';
+                if (stopGroup) stopGroup.style.display = 'none';
+                if (limitGroup) limitGroup.style.display = 'none';
             } else if (orderType === 'limit') {
-                priceInputsRow.style.display = 'flex';
-                stopGroup.style.display = 'none';
-                limitGroup.style.display = 'block';
+                if (priceInputsRow) priceInputsRow.style.display = 'flex';
+                if (stopGroup) stopGroup.style.display = 'none';
+                if (limitGroup) limitGroup.style.display = 'block';
             } else if (orderType === 'stop') {
-                priceInputsRow.style.display = 'flex';
-                stopGroup.style.display = 'block';
-                limitGroup.style.display = 'none';
+                if (priceInputsRow) priceInputsRow.style.display = 'flex';
+                if (stopGroup) stopGroup.style.display = 'block';
+                if (limitGroup) limitGroup.style.display = 'none';
             } else if (orderType === 'stop_limit') {
-                priceInputsRow.style.display = 'flex';
-                stopGroup.style.display = 'block';
-                limitGroup.style.display = 'block';
+                if (priceInputsRow) priceInputsRow.style.display = 'flex';
+                if (stopGroup) stopGroup.style.display = 'block';
+                if (limitGroup) limitGroup.style.display = 'block';
             }
             updateOrderSummary();
         }
 
+        // Formats numeric quantity and recalculates estimated order totals
         function formatQuantityInput(input) {
-            const unit = document.getElementById('orderUnit').value;
+            const unit = document.getElementById('orderUnit')?.value || "usd";
             formatDollarInput(input, unit === 'usd' ? 2 : 4);
             updateOrderSummary();
         }
 
+        // Updates dynamic order summary calculations and cash-after estimate
         function updateOrderSummary() {
-            const ticker = document.getElementById('orderTicker').value.trim().toUpperCase();
-            const unit = document.getElementById('orderUnit').value;
-            const action = document.getElementById('orderAction').value;
-            const rawQty = parseFloat(document.getElementById('orderQuantity').value.replace(/,/g, '')) || 0;
+            const ticker = (document.getElementById('orderTicker')?.value || "").trim().toUpperCase();
+            const unit = document.getElementById('orderUnit')?.value || "usd";
+            const action = document.getElementById('orderAction')?.value || "BUY";
+            const rawQty = parseFloat((document.getElementById('orderQuantity')?.value || "").replace(/,/g, '')) || 0;
 
             const summaryLastPrice = document.getElementById('summaryLastPrice');
             const summaryTotalLabel = document.getElementById('summaryTotalLabel');
             const summaryTotal = document.getElementById('summaryOrderTotal');
             const summaryCashAfter = document.getElementById('summaryCashAfter');
-            if (unit === 'usd') {
-                summaryTotalLabel.textContent = "Est. Shares Total:";
-            } else {
-                summaryTotalLabel.textContent = "Est. Order Total:";
+            if (summaryTotalLabel) {
+                summaryTotalLabel.textContent = unit === 'usd' ? "Est. Shares Total:" : "Est. Order Total:";
             }
 
             if (!ticker) {
-                summaryLastPrice.textContent = "--";
-                summaryLastPrice.style.color = "#0f172a";
-                summaryTotal.textContent = unit === 'usd' ? "0 shares" : "$0.00";
-                summaryCashAfter.textContent = "--";
+                if (summaryLastPrice) {
+                    summaryLastPrice.textContent = "--";
+                    summaryLastPrice.style.color = "#0f172a";
+                }
+                if (summaryTotal) summaryTotal.textContent = unit === 'usd' ? "0 shares" : "$0.00";
+                if (summaryCashAfter) summaryCashAfter.textContent = "--";
                 return;
             }
 
@@ -1791,57 +1770,61 @@
             }
 
             if (!orderTickerPriceState.exists || orderTickerPriceState.lastPrice === null || isNaN(orderTickerPriceState.lastPrice)) {
-                summaryLastPrice.textContent = `Couldn't find ${ticker}`;
-                summaryLastPrice.style.color = "#dc2626";
-                summaryTotal.textContent = "N/A";
-                summaryTotal.style.color = "#94a3b8";
-                summaryCashAfter.textContent = "--";
+                if (summaryLastPrice) {
+                    summaryLastPrice.textContent = `Couldn't find ${ticker}`;
+                    summaryLastPrice.style.color = "#dc2626";
+                }
+                if (summaryTotal) {
+                    summaryTotal.textContent = "N/A";
+                    summaryTotal.style.color = "#94a3b8";
+                }
+                if (summaryCashAfter) summaryCashAfter.textContent = "--";
                 return;
             }
 
             const lastPrice = orderTickerPriceState.lastPrice;
-            summaryLastPrice.textContent = formatCurrency(lastPrice);
-            summaryLastPrice.style.color = "#0f172a";
-            summaryTotal.style.color = "#2563eb";
+            if (summaryLastPrice) {
+                summaryLastPrice.textContent = formatCurrency(lastPrice);
+                summaryLastPrice.style.color = "#0f172a";
+            }
+            if (summaryTotal) summaryTotal.style.color = "#2563eb";
 
             let orderTotalDollars = 0;
             if (unit === 'usd') {
                 orderTotalDollars = rawQty;
                 const estShares = lastPrice > 0 ? (rawQty / lastPrice) : 0;
-                summaryTotal.textContent = `${formatNumber(estShares)} shares`;
+                if (summaryTotal) summaryTotal.textContent = `${formatNumber(estShares)} shares`;
             } else {
                 orderTotalDollars = rawQty * lastPrice;
-                summaryTotal.textContent = formatCurrency(orderTotalDollars);
+                if (summaryTotal) summaryTotal.textContent = formatCurrency(orderTotalDollars);
             }
 
-            if (currentState && currentState.portfolio) {
+            if (currentState?.portfolio) {
                 const curCash = currentState.portfolio.cash;
                 let afterCash = curCash;
                 if (action === 'BUY') {
                     afterCash = curCash - orderTotalDollars;
-                    if (afterCash < 0) {
-                        summaryCashAfter.style.setProperty('color', '#dc2626');
-                    } else {
-                        summaryCashAfter.style.removeProperty('color');
+                    if (summaryCashAfter) {
+                        if (afterCash < 0) summaryCashAfter.style.setProperty('color', '#dc2626');
+                        else summaryCashAfter.style.removeProperty('color');
                     }
                 } else if (action === 'SELL') {
                     afterCash = curCash + orderTotalDollars;
                 }
-                summaryCashAfter.textContent = formatCurrency(afterCash);
+                if (summaryCashAfter) summaryCashAfter.textContent = formatCurrency(afterCash);
             } else {
-                summaryCashAfter.textContent = "--";
+                if (summaryCashAfter) summaryCashAfter.textContent = "--";
             }
         }
 
+        // Updates portfolio performance chart with data sliced by timeframe range
         function updatePortfolioChartRange(range, btnElement) {
             if (btnElement) {
                 const parent = btnElement.parentElement;
-                if (parent) {
-                    parent.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
-                    btnElement.classList.add('active');
-                }
+                parent?.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+                btnElement.classList.add('active');
             }
-            if (!currentState || !currentState.history || !portfolioChartInstance) return;
+            if (!currentState?.history || !portfolioChartInstance) return;
             let hist = currentState.history;
             if (hist.length === 0) return;
 
@@ -1853,20 +1836,14 @@
                 if (parts.length === 3) {
                     let year = parseInt(parts[0], 10);
                     let month = parseInt(parts[1], 10) - 1;
-                    let day = parseInt(parts[2], 10);
+                    const day = parseInt(parts[2], 10);
 
                     if (selectedRange === '1m') {
                         month -= 1;
-                        if (month < 0) {
-                            month += 12;
-                            year -= 1;
-                        }
+                        if (month < 0) { month += 12; year -= 1; }
                     } else if (selectedRange === '3m') {
                         month -= 3;
-                        if (month < 0) {
-                            month += 12;
-                            year -= 1;
-                        }
+                        if (month < 0) { month += 12; year -= 1; }
                     } else if (selectedRange === '1y') {
                         year -= 1;
                     } else if (selectedRange === '3y') {
@@ -1882,7 +1859,7 @@
                 }
             }
 
-            let sanitizedHist = hist.map((h, i) => {
+            const sanitizedHist = hist.map((h, i) => {
                 let val = h.totalValue;
                 if ((!val || val <= 0) && i > 0 && i < hist.length - 1) {
                     val = (hist[i-1].totalValue + hist[i+1].totalValue) / 2;
@@ -1903,12 +1880,11 @@
                 portfolioChartInstance.options.scales.y.ticks.stepSize = bounds.stepSize;
             }
 
-            const fullLabels = (currentState && currentState.history) ? currentState.history.map(h => h.date) : labels;
+            const fullLabels = currentState?.history ? currentState.history.map(h => h.date) : labels;
             const dateMap = buildDateLabelMap(labels, selectedRange, fullLabels);
             portfolioChartInstance.options.scales.x.ticks.autoSkip = false;
             portfolioChartInstance.options.scales.x.ticks.callback = function(val) {
-                const label = this.getLabelForValue(val);
-                return dateMap[label] || '';
+                return dateMap[this.getLabelForValue(val)] || '';
             };
 
             portfolioChartInstance.data.labels = labels;
@@ -1916,11 +1892,13 @@
             portfolioChartInstance.update('none');
         }
 
+        // Formats numeric currency values with dollar signs and decimals
         function formatCurrency(val) {
             if (val === null || isNaN(val)) return "$0.00";
             return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
         }
 
+        // Formats numeric quantities with decimal limits
         function formatNumber(val) {
             return new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 }).format(val);
         }

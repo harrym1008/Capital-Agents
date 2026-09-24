@@ -12,16 +12,13 @@
 <body>
 
     {% include 'header.html' %}
-    
 
     <div class="main-layout server-main-layout">  
-
         <div class="splash-container">
-
             <div class="splash-load-model-window">
                 <h1 id="pageTitle">Manage LLM Server</h1>
 
-                <!-- Configuration Setup Form -->
+                <!-- Configuration setup form -->
                 <div id="setupForm" class="column-gap-large">
                     <div class="model-select-form-group">
                         <label for="provider">LLM Server:</label>
@@ -33,7 +30,7 @@
                     </div>
 
                     <div class="model-select-form-group hidden" id="openrouterConfig">
-                        <!-- Full-Width Model Selector -->
+                        <!-- Full-width model selector -->
                         <div class="server-form-label-spaced">
                             <label for="openrouterModelName" class="server-form-label">Selected Model:</label>
                             <div class="openrouter-autocomplete-wrapper">
@@ -49,9 +46,9 @@
                             </div>
                         </div>
 
-                        <!-- Provider Router & Pricing Info Row (only shown when a model is selected) -->
+                        <!-- Provider router and pricing info row -->
                         <div class="hidden router-pricing-row" id="openrouterRouterGroup" style="display: flex;">
-                            <!-- Left Half (50%): Provider Router Dropdown -->
+                            <!-- Provider router dropdown -->
                             <div class="server-form-column-narrow">
                                 <label class="server-form-label">Selected Provider:</label>
                                 <div class="openrouter-router-wrapper">
@@ -64,7 +61,7 @@
                                 <input type="hidden" id="openrouterProviderRouter" value="auto">
                             </div>
 
-                            <!-- Right Half (50%): Simple Pricing Grid -->
+                            <!-- Pricing grid -->
                             <div id="openrouterPricingInfo" class="openrouter-simple-info hidden pricing-info-panel"></div>
                         </div>
                     </div>
@@ -127,7 +124,7 @@
                     <a id="configureLlamaBtn" href="/llamacpp-setup" class="aref-button btn-secondary server-configure-button">Configure Llama.cpp</a>
                 </div>
 
-                <!-- Active Server Management Panel (Simplified Plain Text View) -->
+                <!-- Active server management panel -->
                 <div id="serverStatusPanel" class="hidden server-status-column" style="display: flex;">
                     <div class="server-status-detail">
                         <p><strong>Provider:</strong> <span id="displayProvider">-</span></p>
@@ -160,22 +157,22 @@
                 </div>
 
             </div>
-
         </div>
-
     </div>
 
     <script>
         let llamaCppModels = [];
         let isServerLoading = false;
+        let openRouterModelsList = [];
+        let activeDropdownIndex = -1;
+        let openRouterEndpointsList = [];
+        let currentFetchedRouterModel = "";
+        let selectedOpenRouterRouter = "auto";
 
-
-
-
-
+        // Append log line to Llama.cpp startup terminal output
         function appendLlamaLog(logLine) {
             const container = document.getElementById("llamaLoadingContainer");
-            if (container && container.classList.contains("hidden")) {
+            if (container?.classList.contains("hidden")) {
                 container.classList.remove("hidden");
             }
             if (typeof window.appendTerminalLog === 'function') {
@@ -189,13 +186,16 @@
             }
         }
 
+        // Clear terminal output display
         function clearLlamaLogs() {
             const logsPre = document.getElementById("llamaLoadingLogs");
-            logsPre.textContent = "";
+            if (logsPre) logsPre.textContent = "";
         }
 
+        // Update server lifecycle status text and color indicators
         function setStatusState(state, text) {
             const badgeText = document.getElementById("statusBadgeText");
+            if (!badgeText) return;
             badgeText.textContent = text;
             if (state === "loading") {
                 badgeText.style.color = "#d97706";
@@ -208,12 +208,13 @@
             }
         }
 
+        // Handle streaming server log events from websocket
         function handleSimulationEvent(payload) {
             switch (payload.type) {
                 case "llamaCppLog":
                 case "llamaCppStartupLog":
                     appendLlamaLog(payload.log);
-                    if (isServerLoading && payload.log.includes("exiting due to model loading error" )) {
+                    if (isServerLoading && payload.log.includes("exiting due to model loading error")) {
                         showError("Model loading failed: " + payload.log);
                     }
                     break;
@@ -224,14 +225,13 @@
                     }
                     break;
                 default:
-                    // Silently handle other events during server startup
                     break;
             }
         }
 
-        // Toggle visibility based on provider selection
+        // Toggle configuration form fields according to selected provider
         function updateProviderUI() {
-            const provider = document.getElementById("provider").value;
+            const provider = document.getElementById("provider")?.value;
             const openrouterConfig = document.getElementById("openrouterConfig");
             const openaiCompatibleConfig = document.getElementById("openaiCompatibleConfig");
             const llamacppConfig = document.getElementById("llamacppConfig");
@@ -240,34 +240,34 @@
             const configureLlamaBtn = document.getElementById("configureLlamaBtn");
 
             if (provider === "openrouter") {
-                openrouterConfig.classList.remove("hidden");
-                openaiCompatibleConfig.classList.add("hidden");
-                llamacppConfig.classList.add("hidden");
-                llamacppOptions.style.display = "none";
-                configureLlamaBtn.classList.add("hidden");
-                // OpenRouter forces parallel slots ON
-                parallelCheckbox.checked = true;
+                openrouterConfig?.classList.remove("hidden");
+                openaiCompatibleConfig?.classList.add("hidden");
+                llamacppConfig?.classList.add("hidden");
+                if (llamacppOptions) llamacppOptions.style.display = "none";
+                configureLlamaBtn?.classList.add("hidden");
+                if (parallelCheckbox) parallelCheckbox.checked = true;
             } else if (provider === "openaicompatible") {
-                openrouterConfig.classList.add("hidden");
-                openaiCompatibleConfig.classList.remove("hidden");
-                llamacppConfig.classList.add("hidden");
-                llamacppOptions.style.display = "none";
-                configureLlamaBtn.classList.add("hidden");
-                // OpenAI Compatible forces parallel slots ON
-                parallelCheckbox.checked = true;
+                openrouterConfig?.classList.add("hidden");
+                openaiCompatibleConfig?.classList.remove("hidden");
+                llamacppConfig?.classList.add("hidden");
+                if (llamacppOptions) llamacppOptions.style.display = "none";
+                configureLlamaBtn?.classList.add("hidden");
+                if (parallelCheckbox) parallelCheckbox.checked = true;
             } else {
-                openrouterConfig.classList.add("hidden");
-                openaiCompatibleConfig.classList.add("hidden");
-                llamacppConfig.classList.remove("hidden");
-                llamacppOptions.style.display = "flex";
-                configureLlamaBtn.classList.remove("hidden");
+                openrouterConfig?.classList.add("hidden");
+                openaiCompatibleConfig?.classList.add("hidden");
+                llamacppConfig?.classList.remove("hidden");
+                if (llamacppOptions) llamacppOptions.style.display = "flex";
+                configureLlamaBtn?.classList.remove("hidden");
             }
         }
 
-        // Fetch Llama.cpp models from API and populate dropdown
+        // Fetch configured Llama.cpp models and populate dropdown
         async function fetchLlamaCppModels() {
             const select = document.getElementById("llamaModel");
             const notice = document.getElementById("llamaNoModelsNotice");
+            if (!select) return;
+
             try {
                 const res = await fetch('/api/llamacpp-models');
                 if (!res.ok) throw new Error("HTTP error " + res.status);
@@ -277,14 +277,14 @@
                 select.innerHTML = "";
 
                 if (llamaCppModels.length === 0) {
-                    if (notice) notice.classList.remove("hidden");
+                    notice?.classList.remove("hidden");
                     const option = document.createElement("option");
                     option.value = "";
                     option.textContent = "No models configured";
                     select.appendChild(option);
                     select.disabled = true;
                 } else {
-                    if (notice) notice.classList.add("hidden");
+                    notice?.classList.add("hidden");
                     select.disabled = false;
                     llamaCppModels.forEach((model, index) => {
                         const option = document.createElement("option");
@@ -302,9 +302,7 @@
             }
         }
 
-        let openRouterModelsList = [];
-        let activeDropdownIndex = -1;
-
+        // Fetch OpenRouter model catalogue
         async function fetchOpenRouterModels() {
             try {
                 let res = await fetch('/api/openrouter-models');
@@ -315,7 +313,7 @@
                     const data = await res.json();
                     openRouterModelsList = data.models || data.data || [];
                     const savedModelInput = document.getElementById("openrouterModelName");
-                    if (savedModelInput && savedModelInput.value.trim()) {
+                    if (savedModelInput?.value.trim()) {
                         updatePricingBadge();
                     }
                 }
@@ -324,6 +322,7 @@
             }
         }
 
+        // Compute prompt and completion costs per one million tokens
         function calculatePricingPer1M(pricing) {
             if (!pricing) return { input: 0, output: 0, cacheHit: null };
             const promptPrice = parseFloat(pricing.prompt || 0);
@@ -341,10 +340,7 @@
             };
         }
 
-        let openRouterEndpointsList = [];
-        let currentFetchedRouterModel = "";
-        let selectedOpenRouterRouter = "auto";
-
+        // Generate warning banner for models with limited context window
         function getContextWarningHtml(contextLength) {
             if (contextLength && contextLength < 50000) {
                 return `
@@ -356,6 +352,7 @@
             return "";
         }
 
+        // Update provider routing choices and endpoints for selected OpenRouter model
         async function updateOpenRouterRouterGroup(modelId) {
             const routerGroup = document.getElementById("openrouterRouterGroup");
             const hiddenRouterInput = document.getElementById("openrouterProviderRouter");
@@ -375,7 +372,6 @@
                 return;
             }
 
-            // Show router group when valid catalog model is selected
             routerGroup.classList.remove("hidden");
 
             if (currentFetchedRouterModel === modelId) return;
@@ -394,7 +390,6 @@
                 openRouterEndpointsList = endpoints;
                 routerDropdown.innerHTML = "";
 
-                // Option 1: Automatic
                 const autoPrices = calculatePricingPer1M(matchedModel.pricing);
                 const autoDiv = document.createElement("div");
                 autoDiv.className = "openrouter-dropdown-item" + (selectedOpenRouterRouter === "auto" ? " active" : "");
@@ -407,7 +402,6 @@
                 });
                 routerDropdown.appendChild(autoDiv);
 
-                // Option 2..N: Unique Endpoints
                 if (endpoints.length > 0) {
                     const seen = new Set();
                     endpoints.forEach(ep => {
@@ -436,6 +430,7 @@
             }
         }
 
+        // Apply provider router choice and update pricing metrics
         function selectOpenRouterRouter(routerVal, routerLabel) {
             const hiddenRouterInput = document.getElementById("openrouterProviderRouter");
             const routerTriggerText = document.getElementById("openrouterRouterSelectedText");
@@ -449,6 +444,7 @@
             updatePricingBadge();
         }
 
+        // Format raw currency value into clean readout string
         function formatPriceStr(val) {
             if (val === null || val === undefined) return "N/A";
             if (val === 0) return "$0";
@@ -460,6 +456,7 @@
             return "$" + s;
         }
 
+        // Update pricing information display panel for chosen OpenRouter model
         function updatePricingBadge() {
             const input = document.getElementById("openrouterModelName");
             const badge = document.getElementById("openrouterPricingInfo");
@@ -487,9 +484,7 @@
 
             updateOpenRouterRouterGroup(val);
 
-            const selectedRouter = hiddenRouterInput ? hiddenRouterInput.value : "auto";
-
-            // Check if specific endpoint router is selected
+            const selectedRouter = hiddenRouterInput?.value || "auto";
             let matchedEndpoint = null;
             if (selectedRouter && selectedRouter !== "auto" && openRouterEndpointsList.length > 0) {
                 matchedEndpoint = openRouterEndpointsList.find(ep => ep.provider_name === selectedRouter);
@@ -518,8 +513,7 @@
             `;
         }
 
-
-
+        // Render searchable OpenRouter model dropdown options
         function renderOpenRouterDropdown() {
             const input = document.getElementById("openrouterModelName");
             const dropdown = document.getElementById("openrouterDropdown");
@@ -573,22 +567,31 @@
             dropdown.classList.remove("hidden");
         }
 
+        // Select model from OpenRouter dropdown search
         function selectOpenRouterModel(modelId) {
             const input = document.getElementById("openrouterModelName");
             const dropdown = document.getElementById("openrouterDropdown");
-            if (input) {
-                input.value = modelId;
-            }
-            if (dropdown) {
-                dropdown.classList.add("hidden");
-            }
+            if (input) input.value = modelId;
+            if (dropdown) dropdown.classList.add("hidden");
             updatePricingBadge();
         }
 
+        // Highlight active dropdown item during keyboard navigation
+        function highlightDropdownItem(items) {
+            items.forEach((item, idx) => {
+                if (idx === activeDropdownIndex) {
+                    item.classList.add("active");
+                    item.scrollIntoView({ block: "nearest" });
+                } else {
+                    item.classList.remove("active");
+                }
+            });
+        }
+
+        // Initialise event handlers for OpenRouter autocomplete dropdown
         function initOpenRouterAutocomplete() {
             const input = document.getElementById("openrouterModelName");
             const dropdown = document.getElementById("openrouterDropdown");
-
             const routerTrigger = document.getElementById("openrouterRouterTrigger");
             const routerDropdown = document.getElementById("openrouterRouterDropdown");
 
@@ -633,47 +636,48 @@
                 });
             }
 
-
             document.addEventListener("click", (e) => {
                 if (!e.target.closest(".openrouter-autocomplete-wrapper")) {
-                    if (dropdown) dropdown.classList.add("hidden");
+                    dropdown?.classList.add("hidden");
                 }
                 if (!e.target.closest(".openrouter-router-wrapper")) {
-                    if (routerDropdown) routerDropdown.classList.add("hidden");
+                    routerDropdown?.classList.add("hidden");
                 }
             });
         }
 
-
-
-
+        // Display server initialisation failure banner
         function showError(msg) {
             isServerLoading = false;
             setStatusState("error", "Loading Failed");
             updateServerStatus(false);
             const errorBanner = document.getElementById("errorAlertBanner");
-            errorBanner.textContent = msg;
-            errorBanner.classList.remove("hidden");
-            document.getElementById("successAlertBanner").classList.add("hidden");
-            
-            // Hide Stop Server button on crash/failure, show Back to Setup button
-            document.getElementById("stopModelBtn").classList.add("hidden");
-            document.getElementById("reconfigureBtn").classList.remove("hidden");
+            if (errorBanner) {
+                errorBanner.textContent = msg;
+                errorBanner.classList.remove("hidden");
+            }
+            document.getElementById("successAlertBanner")?.classList.add("hidden");
+            document.getElementById("stopModelBtn")?.classList.add("hidden");
+            document.getElementById("reconfigureBtn")?.classList.remove("hidden");
         }
 
+        // Display server initialisation success banner
         function showSuccess() {
             isServerLoading = false;
             setStatusState("ready", "Ready to Use");
             updateServerStatus(true);
-            document.getElementById("errorAlertBanner").classList.add("hidden");
-            document.getElementById("successAlertBanner").classList.remove("hidden");
+            document.getElementById("errorAlertBanner")?.classList.add("hidden");
+            document.getElementById("successAlertBanner")?.classList.remove("hidden");
             
-            // Show Stop Server button on success, hide Back to Setup button
-            document.getElementById("stopModelBtn").classList.remove("hidden");
-            document.getElementById("stopModelBtn").disabled = false;
-            document.getElementById("reconfigureBtn").classList.add("hidden");
+            const stopBtn = document.getElementById("stopModelBtn");
+            if (stopBtn) {
+                stopBtn.classList.remove("hidden");
+                stopBtn.disabled = false;
+            }
+            document.getElementById("reconfigureBtn")?.classList.add("hidden");
         }
 
+        // Update interface layout to reflect active running server state
         function applyServerStatusState(data) {
             if (!data) return;
             const isRunning = !!(data.running || data.llamacppRunning || data.openrouterRunning || data.openaiCompatibleRunning);
@@ -684,7 +688,6 @@
             }
 
             if (isRunning) {
-                // Present server status panel directly
                 let provName = "Active Server";
                 if (data.provider === "openrouter") {
                     provName = "OpenRouter";
@@ -693,60 +696,60 @@
                 } else if (data.provider === "llamacpp") {
                     provName = "Llama.cpp";
                 }
-                document.getElementById("displayProvider").textContent = provName;
-                document.getElementById("displayModel").textContent = data.modelName || "Active Server Process";
-                document.getElementById("displayParallel").textContent = "Enabled";
+                const dispProv = document.getElementById("displayProvider");
+                const dispMod = document.getElementById("displayModel");
+                const dispPar = document.getElementById("displayParallel");
+                if (dispProv) dispProv.textContent = provName;
+                if (dispMod) dispMod.textContent = data.modelName || "Active Server Process";
+                if (dispPar) dispPar.textContent = "Enabled";
                 
-                document.getElementById("setupForm").classList.add("hidden");
-                document.getElementById("serverStatusPanel").classList.remove("hidden");
+                document.getElementById("setupForm")?.classList.add("hidden");
+                document.getElementById("serverStatusPanel")?.classList.remove("hidden");
 
                 const viewLogsRow = document.getElementById("viewLogsRow");
                 if (viewLogsRow) {
-                    if (data.provider === "llamacpp" || data.llamacppRunning) {
-                        viewLogsRow.classList.remove("hidden");
-                    } else {
-                        viewLogsRow.classList.add("hidden");
-                    }
+                    viewLogsRow.classList.toggle("hidden", !(data.provider === "llamacpp" || data.llamacppRunning));
                 }
                 
-                if (data.startupLogs && Array.isArray(data.startupLogs) && data.startupLogs.length > 0) {
+                if (data.startupLogs?.length) {
                     const container = document.getElementById("llamaLoadingContainer");
                     const logsPre = document.getElementById("llamaLoadingLogs");
-                    container.classList.remove("hidden");
-                    logsPre.textContent = data.startupLogs.join("\n") + "\n";
-                    logsPre.scrollTop = logsPre.scrollHeight;
+                    container?.classList.remove("hidden");
+                    if (logsPre) {
+                        logsPre.textContent = data.startupLogs.join("\n") + "\n";
+                        logsPre.scrollTop = logsPre.scrollHeight;
+                    }
                 } else {
                     clearLlamaLogs();
                 }
                 
                 showSuccess();
             } else if (!isServerLoading) {
-                document.getElementById("serverStatusPanel").classList.add("hidden");
-                document.getElementById("setupForm").classList.remove("hidden");
+                document.getElementById("serverStatusPanel")?.classList.add("hidden");
+                document.getElementById("setupForm")?.classList.remove("hidden");
             }
         }
 
-        // Check if server is already running on page load or via WebSocket
+        // Query active server status from backend
         function checkExistingServerStatus() {
             if (window.latestServerStatus) {
                 applyServerStatusState(window.latestServerStatus);
-            } else if (typeof window.sendWsMessage === 'function') {
-                window.sendWsMessage({ action: "get_server_status" });
+            } else {
+                window.sendWsMessage?.({ action: "get_server_status" });
             }
         }
 
-        if (typeof window.wsSubscribe === 'function') {
-            window.wsSubscribe((payload) => {
-                if (payload.type === "serverStatus" || payload.action === "get_server_status") {
-                    applyServerStatusState(payload);
-                }
-            });
-        }
+        // Subscribe to server status websocket events
+        window.wsSubscribe?.((payload) => {
+            if (payload.type === "serverStatus" || payload.action === "get_server_status") {
+                applyServerStatusState(payload);
+            }
+        });
 
-        // "Start Server" button listener
-        document.getElementById("loadModelBtn").addEventListener("click", async () => {
-            const provider = document.getElementById("provider").value;
-            const allowParallel = (provider === "openrouter" || provider === "openaicompatible") ? true : document.getElementById("parallelCheckbox").checked;
+        // Start LLM server with user-configured arguments
+        document.getElementById("loadModelBtn")?.addEventListener("click", async () => {
+            const provider = document.getElementById("provider")?.value;
+            const allowParallel = (provider === "openrouter" || provider === "openaicompatible") ? true : document.getElementById("parallelCheckbox")?.checked;
 
             let modelName = "";
             let baseUrl = "";
@@ -754,7 +757,7 @@
             let providerRouter = "auto";
 
             if (provider === "openrouter") {
-                modelName = document.getElementById("openrouterModelName").value.trim();
+                modelName = document.getElementById("openrouterModelName")?.value.trim() || "";
                 const matchedModel = openRouterModelsList.find(m => m.id === modelName);
                 if (!modelName || !matchedModel) {
                     alert("Invalid model: '" + modelName + "' does not exist on OpenRouter. All models must exist in OpenRouter catalog.");
@@ -765,23 +768,21 @@
                     providerRouter = hiddenInput.value;
                 }
             } else if (provider === "openaicompatible") {
-                baseUrl = document.getElementById("openaiBaseUrl").value.trim();
+                baseUrl = document.getElementById("openaiBaseUrl")?.value.trim() || "";
                 if (!baseUrl) {
                     alert("Please enter a Base URL for the OpenAI Compatible server.");
                     return;
                 }
-                apiKey = document.getElementById("openaiApiKey").value.trim();
-                modelName = document.getElementById("openaiModelName").value.trim() || "default";
+                apiKey = document.getElementById("openaiApiKey")?.value.trim() || "";
+                modelName = document.getElementById("openaiModelName")?.value.trim() || "default";
             } else {
-                modelName = document.getElementById("llamaModel").value;
+                modelName = document.getElementById("llamaModel")?.value || "";
                 if (!modelName || modelName === "No models found" || modelName === "No models configured" || modelName.includes("Failed")) {
                     alert("Please configure a valid GGUF model in Llama.cpp Setup first.");
                     return;
                 }
             }
 
-
-            // Populate status panel details
             let displayProviderStr = "Llama.cpp";
             let displayModelStr = modelName;
 
@@ -795,26 +796,27 @@
                 displayModelStr = `${modelName} (${baseUrl})`;
             }
 
-            document.getElementById("displayProvider").textContent = displayProviderStr;
-            document.getElementById("displayModel").textContent = displayModelStr;
-            document.getElementById("displayParallel").textContent = allowParallel ? "Enabled" : "Disabled";
+            const dispProv = document.getElementById("displayProvider");
+            const dispMod = document.getElementById("displayModel");
+            const dispPar = document.getElementById("displayParallel");
+            if (dispProv) dispProv.textContent = displayProviderStr;
+            if (dispMod) dispMod.textContent = displayModelStr;
+            if (dispPar) dispPar.textContent = allowParallel ? "Enabled" : "Disabled";
 
-            // Switch views
-            document.getElementById("setupForm").classList.add("hidden");
-            document.getElementById("serverStatusPanel").classList.remove("hidden");
-            document.getElementById("errorAlertBanner").classList.add("hidden");
-            document.getElementById("successAlertBanner").classList.add("hidden");
-            document.getElementById("reconfigureBtn").classList.add("hidden");
-            document.getElementById("stopModelBtn").classList.remove("hidden");
-            document.getElementById("stopModelBtn").disabled = false;
+            document.getElementById("setupForm")?.classList.add("hidden");
+            document.getElementById("serverStatusPanel")?.classList.remove("hidden");
+            document.getElementById("errorAlertBanner")?.classList.add("hidden");
+            document.getElementById("successAlertBanner")?.classList.add("hidden");
+            document.getElementById("reconfigureBtn")?.classList.add("hidden");
+            const stopBtn = document.getElementById("stopModelBtn");
+            if (stopBtn) {
+                stopBtn.classList.remove("hidden");
+                stopBtn.disabled = false;
+            }
 
             const viewLogsRow = document.getElementById("viewLogsRow");
             if (viewLogsRow) {
-                if (provider === "llamacpp") {
-                    viewLogsRow.classList.remove("hidden");
-                } else {
-                    viewLogsRow.classList.add("hidden");
-                }
+                viewLogsRow.classList.toggle("hidden", provider !== "llamacpp");
             }
 
             clearLlamaLogs();
@@ -832,28 +834,26 @@
                         apiKey: apiKey,
                         providerRouter: providerRouter,
                         allowParallel: allowParallel,
-                        preclearVram: document.getElementById("preclearVramCheckbox").checked
+                        preclearVram: document.getElementById("preclearVramCheckbox")?.checked
                     })
                 });
 
                 const data = await res.json();
-
                 if (!data.ok) {
                     showError(data.message || data.error || "Failed to start server");
                     return;
                 }
 
                 showSuccess();
-
             } catch (e) {
                 showError("Exception starting server: " + e.message);
             }
         });
 
-        // "Stop Server" button listener
-        document.getElementById("stopModelBtn").addEventListener("click", async () => {
+        // Terminate running LLM server process
+        document.getElementById("stopModelBtn")?.addEventListener("click", async () => {
             const btn = document.getElementById("stopModelBtn");
-            btn.disabled = true;
+            if (btn) btn.disabled = true;
             setStatusState("loading", "Stopping...");
 
             try {
@@ -864,30 +864,26 @@
 
             isServerLoading = false;
             setStatusState("stopped", "Stopped");
-            btn.disabled = false;
+            if (btn) btn.disabled = false;
 
-            const viewLogsRow = document.getElementById("viewLogsRow");
-            if (viewLogsRow) viewLogsRow.classList.add("hidden");
-
-            // Return to setup form
-            document.getElementById("serverStatusPanel").classList.add("hidden");
-            document.getElementById("setupForm").classList.remove("hidden");
+            document.getElementById("viewLogsRow")?.classList.add("hidden");
+            document.getElementById("serverStatusPanel")?.classList.add("hidden");
+            document.getElementById("setupForm")?.classList.remove("hidden");
         });
 
-        // "Back to Setup" button listener
-        document.getElementById("reconfigureBtn").addEventListener("click", () => {
+        // Return from failure/stop state back to server configuration form
+        document.getElementById("reconfigureBtn")?.addEventListener("click", () => {
             isServerLoading = false;
-            const viewLogsRow = document.getElementById("viewLogsRow");
-            if (viewLogsRow) viewLogsRow.classList.add("hidden");
-            document.getElementById("serverStatusPanel").classList.add("hidden");
-            document.getElementById("setupForm").classList.remove("hidden");
-            document.getElementById("stopModelBtn").classList.remove("hidden");
+            document.getElementById("viewLogsRow")?.classList.add("hidden");
+            document.getElementById("serverStatusPanel")?.classList.add("hidden");
+            document.getElementById("setupForm")?.classList.remove("hidden");
+            document.getElementById("stopModelBtn")?.classList.remove("hidden");
         });
 
-        // Listen for provider change
-        document.getElementById("provider").addEventListener("change", () => {
+        // Persist and update UI on provider selection change
+        document.getElementById("provider")?.addEventListener("change", () => {
             updateProviderUI();
-            const provider = document.getElementById("provider").value;
+            const provider = document.getElementById("provider")?.value;
             fetch("/api/server-config", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
@@ -895,14 +891,12 @@
             }).catch(() => {});
         });
 
-
-
-        // Load and prepopulate saved OpenRouter / OpenAI-Compatible form fields
+        // Fetch saved server configuration and populate form fields
         function loadSavedServerConfig() {
             fetch('/api/server-config')
                 .then(r => r.json())
                 .then(data => {
-                    if (!data || !data.ok) return;
+                    if (!data?.ok) return;
                     const openrouter = data.openrouter || {};
                     const openai = data.openaicompatible || {};
 
@@ -927,20 +921,21 @@
                         }
                     }
 
-                    if (openai.baseUrl) document.getElementById("openaiBaseUrl").value = openai.baseUrl;
-                    if (openai.apiKey) document.getElementById("openaiApiKey").value = openai.apiKey;
-                    if (openai.modelName) document.getElementById("openaiModelName").value = openai.modelName;
+                    const openBase = document.getElementById("openaiBaseUrl");
+                    const openKey = document.getElementById("openaiApiKey");
+                    const openModel = document.getElementById("openaiModelName");
+                    if (openBase && openai.baseUrl) openBase.value = openai.baseUrl;
+                    if (openKey && openai.apiKey) openKey.value = openai.apiKey;
+                    if (openModel && openai.modelName) openModel.value = openai.modelName;
 
-                    if (modelInput && modelInput.value.trim()) {
+                    if (modelInput?.value.trim()) {
                         updatePricingBadge();
                     }
                 })
                 .catch(e => console.warn("Could not load saved server config:", e));
         }
 
-
-
-        // Initialise on page load
+        // Initialise page components and load state
         connectWebsocket();
         fetchLlamaCppModels();
         fetchOpenRouterModels();
@@ -948,8 +943,6 @@
         updateProviderUI();
         checkExistingServerStatus();
         loadSavedServerConfig();
-
-
     </script>
 
 </body>

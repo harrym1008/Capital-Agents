@@ -60,11 +60,12 @@
         ]
     };
 
+    // Update available question-and-answer target specialists for the selected evaluation mode
     function updateQaTargetAgents() {
         const targetSelect = document.getElementById("qaTargetSelect");
         if (!targetSelect) return;
 
-        const mode = document.getElementById("modeSelect").value || "fast";
+        const mode = document.getElementById("modeSelect")?.value || "fast";
         const currentValue = targetSelect.value;
 
         let specialists = [];
@@ -96,7 +97,6 @@
         }
         targetSelect.innerHTML = optionsHtml;
 
-        // Restore previous selection if valid for new mode
         if (currentValue && targetSelect.querySelector(`option[value="${currentValue}"]`)) {
             targetSelect.value = currentValue;
         } else {
@@ -104,13 +104,13 @@
         }
     }
 
-    // Re-init stages bar and target agents when evaluation mode changes
-    document.getElementById("modeSelect").addEventListener("change", function () {
+    // Reinitialise stages navigation bar and target agent dropdown on evaluation mode change
+    document.getElementById("modeSelect")?.addEventListener("change", function () {
         BoardroomCore.initStagesBar(this.value, singleEquityStages);
         updateQaTargetAgents();
     });
 
-    // Hook to append Q&A Tab into Stages Bar
+    // Append Q&A dialogue tab and workspace container to stages bar
     BoardroomCore.on("stagesBarInit", ({ bar }) => {
         if (!bar) return;
         const qaTab = document.createElement("div");
@@ -125,7 +125,6 @@
         };
         bar.appendChild(qaTab);
 
-        // Pre-build the Q&A workspace if not already present
         const panesContainer = document.getElementById("panesContainer");
         if (panesContainer && !document.getElementById("stageWorkspace-qa")) {
             const qaWorkspace = document.createElement("div");
@@ -168,23 +167,20 @@
                 const targetSelect = document.getElementById("qaTargetSelect");
                 const sendBtn = document.getElementById("qaSendBtn");
 
-                // Populate target specialist options based on current evaluation mode
                 updateQaTargetAgents();
 
                 if (qaInput) {
+                    // Auto-adjust prompt textarea height during text entry
                     const adjustTextareaHeight = () => {
                         qaInput.style.height = "auto";
                         const newHeight = Math.min(qaInput.scrollHeight, 220);
                         qaInput.style.height = newHeight + "px";
-                        if (qaInput.scrollHeight > 220) {
-                            qaInput.style.overflowY = "auto";
-                        } else {
-                            qaInput.style.overflowY = "hidden";
-                        }
+                        qaInput.style.overflowY = qaInput.scrollHeight > 220 ? "auto" : "hidden";
                     };
 
                     qaInput.addEventListener("input", adjustTextareaHeight);
 
+                    // Transmit user query to the backend and append user bubble
                     const sendMsg = () => {
                         const val = qaInput.value.trim();
                         if (val) {
@@ -254,6 +250,7 @@
         }
     });
 
+    // Reset Q&A chat stream to default welcome announcement
     function initQaChatHistory() {
         const chatLog = document.getElementById("qaChatHistory");
         if (!chatLog) return;
@@ -272,6 +269,7 @@
         BoardroomCore.setupAutoScroll(chatLog);
     }
 
+    // Delete interactive Q&A turn and prune downstream dialogue nodes
     function deleteQaTurn(turnIndex, btnEl) {
         const chatHistory = document.getElementById("qaChatHistory");
         if (!chatHistory) return;
@@ -289,15 +287,13 @@
 
         qaTurnCounter = turnIndex;
 
-        if (typeof window.sendWsMessage === "function") {
-            window.sendWsMessage({
-                action: "qa_delete_turn",
-                turnIndex: turnIndex
-            });
-        }
+        window.sendWsMessage?.({
+            action: "qa_delete_turn",
+            turnIndex: turnIndex
+        });
     }
 
-    // Custom Layout Handler for Decision Upload Stage
+    // Custom layout renderer for Decision Upload stage workspace
     BoardroomCore.setCustomStageLayoutHandler(({ stageNum, stageName, agents, workspace }) => {
         if (stageName.includes("Decision Upload")) {
             workspace.innerHTML = `
@@ -336,7 +332,7 @@
                     </div>
                 </div>
             `;
-            if (agents && agents.length > 0) {
+            if (agents?.length) {
                 agents.forEach(agent => {
                     BoardroomCore.createAgentPane(stageNum, agent.role, agent.color, agent.name);
                 });
@@ -352,7 +348,7 @@
         return false;
     });
 
-    // Update Decision Report Card
+    // Populate decision upload receipt with finalised valuation targets and rating
     function updateUploadReceipt(dataString, status) {
         let data = {};
         try {
@@ -444,7 +440,7 @@
         renderStageChart();
     }
 
-    // Chart Plugin & Formatting
+    // Chart plugin for rendering vertical simulation date marker
     const simDateLinePlugin = {
         id: "simDateLine",
         afterDraw: (chart) => {
@@ -470,10 +466,11 @@
         }
     };
 
+    // Chart plugin for rendering crosshair on hover
     const hoverCrosshairPlugin = {
         id: "hoverCrosshair",
         afterDraw: (chart) => {
-            if (chart.tooltip && chart.tooltip._active && chart.tooltip._active.length > 0) {
+            if (chart.tooltip?._active?.length) {
                 const activePoint = chart.tooltip._active[0];
                 const xPixel = activePoint.element.x;
                 const ctx = chart.ctx;
@@ -490,11 +487,11 @@
         }
     };
 
-    // Custom Interaction Mode for datasets spanning different time segments
-    if (typeof Chart !== "undefined" && Chart.Interaction && Chart.Interaction.modes) {
+    // Interaction mode for synchronising timeline crosshairs across datasets
+    if (typeof Chart !== "undefined" && Chart.Interaction?.modes) {
         Chart.Interaction.modes.tickerTimeSync = function(chart, e, options, useFinalPosition) {
             let position = { x: e.x, y: e.y };
-            if (Chart.helpers && typeof Chart.helpers.getRelativePosition === "function") {
+            if (typeof Chart.helpers?.getRelativePosition === "function") {
                 try {
                     position = Chart.helpers.getRelativePosition(e, chart);
                 } catch (err) {
@@ -505,11 +502,11 @@
 
             const items = [];
             const datasets = chart.data.datasets;
-            if (!datasets || datasets.length === 0) return items;
+            if (!datasets?.length) return items;
 
             for (let datasetIndex = 0; datasetIndex < datasets.length; datasetIndex++) {
                 const meta = chart.getDatasetMeta(datasetIndex);
-                if (!meta || meta.hidden || !meta.data || meta.data.length === 0) continue;
+                if (!meta || meta.hidden || !meta.data?.length) continue;
 
                 const isPointOnly = (datasets[datasetIndex].showLine === false);
                 const threshold = isPointOnly ? 8 : 25;
@@ -542,8 +539,9 @@
         };
     }
 
+    // Calculate count of decimal places in number
     function countDecimalPlaces(num) {
-        if (window.AppUtils && window.AppUtils.countDecimalPlaces) {
+        if (window.AppUtils?.countDecimalPlaces) {
             return window.AppUtils.countDecimalPlaces(num);
         }
         if (!num || Math.floor(num) === num) return 0;
@@ -553,8 +551,9 @@
         return 0;
     }
 
+    // Format currency amount for chart vertical axis labels
     function formatYAxisLabel(val, stepSize) {
-        if (window.AppUtils && window.AppUtils.formatLargeCurrency) {
+        if (window.AppUtils?.formatLargeCurrency) {
             return window.AppUtils.formatLargeCurrency(val, stepSize);
         }
         if (val === 0) return "$0";
@@ -568,15 +567,10 @@
         else if (absVal >= 1e3) { unit = "K"; div = 1e3; }
 
         const num = val / div;
-        let dp = 0;
-        if (stepSize && stepSize > 0) {
-            dp = countDecimalPlaces(stepSize / div);
-        } else {
-            dp = countDecimalPlaces(num);
-        }
+        let dp = (stepSize && stepSize > 0) ? countDecimalPlaces(stepSize / div) : countDecimalPlaces(num);
         dp = Math.max(0, Math.min(6, dp));
 
-        let minDp = (div === 1 && stepSize && stepSize < 1) ? 2 : 0;
+        const minDp = (div === 1 && stepSize && stepSize < 1) ? 2 : 0;
         const formattedStr = num.toLocaleString("en-US", {
             minimumFractionDigits: minDp,
             maximumFractionDigits: dp
@@ -585,6 +579,7 @@
         return "$" + formattedStr + unit;
     }
 
+    // Initialise or update Chart.js instance on receipt canvas
     function createOrUpdateChart(chartData) {
         const canvas = document.getElementById("receiptChartCanvas");
         if (!canvas) return;
@@ -596,7 +591,7 @@
 
         const datasets = [];
 
-        if (chartData.historical && chartData.historical.length > 0) {
+        if (chartData.historical?.length) {
             datasets.push({
                 label: "Historical",
                 data: chartData.historical,
@@ -611,7 +606,7 @@
             });
         }
 
-        if (chartData.futureChunks && chartData.futureChunks.length > 0) {
+        if (chartData.futureChunks?.length) {
             chartData.futureChunks.forEach(chunk => {
                 const color = chunk.color || "#f43f5e";
                 const isGreen = color === "#10b981";
@@ -630,7 +625,7 @@
             });
         }
 
-        if (chartData.targetCurve && chartData.targetCurve.length > 0) {
+        if (chartData.targetCurve?.length) {
             datasets.push({
                 label: "Prediction Curve",
                 data: chartData.targetCurve,
@@ -644,7 +639,7 @@
             });
         }
 
-        if (chartData.targetPoints && chartData.targetPoints.length > 0) {
+        if (chartData.targetPoints?.length) {
             datasets.push({
                 label: "Target Points",
                 data: chartData.targetPoints,
@@ -729,16 +724,17 @@
         });
     }
 
+    // Retrieve market OHLCV price series and render historical stage chart
     async function renderStageChart() {
         const canvas = document.getElementById("receiptChartCanvas");
         if (!canvas) return;
 
-        const ticker = currentTicker || document.getElementById("tickerInput").value.trim().toUpperCase();
+        const ticker = currentTicker || document.getElementById("tickerInput")?.value.trim().toUpperCase();
         let simDateStr = currentSimulatedDate;
         if (!simDateStr) {
             const simCheckbox = document.getElementById("simulatedDateCheckbox");
-            if (simCheckbox && simCheckbox.checked) {
-                simDateStr = document.getElementById("simulatedDateInput").value;
+            if (simCheckbox?.checked) {
+                simDateStr = document.getElementById("simulatedDateInput")?.value;
             }
         }
         if (!simDateStr) {
@@ -748,18 +744,18 @@
         const t12El = document.getElementById("receipt-target-12");
         const t36El = document.getElementById("receipt-target-36");
         const targets = [];
-        if (t12El && t12El.innerText && t12El.innerText !== "--") {
+        if (t12El?.innerText && t12El.innerText !== "--") {
             const val = t12El.innerText.trim().replace("$", "");
             const m = t12El.dataset.months || "12";
             if (val) targets.push(`${m}:${val}`);
         }
-        if (t36El && t36El.innerText && t36El.innerText !== "--") {
+        if (t36El?.innerText && t36El.innerText !== "--") {
             const val = t36El.innerText.trim().replace("$", "");
             const m = t36El.dataset.months || "36";
             if (val) targets.push(`${m}:${val}`);
         }
 
-        const horizon = document.getElementById("horizonSelect") ? document.getElementById("horizonSelect").value : "long";
+        const horizon = document.getElementById("horizonSelect")?.value || "long";
         try {
             let url = `/api/ohlcv?ticker=${encodeURIComponent(ticker)}&simDate=${encodeURIComponent(simDateStr)}&horizon=${encodeURIComponent(horizon)}`;
             if (targets.length > 0) {
@@ -775,8 +771,8 @@
         }
     }
 
-    // Lifecycle Listeners
-    BoardroomCore.on("simulationStarted", (payload) => {
+    // Handle simulation start lifecycle event
+    BoardroomCore.on("simulationStarted", () => {
         initQaChatHistory();
         const qaTab = document.getElementById("stageStep-qa");
         if (qaTab) {
@@ -785,14 +781,17 @@
         }
     });
 
+    // Handle decision upload start lifecycle event
     BoardroomCore.on("decisionStarted", (payload) => {
         updateUploadReceipt(payload.args, "PENDING UPLOAD");
     });
 
+    // Handle decision confirmation lifecycle event
     BoardroomCore.on("decisionConfirmed", (payload) => {
         updateUploadReceipt(payload.result, payload.status === "success" ? "UPLOADED" : "FAILED");
     });
 
+    // Handle Q&A query completion lifecycle event
     BoardroomCore.on("qaComplete", () => {
         const qSendBtn = document.getElementById("qaSendBtn");
         const qInput = document.getElementById("qaInput");
@@ -802,6 +801,7 @@
         if (qTargetSelect) qTargetSelect.disabled = false;
     });
 
+    // Handle simulation completion lifecycle event
     BoardroomCore.on("simComplete", (payload) => {
         updateQaTargetAgents();
         const finalTimeRow = document.getElementById("finalTimeReportRow");
@@ -814,6 +814,7 @@
         }
     });
 
+    // Handle simulation stopped lifecycle event
     BoardroomCore.on("simStopped", () => {
         const qStopBtn = document.getElementById("qaSendBtn");
         const qStopInp = document.getElementById("qaInput");
@@ -823,6 +824,7 @@
         if (qTargetSelect) qTargetSelect.disabled = false;
     });
 
+    // Handle simulation error lifecycle event
     BoardroomCore.on("error", () => {
         const qErrBtn = document.getElementById("qaSendBtn");
         const qErrInp = document.getElementById("qaInput");
@@ -832,20 +834,20 @@
         if (qTargetSelect) qTargetSelect.disabled = false;
     });
 
-    // Initialise Core Engine
+    // Initialise core boardroom engine configuration
     BoardroomCore.init({
         defaultStages: singleEquityStages,
-        initialMode: document.getElementById("modeSelect").value || "fast",
+        initialMode: document.getElementById("modeSelect")?.value || "fast",
         getPayload: () => {
-            const ticker = document.getElementById("tickerInput").value.trim().toUpperCase();
+            const ticker = document.getElementById("tickerInput")?.value.trim().toUpperCase();
             if (!ticker) {
                 alert("Please enter a valid stock ticker symbol.");
                 return null;
             }
             currentTicker = ticker;
 
-            const mode = document.getElementById("modeSelect").value;
-            const horizon = document.getElementById("horizonSelect").value;
+            const mode = document.getElementById("modeSelect")?.value;
+            const horizon = document.getElementById("horizonSelect")?.value;
 
             const simDate = BoardroomCore.getSimulatedDate();
             if (simDate === undefined) {

@@ -17,7 +17,7 @@
         <div class="splash-load-model-window">
             
             <img src="/static/favicon.png" alt="CapitalAgents Logo" class="landing-logo">
-            <h1 class="landing-welcome-title">Welcome to CapitalAgents</span></h1>
+            <h1 class="landing-welcome-title">Welcome to CapitalAgents</h1>
 
             <p id="serverErrorMsg" class="landing-error-msg landing-error-spaced" style="display: none;">You need to set up an LLM server first.</p>
             <a href="/server-config" class="aref-button landing-btn">Server Configuration</a>
@@ -42,6 +42,7 @@
     </div>
 
     <script>
+        // Update interactive button availability based on server connectivity status
         function setServerConnectedState(isConnected) {
             const singleEquityBtn = document.getElementById('singleEquityBtn');
             const portfolioCreateBtn = document.getElementById('portfolioCreateBtn');
@@ -50,42 +51,36 @@
             const serverDependentButtons = [singleEquityBtn, portfolioCreateBtn, portfolioRebalanceBtn, agentSimBtn];
             
             const errorMsg = document.getElementById('serverErrorMsg');
-            if (isConnected) {
-                errorMsg.style.display = 'none';
-            } else {
-                errorMsg.style.display = 'block';
+            if (errorMsg) {
+                errorMsg.style.display = isConnected ? 'none' : 'block';
             }
 
             for (const btn of serverDependentButtons) {
+                if (!btn) continue;
                 if (isConnected) {
-                    if (btn) {
-                        btn.classList.remove('disabled');
-                        btn.style.pointerEvents = 'auto';
-                    }
+                    btn.classList.remove('disabled');
+                    btn.style.pointerEvents = 'auto';
                 } else {
-                    if (btn) {
-                        btn.classList.add('disabled');
-                        btn.style.pointerEvents = 'none';
-                    }
+                    btn.classList.add('disabled');
+                    btn.style.pointerEvents = 'none';
                 }
             }
         }
 
+        // Initialise state from pre-existing status if available
         if (window.latestServerStatus) {
             const isRunning = !!(window.latestServerStatus.running || window.latestServerStatus.llamacppRunning || window.latestServerStatus.openrouterRunning || window.latestServerStatus.openaiCompatibleRunning);
             setServerConnectedState(isRunning);
         }
 
-        if (typeof window.wsSubscribe === 'function') {
-            window.wsSubscribe((payload) => {
-                if (payload.type === "serverStatus" || payload.action === "get_server_status") {
-                    const isRunning = !!(payload.running || payload.llamacppRunning || payload.openrouterRunning || payload.openaiCompatibleRunning);
-                    setServerConnectedState(isRunning);
-                }
-            });
-        }
+        // Subscribe to live websocket telemetry updates for server connection status
+        window.wsSubscribe?.((payload) => {
+            if (payload.type === "serverStatus" || payload.action === "get_server_status") {
+                const isRunning = !!(payload.running || payload.llamacppRunning || payload.openrouterRunning || payload.openaiCompatibleRunning);
+                setServerConnectedState(isRunning);
+            }
+        });
     </script>
-
 
     <footer>
         <div class="landing-footer">
@@ -94,7 +89,6 @@
             </p>
         </div>
     </footer>
-
 
 </body>
 </html>

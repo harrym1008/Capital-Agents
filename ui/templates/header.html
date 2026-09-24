@@ -52,7 +52,7 @@ You are helping an end user to achieve what they want to complete. Ask them ques
         </div>
 
         <div id="costMetricsReadout" class="header-cost-grid">
-            <!-- Task Row -->
+            <!-- Task metrics row -->
             <span class="header-label-muted" style="text-align: right;">Task:</span>
             <span class="header-token-cell" title="Input Tokens">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
@@ -68,7 +68,7 @@ You are helping an end user to achieve what they want to complete. Ask them ques
             </span>
             <span id="taskCostVal" class="header-cost-value" title="Task Cost">$0.0000</span>
 
-            <!-- Session Row -->
+            <!-- Session metrics row -->
             <span class="header-label-muted" style="text-align: right;">Session:</span>
             <span style="display: flex; align-items: center; gap: 4px; color: #e2e8f0;" title="Input Tokens">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
@@ -92,6 +92,7 @@ You are helping an end user to achieve what they want to complete. Ask them ques
     let activeProviderName = "";
     window.latestServerStatus = null;
 
+    // Update websocket connection status in header telemetry
     function updateWsStatus(isConnected) {
         const cell = document.getElementById("wsStatusCell");
         if (cell) {
@@ -103,6 +104,7 @@ You are helping an end user to achieve what they want to complete. Ask them ques
         }
     }
 
+    // Update LLM server backend status label and metrics panels
     function updateServerStatus(isConnected, provider = "") {
         if (typeof serverIsLoaded !== 'undefined') {
             serverIsLoaded = isConnected;
@@ -155,6 +157,7 @@ You are helping an end user to achieve what they want to complete. Ask them ques
     let wsReconnectTimer = null;
     const wsSubscribers = new Set();
 
+    // Register listener for broadcast websocket telemetry payloads
     window.wsSubscribe = function(callback) {
         if (typeof callback === 'function') {
             wsSubscribers.add(callback);
@@ -162,27 +165,28 @@ You are helping an end user to achieve what they want to complete. Ask them ques
         }
     };
 
+    // Send payload over active websocket connection or reconnect if needed
     window.sendWsMessage = function(data) {
         if (!socket || socket.readyState !== WebSocket.OPEN) {
             connectWebsocket();
-            // Give socket brief moment to connect if it was opening
-            if (socket && socket.readyState === WebSocket.CONNECTING) {
+            if (socket?.readyState === WebSocket.CONNECTING) {
                 const payloadStr = typeof data === 'string' ? data : JSON.stringify(data);
                 const prevOnOpen = socket.onopen;
                 socket.onopen = (evt) => {
-                    if (prevOnOpen) prevOnOpen(evt);
+                    prevOnOpen?.(evt);
                     socket.send(payloadStr);
                 };
                 return true;
             }
         }
-        if (socket && socket.readyState === WebSocket.OPEN) {
+        if (socket?.readyState === WebSocket.OPEN) {
             socket.send(typeof data === 'string' ? data : JSON.stringify(data));
             return true;
         }
         return false;
     };
 
+    // Initialise and manage primary websocket transport connection
     function connectWebsocket() {
         if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
             return;
@@ -221,7 +225,6 @@ You are helping an end user to achieve what they want to complete. Ask them ques
             try {
                 const payload = JSON.parse(event.data);
 
-                // Automatically update header token speeds and cost metrics from WS push events
                 if (payload.type === "serverStatus" || payload.action === "get_server_status") {
                     window.latestServerStatus = payload;
                     const isRunning = !!(payload.running || payload.llamacppRunning || payload.openrouterRunning || payload.openaiCompatibleRunning);
@@ -245,12 +248,10 @@ You are helping an end user to achieve what they want to complete. Ask them ques
                     updateCostUI(payload);
                 }
 
-                // Notify all registered subscribers
                 wsSubscribers.forEach(callback => {
                     try { callback(payload); } catch(err) { console.error("Error in WS subscriber:", err); }
                 });
 
-                // Delegate to page-specific handler if defined
                 if (typeof handleSimulationEvent === 'function') {
                     handleSimulationEvent(payload);
                 }
@@ -261,13 +262,13 @@ You are helping an end user to achieve what they want to complete. Ask them ques
     }
     window.connectWebsocket = connectWebsocket;
 
-    // Automatically initialise WebSocket connection when header is loaded
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", connectWebsocket);
     } else {
         connectWebsocket();
     }
 
+    // Update financial and token consumption metrics in the header
     function updateCostUI(payload) {
         if (!payload) return;
         if (payload.task) {
