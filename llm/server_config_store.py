@@ -21,7 +21,7 @@ DEFAULT_LLAMACPP_GLOBAL_ARGS = [
 
 DEFAULT_LLAMACPP_MODEL_ARGS = [
     {"key": "-fit", "value": "on", "enabled": True},
-    {"key": "-fit-target", "value": "2800", "enabled": True},
+    {"key": "--fit-target", "value": "2800", "enabled": True},
 ]
 
 DEFAULT_CONFIG = {
