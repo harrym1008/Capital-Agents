@@ -65,6 +65,7 @@ FRED_SERIES_MAP = {
 }
 
 
+# Retrieve macroeconomic series, yields, and multi-period historical changes
 def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
     cacheKey = f"macro|context_{timestamp.strftime('%Y-%m-%dH%H')}"
     cached = data.cache.get(cacheKey)
@@ -78,7 +79,7 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
 
         progress = 0
         allSeries = data.macro.getAllSeries()
-        total = len(allSeries) * 1    # Once for bulk coverage, again for snapshotting
+        total = len(allSeries) * 1
 
         def onProgressCallback(completedDelta: int = 1):
             nonlocal progress
@@ -187,6 +188,7 @@ def fetchMacroContext(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
         return jsonOutput
 
 
+# Fetch latest macroeconomic and geopolitical news articles across benchmark index tickers
 def fetchMacroNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, limit: int = 12):
     limit = min(max(limit, 1), 18)
     jsonResult = []

@@ -12,13 +12,13 @@ FULL_WEIGHT_MAX_DAYS = 60
 DECAY_DURATION_DAYS = 180
 
 
+# Compute SHA256 hex digest for input text caching
 def getTextHash(text: str) -> str:
-    # Returns a SHA256 hash of the input
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+# Clear PyTorch CUDA cache and invoke garbage collection
 def clearTorchCache() -> None:
-    # Clears PyTorch GPU cache and runs garbage collection to free memory
     import gc
     gc.collect()
     try:
@@ -29,9 +29,8 @@ def clearTorchCache() -> None:
         pass
 
 
-
+# Run batch headline inference through active FinBERT model engine
 def scoreHeadlinesBatch(headlines: List[str], onProgressCallback: Optional[Callable] = None) -> Optional[List[Dict[str, Any]]]:
-    # Scores a batch of headlines using the FinBERT sentiment engine and returns the predictions
     if not headlines:
         return []
 
@@ -49,10 +48,9 @@ def scoreHeadlinesBatch(headlines: List[str], onProgressCallback: Optional[Calla
         clearTorchCache()
 
 
-
+# Score list of texts with in-memory LRU cache lookup to prevent re-computation
 def scoreTextsWithCache(texts: List[str], data: Optional[DataProviders] = None, 
                         onProgressCallback: Optional[Callable] = None) -> Optional[List[Dict[str, Any]]]:
-    # Scores a list of texts with caching to avoid redundant computations
     if not texts:
         return []
 
@@ -85,6 +83,7 @@ def scoreTextsWithCache(texts: List[str], data: Optional[DataProviders] = None,
     return results
 
 
+# Map numerical net sentiment score into qualitative rating label
 def deriveSentimentRating(netScore: float) -> str:
     if netScore > 0.38:
         return "Heavily optimistic"
@@ -107,9 +106,8 @@ def deriveSentimentRating(netScore: float) -> str:
         return "Neutral sentiment"
 
 
-
+# Convert model label prediction to signed net sentiment score in [-1.0, 1.0]
 def predictionToNetScore(pred: Any) -> float:
-    # Convert single prediction dict to a net score in [-1.0, 1.0]
     if not isinstance(pred, dict):
         return 0.0
     try:
@@ -119,8 +117,8 @@ def predictionToNetScore(pred: Any) -> float:
     return confidence * SENTIMENT_LABEL_WEIGHTS.get(str(pred.get("label", "")).lower(), 0.0)
 
 
+# Aggregate sentiment scores applying linear time decay weighting over article age
 def aggregateSentiment(predictions: List[Any], dates: List[Any], asOf: Any):
-    # Aggregate sentiment predictions with time decay weighting based on article age
     try:
         base = pd.to_datetime(asOf)
         if base.tzinfo is not None:
@@ -164,6 +162,7 @@ def aggregateSentiment(predictions: List[Any], dates: List[Any], asOf: Any):
     return finalScore, deriveSentimentRating(finalScore)
 
 
+# Convert timestamp to timezone-naive UTC timestamp
 def normaliseTs(ts: pd.Timestamp) -> pd.Timestamp:
     tsNorm = pd.Timestamp(ts)
     if tsNorm.tzinfo is not None:

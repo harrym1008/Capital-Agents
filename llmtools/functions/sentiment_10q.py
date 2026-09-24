@@ -24,6 +24,7 @@ def cleanFilingText(text: str) -> str:
     return text.strip()
 
 
+# Split raw narrative filing text into coherent sentences preserving abbreviations
 def splitIntoSentences(text: str, minCharLen: int = 35, minWords: int = 5) -> List[str]:
     if not text:
         return []
@@ -57,6 +58,7 @@ def splitIntoSentences(text: str, minCharLen: int = 35, minWords: int = 5) -> Li
     return sentences
 
 
+# Extract raw text section from parsed 10-Q filing document
 def extractSectionFromTenQ(filing: Filing, data: DataProviders, sectionType: str) -> Optional[str]:
     filingObj, _ = data.edgar.downloadFilingObjects(filing)
     if filingObj is None:
@@ -64,6 +66,7 @@ def extractSectionFromTenQ(filing: Filing, data: DataProviders, sectionType: str
     return filingObj[sectionType]
 
 
+# Distil decisive sentiment sentences from filing narrative above confidence threshold
 def distillSectionSentences(rawTextOrSentences: str | List[str], data: DataProviders, confidenceThreshold: float = 0.24, 
                             maxWords: int = 800, onProgressCallback: Optional[Callable] = None) -> tuple[str, list[float]]:
     if not rawTextOrSentences:
@@ -103,6 +106,7 @@ def distillSectionSentences(rawTextOrSentences: str | List[str], data: DataProvi
     return cappedText, netScores
 
 
+# Extract MD&A and Risk Factors from latest 10-Q report and compute operational sentiment
 def fetchLatest10QSentiment(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str) -> Dict[str, Any]:
     ticker = ticker.upper().strip()
     companyRef = CompanyRef(ticker)
@@ -120,8 +124,8 @@ def fetchLatest10QSentiment(tool: Tool, data: DataProviders, timestamp: pd.Times
     if cachedResult is not None:
         return cachedResult
 
-    mdaRaw = extractSectionFromTenQ(filing, data, sectionType="Part I, Item 2")     # MD&A is typically "Part I, Item 2"
-    rfRaw = extractSectionFromTenQ(filing, data, sectionType="Part II, Item 1A")    # Risk Factors is typically "Part II, Item 1A"
+    mdaRaw = extractSectionFromTenQ(filing, data, sectionType="Part I, Item 2")
+    rfRaw = extractSectionFromTenQ(filing, data, sectionType="Part II, Item 1A")
 
     if not mdaRaw and not rfRaw:
         return f"Could not extract MD&A or Risk Factors from 10-Q filing ({accessionNumber}) for {ticker}."
@@ -145,7 +149,6 @@ def fetchLatest10QSentiment(tool: Tool, data: DataProviders, timestamp: pd.Times
         pct = (rfCompleted / rfTotal * 100.0) if rfTotal > 0 else 0.0
         tool.updateProgress(f"Stage 2/2: {pct:.1f}%")
 
-    # Distill MD&A and compute operational sentiment
     distilledMda, mdaNetScores = distillSectionSentences(
         mdaSentences, data=data, confidenceThreshold=confThreshold, maxWords=maxWordsPerBlock, onProgressCallback=onMdaProgress
     )

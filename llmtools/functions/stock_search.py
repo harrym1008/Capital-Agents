@@ -11,6 +11,7 @@ from llmtools.tool_registry import Tool, DataProviders
 from llmtools.functions.helpers import cleanData
 
 
+# Parse market capitalisation string into raw float value
 def parseMarketCapValue(val: Any) -> float:
     if not val or pd.isna(val):
         return 0.0
@@ -31,6 +32,7 @@ def parseMarketCapValue(val: Any) -> float:
     return num
 
 
+# Compute 14-day exponential Wilder RSI for series
 def calculateRsi(series: pd.Series, period: int = 14) -> float:
     if len(series) < period + 1:
         return 50.0
@@ -47,7 +49,9 @@ def calculateRsi(series: pd.Series, period: int = 14) -> float:
     return float(100 - (100 / (1 + rs)))
 
 
-def calculateGrowthScore(ret1y: float, ret3m: float, vol1y: float, bullishTrendAlignment: bool, rsi14: float) -> float:
+# Calculate growth screening heuristic score
+def calculateGrowthScore(ret1y: float, ret3m: float, vol1y: float, 
+                         bullishTrendAlignment: bool, rsi14: float) -> float:
     # 1. 1-Year Sharpe proxy (reward return relative to volatility)
     # 2. Bullish trend alignment bonus (Close > SMA50 > SMA200)
     # 3. Dual-horizon expansion bonus (both 12m and 3m positive)
@@ -63,16 +67,11 @@ def calculateGrowthScore(ret1y: float, ret3m: float, vol1y: float, bullishTrendA
     return (sharpeProxy * 0.4) + (ret1y / 100.0 * 0.3) + (ret3m / 100.0 * 0.2) + trendBonus + consistencyBonus - overboughtPenalty
 
 
-def calculateDefensiveScore(
-    downsideVol: float, 
-    maxDd1y: float, 
-    vol1y: float, 
-    drawdown52w: float, 
-    isAboveSma200: bool, 
-    worstDayLoss: float
-) -> float:
-    # 1. Reject dormant tickers where volatility is suspiciously low (< 8.0%)
-    if vol1y < 8.0:
+# Calculate defensive screening heuristic score
+def calculateDefensiveScore(downsideVol: float, maxDd1y: float, vol1y: float, 
+                            drawdown52w: float, isAboveSma200: bool, worstDayLoss: float) -> float:
+    # Reject dormant tickers where volatility is suspiciously low (< 3.0%)
+    if vol1y < 3.0:
         return 999.0
 
     # 2. Core Downside Risk: 50% downside semi-deviation + 30% 1-year max drawdown
@@ -89,52 +88,12 @@ def calculateDefensiveScore(
     return baseScore + drawdownPenalty + severeDropPenalty - trendBonus
 
 
-def calculateValueScore(
-    drawdown52w: float, 
-    rsi14: float, 
-    marketCapNum: float, 
-    vol1y: float, 
-    latestClose: float, 
-    sma200: float
-) -> float:
-    # 1. Reject dormant tickers where volatility is suspiciously low (< 8.0%)
-    if vol1y < 8.0:
-        return -999.0
-
-    # 2. Discount from 52W high (avoid falling knives, but reward value opportunities)
-    # 3. Oversold accumulation (RSI between 32 and 48 is prime value)
-    # 4. Bonus for larger, institutional-scale balance sheet
-    # 5. Bonus for closing price within support distance of the 200-day SMA (strong mean-reversion value)
-
-    absDd = abs(drawdown52w)
-    if 8.0 <= absDd <= 28.0:
-        discountScore = 2.0
-    elif absDd < 8.0:
-        discountScore = 1.0  # Mild consolidation
-    elif absDd <= 38.0:
-        discountScore = 0.5  # Elevated risk of value trap
-    else:
-        discountScore = -1.5 # Severe crash / falling knife (> 38% down)
-
-    if 32.0 <= rsi14 <= 48.0:
-        rsiScore = 1.5
-    elif rsi14 < 32.0:
-        rsiScore = 1.0  # Extremely oversold
-    else:
-        rsiScore = max(0.0, 1.0 - ((rsi14 - 50.0) / 25.0))
-
-    scaleBonus = min(1.5, max(0.0, (np.log10(marketCapNum) - 10.0) * 0.75)) if marketCapNum > 0 else 0.0
-
-    smaRatio = (latestClose / sma200) if sma200 > 0 else 1.0
-    reversionBonus = 1.0 if 0.85 <= smaRatio <= 1.08 else 0.0
-
-    # Higher score is better for value
-    return discountScore + rsiScore + scaleBonus + reversionBonus
 
 
+# Screen and rank candidates within specific GICS sector based on style profile
 def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, sector: str, 
                        style: str = "all", limit: int = 25) -> Dict[str, Any]:
-    limit = max(4, min(int(limit) if limit else 25, 40))
+    limit = max(8, min(int(limit) if limit else 25, 40))
 
     style = str(style).strip().lower() if style else "all"
     if style not in ["growth", "defensive", "value", "all"]:
@@ -161,7 +120,7 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
         if cached is not None:
             return cached
 
-        # 1. Find all valid candidate tickers
+        # Find all valid candidate tickers
         candidateProfiles = [
             p for p in data.tickers.tickerIndex.values()
             if p.sector == dbKey                    # In correct sector
@@ -178,7 +137,7 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
                 "message": f"No listed equities with known industries found for sector '{resolvedName}' as of {effectiveTs.strftime('%Y-%m-%d')}."
             })
 
-        # 2. Filter candidates by market cap threshold (>= 36bn)... fallback to >= 18bn if too few, then as low as 9bn
+        # Filter candidates by market cap threshold (>= 36bn)... fallback to >= 18bn if too few, then as low as 9bn
         minCapThreshold = 36e9
 
         def filterQualifying(threshold: float) -> List[tuple]:
@@ -230,7 +189,7 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
         oneYearAgoUtc = tsUtc - pd.DateOffset(years=1)
         startDate = oneYearAgoUtc - pd.DateOffset(days=40)
 
-        # 3. Concurrent point-in-time metrics calculation via DataProviders
+        # Compute point-in-time metrics and heuristic scores for qualifying stocks
         def processStock(item):
             profile, massCapStr, massCapNum = item
             t = profile.ticker
@@ -246,7 +205,7 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
 
                 lastRow = validDf.iloc[-1]
                 mktCapStr = str(lastRow.get("marketCap", massCapStr))
-                mktCapNum = parseMarketCapValue(mktCapStr)  # Dont bother checking, market cap was already validated
+                mktCapNum = parseMarketCapValue(mktCapStr)
 
                 # 3-Month and 12-Month Returns
                 df3m = validDf[validDf["date"] <= threeMonthsAgoUtc]
@@ -287,7 +246,6 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
                 # Heuristic Scores
                 growthScore = calculateGrowthScore(return12m, return3m, vol1y, bullishTrendAlignment, rsi14)
                 defensiveScore = calculateDefensiveScore(downsideVol, maxDd1y, vol1y, drawdown52w, isAboveSma200, worstDayLoss)
-                valueScore = calculateValueScore(drawdown52w, rsi14, mktCapNum, vol1y, latestClose, sma200)
 
                 return {
                     "ticker": t,
@@ -309,7 +267,6 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
                     "_marketCapNum": mktCapNum,
                     "_growthScore": growthScore,
                     "_defensiveScore": defensiveScore,
-                    "_valueScore": valueScore,
                     "_rawRet3m": return3m,
                     "_rawRet12m": return12m
                 }
@@ -333,7 +290,7 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
         if not evaluatedList:
             return cleanData({"error": f"Unable to retrieve validated price metrics for sector '{resolvedName}'."})
 
-        # 4. Group by sub-industry and select top 4 per industry
+        # Group by sub-industry and select top candidates per industry
         industryBuckets: Dict[str, List[Dict[str, Any]]] = {}
         for item in evaluatedList:
             ind = item["industry"] or "general"
@@ -343,20 +300,14 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
         for ind, group in industryBuckets.items():
             if style == "growth":
                 group.sort(key=lambda x: x["_growthScore"], reverse=True)
-            elif style == "value":
-                group.sort(key=lambda x: x["_valueScore"], reverse=True)
             elif style == "defensive":
                 group.sort(key=lambda x: x["_defensiveScore"])
             else:
                 group.sort(key=lambda x: x["_marketCapNum"], reverse=True)
-            # Take up to 4 top stocks per sub-industry
             selectedPool.extend(group[:4])
 
-        # 5. Final Sort across the pooled candidates
         if style == "growth":
             selectedPool.sort(key=lambda x: x["_growthScore"], reverse=True)
-        elif style == "value":
-            selectedPool.sort(key=lambda x: x["_valueScore"], reverse=True)
         elif style == "defensive":
             selectedPool.sort(key=lambda x: x["_defensiveScore"])
         else:
@@ -364,11 +315,9 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
 
         finalCandidates = selectedPool[:limit]
 
-        # Clean temporary private scoring fields
         for c in finalCandidates:
             c.pop("_growthScore", None)
             c.pop("_defensiveScore", None)
-            c.pop("_valueScore", None)
             c.pop("_rawRet3m", None)
             c.pop("_rawRet12m", None)
             c.pop("_marketCapNum", None)

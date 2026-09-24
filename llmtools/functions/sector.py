@@ -15,9 +15,10 @@ from llmtools.functions.sentiment_main import scoreTextsWithCache, deriveSentime
 from finbert.finbert_engines import TrtCudaInferenceEngine, OnnxCudaInferenceEngine, PytorchCudaInferenceEngine
 
 
+# Compute Relative Strength Index over 14-day default window
 def calculateRsi(series: pd.Series, period: int = 14) -> float:
     if len(series) < period + 1:
-        return 50.0  # Default neutral when insufficient data
+        return 50.0
 
     deltas = series.diff()
     gains = deltas.clip(lower=0)
@@ -32,6 +33,7 @@ def calculateRsi(series: pd.Series, period: int = 14) -> float:
     return float(rsiSeries.iloc[-1])
 
 
+# Calculate S&P 500 benchmark trailing returns across specified lookback intervals
 def calculateBenchmarkReturns(data: DataProviders, timestamp: pd.Timestamp, lookbacks: Dict[str, pd.Timestamp]) -> Dict[str, float]:
     benchReturns = {}
     if data.macro is not None:
@@ -53,6 +55,7 @@ def calculateBenchmarkReturns(data: DataProviders, timestamp: pd.Timestamp, look
     return benchReturns
 
 
+# Calculate moving averages, RSI, and technical trend categorization for sector ETF
 def calculateSectorTechnicals(df: pd.DataFrame, latestClose: float) -> Dict[str, Any]:
     closes = df["close"]
     sma50 = float(closes.rolling(window=min(50, len(df))).mean().iloc[-1])
@@ -81,6 +84,7 @@ def calculateSectorTechnicals(df: pd.DataFrame, latestClose: float) -> Dict[str,
     }
 
 
+# Calculate 52-week price range and drawdown percentage from peak
 def calculateSectorRange52Week(df: pd.DataFrame, timestamp: pd.Timestamp, latestClose: float) -> Dict[str, Any]:
     tsNorm = timestamp.tz_localize(None) if timestamp.tzinfo is not None else timestamp
     oneYearAgo = tsNorm - pd.DateOffset(years=1)
@@ -102,6 +106,7 @@ def calculateSectorRange52Week(df: pd.DataFrame, timestamp: pd.Timestamp, latest
     }
 
 
+# Calculate 90-day annualised price volatility percentage
 def calculateAnnualisedVolatility(df: pd.DataFrame, window: int = 90) -> float:
     recentCloses = df["close"].tail(min(window, len(df)))
     dailyReturns = recentCloses.pct_change().dropna()
@@ -110,6 +115,7 @@ def calculateAnnualisedVolatility(df: pd.DataFrame, window: int = 90) -> float:
     return 0.0
 
 
+# Retrieve trailing returns, relative alpha, technicals, and volatility for single GICS sector ETF
 def fetchSectorPerformance(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, sectorOrTicker: str) -> Dict[str, Any]:
     tsNy = timestamp.tz_convert(NEW_YORK) if timestamp.tzinfo is not None else timestamp.tz_localize(NEW_YORK)
     effectiveTs = min(tsNy, END_DATE)
@@ -140,7 +146,7 @@ def fetchSectorPerformance(tool: Tool, data: DataProviders, timestamp: pd.Timest
             return cleanData({
                 "ticker": ticker,
                 "sector": sectorName,
-                "notice": "XLC (Communication Services) was launched in June 2018. Historical data is not available before 2018-06-19."
+                "notice": "Historical data for this sector (XLC) is not available before 2018-06-19."
             })
         return cleanData({"error": f"No historical data available for sector ETF {ticker} before {effectiveTs.strftime('%Y-%m-%d')}."})
 
@@ -148,6 +154,7 @@ def fetchSectorPerformance(tool: Tool, data: DataProviders, timestamp: pd.Timest
     latestClose = float(latestRow["close"])
     latestDateStr = latestRow["date"].strftime("%Y-%m-%d")
 
+    # Run through the follow list of lookback periods to calculate trailing returns and relative alpha vs S&P 500
     pastPeriods = {
         "1d": effectiveTs - pd.DateOffset(days=1),
         "5d": effectiveTs - pd.DateOffset(weeks=1),
@@ -202,6 +209,7 @@ def fetchSectorPerformance(tool: Tool, data: DataProviders, timestamp: pd.Timest
     return cleanedResult
 
 
+# Rank all 11 GICS sector ETFs by trailing performance over specified lookback window
 def fetchAllSectorRankings(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, lookback: str = "1mo") -> Dict[str, Any]:
     validLookbacks = ["5d", "1mo", "3mo", "6mo", "12mo"]
     if lookback not in validLookbacks:
@@ -299,6 +307,7 @@ def fetchAllSectorRankings(tool: Tool, data: DataProviders, timestamp: pd.Timest
         return cleanedResult
 
 
+# Return descriptive profile and category for single sector ETF
 def fetchSectorProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, sectorOrTicker: str) -> Dict[str, Any]:
     ticker, resolvedName, note = data.sectors.resolveSector(sectorOrTicker)
     if resolvedName == "Unknown":
@@ -322,6 +331,7 @@ def fetchSectorProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp,
     return cleanData(result)
 
 
+# Retrieve performance metrics and technicals across all 11 GICS sectors in parallel
 def fetchAllSectorsPerformance(tool: Tool, data: DataProviders, timestamp: pd.Timestamp) -> Dict[str, Any]:
     tsNy = timestamp.tz_convert(NEW_YORK) if timestamp.tzinfo is not None else timestamp.tz_localize(NEW_YORK)
     effectiveTs = min(tsNy, END_DATE)
@@ -351,13 +361,13 @@ def fetchAllSectorsPerformance(tool: Tool, data: DataProviders, timestamp: pd.Ti
                 except Exception:
                     pass
 
-        # Sort predictably by ticker
         results.sort(key=lambda x: x.get("ticker", ""))
         cleanedResult = cleanData(results)
         data.cache.put(cacheKey, cleanedResult)
         return cleanedResult
 
 
+# Return metadata and descriptions for all 11 GICS sectors
 def fetchAllSectorProfiles(tool: Tool, data: DataProviders, timestamp: pd.Timestamp) -> Dict[str, Any]:
     profiles = []
     for ticker, info in GICS_SECTORS.items():
@@ -371,6 +381,7 @@ def fetchAllSectorProfiles(tool: Tool, data: DataProviders, timestamp: pd.Timest
     return cleanData(profiles)
 
 
+# Calculate historical price ratio channel percentiles relative to SPY
 def calculateChannelPercentiles(secClosesDf: pd.DataFrame, spyClosesDf: pd.DataFrame) -> Dict[str, Optional[float]]:
     if secClosesDf.empty or spyClosesDf.empty:
         return {"channel1YearPercentile": None, "channel3YearPercentile": None}
@@ -396,13 +407,13 @@ def calculateChannelPercentiles(secClosesDf: pd.DataFrame, spyClosesDf: pd.DataF
         merged["ratio"] = merged["secClose"] / merged["spyClose"]
         currentRatio = float(merged["ratio"].iloc[-1])
 
-        # 1-Year percentile (trailing 252 trading days)
+        # 1-Year trailing channel percentile
         slice1y = merged["ratio"].tail(min(252, len(merged)))
         min1y = float(slice1y.min())
         max1y = float(slice1y.max())
         pct1y = round(((currentRatio - min1y) / (max1y - min1y) * 100), 1) if max1y > min1y else 50.0
 
-        # 3-Year percentile (trailing 756 trading days)
+        # 3-Year trailing channel percentile
         slice3y = merged["ratio"].tail(min(756, len(merged)))
         min3y = float(slice3y.min())
         max3y = float(slice3y.max())
@@ -416,6 +427,7 @@ def calculateChannelPercentiles(secClosesDf: pd.DataFrame, spyClosesDf: pd.DataF
         return {"channel1YearPercentile": None, "channel3YearPercentile": None}
 
 
+# Calculate interest rate sensitivity beta against 10-Year Treasury yield changes
 def calculateTreasuryBeta(secClosesDf: pd.DataFrame, treasDf: pd.DataFrame) -> Dict[str, Any]:
     if secClosesDf.empty or treasDf.empty:
         return {"treasury10yBeta": 0.0, "sensitivity": "Insufficient rate history"}
@@ -456,6 +468,7 @@ def calculateTreasuryBeta(secClosesDf: pd.DataFrame, treasDf: pd.DataFrame) -> D
         return {"treasury10yBeta": 0.0, "sensitivity": "Insufficient rate history"}
 
 
+# Subsample sector articles based on active hardware inference engine
 def subsampleSectorArticles(newsDf: pd.DataFrame) -> pd.DataFrame:
     if newsDf is None or newsDf.empty:
         return newsDf
@@ -465,22 +478,19 @@ def subsampleSectorArticles(newsDf: pd.DataFrame) -> pd.DataFrame:
         engineType = type(engine)
 
         if engineType is TrtCudaInferenceEngine:
-            # Keep all for TRT
             return newsDf
         elif engineType is OnnxCudaInferenceEngine:
-            # Skip every second article for OnnxCuda (keep 1st, 3rd, 5th...)
             return newsDf.iloc[::2].reset_index(drop=True)
         elif engineType is PytorchCudaInferenceEngine:
-            # Skip three in every five for Pytorch (keep 2 in every 5)
             keepIndices = [i for i in range(len(newsDf)) if i % 5 in (0, 2)]
             return newsDf.iloc[keepIndices].reset_index(drop=True)
         else:
-            # Otherwise (CPU engines): skip 7 in every 8 (keep 1 in every 8)
             return newsDf.iloc[::8].reset_index(drop=True)
     except Exception:
         return newsDf.iloc[::2].reset_index(drop=True)
 
 
+# Execute comprehensive quantitative, fundamental, and FinBERT sentiment analysis across all 11 sectors
 def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Timestamp) -> Dict[str, Any]:
     tsNy = timestamp.tz_convert(NEW_YORK) if timestamp.tzinfo is not None else timestamp.tz_localize(NEW_YORK)
     effectiveTs = min(tsNy, END_DATE)
@@ -496,7 +506,7 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
         if cached is not None:
             return cached
 
-        # 1. Pre-load benchmark SP500 and Treasury 10Y series
+        # Pre-load S&P 500 and 10-Year Treasury benchmark historical series
         spyClosesDf = pd.DataFrame()
         try:
             sp500Raw = data.macro.loadSeries(MacroSeries.SP500)
@@ -518,7 +528,6 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
         except Exception:
             pass
 
-        # Calculate benchmark SP500 trailing returns
         benchReturns = {}
         if not spyClosesDf.empty:
             latestSpyClose = float(spyClosesDf["close"].iloc[-1])
@@ -534,7 +543,6 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
                     pastSpyClose = float(pastRows["close"].iloc[-1])
                     benchReturns[period] = round(((latestSpyClose - pastSpyClose) / pastSpyClose) * 100.0, 2)
 
-        # 2. Extract constituent metrics, market caps, and news per sector
         oneYearAgo = effectiveNorm - pd.DateOffset(years=1, weeks=1)
         threeMoAgo = effectiveNorm - pd.DateOffset(months=3)
 
@@ -574,7 +582,7 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
             sectorCapSum = sum(h[1] for h in top25Caps if h[1] is not None and h[1] > 0)
             sectorMarketCapSums[etfTicker] = sectorCapSum
 
-            # Step 2: Evaluate 1-year OHLCV for top 25 holdings (fast breadth & constituent divergence)
+            # Evaluate 1-year OHLCV for top 25 holdings for breadth and constituent divergence
             def evalTopHolding(item):
                 p, capNum, capStr = item
                 df = data.ohlcv.getPeriodDailyTickerData(p.ticker, startDate=oneYearAgo, endDate=effectiveTs)
@@ -608,7 +616,7 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
             medRet3mo = round(float(np.median(rets3mo)), 2) if rets3mo else 0.0
             top5 = evaluatedTopHoldings[:5]
 
-            # Step 3: Fetch top 20 recent articles for the agent to inspect directly
+            # Fetch recent sector headlines for qualitative agent review
             recentNewsDf = data.news.getRecentSectorNews(etfTicker, effectiveTs, limit=20, maxOtherSectorTickers=2)
             agentHeadlines = []
             if not recentNewsDf.empty and "headline" in recentNewsDf.columns:
@@ -619,7 +627,7 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
                     if hl:
                         agentHeadlines.append(f"{hl} ({age})")
 
-            # Step 4: Query constituent news for FinBERT sentiment (engine-subsampled)
+            # Collect constituent news for FinBERT neural sentiment scoring
             candidateTickers = [etfTicker] + top25Tickers
             rawNewsDf = data.news.getSectorConstituentsNews(candidateTickers, effectiveTs, limit=400, maxReferencedTickers=10)
             newsDf = subsampleSectorArticles(rawNewsDf)
@@ -650,7 +658,7 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
             completedInit += 1
             tool.updateProgress((completedInit / totalSectors) * 50.0)
 
-        # 3. Score all unique headlines across all sectors with ModernFinBERT
+        # Batch-score unique headlines across sectors with FinBERT
         tool.updateProgress(50.0)
 
         uniqueHeadlinesList = list(allUniqueHeadlines)
@@ -668,10 +676,9 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
 
         tool.updateProgress(92.0)
 
-        # Total market cap across all 11 sectors for benchmark weighting
         totalMarketCapAll = sum(sectorMarketCapSums.values()) or 1.0
 
-        # 4. Assemble full 11-sector response bundle
+        # Compile consolidated 11-sector analytics report
         sectorsResults = []
         for dbKey, etfTicker in sorted(DB_SECTOR_TO_TICKER.items()):
             info = GICS_SECTORS.get(etfTicker)
@@ -685,10 +692,8 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
             pctAbove200 = holdingsMeta.get("pctAboveSma200", 0.0)
             medRet3mo = holdingsMeta.get("medianConstituentReturn3mo", 0.0)
 
-            # Benchmark cap weight %
             capWeightPct = round((sectorMarketCapSums.get(etfTicker, 0.0) / totalMarketCapAll) * 100.0, 1)
 
-            # Trailing ETF prices & technicals
             startDate = effectiveNorm - pd.DateOffset(years=4)
             secDf = data.sectors.getSectorData(etfTicker, startDate=startDate, endDate=effectiveTs)
             if not secDf.empty and "date" in secDf.columns:
@@ -732,13 +737,11 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
                     "trend": rawTechnicals.get("trend")
                 }
 
-                # Channel percentiles & Treasury beta
                 if not spyClosesDf.empty:
                     channelPercentiles = calculateChannelPercentiles(secDf, spyClosesDf)
                 if not treasDf.empty:
                     treasurySensitivity = calculateTreasuryBeta(secDf, treasDf)
 
-            # Constituent divergence evaluation
             divergencePct = round(etfReturn3mo - medRet3mo, 2)
             if divergencePct > 7.0 and pctAbove50 < 50.0:
                 rallyChar = "Narrow mega-cap rally (low breadth, caution on broad exposure)"
@@ -749,7 +752,6 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
             else:
                 rallyChar = "Moderate mixed constituent participation"
 
-            # Sentiment assembly for this sector
             newsDf = sectorNewsDfs.get(etfTicker, pd.DataFrame())
             sentimentPayload = {
                 "newsSentimentScore": 0.0,
@@ -807,8 +809,6 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
                 "newsSentiment": sentimentPayload
             })
 
-
-        # Sort results by benchmark weight descending for executive clarity
         sectorsResults.sort(key=lambda s: s.get("benchmarkWeightPct", 0.0), reverse=True)
 
         finalOutput = {
@@ -822,8 +822,4 @@ def fetchAllSectorsAnalysis(tool: Tool, data: DataProviders, timestamp: pd.Times
         data.cache.put(cacheKey, cleanedFinal)
 
         tool.updateProgress(100.0)
-
         return cleanedFinal
-
-
-

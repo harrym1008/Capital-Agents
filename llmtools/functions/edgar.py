@@ -20,6 +20,7 @@ from dataquery.forex_provider import ForexDataProvider, CURRENCY_MAP
 from collectors.constants import NEW_YORK
 
 
+# Localise or convert timestamp into New York market timezone
 def tsToNy(ts: pd.Timestamp) -> pd.Timestamp:
     ts = pd.Timestamp(ts)
     if ts.tzinfo is None:
@@ -29,6 +30,7 @@ def tsToNy(ts: pd.Timestamp) -> pd.Timestamp:
     return ts
 
 
+# Safely divide two floats handling zero and None denominators
 def safeDivide(numerator: float, denominator: float):
     if denominator == 0 or denominator is None:
         return None
@@ -36,8 +38,9 @@ def safeDivide(numerator: float, denominator: float):
         return numerator / denominator
     except Exception:
         return None
-    
 
+
+# Extract matching XBRL concept values from parsed financial statement table
 def extractConceptFromStatement(statement: Statement, conceptNames: list, preferYtd: bool = False):
     if not statement or not conceptNames:
         return None
@@ -69,7 +72,7 @@ def extractConceptFromStatement(statement: Statement, conceptNames: list, prefer
         if val is None or (isinstance(val, float) and np.isnan(val)):
             return None
 
-        # Convert bracketed numbers to negative, remove other punctuation
+        # Convert bracketed negative numbers and clean formatting characters
         strVal = str(val).strip().replace("(", "-")
         for punct in [")", ",", "$"]:
             strVal = strVal.replace(punct, "")
@@ -79,6 +82,7 @@ def extractConceptFromStatement(statement: Statement, conceptNames: list, prefer
         return None
 
 
+# Extract specific fundamental financial metric from SEC filing statements
 def extractMetric(filing: Filing, metricType: str, provider: EdgarDataProvider):
     preferYtd = (filing.form in ["10-Q", "6-K"])
 
@@ -108,13 +112,14 @@ def extractMetric(filing: Filing, metricType: str, provider: EdgarDataProvider):
                 return val if val is not None else metricsDict.get("operating_income")
             case "da":
                 concepts = ["us-gaap_DepreciationDepletionAndAmortization", "us-gaap_DepreciationAndAmortization", "us-gaap_Depreciation"]
-                # D&A only exists in cash flow statements, isn't inside metrics dict
+                # Depreciation and amortisation is extracted exclusively from cash flow statement
                 return extractConceptFromStatement(cashFlowStatement, concepts, preferYtd)
     except Exception:
         pass
     return None
 
 
+# Compute trailing twelve months metric combining annual and quarterly filings
 def calculateTrueTtm(filings: List[Filing], metricType: str, provider: EdgarDataProvider, startIndex=0):
     if not filings or startIndex >= len(filings):
         return None
@@ -139,13 +144,14 @@ def calculateTrueTtm(filings: List[Filing], metricType: str, provider: EdgarData
         fPeriod = datetime.datetime.strptime(f.period_of_report, "%Y-%m-%d").date()
         daysDiff = (targetPeriod - fPeriod).days
 
-        if daysDiff > 450:
+        if daysDiff > 450:     # Ignore filings older than 15 months for TTM calculation
             break
 
         if f.form in annualForms and prior10kVal is None:
             prior10kVal = extractMetric(f, metricType, provider)
         elif f.form in quarterlyForms and priorSame10qVal is None:
-            if 330 <= daysDiff <= 390:
+            if 330 <= daysDiff <= 390:          
+                # This is the same quarter from the prior year
                 priorSame10qVal = extractMetric(f, metricType, provider)
 
     if prior10kVal is not None and priorSame10qVal is not None:
@@ -154,6 +160,7 @@ def calculateTrueTtm(filings: List[Filing], metricType: str, provider: EdgarData
     return val
 
 
+# Calculate 3-year historical market beta against S&P 500 benchmark
 def calculateHistoricalBeta(companyRef: CompanyRef, timestamp: pd.Timestamp, 
                             ohlcvProvider: DailyPriceProvider, macroProvider: MacroDataProvider):
     try:
@@ -161,14 +168,13 @@ def calculateHistoricalBeta(companyRef: CompanyRef, timestamp: pd.Timestamp,
 
         stockPrices = ohlcvProvider.getPeriodDailyTickerData(companyRef.ticker, startDate, timestamp)
 
-        # The stock has IPOed after the start date, adjust 
         firstDate = stockPrices["date"].min()
         if firstDate > startDate:
             startDate = firstDate
         if len(stockPrices) < 60:
-            return None     # Not enough data to calculate beta
+            return None
 
-        # Adjust for splits
+        # Adjust closing prices for splits
         finalSplitFactor = stockPrices["splitFactor"].iloc[-1]
         for col in ["open", "high", "low", "close", "vwap"]:
             stockPrices[col] = stockPrices[col] * (stockPrices["splitFactor"] / finalSplitFactor)
@@ -199,6 +205,7 @@ def calculateHistoricalBeta(companyRef: CompanyRef, timestamp: pd.Timestamp,
         return None
 
 
+# Locate corresponding prior-year filing matching form and quarterly period
 def findPriorYearComparableFiling(filings: List[Filing]):
     if not filings:
         return None, None
@@ -216,6 +223,7 @@ def findPriorYearComparableFiling(filings: List[Filing]):
     return None, None
 
 
+# Calculate trailing twelve-month dividend yield from corporate actions
 def calculateDividendYield(companyRef: CompanyRef, timestamp: pd.Timestamp, priceProvider: DailyPriceProvider):
     try:    
         ticker = companyRef.ticker
@@ -226,9 +234,7 @@ def calculateDividendYield(companyRef: CompanyRef, timestamp: pd.Timestamp, pric
         startDate = pd.Timestamp(timestamp - pd.DateOffset(years=1)).tz_convert(NEW_YORK)
         endDate = pd.Timestamp(timestamp).tz_convert(NEW_YORK)
 
-        corpActions = pd.concat(
-            [priceProvider.getYearCorporateActions(lastYear), priceProvider.getYearCorporateActions(thisYear)]
-        )
+        corpActions = pd.concat([priceProvider.getYearCorporateActions(lastYear), priceProvider.getYearCorporateActions(thisYear)] )
         corpActions = corpActions[(corpActions["ticker"] == ticker) & (corpActions["actionType"] == "cash_dividend")]
         corpActions = corpActions[(corpActions["date"] >= startDate) & (corpActions["date"] <= endDate)]
 
@@ -240,6 +246,7 @@ def calculateDividendYield(companyRef: CompanyRef, timestamp: pd.Timestamp, pric
         return None
 
 
+# Extract primary reporting currency from filing XBRL facts
 def extractCurrency(filing: Filing, filingXbrl: XBRL):
     if filing.form in ["10-K", "10-Q"]:
         return "USD"
@@ -257,7 +264,7 @@ def extractCurrency(filing: Filing, filingXbrl: XBRL):
         return None
 
 
-
+# Retrieve valid SEC filing references filed on or before specified timestamp
 def fetchValidFilings(companyRef: CompanyRef, data: DataProviders, timestamp: pd.Timestamp, formsToFetch: List[FormType]):
     validFormsStr = [f.formCode for f in formsToFetch]
 
@@ -265,7 +272,8 @@ def fetchValidFilings(companyRef: CompanyRef, data: DataProviders, timestamp: pd
     validFilings: List[Filing] = []
 
     for filing in allFilingsRaw:
-        if filing.form in validFormsStr and not filing.form.endswith("/A"):     # No amended filings
+        # Ignore amended filings for baseline extraction
+        if filing.form in validFormsStr and not filing.form.endswith("/A"):
             try:
                 filingDate = pd.to_datetime(filing.filing_date, utc=True)
                 if filingDate <= timestamp:
@@ -275,11 +283,11 @@ def fetchValidFilings(companyRef: CompanyRef, data: DataProviders, timestamp: pd
 
     validFilings.sort(key=lambda f: pd.to_datetime(f.filing_date, utc=True), reverse=True)
     if len(validFilings) > 8:
-        validFilings = validFilings[:8]     # Limit to the first (most recent) 8 filings for TTM calculations   
+        validFilings = validFilings[:8]    # Limit to the first (most recent) 8 filings for TTM calculations   
     return validFilings
 
 
-
+# Calculate company valuation multiples, profitability margins, leverage, and TTM fundamentals
 def fetchCompanyValuationMetrics(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str):
     cacheKey = f"valuation|{ticker}_{timestamp.strftime('%Y-%m-%dH%H')}"
     cached = data.cache.get(cacheKey)
@@ -296,7 +304,7 @@ def fetchCompanyValuationMetrics(tool: Tool, data: DataProviders, timestamp: pd.
     else:
         print(f"Could not find a valid filing for {ticker} before {timestamp}.")
 
-    # Calculate recent price, shares outstanding, mkt cap
+    # Evaluate closing price, shares outstanding, and market cap
     todayRow = data.ohlcv.getSingleDayTickerData(ticker, timestamp)
     if todayRow is None or todayRow.empty:
         recentPrice = None
@@ -360,11 +368,10 @@ def fetchCompanyValuationMetrics(tool: Tool, data: DataProviders, timestamp: pd.
     if cashAndEquivalents is None and metrics.get("current_assets") is not None:
         cashAndEquivalents = metrics.get("current_assets")
 
-
-    # Get the currency and convert if necessary
+    # Normalise reporting currency to USD if non-dollar filing
     reportCurrency = extractCurrency(latestFiling, filingXbrl)
     if reportCurrency not in CURRENCY_MAP:
-        reportCurrency = "USD"    # Default to USD if unknown
+        reportCurrency = "USD"
     fxRate = data.forex.getLatestCurrToUsd(reportCurrency, before=timestamp) 
 
     if fxRate != 1.0:
@@ -379,7 +386,6 @@ def fetchCompanyValuationMetrics(tool: Tool, data: DataProviders, timestamp: pd.
         if totalDebt is not None: totalDebt *= fxRate
         if cashAndEquivalents is not None: cashAndEquivalents *= fxRate
 
-
     # Calculate enterprise value
     if marketCap is not None and totalDebt is not None and cashAndEquivalents is not None:
         enterpriseValue = marketCap + totalDebt - cashAndEquivalents
@@ -392,8 +398,7 @@ def fetchCompanyValuationMetrics(tool: Tool, data: DataProviders, timestamp: pd.
     else:
         trailingPE = None
 
-    # Calculate a proxy for forward P/E ratio (trailingPE/(1.0 + yoyGrowthRate)) (analyst estimates not available)
-    # Also calculate proxy for PEG ratio
+    # Calculate growth-adjusted P/E and PEG proxies from YoY TTM performance
     priorIdx, _ = findPriorYearComparableFiling(validFilings)
     yoyGrowthRate = None
     if priorIdx is not None:
@@ -414,17 +419,17 @@ def fetchCompanyValuationMetrics(tool: Tool, data: DataProviders, timestamp: pd.
     else:
         priceToBook = None
 
-    # Calculate beta and dividend yield using helper functions
+    # Compute beta and dividend yield
     beta = calculateHistoricalBeta(companyRef, timestamp, data.ohlcv, data.macro)
     dividendYield = calculateDividendYield(companyRef, timestamp, data.ohlcv)
 
-    # Calculate margins
+    # Calculate profitability and operating margins
     profitMargins = safeDivide(ttmNetIncome, ttmRevenue)
     ebitdaMargins = safeDivide(ttmEbitda, ttmRevenue)
     operatingMargins = safeDivide(ttmOperatingIncome, ttmRevenue)
     returnOnEquity = safeDivide(ttmNetIncome, stockholdersEquity)
 
-    # Access short interest data
+    # Retrieve short interest data
     shortPositionData = data.short.getLatestShortInterestForTicker(ticker, before=timestamp)
     if shortPositionData is not None:
         shortInterest = safeDivide(shortPositionData.currentShortPositions, sharesOutstanding)
@@ -432,9 +437,6 @@ def fetchCompanyValuationMetrics(tool: Tool, data: DataProviders, timestamp: pd.
     else:
         shortInterest = "unknown"
         daysToCover = "unknown"
-
-
-    # All data collated, return as a dictionary
 
     dataHeader = {
         "ticker": companyRef.ticker,
@@ -477,7 +479,6 @@ def fetchCompanyValuationMetrics(tool: Tool, data: DataProviders, timestamp: pd.
 
         "trailingPE": cleanNumber(trailingPE, NumberType.DECIMAL),
         "growthAdjustedPE": cleanNumber(forwardPE, NumberType.DECIMAL),
-        # "pegRatio": cleanNumber(pegRatio, NumberType.DECIMAL),
         "growthAdjustedPENote": "Calculated as trailing P/E divided by (1 + YoY TTM growth rate). "
                                 "This is a proxy heuristic, as analyst estimates for forward earnings are not available. "
                                 "It is not equivalent to analyst-based forward P/E, and should be interpreted with caution.",
@@ -514,7 +515,7 @@ def fetchCompanyValuationMetrics(tool: Tool, data: DataProviders, timestamp: pd.
     return jsonOutput
 
 
-
+# Format financial statement dataframe into structured indented text output
 def formatStatementFromDataframe(df: pd.DataFrame, filing: Filing, data: DataProviders, statementName: str, ticker: str, currency: str):
     if df.empty:
         return f"No {statementName} data available for filing {filing.form} filed on {filing.filing_date}."
@@ -537,7 +538,7 @@ def formatStatementFromDataframe(df: pd.DataFrame, filing: Filing, data: DataPro
 
         rawDf = df.copy()
 
-        # Use abstract mask to find headers, and fix the broken "level" values in the dataframe
+        # Identify section header rows and normalise hierarchical indentation levels
         abstractMask = df["concept"].str.endswith("Abstract", na=False)
         sections = []
         currentSection = []
@@ -596,14 +597,13 @@ def formatStatementFromDataframe(df: pd.DataFrame, filing: Filing, data: DataPro
                     out.write(cleanNumber(val, NumberType.LARGE_NUMBER).rjust(9))
             out.write("\n")
 
-        # rawDf.to_parquet(f"working_statement.parquet", index=False)
         return out.getvalue()
-
 
     except Exception as e:
         return f"Error processing {statementName} data for filing {filing.form} filed on {filing.filing_date}: {str(e)}"
 
 
+# Retrieve and format statement data in JSON response envelope
 def fetchFormattedStatementInJson(data: DataProviders, timestamp: pd.Timestamp, 
                             ticker: str, statementName: str, statementGetter: callable, periodType: str = "annual"):
     companyRef = CompanyRef(ticker)
@@ -642,23 +642,18 @@ def fetchFormattedStatementInJson(data: DataProviders, timestamp: pd.Timestamp,
     return jsonOutput
 
 
-
+# Fetch annual or quarterly financial statements in structured JSON format for a company
 def fetchIncomeStatement(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str, periodType: str = "annual"):
     return fetchFormattedStatementInJson(data, timestamp, ticker, "Income Statement", lambda f: f.income_statement(), periodType)
-
 
 def fetchBalanceSheet(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str, periodType: str = "annual"):
     return fetchFormattedStatementInJson(data, timestamp, ticker, "Balance Sheet", lambda f: f.balance_sheet(), periodType)
 
-
 def fetchCashFlowStatement(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str, periodType: str = "annual"):
     return fetchFormattedStatementInJson(data, timestamp, ticker, "Cash Flow Statement", lambda f: f.cash_flow_statement(), periodType)
-
 
 def fetchStatementOfEquity(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str, periodType: str = "annual"):
     return fetchFormattedStatementInJson(data, timestamp, ticker, "Statement of Equity", lambda f: f.statement_of_equity(), periodType)
 
-
 def fetchComprehensiveIncomeStatement(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str, periodType: str = "annual"):
     return fetchFormattedStatementInJson(data, timestamp, ticker, "Comprehensive Income Statement", lambda f: f.comprehensive_income(), periodType)
-

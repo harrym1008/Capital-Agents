@@ -9,6 +9,7 @@ from llmtools.functions.helpers import cleanData, cleanNumber, NumberType
 from collectors.sector_dl_client import GICS_SECTORS
 
 
+# Base confirmation handler for stock rating, weighting, and horizon target prices
 def confirmBoardroomDecisionBase(
     tool: Tool, 
     ticker: str, 
@@ -49,6 +50,7 @@ def confirmBoardroomDecisionBase(
         return {"error": f"An error occurred while confirming boardroom decision: {str(e)}"}
 
 
+# Confirm consensus recommendation and target prices for the five different horizons
 def confirmBoardroomDecisionImmediateTerm(tool: Tool, data: DataProviders, timestamp: pd.Timestamp,
                                       ticker: str, rating: str, weighting: str, threeDayTarget: float, twoWeekTarget: float) -> Dict[str, Any]:
     return confirmBoardroomDecisionBase(tool, ticker, rating, weighting, "threeDayTarget", threeDayTarget, "twoWeekTarget", twoWeekTarget)
@@ -74,6 +76,7 @@ def confirmBoardroomDecisionDistantTerm(tool: Tool, data: DataProviders, timesta
     return confirmBoardroomDecisionBase(tool, ticker, rating, weighting, "threeYearTarget", threeYearTarget, "tenYearTarget", tenYearTarget)
 
 
+# Distribute percentage weights into exact integer proportions summing to target
 def distributeIntegerPercentages(weights: List[float], totalTarget: int) -> List[int]:
     if not weights or totalTarget <= 0:
         return [0] * len(weights)
@@ -94,6 +97,7 @@ def distributeIntegerPercentages(weights: List[float], totalTarget: int) -> List
     return floors
 
 
+# Validate and record confirmed sector percentage allocations for portfolio construction
 def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, sectorAllocations: Dict[str, float], rationale: str) -> Dict[str, Any]:
     if not isinstance(sectorAllocations, dict) or not sectorAllocations:
         return {"error": "sectorAllocations must be a non-empty dictionary mapping sector names to percentage numbers."}
@@ -125,7 +129,7 @@ def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Times
         }
         totalAllocated += pctVal
 
-    # Check if total sums to ~100%
+    # Validate total sector allocation sum near 100%
     totalAllocated = round(totalAllocated, 2)
     if totalAllocated < 88.0 or totalAllocated > 112.0:
         return {
@@ -134,7 +138,7 @@ def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Times
             "currentAllocations": cleanedAllocations
         }
 
-    # Normalise all sector allocations to exact integers totaling 100%
+    # Normalise all sector allocations to exact integer percentages totaling 100%
     keys = list(cleanedAllocations.keys())
     rawWeights = [cleanedAllocations[k]["allocationPct"] for k in keys]
     intAllocations = distributeIntegerPercentages(rawWeights, 100)
@@ -160,6 +164,7 @@ def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Times
     })
 
 
+# Validate and record confirmed portfolio equity holdings and capital allocations
 def confirmPortfolioAllocation(
     tool: Tool, 
     data: DataProviders, 
@@ -352,6 +357,7 @@ def confirmPortfolioAllocation(
     })
 
 
+# Evaluate and log macroeconomic rebalance determination for simulation timeline
 def decideRebalanceNecessity(
     tool: Tool,
     data: DataProviders,
@@ -361,13 +367,6 @@ def decideRebalanceNecessity(
     macroShiftDetected: bool = False,
     urgency: str = "none"
 ) -> Dict[str, Any]:
-    """
-    Evaluates whether the portfolio requires rebalancing based on current macro regime shifts and portfolio health.
-    Valid decision values:
-    - 'noBalanceRequired': Macro regime and portfolio are stable; advance immediately to the next timestep without rebalancing.
-    - 'balanceRequired': Standard 4-stage fast rebalance (Macro -> Sector Decision -> Stock Scouting -> PM Decision).
-    - 'extendedBalanceRequired': Full 6-stage rebalance (Macro -> Bull/Bear Analysis -> Sector Decision -> Growth/Defensive Hunters -> Risk Proposals -> PM Decision).
-    """
     validDecisions = ["noBalanceRequired", "balanceRequired", "extendedBalanceRequired"]
     if decision not in validDecisions:
         return {"error": f"Invalid decision value '{decision}'. Must be one of: {validDecisions}"}
@@ -391,4 +390,3 @@ def decideRebalanceNecessity(
         "message": summaryMsg,
         "decisionRecord": record
     })
-

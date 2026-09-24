@@ -19,11 +19,12 @@ from llmtools.functions.sentiment_main import (
 from finbert.finbert_engines import TrtCudaInferenceEngine, OnnxCudaInferenceEngine, PytorchCudaInferenceEngine
 
 
+# Resolve active FinBERT sentiment pipeline instance
 def getModernFinbertPipeline():
     return getSentimentEngine()
 
 
-
+# Return max article quota per calendar month according to active sentiment engine
 def getMaxArticlesPerMonth() -> int:
     engine = getSentimentEngine()
     engineType = type(engine)
@@ -37,6 +38,7 @@ def getMaxArticlesPerMonth() -> int:
     return 12
 
 
+# Perform stratified sampling of articles grouped by month
 def sampleMonthlyArticles(newsDf: pd.DataFrame) -> pd.DataFrame:
     if newsDf is None or newsDf.empty:
         return newsDf
@@ -56,15 +58,13 @@ def sampleMonthlyArticles(newsDf: pd.DataFrame) -> pd.DataFrame:
     return resultDf.sort_values(by="date").reset_index(drop=True)
 
 
-
-
+# Compute headline weighting based on ticker count and content length
 def getHeadlineWeight(articleRow: pd.Series, bestMinTickers=2) -> float:
-    # Weigh articles by the number of tickers mentioned and the length of the article content
     numTickers = len(articleRow["tickers"])
     contentLength = len(articleRow["content"].strip())
 
     if contentLength < 5:
-        score = 0.90     # Analyst ratings often have empty content... weigh them higher than a short content
+        score = 0.90
     elif contentLength < 300:     
         score = 0.70   
     elif contentLength < 1000:
@@ -79,6 +79,7 @@ def getHeadlineWeight(articleRow: pd.Series, bestMinTickers=2) -> float:
     return score * 0.89 ** (numTickers - bestMinTickers) 
 
 
+# Compute body content weighting when headline text is unavailable
 def getContentWeight(articleRow: pd.Series, bestMinTickers=1) -> float:
     numTickers = len(articleRow["tickers"])
     contentLength = len(articleRow["content"].strip())
@@ -97,8 +98,8 @@ def getContentWeight(articleRow: pd.Series, bestMinTickers=1) -> float:
     return score * 0.82 ** (numTickers - bestMinTickers)
 
 
+# Build classification dataframe prioritising headlines with content fallbacks
 def getClassificationDf(newsDf: pd.DataFrame, bestMinTickers: int = 2, contentTruncate=1024) -> pd.DataFrame:
-    # Prioritise headlines; only fall back to body content if headline is missing or empty
     headlineText = newsDf["headline"].str.strip()
     hasHeadline = headlineText.str.len() > 0
 
@@ -126,6 +127,7 @@ def getClassificationDf(newsDf: pd.DataFrame, bestMinTickers: int = 2, contentTr
     return headlines
 
 
+# Compute multi-window historical news sentiment and sentiment momentum for specific ticker
 def fetchTickerSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str):
     ticker = ticker.upper()
     baseTs = normaliseTs(timestamp)
@@ -159,11 +161,9 @@ def fetchTickerSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.T
         if newsDf is None or newsDf.empty:
             return f"No news data available for ticker {ticker} in the last 12 months."
 
-        # Ensure newsDf["date"] is tz-naive for consistent comparisons
         if newsDf["date"].dt.tz is not None:
             newsDf["date"] = newsDf["date"].dt.tz_convert("UTC").dt.tz_localize(None)
 
-        # Stratified monthly sampling based on chosen inference engine
         newsDf = sampleMonthlyArticles(newsDf)
 
         classificationDf = getClassificationDf(newsDf, bestMinTickers=2, contentTruncate=1024)
@@ -205,7 +205,6 @@ def fetchTickerSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.T
             netSentimentScores[windowName] = round(float(weightedMean), 4)
             breakdowns[windowName] = {"bullish": int(posCount), "bearish": int(negCount), "neutral": int(neuCount)}
 
-
         momentum = round(netSentimentScores["1mo"] - netSentimentScores["6mo"], 3)
         if momentum > 0.30:
             momentumLabel = "Heavily optimistic"
@@ -237,6 +236,7 @@ def fetchTickerSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.T
         return cleanData(result)
 
 
+# Evaluate 3-month divergence between stock price performance and news sentiment
 def fetchSentimentDivergence(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str):
     ticker = ticker.upper()
     baseTs = normaliseTs(timestamp)
@@ -285,6 +285,7 @@ def fetchSentimentDivergence(tool: Tool, data: DataProviders, timestamp: pd.Time
         return f"Failed to get data: {str(e)}"
 
 
+# Calculate multi-window news sentiment trends across macroeconomic benchmark indices
 def fetchMacroSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.Timestamp):
     baseTs = normaliseTs(timestamp)
 
@@ -318,11 +319,9 @@ def fetchMacroSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.Ti
         if newsDf is None or newsDf.empty:
             return f"No macro news data available for the last 2 years."
 
-        # Ensure newsDf["date"] is tz-naive for consistent comparisons
         if newsDf["date"].dt.tz is not None:
             newsDf["date"] = newsDf["date"].dt.tz_convert("UTC").dt.tz_localize(None)
 
-        # Stratified monthly sampling based on chosen inference engine
         newsDf = sampleMonthlyArticles(newsDf)
 
         classificationDf = getClassificationDf(newsDf, bestMinTickers=8, contentTruncate=1024)
@@ -371,7 +370,6 @@ def fetchMacroSentimentHistory(tool: Tool, data: DataProviders, timestamp: pd.Ti
 
             netSentimentScores[windowName] = round(float(weightedMean), 4)
             breakdowns[windowName] = {"bullish": int(posCount), "bearish": int(negCount), "neutral": int(neuCount)}
-
 
         momentum = round(netSentimentScores["1mo"] - netSentimentScores["6mo"], 3)
         if momentum > 0.24:

@@ -15,14 +15,14 @@ from llmtools.tool_registry import DataProviders, Tool
 from llmtools.functions.helpers import cleanKey, cleanData, cleanNumber, cleanHtmlContent, isLocalDataAvailable, NumberType 
 
 
+# Execute arithmetic expression or short script in restricted Python sandbox
 def executePythonCalculation(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, code: str) -> Any:
     oldStdout = sys.stdout
     redirectedOutput = io.StringIO()
     sys.stdout = redirectedOutput
 
-    # NOTE: __import__ is included so that LLM-generated code can use
-    # standard "import math" / "import numpy as np" statements inside
-    # the sandbox. Without it, any import statement raises ImportError.
+    # NOTE: __import__ is included so that LLM-generated code can use standard "import math" / 
+    # "import numpy as np" statements inside the sandbox. Without it, any import statement raises ImportError
     safeGlobals = {
         "__builtins__": {
             "__import__": __import__,
@@ -73,9 +73,10 @@ def executePythonCalculation(tool: Tool, data: DataProviders, timestamp: pd.Time
 
     try:
         strippedCode = code.strip()
-        localScope = None     # Defined here so it's accessible in the outer except block
+        localScope = None
 
         try:
+            # Try to carry out a single eval line first
             resultValue = eval(strippedCode, safeGlobals)
             capturedStdout = redirectedOutput.getvalue()
             output = {
@@ -86,7 +87,7 @@ def executePythonCalculation(tool: Tool, data: DataProviders, timestamp: pd.Time
             tool.toolLog.append(output)
             return output
         
-        except SyntaxError:     # The code contains statements, it is not just a pure expression
+        except SyntaxError:    # The code contains statements, it is not just a pure expression
             localScope = dict(safeGlobals) 
             exec(strippedCode, safeGlobals, localScope)
             capturedStdout = redirectedOutput.getvalue()
@@ -142,7 +143,7 @@ def executePythonCalculation(tool: Tool, data: DataProviders, timestamp: pd.Time
             "failedLine": failedLine
         }
 
-        # If exec() was attempted, include the partially-built variable state
+        # Include partially constructed variable state on failure
         if localScope is not None:
             preloadedModules = {"math", "numpy", "np", "random", "datetime"}
             try:
@@ -161,7 +162,7 @@ def executePythonCalculation(tool: Tool, data: DataProviders, timestamp: pd.Time
         sys.stdout = oldStdout
 
 
-
+# Record agent delegation instruction in execution log
 def transferToAgent(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, 
                     agentRole: str, transferMessage: str) -> Dict[str, Any]:
     toolLogEntry = {

@@ -8,12 +8,14 @@ from bs4 import BeautifulSoup
 from collectors.constants import END_DATE
 
 
+# Format dictionary key as date string or stripped text
 def cleanKey(key):
     if hasattr(key, "strftime"):
         return key.strftime("%Y-%m-%d")
     return str(key).strip()
 
 
+# Recursively sanitise nested structures converting NaN to None
 def cleanData(value):
     if isinstance(value, dict):
         return {cleanKey(k): cleanData(v) for k, v in value.items()}
@@ -38,6 +40,7 @@ def cleanData(value):
     return value
 
 
+# Enumeration of numerical formatting profiles
 class NumberType(Enum):
     DOLLARS = 1
     DOLLARS_CHANGE = 2
@@ -57,6 +60,7 @@ class NumberType(Enum):
     CHANGE_BP = 16 
 
 
+# Format numeric value according to specified financial display profile
 def cleanNumber(value, numType: NumberType):
     if value is None:
         return "N/A"
@@ -133,7 +137,8 @@ def cleanNumber(value, numType: NumberType):
                 return numStr
 
             case NumberType.LARGE_NUMBER:
-                return formatLargeDollars(value).replace("$", "")   # Remove the dollar sign for large numbers
+                # Strip dollar sign for large unit values
+                return formatLargeDollars(value).replace("$", "")
 
             case NumberType.UNSCALED_PERCENTAGE:
                 return stringifyNumber(value*100, sf=3, minDp=1, trailing="%")
@@ -149,8 +154,9 @@ def cleanNumber(value, numType: NumberType):
     else:
         return str(value)
 
-    
-def cleanHtmlContent(htmlContent):  # Convert HTML and convert unicode chars
+
+# Strip HTML tags and standardise unicode quotation and punctuation characters
+def cleanHtmlContent(htmlContent):
     if not htmlContent:
         return ""
     soup = BeautifulSoup(htmlContent, "html.parser")
@@ -185,20 +191,21 @@ def cleanHtmlContent(htmlContent):  # Convert HTML and convert unicode chars
     return cleanText
 
 
-
+# Convert timestamp to timezone-naive UTC timestamp
 def tsToUtcNaive(ts: pd.Timestamp) -> pd.Timestamp:
     if ts.tzinfo is None:
         return ts.tz_localize("UTC").tz_localize(None)
     return ts.tz_convert("UTC").tz_localize(None)
 
 
+# Verify whether timestamp falls within local historical data boundary
 def isLocalDataAvailable(timestamp: pd.Timestamp) -> bool:  
     ts = tsToUtcNaive(timestamp)
     endDate = tsToUtcNaive(END_DATE)
-
     return ts <= endDate
 
 
+# Compute human-readable relative age string for article timestamp
 def formatArticleAge(dateVal, timestamp: pd.Timestamp) -> str:
     if dateVal is None or pd.isna(dateVal) or dateVal == "":
         return "unknown"
@@ -236,5 +243,3 @@ def formatArticleAge(dateVal, timestamp: pd.Timestamp) -> str:
             return f"{age.components.days}d old"
     except Exception:
         return "unknown"
-
-

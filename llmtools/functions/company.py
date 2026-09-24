@@ -14,6 +14,7 @@ from llmtools.functions.stock_search import parseMarketCapValue
 from llmtools.functions.sentiment_main import scoreTextsWithCache, aggregateSentiment
 
 
+# Retrieve static company profile metadata, sector, industry, and descriptive overview
 def fetchCompanyProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str):
     tickerProfile: CompanyProfile = data.tickers.getTickerProfile(ticker)
     if tickerProfile is None:
@@ -44,6 +45,7 @@ def fetchCompanyProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
     return cleanData(profileDict)
 
 
+# Fetch comprehensive fundamental, technical, sentiment, and short interest metrics for multiple tickers
 def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, tickers: list):
     if not isinstance(tickers, list) or not tickers:
         return {"error": "tickers must be a non-empty list of ticker symbols."}
@@ -54,7 +56,7 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
     # Normalise timestamp for date comparisons
     tsNorm = timestamp.tz_localize(None) if timestamp.tzinfo is not None else timestamp
 
-    # Pre-fetch SPY data once for beta computation (shared across all stocks)
+    # Pre-fetch SPY data once for beta computation across all stocks
     oneYearAgo = timestamp - pd.DateOffset(years=1, weeks=1)
     spyReturns = None
     try:
@@ -77,7 +79,7 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
     def processStock(ticker):
         stockResult = {"ticker": ticker}
 
-        # Company profile info & summary (truncated up to 50 words)
+        # Extract company name, industry, and truncated summary
         try:
             tickerProfile = data.tickers.getTickerProfile(ticker)
             if tickerProfile:
@@ -92,17 +94,14 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
         except Exception:
             pass
 
-        # ===== STAGE 1: Fundamentals + Price =====
-        # OHLCV current day data
+        # Evaluate current closing price and market capitalisation
         todayRow = data.ohlcv.getSingleDayTickerData(ticker, timestamp)
         price = todayRow.get("close") if (todayRow is not None and not todayRow.empty) else None
-
         if not price:
-            return None  # No price data, skip this stock
+            return None
 
         stockResult["price"] = cleanNumber(price, NumberType.STOCK_PRICE)
 
-        # Market cap from OHLCV
         marketCapNum = None
         marketCapRaw = todayRow.get("marketCap") if (todayRow is not None and not todayRow.empty) else None
         if marketCapRaw:
@@ -110,10 +109,10 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
             if marketCapNum > 0:
                 stockResult["marketCap"] = cleanNumber(marketCapNum, NumberType.LARGE_NUMBER)
 
-        # Point-in-time fundamentals using today's price and market cap for dynamic valuation ratios
+        # Retrieve point-in-time financial metrics from Finnhub store
         m = data.finnhub.getPointInTimeMetrics(ticker, timestamp, currentPrice=float(price), currentMarketCap=marketCapNum)
 
-        # 1-year price data for returns, beta, volatility
+        # Compute trailing returns, volatility, volume, and beta from OHLCV series
         priceData = data.ohlcv.getPeriodDailyTickerData(ticker, startDate=oneYearAgo, endDate=timestamp)
 
         if priceData is not None and not priceData.empty and len(priceData) > 20:
@@ -129,7 +128,6 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
             latestClose = float(closes.iloc[-1])
             earliestDate = priceData["date"].iloc[0]
 
-            # Returns (1mo, 3mo, 6mo, 1y)
             returnsDict = {}
             periods = {
                 "1mo": timestamp - pd.DateOffset(months=1),
@@ -150,18 +148,17 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
             if returnsDict:
                 stockResult["returns"] = returnsDict
 
-            # Volatility (30-day annualised)
+            # Calculate 30-day annualised historical volatility
             dailyReturns = closes.pct_change(fill_method=None).dropna()
             if len(dailyReturns) >= 20:
                 vol30d = float(dailyReturns.tail(30).std() * np.sqrt(252) * 100)
                 stockResult["volatility30d"] = cleanNumber(vol30d, NumberType.PERCENTAGE)
 
-            # Average volume (30-day)
             if "volume" in priceData.columns:
                 avgVol = float(priceData["volume"].tail(30).mean())
                 stockResult["avgVolume30d"] = cleanNumber(avgVol, NumberType.LARGE_NUMBER)
 
-            # Beta (vs SPY from OHLCV - fully point-in-time)
+            # Calculate market beta relative to SPY
             if spyReturns is not None and not spyReturns.empty:
                 try:
                     stockReturnsSeries = priceData.set_index("date")["close"].pct_change().dropna()
@@ -175,9 +172,8 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
                 except Exception:
                     pass
 
-        # Finnhub series metrics (all point-in-time, no live fallbacks)
+        # Populate valuation multiples, margins, and growth rates
         if m:
-            # Valuation
             if m.get("peTTM") is not None:
                 stockResult["peTTM"] = cleanNumber(m["peTTM"], NumberType.DECIMAL)
             if m.get("pb") is not None:
@@ -187,7 +183,6 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
             if m.get("evEbitdaTTM") is not None:
                 stockResult["evEbitdaTTM"] = cleanNumber(m["evEbitdaTTM"], NumberType.DECIMAL)
 
-            # Profitability
             if m.get("grossMargin") is not None:
                 stockResult["grossMargin"] = cleanNumber(m["grossMargin"], NumberType.UNSCALED_PERCENTAGE)
             if m.get("operatingMargin") is not None:
@@ -197,13 +192,11 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
             if m.get("fcfMargin") is not None:
                 stockResult["fcfMargin"] = cleanNumber(m["fcfMargin"], NumberType.UNSCALED_PERCENTAGE)
 
-            # Returns & Efficiency
             if m.get("roeTTM") is not None:
                 stockResult["roeTTM"] = cleanNumber(m["roeTTM"], NumberType.UNSCALED_PERCENTAGE)
             if m.get("roicTTM") is not None:
                 stockResult["roicTTM"] = cleanNumber(m["roicTTM"], NumberType.UNSCALED_PERCENTAGE)
 
-            # Growth
             if m.get("epsGrowthQoQ") is not None:
                 stockResult["epsGrowthQoQ"] = cleanNumber(m["epsGrowthQoQ"], NumberType.PERCENTAGE_CHANGE)
             if m.get("epsGrowthYoY") is not None:
@@ -213,7 +206,6 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
             if m.get("revenueGrowthYoY") is not None:
                 stockResult["revenueGrowthYoY"] = cleanNumber(m["revenueGrowthYoY"], NumberType.PERCENTAGE_CHANGE)
 
-            # Leverage
             if m.get("debtToEquity") is not None:
                 stockResult["debtToEquity"] = cleanNumber(m["debtToEquity"], NumberType.DECIMAL)
             if m.get("currentRatio") is not None:
@@ -221,7 +213,7 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
             if m.get("quickRatio") is not None:
                 stockResult["quickRatio"] = cleanNumber(m["quickRatio"], NumberType.DECIMAL)
 
-            # Dividend yield (computed from payoutRatio × EPS TTM / price - all point-in-time)
+            # Compute point-in-time dividend yield
             payoutRatio = m.get("payoutRatioTTM")
             epsVal = m.get("epsTTM") or m.get("eps")
             if payoutRatio is not None and epsVal is not None and epsVal > 0 and price and price > 0:
@@ -230,7 +222,7 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
                     dividendYield = divPerShare / float(price)
                     stockResult["dividendYield"] = cleanNumber(dividendYield, NumberType.UNSCALED_PERCENTAGE)
 
-        # ===== STAGE 2: News + Sentiment =====
+        # Collect recent headlines and compute FinBERT news sentiment
         try:
             newsDf = data.news.getRecentNewsForTicker(
                 ticker, before=timestamp, limit=50,
@@ -246,7 +238,6 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
                         headlines.append(cleanHtmlContent(hl.strip()))
                         headlineDates.append(row.get("date"))
 
-                # Display last 10 headlines (most recent)
                 displayHeadlines = []
                 for i, (hl, dt) in enumerate(zip(headlines[:10], headlineDates[:10])):
                     age = formatArticleAge(dt, timestamp)
@@ -254,7 +245,6 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
                 if displayHeadlines:
                     stockResult["recentHeadlines"] = displayHeadlines
 
-                # Score up to 50 headlines with the decay-weighted aggregation
                 if headlines:
                     sentimentScores = scoreTextsWithCache(headlines[:50], data)
                     if sentimentScores:
@@ -267,7 +257,7 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
         except Exception:
             pass
 
-        # ===== STAGE 3: Short Interest =====
+        # Retrieve short interest metrics and days to cover
         try:
             shortInfo = data.short.getLatestShortInterestForTicker(ticker, before=timestamp)
             if shortInfo is not None:
@@ -279,7 +269,6 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
         except Exception:
             pass
 
-        # Progress update
         with progressLock:
             completedCount[0] += 1
             pct = completedCount[0] / totalTickers * 100
@@ -287,7 +276,7 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
 
         return stockResult
 
-    # Process all stocks concurrently
+    # Execute concurrent stock overview batch processing
     with ThreadPoolExecutor(max_workers=min(totalTickers, 4)) as executor:
         futureToTicker = {executor.submit(processStock, t): t for t in cleanTickers}
         for future in as_completed(futureToTicker):
@@ -301,7 +290,6 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
             except Exception:
                 failures.append(ticker)
             tool.updateProgress((len(results) + len(failures)) / totalTickers * 100)
-            
 
     output = {
         "asOfDate": timestamp.strftime("%Y-%m-%d"),
@@ -314,6 +302,7 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
     return cleanData(output)
 
 
+# Fetch recent news stories and articles for specific company ticker
 def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str, limit: int = 12):
     limit = min(max(limit, 1), 18)
     jsonResult = []
@@ -367,6 +356,7 @@ def fetchCompanyRecentNews(tool: Tool, data: DataProviders, timestamp: pd.Timest
     return {"date": timestamp.strftime("%Y-%m-%d"), "news": cleanData(jsonResult)}
 
 
+# Compute Relative Strength Index over specified lookback period
 def calculateRsi(priceData: pd.DataFrame, period: int = 14) -> float:
     closes = priceData["close"]
     deltas = closes.diff()
@@ -382,6 +372,7 @@ def calculateRsi(priceData: pd.DataFrame, period: int = 14) -> float:
     return float(rsiSeries.iloc[-1])
 
 
+# Calculate Moving Average Convergence Divergence indicators
 def calculateMacd(priceData: pd.DataFrame, fast: int, slow: int, signal: int):
     close = priceData["close"]
     fastEma = close.ewm(span=fast, adjust=False).mean()
@@ -397,6 +388,7 @@ def calculateMacd(priceData: pd.DataFrame, fast: int, slow: int, signal: int):
     }
 
 
+# Calculate annualised Sharpe ratio against 3-month Treasury yield benchmark
 def calculateSharpeRatio(priceData: pd.DataFrame, treasuryData: pd.DataFrame):
     if priceData.empty or treasuryData.empty:
         return 0.0
@@ -428,6 +420,7 @@ def calculateSharpeRatio(priceData: pd.DataFrame, treasuryData: pd.DataFrame):
     return sharpeRatio
 
 
+# Identify historical 50-day and 200-day simple moving average crossovers
 def findSmaCrossovers(priceData: pd.DataFrame, maxLookbackDays: int = 503, maxCrossovers: int = 8):
     df = priceData.copy()
     df["sma50"] = df["close"].rolling(window=50).mean()
@@ -452,6 +445,7 @@ def findSmaCrossovers(priceData: pd.DataFrame, maxLookbackDays: int = 503, maxCr
     return crossovers[-maxCrossovers:]
 
 
+# Compute 30-day average daily trading volume
 def calculate30DayAverageVolume(priceData: pd.DataFrame, timestamp: pd.Timestamp = None) -> float:
     if priceData.empty or "volume" not in priceData.columns:
         return 0.0
@@ -463,6 +457,7 @@ def calculate30DayAverageVolume(priceData: pd.DataFrame, timestamp: pd.Timestamp
     return float(priceData["volume"].tail(30).mean())
 
 
+# Calculate full technical indicators, moving averages, RSI, MACD, and multi-period returns
 def fetchStockPricePerformance(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str):
     startDate = timestamp - pd.DateOffset(years=5, weeks=1)
     cacheKey = f"stockPerf|{ticker}_{timestamp.strftime('%Y-%m-%dH%H')}"
@@ -603,6 +598,7 @@ def fetchStockPricePerformance(tool: Tool, data: DataProviders, timestamp: pd.Ti
     return stockPricePerformance
 
 
+# Calculate percentage change from current closing price to target price
 def calculateDistFromCurrPrice(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str, targetPrice: float):
     priceData = data.ohlcv.getSingleDayTickerData(ticker, timestamp)
     if priceData is None or "close" not in priceData:
@@ -619,6 +615,7 @@ def calculateDistFromCurrPrice(tool: Tool, data: DataProviders, timestamp: pd.Ti
     return result
 
 
+# Retrieve short interest history and trend direction for specified lookback months
 def fetchShortInterestHistory(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, ticker: str, months: int = 6):
     ticker = str(ticker).strip().upper()
     months = max(1, min(months, 24))
@@ -644,7 +641,7 @@ def fetchShortInterestHistory(tool: Tool, data: DataProviders, timestamp: pd.Tim
             "daysToCover": cleanNumber(row.get("daysToCover"), NumberType.DECIMAL),
         })
 
-    # Compute trend direction
+    # Determine overall short interest trend direction
     if len(entries) >= 2:
         latestPositions = df.iloc[0].get("currentShortPositions", 0)
         oldestPositions = df.iloc[-1].get("currentShortPositions", 0)
@@ -669,4 +666,3 @@ def fetchShortInterestHistory(tool: Tool, data: DataProviders, timestamp: pd.Tim
     }
 
     return cleanData(result)
-
