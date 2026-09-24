@@ -177,7 +177,6 @@ SCHEMAS = {
         "required": ["sectorOrTicker"]
     },
 
-
     "sectorRanking": {
         "type": "object",
         "properties": {
@@ -427,12 +426,11 @@ SCHEMAS = {
 }
 
 
-
-
+# Construct and configure comprehensive tool registry with registered handlers
 def buildToolRegistry(initMacroThread=False):
     toolReg = ToolRegistry()
 
-    # macro.py
+    # Macroeconomic tools
     toolReg.registerTool(Tool(
         toolFunction=fetchMacroContext,
         toolName="fetchMacroContext",
@@ -449,8 +447,7 @@ def buildToolRegistry(initMacroThread=False):
         storeIntoSources=True
     ))
 
-
-    # sector.py
+    # Sector analytics tools
     toolReg.registerTool(Tool(
         toolFunction=fetchSectorPerformance,
         toolName="fetchSectorPerformance",
@@ -470,7 +467,7 @@ def buildToolRegistry(initMacroThread=False):
     toolReg.registerTool(Tool(
         toolFunction=fetchSectorProfile,
         toolName="fetchSectorProfile",
-        toolDescription="Fetches the descriptive profile and industry categorization for a given GICS sector or sector ETF.",
+        toolDescription="Fetches the descriptive profile and industry categorisation for a given GICS sector or sector ETF.",
         parameterSchema=SCHEMAS["sectorQuery"],
         storeIntoSources=True
     ))
@@ -512,8 +509,7 @@ def buildToolRegistry(initMacroThread=False):
         storeIntoSources=False
     ))
 
-
-    # stock_search.py
+    # Stock screening tools
     toolReg.registerTool(Tool(
         toolFunction=fetchStocksInSector,
         toolName="fetchStocksInSector",
@@ -529,8 +525,7 @@ def buildToolRegistry(initMacroThread=False):
         storeIntoSources=True
     ))
 
-
-    # company.py
+    # Company fundamental tools
     toolReg.registerTool(Tool(
         toolFunction=fetchCompanyProfile,
         toolName="fetchCompanyProfile",
@@ -584,8 +579,7 @@ def buildToolRegistry(initMacroThread=False):
         storeIntoSources=True
     ))
 
-
-    # edgar.py
+    # SEC EDGAR financial statement tools
     toolReg.registerTool(Tool(
         toolFunction=fetchCompanyValuationMetrics,
         toolName="fetchCompanyValuationMetrics",
@@ -634,8 +628,7 @@ def buildToolRegistry(initMacroThread=False):
         storeIntoSources=True
     ))
 
-
-    # sentimentnews.py
+    # News sentiment and divergence tools
     toolReg.registerTool(Tool(
         toolFunction=fetchTickerSentimentHistory,
         toolName="fetchTickerSentimentHistory",
@@ -660,8 +653,7 @@ def buildToolRegistry(initMacroThread=False):
         storeIntoSources=True
     ))
 
-
-    # sentiment10q.py
+    # SEC 10-Q filing sentiment analysis
     toolReg.registerTool(Tool(
         toolFunction=fetchLatest10QSentiment,
         toolName="fetchLatest10QSentiment",
@@ -670,8 +662,7 @@ def buildToolRegistry(initMacroThread=False):
         storeIntoSources=True
     ))
 
-
-    # other.py
+    # Execution, decision confirmation, and agent delegation tools
     toolReg.registerTool(Tool(
         toolFunction=executePythonCalculation,
         toolName="executePythonCalculation",
@@ -754,11 +745,9 @@ def buildToolRegistry(initMacroThread=False):
         storeIntoSources=False
     ))
 
+    # Spawn background thread to pre-warm macroeconomic cache
     if initMacroThread:
         timestamp = (pd.Timestamp.today().normalize() + pd.Timedelta(hours=9)).tz_localize(NEW_YORK).tz_convert(UTC)
         startPrecacheThread(toolReg, timestamp, macroTools=True)
     
     return toolReg
-
-
-

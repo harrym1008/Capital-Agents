@@ -1,12 +1,11 @@
 import pandas as pd
-
-import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from llmtools.tool_registry import ToolRegistry
 
 
+# Encapsulates cached tool call parameters for asynchronous warming
 class CachedToolCall:
     def __init__(self, toolName, timestamp, args={}):
         self.toolName = toolName
@@ -14,6 +13,7 @@ class CachedToolCall:
         self.args = args
 
 
+# Spawn background worker thread for tool call pre-caching
 def startPrecacheThread(toolRegistry: ToolRegistry, timestamp: pd.Timestamp, macroTools: bool, ticker: str = None):
     if macroTools:
         precacheThread = threading.Thread(
@@ -29,7 +29,7 @@ def startPrecacheThread(toolRegistry: ToolRegistry, timestamp: pd.Timestamp, mac
     return precacheThread
 
 
-
+# Warm LRU cache concurrently with common macroeconomic tool results
 def precacheMacroToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Timestamp):
     print(f"Starting precache of macro tool calls at timestamp '{timestamp}'...")
     toolCalls = [
@@ -40,7 +40,6 @@ def precacheMacroToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Timestamp):
         CachedToolCall("fetchAllSectorsPerformance", timestamp),
         CachedToolCall("fetchAllSectorProfiles", timestamp),
     ]
-
 
     with ThreadPoolExecutor(max_workers=len(toolCalls)) as executor:
         futureToTool = {
@@ -64,12 +63,10 @@ def precacheMacroToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Timestamp):
             except Exception as exc:
                 print(f"[{toolCall.toolName}] Generated an exception: {exc}")
 
-
     print(f"Finished precache of tool calls. LRU cache size: {toolRegistry.dataProviders.cache.getCacheUsagePrettyString()}")
 
 
-
-
+# Warm LRU cache concurrently with company-specific financial tool calls
 def precacheTickerSpecificToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Timestamp, ticker: str):
     print(f"Starting precache of tool calls for ticker '{ticker}' at timestamp '{timestamp}'...")
 
@@ -82,8 +79,6 @@ def precacheTickerSpecificToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Ti
         CachedToolCall("fetchCompanyValuationMetrics", timestamp, {"ticker": ticker}),
         CachedToolCall("fetchIncomeStatement", timestamp, {"ticker": ticker, "periodType": "annual"}),
         CachedToolCall("fetchBalanceSheet", timestamp, {"ticker": ticker, "periodType": "quarterly"}),
-        # CachedToolCall("fetchCashFlowStatement", timestamp, {"ticker": ticker, "periodType": "annual"}),
-        # CachedToolCall("fetchLatest10QSentiment", timestamp, {"ticker": ticker}),
     ]
 
     with ThreadPoolExecutor(max_workers=len(toolCalls)) as executor:
@@ -107,6 +102,5 @@ def precacheTickerSpecificToolCalls(toolRegistry: ToolRegistry, timestamp: pd.Ti
                 print(f"[{toolCall.toolName}] Completed: {truncatedResult}")
             except Exception as exc:
                 print(f"[{toolCall.toolName}] Generated an exception: {exc}")
-
 
     print(f"Finished precache of tool calls. LRU cache size: {toolRegistry.dataProviders.cache.getCacheUsagePrettyString()}")

@@ -12,9 +12,11 @@ from ui.ui_hooks import emitEvent, setCurrentCallId, getCurrentCallId
 from llmtools.sources_manager import SourcesManager
 
 
+# Shared data providers container for tool execution
 class DataProviders:
     def __init__(self, allowOnlineDownloads: bool = True):
-        self.cache = LRUCache(512 * 1024 ** 2, main=True)  # 512 MB max size of cache in RAM
+        # In-memory cache allocated to 512 MB
+        self.cache = LRUCache(512 * 1024 ** 2, main=True)
         self.rateLimiters = GlobalRateLimiters()
 
         self.tickers = TickerDataProvider()
@@ -28,10 +30,12 @@ class DataProviders:
         self.sectorLeaders = SectorLeadersProvider(self.cache)
         self.finnhub = FinnhubDataProvider(self.cache, self.rateLimiters.finnhubLimiter)
 
-        self.sentimentCache = LRUCache(8 * 1024 ** 2, main=False)  # 8 MB max size
+        # In-memory sentiment cache allocated to 8 MB
+        self.sentimentCache = LRUCache(8 * 1024 ** 2, main=False)
         self.sentimentLock = RLock()
 
 
+# Encapsulates single callable agent tool with schema validation and progress tracking
 class Tool:
     def __init__(self, toolFunction: Callable, toolName: str, toolDescription: str, parameterSchema: Dict[str, Any], storeIntoSources: bool = False):
         self.function = toolFunction
@@ -45,6 +49,7 @@ class Tool:
         self.lastProgressVal: Dict[str, Any] = {}
         self.lastProgressTime: Dict[str, float] = {}
 
+    # Emit throttled execution progress event to UI websocket
     def updateProgress(self, progress: Union[float, int, str], message: Optional[str] = None, callId: Optional[str] = None):
         with self.progressLock:
             effectiveCallId = callId or getCurrentCallId()
@@ -91,6 +96,7 @@ class Tool:
                 "status": "running"
             })
 
+    # Return OpenAI-compatible function schema definition
     def getToolSchema(self) -> Dict[str, Any]:
         return {
             "type": "function",
@@ -101,6 +107,7 @@ class Tool:
             }
         }
     
+    # Execute tool function with error handling and optional source citation tracking
     def executeTool(self, data: DataProviders, timestamp: pd.Timestamp, args: Dict[str, Any], callId: Optional[str] = None, sourcesManager: Optional[SourcesManager] = None, skipSources: bool = False):
         if callId:
             setCurrentCallId(callId)
@@ -109,7 +116,7 @@ class Tool:
             if toolOutput is None:
                 return {"error": f"Tool '{self.name}' returned None."}
             elif isinstance(toolOutput, str):
-                return {"error": toolOutput}        # Assume sole string return values are error messages            
+                return {"error": toolOutput}
             elif not isinstance(toolOutput, dict):
                 toolOutput = {"result": toolOutput}
 
@@ -143,37 +150,44 @@ class Tool:
                 "error": f"Uncaught error occurred while executing tool '{self.name}': {str(e)}",
                 "traceback": tb
             }
-            # raise e
             return error
         finally:
             if callId:
                 setCurrentCallId(None)
 
 
+# Central registry for agent tools, execution routing, and citation management
 class ToolRegistry:
+    # Initialise empty tool registry and source manager
     def __init__(self):
         self.dataProviders = DataProviders()
         self.tools: Dict[str, Tool] = {}
         self.sourcesManager = SourcesManager()
 
+    # Register single tool instance in registry map
     def registerTool(self, tool: Tool):
         tool.registry = self
         self.tools[tool.name] = tool
 
+    # Register multiple tool instances sequentially
     def registerTools(self, tools: List[Tool]):
         for tool in tools:
             self.registerTool(tool)
 
+    # Lookup registered tool by name
     def getTool(self, toolName: str):
         return self.tools.get(toolName)
 
+    # Return dictionary of all registered tool handlers
     def getToolMap(self):
         return self.tools
 
+    # Clear execution logs across all registered tools
     def clearToolLogs(self):
         for tool in self.tools.values():
             tool.toolLog.clear()
 
+    # Dispatch tool execution by name with parameter dictionary
     def executeTool(self, toolName: str, timestamp: pd.Timestamp, arguments: Dict[str, Any] = {}, callId: Optional[str] = None, skipSources: bool = False):
         tool = self.getTool(toolName)
         if tool:

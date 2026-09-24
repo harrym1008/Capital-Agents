@@ -6,12 +6,14 @@ from typing import Dict, Any, List, Optional
 from ui.ui_hooks import emitEvent
 
 
+# Thread-safe manager for tracking tool citation sources and UI event dispatch
 class SourcesManager:
     def __init__(self):
         self.lock = threading.RLock()
         self.sources: List[Dict[str, Any]] = []
         self.hashToCitation: Dict[int, int] = {}
 
+    # Generate deterministic hash for result payload deduplication
     def _computeHash(self, result: Any) -> int:
         if isinstance(result, dict):
             resultToHash = {k: v for k, v in result.items() if k not in ("citationNumber", "toolCitationNumber")}
@@ -23,6 +25,7 @@ class SourcesManager:
             serialised = str(resultToHash)
         return hash(serialised)
 
+    # Record new citation source and emit websocket notification event
     def addSource(self, toolName: str, args: Dict[str, Any], result: Dict[str, Any]) -> Optional[int]:
         with self.lock:
             if isinstance(result, dict) and "error" in result:
@@ -58,16 +61,19 @@ class SourcesManager:
 
             return citationNumber
 
+    # Clear all tracked citation sources and reset UI state
     def reset(self) -> None:
         with self.lock:
             self.sources.clear()
             self.hashToCitation.clear()
             emitEvent("resetSources", {})
 
+    # Retrieve deep copy of all recorded citation records
     def getSources(self) -> List[Dict[str, Any]]:
         with self.lock:
             return copy.deepcopy(self.sources)
 
+    # Fetch specific citation record by 1-based index
     def getSourceByCitation(self, citationNumber: int) -> Optional[Dict[str, Any]]:
         with self.lock:
             if 1 <= citationNumber <= len(self.sources):
