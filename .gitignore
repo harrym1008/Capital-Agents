@@ -197,8 +197,11 @@ exec/tests/output/
 
 # Files
 newtooltest.py
+
 *.engine
 *.onnx
 
 llm/server_config.json
 _cache/persist_lru_cache.bin
+_projectFileMap.map.md
+_makeFileMap.py
