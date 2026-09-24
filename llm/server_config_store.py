@@ -24,10 +24,12 @@ DEFAULT_CONFIG = {
 
 
 def deepCopy(obj):
+    # Perform deep copy of JSON serialisable object
     return json.loads(json.dumps(obj))
 
 
 def mergeDefaults(cfg):
+    # Merge loaded dictionary with default provider schema
     merged = {
         "lastSelectedProvider": "llamacpp",
         "llamacpp": deepCopy(DEFAULT_CONFIG["llamacpp"]),
@@ -47,8 +49,8 @@ def mergeDefaults(cfg):
     return merged
 
 
-
 def loadServerConfig():
+    # Read server configuration file from disk or initialise with defaults
     if not os.path.exists(SERVER_CONFIG_FILE_PATH):
         cfg = deepCopy(DEFAULT_CONFIG)
         saveServerConfig(cfg)
@@ -64,41 +66,52 @@ def loadServerConfig():
 
 
 def saveServerConfig(configData):
+    # Persist updated server configuration dictionary to JSON file
     try:
         cfg = mergeDefaults(configData or {})
+
         providerVal = cfg.get("lastSelectedProvider")
         if not isinstance(providerVal, str) or not providerVal.strip():
             cfg["lastSelectedProvider"] = "llamacpp"
         else:
             cfg["lastSelectedProvider"] = providerVal.strip()
+
         for provider in ("llamacpp", "openrouter", "openaicompatible"):
             if not isinstance(cfg[provider], dict):
                 cfg[provider] = deepCopy(DEFAULT_CONFIG[provider])
+
         llamacpp = cfg["llamacpp"]
         if not isinstance(llamacpp.get("globalArgs"), list):
             llamacpp["globalArgs"] = []
         if not isinstance(llamacpp.get("models"), list):
             llamacpp["models"] = []
+
         with open(SERVER_CONFIG_FILE_PATH, "w", encoding="utf-8") as f:
             json.dump(cfg, f, indent=2)
         return True
+    
     except Exception as e:
         print(f"Error saving server config: {e}")
         return False
 
 
 def getSection(provider):
+    # Return specific provider configuration section
     cfg = loadServerConfig()
     section = cfg.get(provider)
     return section if isinstance(section, dict) else deepCopy(DEFAULT_CONFIG.get(provider, {}))
 
 
 def setSectionValues(provider, values):
+    # Update key-value pairs within a specific provider section
     if not isinstance(values, dict):
         return False
+    
     cfg = loadServerConfig()
+
     for key, value in values.items():
         if isinstance(value, str):
             value = value.strip()
         cfg[provider][key] = value
+        
     return saveServerConfig(cfg)

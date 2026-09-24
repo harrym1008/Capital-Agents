@@ -2,7 +2,7 @@ import random
 import os, sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Suppress warnings from modelopt asking about triton
+# Suppress ModelOpt Triton warning banners
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="modelopt")
 
@@ -15,6 +15,7 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 FIN_PHRASE_BANK_PATH = "finbert/FinancialPhraseBank-v1.0/Sentences_AllAgree.txt"
 
 def loadFinancialPhraseBank(sampleCount, returnRightSide=False):
+    # Load and map FinancialPhraseBank sentiment samples to ModernFinBERT labels
     texts = []
     trueLabels = []
 
@@ -34,15 +35,15 @@ def loadFinancialPhraseBank(sampleCount, returnRightSide=False):
         texts = texts[:sampleCount] if not returnRightSide else texts[sampleCount:]
         trueLabels = trueLabels[:sampleCount] if not returnRightSide else trueLabels[sampleCount:]
 
+    # Map FinancialPhraseBank labels to ModernFinBERT label space
     for i in range(len(trueLabels)):
         trueLabels[i] = ["bearish", "neutral", "bullish"][["negative", "neutral", "positive"].index(trueLabels[i].lower())]
-        # Map FinancialPhraseBank labels to ModernFinBERT labels
 
     return texts, trueLabels
 
 
-# Fuse attention operations into single kernels to prevent memory blowup in ONNX Runtime
 def optimizeOnnxGraph(onnxPath: str):
+    # Fuse multi-head attention operations in ONNX graph to reduce peak VRAM overhead
     try:
         from onnxruntime.transformers import optimizer
         print(f"  [ONNX Optimizer] Optimizing attention subgraphs in {onnxPath}...")
@@ -60,6 +61,7 @@ def optimizeOnnxGraph(onnxPath: str):
 
 
 def convertToFp32Onnx(modelId, onnxPath, maxSeqLen=768):
+    # Export baseline Hugging Face PyTorch model to FP32 ONNX graph
     print(f"[Step 1] Loading FP32 model with native SDPA (FlashAttention) and tokenizer...")
     model = AutoModelForSequenceClassification.from_pretrained(
         modelId,
@@ -92,6 +94,7 @@ def convertToFp32Onnx(modelId, onnxPath, maxSeqLen=768):
 
 
 def calibrateAndQuantiseIntoOnnx(modelId, onnxSuffix, quantConfig, maxSamples, maxSeqLen=768):
+    # Calibrate PyTorch model with sample dataset and export quantised ONNX graph
     print(f"[Step 1] Loading model, tokenizer and calibration data...")
     model = AutoModelForSequenceClassification.from_pretrained(
         modelId,
@@ -99,8 +102,8 @@ def calibrateAndQuantiseIntoOnnx(modelId, onnxSuffix, quantConfig, maxSamples, m
     ).cuda()
     tokenizer = AutoTokenizer.from_pretrained(modelId, cache_dir="finbert/models/hf", model_max_length=maxSeqLen)
 
-    # Quantisation data requires a representation of the input data
-    calibrationTexts = loadFinancialPhraseBank(maxSamples)[0]       # Don't load the true labels
+    # Load unlabelled calibration dataset
+    calibrationTexts = loadFinancialPhraseBank(maxSamples)[0]
 
     encodedInputs = tokenizer(
         calibrationTexts,
@@ -143,6 +146,7 @@ def calibrateAndQuantiseIntoOnnx(modelId, onnxSuffix, quantConfig, maxSamples, m
 
 
 def compileTensorRtEngine(onnxPath, enginePath, maxBatchSize=16, maxSeqLen=768):
+    # Compile parsed ONNX graph into serialised TensorRT execution engine
     print(f"[Step 4] Configuring TensorRT engine...")
     trtLogger = trt.Logger(trt.Logger.WARNING)
     builder = trt.Builder(trtLogger)
@@ -179,12 +183,11 @@ def compileTensorRtEngine(onnxPath, enginePath, maxBatchSize=16, maxSeqLen=768):
 
 
 def main():
-    # Enforce maximum of 768 tokens and batch size 16
+    # Build FP32 ONNX and FP8 TensorRT engines with max 768 tokens and batch size 16
     maxSeqLen = 768
     maxBatchSize = 16
     modelsDir = "finbert/models"
 
-    # Download the ModernFinBERT model and export it to FP32 ONNX
     print(f"Converting FP32 model to ONNX...")
     onnxPathFp32 = convertToFp32Onnx(
         "tabularisai/ModernFinBERT",
@@ -192,7 +195,6 @@ def main():
         maxSeqLen=maxSeqLen
     )
 
-    # Build the FP8 TensorRT engine
     print(f"\n\nCalibrating and quantising model to FP8 ONNX...")
     onnxPathFp8 = calibrateAndQuantiseIntoOnnx(
         "tabularisai/ModernFinBERT",
@@ -208,7 +210,8 @@ def main():
         maxSeqLen=maxSeqLen
     )
     if os.path.exists(onnxPathFp8):
-        os.remove(onnxPathFp8)          # Delete intermediate ONNX file
+        os.remove(onnxPathFp8)          # Clean up intermediate ONNX export
+
 
 if __name__ == "__main__":
     main()

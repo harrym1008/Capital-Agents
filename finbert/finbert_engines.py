@@ -6,6 +6,7 @@ import numpy as np
 
 
 def logitsToPredictions(logits: np.ndarray) -> list[dict]:
+    # Apply softmax to raw logits and map to sentiment labels with confidence scores
     labelNames = ["bearish", "neutral", "bullish"]
     maxLogits = np.max(logits, axis=-1, keepdims=True)
     expLogits = np.exp(logits - maxLogits)
@@ -23,6 +24,7 @@ def logitsToPredictions(logits: np.ndarray) -> list[dict]:
 
 
 def isTensorRtSupported() -> bool:
+    # Check for functional CUDA device and TensorRT runtime builder availability
     try:
         import tensorrt as trt
         import torch
@@ -39,7 +41,7 @@ def isTensorRtSupported() -> bool:
         return False
 
 
-# Base class for all FinBERT inference engines
+# Base class for all FinBERT inference backends
 class BaseInferenceEngine(ABC):
     def __init__(self, modelPathOrId: str, optimalBatchSize: int = 16, maxSeqLen: int = 768):
         self.modelPathOrId = modelPathOrId
@@ -66,6 +68,7 @@ class BaseInferenceEngine(ABC):
         pass
 
     def infer(self, texts: list[str] | str, onProgressCallback: Optional[Callable] = None) -> np.ndarray:
+        # Batch tokenize input texts and execute forward inference
         if isinstance(texts, str):
             texts = [texts]
 
@@ -96,7 +99,7 @@ class BaseInferenceEngine(ABC):
             return np.concatenate(allLogits, axis=0)
 
 
-# TensorRT FP8 Inference Engine (requires CUDA and TensorRT)
+# TensorRT FP8 inference engine running on CUDA
 class TrtCudaInferenceEngine(BaseInferenceEngine):
     def __init__(self, enginePath: str = "finbert/models/ModernFinBERT_fp8.engine", optimalBatchSize: int = 16, maxSeqLen: int = 768):
         self.enginePath = enginePath
@@ -116,12 +119,14 @@ class TrtCudaInferenceEngine(BaseInferenceEngine):
         self.stream = self.torch.cuda.Stream()
 
     def importModules(self) -> None:
+        # Import TensorRT and PyTorch CUDA modules
         import tensorrt as trt
         import torch
         self.trt = trt
         self.torch = torch
 
     def _inferRaw(self, inputIds: np.ndarray, attentionMask: np.ndarray) -> np.ndarray:
+        # Set dynamic tensor bindings and execute asynchronous inference stream
         batchSize, seqLen = inputIds.shape
         self.context.set_input_shape("input_ids", (batchSize, seqLen))
         self.context.set_input_shape("attention_mask", (batchSize, seqLen))
@@ -144,10 +149,8 @@ class TrtCudaInferenceEngine(BaseInferenceEngine):
         return dOutput.cpu().numpy()
 
 
-# ONNX Runtime CUDA FP32 Inference Engine (requires CUDA and ONNX Runtime)
+# ONNX Runtime FP32 inference engine running on CUDA
 class OnnxCudaInferenceEngine(BaseInferenceEngine):
-    """ONNX Runtime FP32 Inference Engine running on CUDAExecutionProvider."""
-
     def __init__(self, onnxPath: str = "finbert/models/ModernFinBERT_fp32.onnx", optimalBatchSize: int = 8, maxSeqLen: int = 768):
         self.onnxPath = onnxPath
         super().__init__(modelPathOrId=onnxPath, optimalBatchSize=optimalBatchSize, maxSeqLen=maxSeqLen)
@@ -161,12 +164,14 @@ class OnnxCudaInferenceEngine(BaseInferenceEngine):
         self.provider = self.session.get_providers()[0]
 
     def importModules(self) -> None:
+        # Import ONNX Runtime and PyTorch modules
         import onnxruntime as ort
         import torch
         self.ort = ort
         self.torch = torch
 
     def _inferRaw(self, inputIds: np.ndarray, attentionMask: np.ndarray) -> np.ndarray:
+        # Run inference session on GPU
         inputs = {
             "input_ids": inputIds.astype(np.int64),
             "attention_mask": attentionMask.astype(np.int64)
@@ -175,7 +180,7 @@ class OnnxCudaInferenceEngine(BaseInferenceEngine):
         return outputs[0]
 
 
-# PyTorch CUDA FP32 Inference Engine (requires CUDA and PyTorch)
+# Native PyTorch FP32 inference engine running on CUDA with SDPA FlashAttention
 class PytorchCudaInferenceEngine(BaseInferenceEngine):
     def __init__(self, modelId: str = "tabularisai/ModernFinBERT", optimalBatchSize: int = 16, maxSeqLen: int = 768):
         self.modelId = modelId
@@ -187,12 +192,14 @@ class PytorchCudaInferenceEngine(BaseInferenceEngine):
         ).cuda().eval()
 
     def importModules(self) -> None:
+        # Import PyTorch and Hugging Face transformer classification head
         import torch
         from transformers import AutoModelForSequenceClassification
         self.torch = torch
         self.AutoModelForSequenceClassification = AutoModelForSequenceClassification
 
     def _inferRaw(self, inputIds: np.ndarray, attentionMask: np.ndarray) -> np.ndarray:
+        # Evaluate PyTorch model with GPU tensors under no_grad context
         tInputIds = self.torch.from_numpy(inputIds.astype(np.int64)).cuda()
         tAttMask = self.torch.from_numpy(attentionMask.astype(np.int64)).cuda()
 
@@ -202,10 +209,8 @@ class PytorchCudaInferenceEngine(BaseInferenceEngine):
         return logits
 
 
-# Onnx Runtime CPU FP32 Inference Engine (requires just ONNX runtime)
+# ONNX Runtime FP32 inference engine running on CPU
 class OnnxCpuInferenceEngine(BaseInferenceEngine):
-    """ONNX Runtime FP32 Inference Engine running on CPUExecutionProvider."""
-
     def __init__(self, onnxPath: str = "finbert/models/ModernFinBERT_fp32.onnx", optimalBatchSize: int = 4, maxSeqLen: int = 768):
         self.onnxPath = onnxPath
         super().__init__(modelPathOrId=onnxPath, optimalBatchSize=optimalBatchSize, maxSeqLen=maxSeqLen)
@@ -214,10 +219,12 @@ class OnnxCpuInferenceEngine(BaseInferenceEngine):
         self.provider = "CPUExecutionProvider"
 
     def importModules(self) -> None:
+        # Import CPU ONNX Runtime module
         import onnxruntime as ort
         self.ort = ort
 
     def _inferRaw(self, inputIds: np.ndarray, attentionMask: np.ndarray) -> np.ndarray:
+        # Execute ONNX session on CPU
         inputs = {
             "input_ids": inputIds.astype(np.int64),
             "attention_mask": attentionMask.astype(np.int64)
@@ -226,10 +233,8 @@ class OnnxCpuInferenceEngine(BaseInferenceEngine):
         return outputs[0]
 
 
-# PyTorch CPU FP32 Inference Engine (requires just PyTorch)
+# Native PyTorch FP32 inference engine running on CPU
 class PytorchCpuInferenceEngine(BaseInferenceEngine):
-    """Native PyTorch FP32 Inference Engine running on CPU."""
-
     def __init__(self, modelId: str = "tabularisai/ModernFinBERT", optimalBatchSize: int = 4, maxSeqLen: int = 768):
         self.modelId = modelId
         super().__init__(modelPathOrId=modelId, optimalBatchSize=optimalBatchSize, maxSeqLen=maxSeqLen)
@@ -240,12 +245,14 @@ class PytorchCpuInferenceEngine(BaseInferenceEngine):
         ).to("cpu").eval()
 
     def importModules(self) -> None:
+        # Import CPU PyTorch and model modules
         import torch
         from transformers import AutoModelForSequenceClassification
         self.torch = torch
         self.AutoModelForSequenceClassification = AutoModelForSequenceClassification
 
     def _inferRaw(self, inputIds: np.ndarray, attentionMask: np.ndarray) -> np.ndarray:
+        # Execute PyTorch model on CPU
         tInputIds = self.torch.from_numpy(inputIds.astype(np.int64)).to("cpu")
         tAttMask = self.torch.from_numpy(attentionMask.astype(np.int64)).to("cpu")
 
@@ -256,7 +263,7 @@ class PytorchCpuInferenceEngine(BaseInferenceEngine):
 
 
 
-# Gets the best available inference engine for FinBERT, ideally the best performing (trt) then falling back to the next best option if not available
+# Select best performing inference engine available, falling back across hardware tiers
 def getBestInferenceEngine() -> BaseInferenceEngine | None:
     trtPath = "finbert/models/ModernFinBERT_fp8.engine"
     onnxPath = "finbert/models/ModernFinBERT_fp32.onnx"
@@ -321,19 +328,20 @@ def getBestInferenceEngine() -> BaseInferenceEngine | None:
     return None
 
 
-# Global singleton engine instance and initialization lock
+# Global singleton engine instance and initialisation lock
 sentimentEngine: Optional[BaseInferenceEngine] = None
 engineLoadLock = threading.RLock()
 engineLoadAttempted = False
 
 
 def getSentimentEngine() -> Optional[BaseInferenceEngine]:
+    # Retrieve or lazily initialise global FinBERT inference engine singleton
     global sentimentEngine, engineLoadAttempted
 
     if sentimentEngine is not None:
         return sentimentEngine
 
-    # Pre-import AutoTokenizer outside engineLoadLock so that module resolution does not block other threads
+    # Pre-import AutoTokenizer outside lock to prevent blocking concurrent threads
     try:
         from transformers import AutoTokenizer
     except Exception:
@@ -354,6 +362,7 @@ def getSentimentEngine() -> Optional[BaseInferenceEngine]:
 
 
 def preloadSentimentModelAsync() -> threading.Thread:
+    # Warm up sentiment engine on background daemon thread
     def loaderTarget():
         try:
             from transformers import AutoTokenizer
@@ -367,6 +376,7 @@ def preloadSentimentModelAsync() -> threading.Thread:
 
 
 def unloadSentimentEngine() -> bool:
+    # Release sentiment model contexts and flush CUDA memory cache
     global sentimentEngine, engineLoadAttempted
 
     with engineLoadLock:
@@ -405,4 +415,3 @@ def unloadSentimentEngine() -> bool:
         pass
 
     return True
-

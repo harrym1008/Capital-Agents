@@ -14,6 +14,7 @@ SUMMARISE_THINK_BUDGET = 256
 SUMMARISE_ENABLED = True
 
 
+# Encapsules role, toolset, message history, etc. for a single agent
 class FinancialAgent:
     def __init__(self, agentRole: str, tools: List[Tool], color: str = "black", dateStr: str = None, maxIterations: int = 10):
         self.llmClient: Optional[BaseLLMClient] = None
@@ -36,19 +37,24 @@ class FinancialAgent:
         self.llmClient = client
 
     def setClient(self, llmClient: BaseLLMClient):
+        # Attach LLM inference client to agent
         self.llmClient = llmClient
 
 
     def getSpecificToolsStr(self) -> str:
+        # Generate comma-separated list of assigned tool names excluding internal calculations
         return ", ".join([tool.name for tool in self.tools if tool.name not in ["executePythonCalculation"]])
 
     def clearTools(self):
+        # Empty tool list
         self.tools = []
 
     def removeTool(self, toolName: str):
+        # Remove specific tool by name
         self.tools = [tool for tool in self.tools if tool.name != toolName]
 
     def addTool(self, toolName: str, toolRegistry: ToolRegistry):
+        # Look up tool in registry and append to active tools list
         tool = toolRegistry.getTool(toolName)
         if tool:
             self.tools.append(tool)
@@ -58,13 +64,15 @@ class FinancialAgent:
 
     def executeInternalAnalysis(
         self, 
-        incomingMessage: str,
-        toolRegistry: ToolRegistry,
-        timestamp: pd.Timestamp,
-        config: BoardroomConfig,
-        systemPrompt: Optional[str] = None,
+        incomingMessage: str, 
+        toolRegistry: ToolRegistry, 
+        timestamp: pd.Timestamp, 
+        config: BoardroomConfig, 
+        systemPrompt: Optional[str] = None, 
         requireInitialTools: bool = False
     ):
+        # Execute multi-turn reasoning and tool calls for raw analysis
+        # Overwrite the system prompt to ensure the agent does the correct reasoning/tools/workflow for the current stage
         if systemPrompt:
             if len(self.messageHistory) == 0:
                 self.messageHistory.append(None)
@@ -90,15 +98,14 @@ class FinancialAgent:
             toolRegistry, 
             timestamp, 
             thinkingBudget=config.thinkingBudget, 
-            responsePrint=ResponsePrintMode.FULL,
-            requireInitialTools=requireInitialTools,
-            permittedTools=self.tools,
-            maxIterations=config.maxIterations,
+            responsePrint=ResponsePrintMode.FULL, 
+            requireInitialTools=requireInitialTools, 
+            permittedTools=self.tools, 
+            maxIterations=config.maxIterations, 
             temperature=config.temperature
         )
 
         self.messageHistory.append({"role": "assistant", "content": rawAnalysis})
-
         return rawAnalysis
 
 
@@ -107,20 +114,19 @@ class FinancialAgent:
         rawAnalysis: str, 
         systemPrompt: Optional[str] = None
     ):
+        # Reformat technical raw analysis into condensed UI executive summary
         tempHistory = [
             {"role": "system", "content": systemPrompt},
             {"role": "user", "content": f"Reformat the following raw analysis according to the instructions:\n\n{rawAnalysis}"}
         ]
-
-        # print(f"\n{self.ansiCode}{Style.BRIGHT}========== Generating summary for [{self.agentRole}] =========={Style.RESET_ALL}", end="")
 
         uiSummary = self.llmClient.runConversation(
             tempHistory, 
             toolRegistry=None, 
             timestamp=pd.Timestamp.now(tz="UTC"), 
             thinkingBudget=SUMMARISE_THINK_BUDGET, 
-            responsePrint=ResponsePrintMode.ONE_TOKEN_ONLY,
-            requireInitialTools=False,
+            responsePrint=ResponsePrintMode.ONE_TOKEN_ONLY, 
+            requireInitialTools=False, 
             permittedTools=[]
         )
         return uiSummary
@@ -128,15 +134,16 @@ class FinancialAgent:
 
     def analyseAndReply(self, 
         incomingMessage: str, 
-        toolRegistry: ToolRegistry,
-        timestamp: pd.Timestamp,
-        config: BoardroomConfig,
-        subrole: Optional[str] = None,
-        requireInitialTools: bool = False,
-        summarisationOverride: Optional[bool] = None,
-        sysPromptOverride: Optional[str] = None,
-        modeOverride: Optional[str] = None,
+        toolRegistry: ToolRegistry, 
+        timestamp: pd.Timestamp, 
+        config: BoardroomConfig, 
+        subrole: Optional[str] = None, 
+        requireInitialTools: bool = False, 
+        summarisationOverride: Optional[bool] = None, 
+        sysPromptOverride: Optional[str] = None, 
+        modeOverride: Optional[str] = None, 
     ):
+        # Orchestrate complete agent execution cycle: raw analysis followed by UI summarisation
         generateSummary = config.generateSummaries if summarisationOverride is None else summarisationOverride
         
         # Set agent context for UI streaming
@@ -159,7 +166,7 @@ class FinancialAgent:
                 promptArgs=config.getPromptArgs()
             )
 
-        # Run the actual inference function
+        # Run primary internal analysis
         try:
             rawAnalysis = self.executeInternalAnalysis(
                 incomingMessage, toolRegistry, timestamp, config, sysPrompt, requireInitialTools
@@ -173,13 +180,10 @@ class FinancialAgent:
         setAgentPhase("summary")
         emitEvent("agentRunStart", {"agentRole": self.agentRole, "agentColor": self.color, "phase": "summary"})
 
-        # Summarise raw analysis for UI display
+        # Generate condensed executive summary for UI dashboard, if enabled
         try:
             uiSummary = self.generateUISummary(rawAnalysis, buildSummariseSysPrompt(self.agentRole, mode, subrole, config.getPromptArgs()))
         finally:
             emitEvent("agentRunEnd", {"agentRole": self.agentRole, "phase": "summary"})
 
         return rawAnalysis, uiSummary
-
-
-

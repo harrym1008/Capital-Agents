@@ -24,6 +24,7 @@ from ui.ui_hooks import emitEvent
 
 
 def isPortReachable(host: str, port: int, timeout: float = 0.5) -> bool:
+    # Check if TCP port accepts inbound connections
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(timeout)
         try:
@@ -34,6 +35,7 @@ def isPortReachable(host: str, port: int, timeout: float = 0.5) -> bool:
 
 
 def parsePrometheusMetrics(text: str) -> dict:
+    # Parse Prometheus metrics endpoint text into key-value dictionary (requires --metrics be enabled in params)
     metrics = {}
     if not text:
         return metrics
@@ -58,17 +60,18 @@ def parsePrometheusMetrics(text: str) -> dict:
 
 
 def extractTokSpeeds(text: str) -> Tuple[float, float]:
+    # Extract prompt prefill and generation token speeds from Prometheus metrics
     metrics = parsePrometheusMetrics(text)
 
     prefillSpeed = metrics.get('llamacpp:prompt_tokens_seconds') or metrics.get('llamacpp_prompt_tokens_seconds') or metrics.get('llamacpp:prompt_tokens_per_second') or metrics.get('llamacpp_prompt_tokens_per_second')
-    genSpeed = metrics.get('llamacpp:predicted_tokens_seconds') or metrics.get('llamacpp_predicted_tokens_seconds') or metrics.get('llamacpp:tokens_predicted_per_second') or metrics.get('llamacpp_tokens_predicted_per_second') or metrics.get('llamacpp:tokens_predicted_seconds') or metrics.get('llamacpp_tokens_predicted_seconds')
+    genSpeed = metrics.get('llamacpp:predicted_tokens_seconds') or metrics.get('llamacpp_predicted_tokens_seconds') or metrics.get('llamacpp:tokens_predicted_per_second') or metrics.get('llamacpp_tokens_predicted_per_second') or metrics.get('llamacpp:tokens_predicted_seconds') or metrics.get('llamacpp:tokens_predicted_seconds')
 
     if prefillSpeed is None or genSpeed is None:
         predTokens = metrics.get('llamacpp:tokens_predicted_total') or metrics.get('llamacpp_tokens_predicted_total') or metrics.get('llamacpp:predicted_tokens_total') or metrics.get('llamacpp_predicted_tokens_total') or 0.0
-        predSecs = metrics.get('llamacpp:tokens_predicted_seconds_total') or metrics.get('llamacpp_tokens_predicted_seconds_total') or metrics.get('llamacpp:predicted_seconds_total') or metrics.get('llamacpp_predicted_seconds_total') or metrics.get('llamacpp_generation_seconds_total') or 0.0
+        predSecs = metrics.get('llamacpp:tokens_predicted_seconds_total') or metrics.get('llamacpp_tokens_predicted_seconds_total') or metrics.get('llamacpp:predicted_seconds_total') or metrics.get('llamacpp_predicted_seconds_total') or metrics.get('llamacpp:generation_seconds_total') or 0.0
 
         promptTokens = metrics.get('llamacpp:prompt_tokens_total') or metrics.get('llamacpp_prompt_tokens_total') or metrics.get('llamacpp:tokens_evaluated_total') or metrics.get('llamacpp_tokens_evaluated_total') or 0.0
-        promptSecs = metrics.get('llamacpp:prompt_seconds_total') or metrics.get('llamacpp_prompt_seconds_total') or metrics.get('llamacpp:prompt_processing_seconds_total') or metrics.get('llamacpp_prompt_processing_seconds_total') or metrics.get('llamacpp_prompt_evaluation_seconds_total') or 0.0
+        promptSecs = metrics.get('llamacpp:prompt_seconds_total') or metrics.get('llamacpp_prompt_seconds_total') or metrics.get('llamacpp:prompt_processing_seconds_total') or metrics.get('llamacpp_prompt_processing_seconds_total') or metrics.get('llamacpp:prompt_evaluation_seconds_total') or 0.0
 
         genSpeed = (predTokens / predSecs) if (predTokens > 0 and predSecs > 0) else 0.0
         prefillSpeed = (promptTokens / promptSecs) if (promptTokens > 0 and promptSecs > 0) else 0.0
@@ -77,12 +80,13 @@ def extractTokSpeeds(text: str) -> Tuple[float, float]:
 
 
 def testLlmClient(client: BaseLLMClient, modelName: str) -> Tuple[bool, str]:
+    # Execute non-streaming health verification query against model backend
     try:
         serverManager.recordLog("Sending test query...")
         response = client.openaiClient.chat.completions.create(
             model=modelName,
             messages=[{"role": "user", "content": "This is a test. Exit <think> immediately. Reply solely with the word 'OK'."}],
-            max_completion_tokens=8,
+            max_completion_tokens=20,        # Limit response length to a few tokens
             temperature=0.0,
             stream=False
         )
@@ -100,6 +104,7 @@ def testLlmClient(client: BaseLLMClient, modelName: str) -> Tuple[bool, str]:
         return False, errorMsg
 
 
+# 3 server backends supported: Llama.cpp, OpenRouter, OpenAI Compatible
 class LoadedModelType(Enum):
     NONE = "none"
     OPENROUTER = "openrouter"
@@ -107,20 +112,23 @@ class LoadedModelType(Enum):
     OPENAI_COMPATIBLE = "openaicompatible"
 
 
-# Server manager class which handles starting/stopping LLM servers and managing clients
+# Central coordinator managing local llama-server processes, cloud backends, logs, and token tracking
 class ServerManager:
     def __init__(self):
         self.loadedModelType = LoadedModelType.NONE
         self.loadedModelName = ""
+
         self.boardroomProcess = None
         self.llmClient: Optional[BaseLLMClient] = None
+        self.sharedToolRegistry: Optional[Any] = None
+        self.costTracker = TokenCostTracker()
+
         self.startupLogs: List[str] = []
         self.serverLogs = collections.deque(maxlen=10000)
         self.metricsThread: Optional[threading.Thread] = None
-        self.sharedToolRegistry: Optional[Any] = None
-        self.costTracker = TokenCostTracker()
         self.serverLock = threading.Lock()
         self.sentimentPreloadThread: Optional[threading.Thread] = None
+
 
     @property
     def boardroomClient(self) -> Optional[BaseLLMClient]:
@@ -142,14 +150,17 @@ class ServerManager:
     def openaiCompatibleRunning(self) -> bool:
         return self.loadedModelType == LoadedModelType.OPENAI_COMPATIBLE
 
+
     def startSentimentEnginePreload(self) -> threading.Thread:
-        self.recordLog("Pre-loading AutoTokeniser and FinBERT sentiment engine...")
+        # Pre-warm FinBERT tokenizer and inference engine in background thread
+        self.recordLog("Pre-loading AutoTokenizer and FinBERT sentiment engine...")
         thread = threading.Thread(target=getSentimentEngine, daemon=True, name="SentimentModelPreloader")
         self.sentimentPreloadThread = thread
         thread.start()
         return thread
 
     def ensureSentimentEngineReady(self, timeout: float = 40.0) -> bool:
+        # Block until FinBERT engine preloading finishes
         if self.sentimentPreloadThread and self.sentimentPreloadThread.is_alive():
             self.recordLog("Waiting for FinBERT sentiment engine to complete initialisation...")
             self.sentimentPreloadThread.join(timeout=timeout)
@@ -162,7 +173,9 @@ class ServerManager:
             self.recordLog("Warning: Sentiment engine could not be loaded.")
             return False
 
+
     def recordLog(self, logLine: str):
+        # Append message to runtime logs and emit log event to UI
         self.startupLogs.append(logLine)
         self.serverLogs.append(logLine)
         emitEvent("llamaCppLog", {"log": logLine})
@@ -171,7 +184,9 @@ class ServerManager:
         with self.serverLock:
             return list(self.serverLogs)
 
+
     def getToolRegistry(self) -> ToolRegistry:
+        # Lazy initialise shared tool registry instance
         with self.serverLock:
             if self.sharedToolRegistry is None:
                 from llmtools.registry_builder import buildToolRegistry
@@ -179,14 +194,18 @@ class ServerManager:
             return self.sharedToolRegistry
 
     def getClient(self) -> Optional[BaseLLMClient]:
+        # Return active LLM client instance
         with self.serverLock:
             return self.llmClient
 
     def getClients(self) -> Tuple[Optional[BaseLLMClient], Optional[BaseLLMClient]]:
+        # Return pair of active LLM client instances
         with self.serverLock:
             return self.llmClient, self.llmClient
 
-    def _startMetricsPolling(self):
+
+    def startMetricsPolling(self):
+        # Spawn loop on a separate thread querying token throughput metrics from llama-server
         def metricsLoop():
             while self.loadedModelType == LoadedModelType.LLAMACPP:
                 try:
@@ -207,6 +226,7 @@ class ServerManager:
         self.metricsThread.start()
 
     def startServer(self, provider: str, modelName: str, baseUrl: Optional[str] = None, apiKey: Optional[str] = None, providerRouter: Optional[str] = None, allowParallel: bool = True, preclearVram: bool = False):
+        # Start and verify designated LLM provider backend
         with self.serverLock:
             if self.loadedModelType != LoadedModelType.NONE:
                 self.stopServerInternal()
@@ -216,8 +236,9 @@ class ServerManager:
             self.costTracker.reset()
             providerClean = provider.strip().lower().replace("_", "").replace("-", "")
 
+            # Start the server based on providerClean
             match providerClean:
-                case "openaicompatible" | "openai":
+                case "openaicompatible":
                     try:
                         cleanBaseUrl = (baseUrl or "").strip()
                         if not cleanBaseUrl:
@@ -237,7 +258,7 @@ class ServerManager:
                         self.loadedModelType = LoadedModelType.OPENAI_COMPATIBLE
                         self.loadedModelName = cleanModel
 
-                        # Remember the OpenAI Compatible form fields
+                        # Remember OpenAI Compatible configuration fields
                         try:
                             setSectionValues("openaicompatible", {
                                 "baseUrl": cleanBaseUrl,
@@ -247,10 +268,8 @@ class ServerManager:
                         except Exception:
                             pass
 
-                        # Preload AutoTokeniser and initialise FinBERT sentiment engine for OpenAI Compatible
+                        # Preload FinBERT sentiment engine concurrently
                         self.startSentimentEnginePreload()
-                        # self.ensureSentimentEngineReady(timeout=35.0)
-
                         self.broadcastStatus()
                         return True, f"OpenAI Compatible server active and verified (Response: '{result}')."
 
@@ -277,7 +296,7 @@ class ServerManager:
                         self.loadedModelType = LoadedModelType.OPENROUTER
                         self.loadedModelName = modelName
 
-                        # Remember the last OpenRouter model and chosen provider router
+                        # Remember selected OpenRouter model and routing preferences
                         try:
                             routerValues = {"lastUsedModelId": modelName}
                             if providerRouter:
@@ -286,10 +305,8 @@ class ServerManager:
                         except Exception:
                             pass
 
-                        # Preload AutoTokeniser and initialise FinBERT sentiment engine for OpenRouter
+                        # Preload FinBERT sentiment engine concurrently
                         self.startSentimentEnginePreload()
-                        # self.ensureSentimentEngineReady(timeout=35.0)
-
                         self.broadcastStatus()
                         return True, f"OpenRouter server active and verified (Response: '{result}')."
 
@@ -310,12 +327,11 @@ class ServerManager:
                             freedVram = rudimentaryVramClear()
                             time.sleep(1)
                             self.recordLog(f"VRAM cleared. Freed {freedVram:.2f} GB of VRAM.")
-                        else:
-                            pass
 
-                        # Start loading FinBERT concurrently with Llama.cpp process startup
+                        # Start loading FinBERT concurrently with llama.cpp startup
                         self.startSentimentEnginePreload()
 
+                        # Initiate llama.cpp server process and wait for it to become ready
                         self.recordLog(f"Starting Llama.cpp boardroom server with model '{cleanModelName}'...")
                         serverProcess = LlamaCppProcessInitiator(
                             serverName="boardroom",
@@ -369,11 +385,8 @@ class ServerManager:
                         except Exception:
                             pass
 
-                        # Ensure FinBERT preloading has finished and is verified in VRAM
-                        # self.ensureSentimentEngineReady(timeout=35.0)
-
-                        # Start background metrics polling loop for Llama.cpp
-                        self._startMetricsPolling()
+                        # Start background metrics polling loop for llama.cpp
+                        self.startMetricsPolling()
 
                         self.broadcastStatus()
                         return True, "Llama.cpp boardroom server started and verified."
@@ -385,20 +398,24 @@ class ServerManager:
                         return False, errorMsg
 
                 case _:
+                    # Should not reach here but handle gracefully otherwise
                     self.broadcastStatus()
                     return False, f"Unsupported provider: {provider}"
 
     def broadcastStatus(self):
+        # Broadcast current server state to UI clients
         try:
             emitEvent("serverStatus", self.getStatus())
         except Exception as e:
             print(f"Error broadcasting server status: {e}")
 
     def stopServer(self):
+        # Thread-safe server shutdown wrapper
         with self.serverLock:
             return self.stopServerInternal()
 
     def stopServerInternal(self):
+        # Stop active subprocesses, release client handles, and unload models from VRAM
         match self.loadedModelType:
             case LoadedModelType.LLAMACPP:
                 if self.boardroomProcess:
@@ -422,7 +439,7 @@ class ServerManager:
         self.loadedModelName = ""
         self.costTracker.reset()
 
-        # Force unload sentiment engine when server is closed to free up VRAM
+        # Unload sentiment engine
         try:
             self.recordLog("Unloading FinBERT sentiment engine and clearing VRAM...")
             unloadSentimentEngine()
@@ -433,6 +450,7 @@ class ServerManager:
         return f"Server ({prevType}) stopped"
 
     def getStatus(self):
+        # Return state dictionary describing active model and provider
         return {
             "running": self.loadedModelType != LoadedModelType.NONE,
             "provider": self.loadedModelType.value,

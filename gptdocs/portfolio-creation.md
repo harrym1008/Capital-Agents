@@ -24,7 +24,7 @@ The Portfolio Creation page convenes the AI boardroom to construct a fresh equit
 ### Boardroom Deliberation Workflow
 1. Macro Regime Analysis: Macro Analyst evaluates the broader economic cycle, interest rate trajectory, and inflation trends.
 2. Sector Weighting: Determines sector overweights/underweights (or applies user presets).
-3. Stock Hunting: Growth Stock Hunter and Value/Defensive Stock Hunter scout candidate equities from the S&P 500 universe fitting the chosen sectors.
+3. Stock Hunting: Growth Stock Hunter and Defensive Stock Hunter scout candidate equities from the S&P 500 universe fitting the chosen sectors.
 4. Portfolio Synthesis: Impartial Portfolio Manager calculates final dollar allocations, share counts, and risk weightings.
 
 ### ChatGPT Guidance

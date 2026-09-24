@@ -7,17 +7,18 @@ import pandas as pd
 from flask import request, jsonify
 
 from collectors.constants import NEW_YORK
-from llm.llamacpp.llamacpp_args import LLAMACPP_PORT, loadConfig, saveConfig, validateGGUFPath, getLlamaCppModelsList, openNativeGgufFileDialog, openNativeExecutableFileDialog
+from llm.llamacpp.llamacpp_args import LLAMACPP_PORT, loadConfig, saveConfig, validateGGUFPath, getLlamaCppModelsList, openNativeGGUFFileDialog, openNativeExecutableFileDialog
 from llm.server_manager import serverManager
 from llm.server_config_store import loadServerConfig, saveServerConfig
 
 
-
+# In-memory cache for OpenRouter model directory
 openRouterModelsCache = None
 openRouterCacheTime = 0
 
 
 def registerApiRoutes(app):
+    # Register Flask REST API endpoints for LLM servers, simulation charts, and backtesting
     @app.route("/api/llamacpp-models")
     def getLlamaCppModels():
         models = getLlamaCppModelsList()
@@ -25,6 +26,7 @@ def registerApiRoutes(app):
 
     @app.route("/api/llamacpp/config", methods=["GET", "POST"])
     def apiLlamaCppConfig():
+        # Retrieve or persist llama.cpp executable configuration
         if request.method == "POST":
             data = request.get_json(silent=True) or {}
             if not isinstance(data, dict):
@@ -36,6 +38,7 @@ def registerApiRoutes(app):
 
     @app.route("/api/llamacpp/validate-gguf", methods=["POST"])
     def apiValidateGguf():
+        # Validate GGUF file path and extract architecture metadata
         data = request.get_json(silent=True) or {}
         filePath = data.get("filePath", "")
         valid, result = validateGGUFPath(filePath)
@@ -46,7 +49,8 @@ def registerApiRoutes(app):
 
     @app.route("/api/llamacpp/browse-gguf", methods=["POST"])
     def apiBrowseGguf():
-        selectedPath = openNativeGgufFileDialog()
+        # Open native OS file picker dialog for GGUF model selection
+        selectedPath = openNativeGGUFFileDialog()
         if not selectedPath:
             return jsonify({"ok": True, "cancelled": True})
         
@@ -66,6 +70,7 @@ def registerApiRoutes(app):
 
     @app.route("/api/llamacpp/browse-executable", methods=["POST"])
     def apiBrowseExecutable():
+        # Open native OS file picker dialog for llama-server binary
         selectedPath = openNativeExecutableFileDialog()
         if not selectedPath:
             return jsonify({"ok": True, "cancelled": True})
@@ -77,6 +82,7 @@ def registerApiRoutes(app):
 
     @app.route("/api/server-config", methods=["GET", "POST"])
     def getServerConfig():
+        # Load or update provider settings (OpenRouter, OpenAI compatible, llama.cpp)
         if request.method == "POST":
             data = request.get_json(silent=True) or {}
             provider = data.get("lastSelectedProvider", "").strip()
@@ -94,10 +100,9 @@ def registerApiRoutes(app):
         })
 
 
-
-
     @app.route("/api/openrouter-models")
     def getOpenRouterModels():
+        # Fetch and cache list of available OpenRouter models
         global openRouterModelsCache, openRouterCacheTime
         currentTime = time.time()
         if openRouterModelsCache is not None and (currentTime - openRouterCacheTime) < 3600:
@@ -119,6 +124,7 @@ def registerApiRoutes(app):
 
     @app.route("/api/openrouter-endpoints")
     def getOpenRouterEndpoints():
+        # Query provider routing endpoints for a specific OpenRouter model
         modelId = request.args.get("model", "").strip()
         if not modelId:
             return jsonify({"providers": [], "endpoints": []})
@@ -146,6 +152,7 @@ def registerApiRoutes(app):
     @app.route("/api/openrouter/start", methods=["POST"])
     @app.route("/api/openai/start", methods=["POST"])
     def apiStartServer():
+        # Start selected LLM backend server process or initialise remote API provider
         data = request.get_json(silent=True) or {}
         provider = data.get("provider")
         if not provider:
@@ -180,12 +187,14 @@ def registerApiRoutes(app):
     @app.route("/api/openrouter/stop", methods=["POST"])
     @app.route("/api/openai/stop", methods=["POST"])
     def apiStopServer():
+        # Terminate active LLM backend process
         message = serverManager.stopServer()
         return jsonify({"ok": True, "message": message})
 
     @app.route("/api/llamacpp/logs")
     @app.route("/api/server/logs")
     def apiLlamaCppLogs():
+        # Fetch runtime log buffer for active server process
         currentLogs = serverManager.getLogs()
         serverRunning = serverManager.llamacppRunning
         modelName = serverManager.loadedModelName
@@ -198,6 +207,7 @@ def registerApiRoutes(app):
 
     @app.route("/api/ohlcv")
     def getOhlcvChart():
+        # Generate chart candlestick and target overlay data for ticker
         ticker = request.args.get("ticker", "NVDA").strip()
         simDateStr = request.args.get("simDate")
         horizon = request.args.get("horizon", "long").strip().lower()
@@ -230,6 +240,7 @@ def registerApiRoutes(app):
 
     @app.route("/api/portfolio/validate-ticker", methods=["GET", "POST"])
     def apiValidateTicker():
+        # Validate ticker listing status and resolve GICS sector
         if request.method == "POST":
             data = request.get_json(silent=True) or {}
             ticker = data.get("ticker", "").strip().upper()
@@ -289,6 +300,7 @@ def registerApiRoutes(app):
 
     @app.route("/api/portfolio/backtest", methods=["POST"])
     def getPortfolioBacktest():
+        # Execute portfolio performance backtest over designated historical period
         data = request.get_json(silent=True) or {}
         simDate = data.get("simDate") or data.get("simulatedDate")
         if not simDate:
@@ -316,6 +328,7 @@ def registerApiRoutes(app):
 
     @app.route("/api/boardroom/sources")
     def apiBoardroomSources():
+        # Return cited research sources from active boardroom evaluation
         try:
             from boardroom.boardroom_mgr import boardroomManager
             toolReg = boardroomManager.getToolRegistry()
@@ -328,6 +341,7 @@ def registerApiRoutes(app):
     @app.route("/api/constants", methods=["GET"])
     @app.route("/api/collectors/constants", methods=["GET"])
     def apiGetCollectorsConstants():
+        # Expose global market simulation constants to frontend UI
         try:
             from collectors.constants import START_DATE_STR, END_DATE_STR, FIRST_TRAD_DAY_AFTER_START_STR
             return jsonify({
@@ -341,12 +355,15 @@ def registerApiRoutes(app):
 
 
 
+# Registry for WebSocket action dispatchers
 wsActionHandlers = {}
 
 def registerWsAction(actionName, handlerFunc):
+    # Register callback for specific WebSocket action key
     wsActionHandlers[actionName] = handlerFunc
 
 def handleGetServerStatus(data, websocket, eventLoop):
+    # Return server runtime status payload
     return {
         "type": "serverStatus",
         **serverManager.getStatus()
@@ -355,6 +372,7 @@ def handleGetServerStatus(data, websocket, eventLoop):
 registerWsAction("get_server_status", handleGetServerStatus)
 
 def sendWsResponse(websocket, payload, eventLoop=None):
+    # Send JSON payload across WebSocket connection
     if websocket:
         try:
             msg = json.dumps(payload)
@@ -365,6 +383,7 @@ def sendWsResponse(websocket, payload, eventLoop=None):
             print(f"Error sending WS response: {e}")
 
 async def handleWsMessage(websocket, messageStr, eventLoop=None):
+    # Deserialise incoming message and route to registered action handler
     try:
         data = json.loads(messageStr)
     except Exception as e:
@@ -401,4 +420,3 @@ async def handleWsMessage(websocket, messageStr, eventLoop=None):
         import traceback
         traceback.print_exc()
         await websocket.send(json.dumps({"requestId": requestId, "action": action, "ok": False, "error": str(e)}))
-

@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Any
 from llmtools.functions.stock_search import DB_SECTOR_TO_TICKER
 
 
+# Default argument template keys for prompt injection
 MERGED_ARG_KEYS = [
     "initialCapital",
     "sectorDiversityRule",
@@ -26,18 +27,19 @@ MERGED_ARG_KEYS = [
 ]
 
 
-def buildMergedArgs(promptArgs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def buildMergedArgs(promptArgs: Dict[str, Any] = {}) -> Dict[str, Any]:
+    # Populate dictionary of prompt formatting parameters with fallback defaults
     undefinedMsg = "*not defined by user*"
     merged = {key: undefinedMsg for key in MERGED_ARG_KEYS}
-    if promptArgs:
-        merged.update(promptArgs)
+    merged.update(promptArgs)
     return merged
 
 
 def buildSharedBaseSysPrompt(dateStr: str, toolsStr: str, agentRole: str, agentSpecificPrompt: str) -> str:
+    # Construct  shared base system prompt for all non-summary financial agents
     return (
         f"You are a financial AI agent in a professional boardroom evaluating equity investment opportunities.\n"
-        f"Your name of your role is {agentRole}. This is who YOU are.\n\n"
+        f"Your role is *{agentRole}*. This is who YOU are, it is also your name.\n\n"
 
         f"SIMULATED DATE: {dateStr}.\n"
         f"AGENT-SPECIFIC TOOLS: {toolsStr}.\n\n"
@@ -83,6 +85,7 @@ def buildSharedBaseSysPrompt(dateStr: str, toolsStr: str, agentRole: str, agentS
     )
 
 
+# Mapping of display role names to internal prompt dictionary keys
 roleKeyMap = {
     "Macro Analyst": "macroAnalyst",
     "Bullish Value Analyst": "bullishAnalyst",
@@ -91,8 +94,7 @@ roleKeyMap = {
     "Conservative Risk Analyst": "conservativeRiskAnalyst",
     "Impartial Portfolio Manager": "portfolioManager",
     "Growth Stock Hunter": "growthStockHunter",
-    "Value/Defensive Stock Hunter": "valueStockHunter",
-    "Value Stock Hunter": "valueStockHunter",
+    "Defensive Stock Hunter": "defensiveStockHunter",
     "One-Shot Analyst": "oneShotAnalyst",
     "Boardroom Spokesperson": "boardroomSpokesperson",
 }
@@ -106,6 +108,7 @@ def buildAgentSpecificSysPrompt(
     subrole: Optional[str] = None, 
     promptArgs: Optional[Dict[str, Any]] = None
 ) -> str:
+    # Build complete system prompt combining base guidelines and role-specific mandate
     mergedArgs = buildMergedArgs(promptArgs)
 
     roleKey = roleKeyMap.get(agentRole, agentRole)
@@ -128,6 +131,7 @@ def buildAgentSpecificSysPrompt(
     return buildSharedBaseSysPrompt(dateStr, agentToolsStr, agentRole, agentSpecificPrompt)
 
 
+# Descriptions of analyst roles for single-equity-rating pipeline's QnA spokesperson delegation
 QNA_SPECIALIST_ROLE_DESCRIPTIONS = {
     "One-Shot Analyst": "comprehensive macroeconomic, single-stock research, financial valuation, risk assessment, and rating analysis",
     "Macro Analyst": "macroeconomic climate, interest rates, inflation, market regime",
@@ -146,8 +150,7 @@ def buildSpokespersonSysPrompt(
     promptArgs: Optional[Dict[str, Any]] = None,
     activeRoles: Optional[List[str]] = None
 ) -> str:
-    mergedArgs = buildMergedArgs(promptArgs)
-
+    # Build system prompt for front-line Q&A coordinator delegating questions to boardroom specialists
     if not activeRoles:
         activeRoles = [
             "Macro Analyst",
@@ -192,6 +195,7 @@ def buildSpecialistQnASysPrompt(
     toolsStr: str, 
     promptArgs: Optional[Dict[str, Any]] = None
 ) -> str:
+    # Build system prompt instructing specialist analyst to answer transferred user questions
     mergedArgs = buildMergedArgs(promptArgs)
 
     specialistPrompt = (
@@ -206,6 +210,7 @@ def buildSpecialistQnASysPrompt(
     return buildSharedBaseSysPrompt(dateStr, toolsStr, agentRole, specialistPrompt)
 
 
+# Mode-specific agent prompt templates
 AGENT_SPECIFIC_SYS_PROMPTS = {
     "SingleEquityRating": {
         "boardroomSpokesperson": (
@@ -625,8 +630,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"- High-Conviction Thesis & Catalysts for each candidate\n"
             f"- Final Line: **Growth Hunter Selected Tickers: [Comma-separated list of tickers]**\n"
         ),
-        "valueStockHunter": (
-            f"You are the Value/Defensive Stock Hunter identifying high-conviction value, dividend, capital-preserving, "
+        "defensiveStockHunter": (
+            f"You are the Defensive Stock Hunter identifying high-conviction value, dividend, capital-preserving, "
             f"and low-volatility equities to populate the confirmed portfolio sectors for {{initialCapital}}.\n\n"
             f"Portfolio Constraints & Strategic Directives (MANDATORY):\n"
             f"- Strategic Allocation Bias: {{allocationBiasGuidance}}\n"
@@ -884,8 +889,8 @@ AGENT_SPECIFIC_SYS_PROMPTS = {
             f"- Catalysts & Growth Thesis for each candidate\n"
             f"- Final Line: **Growth Hunter Selected Tickers: [Comma-separated list of tickers]**\n"
         ),
-        "valueStockHunter": (
-            f"You are the Value/Defensive Stock Hunter identifying high-conviction value, dividend, "
+        "defensiveStockHunter": (
+            f"You are the Defensive Stock Hunter identifying high-conviction value, dividend, "
             f"capital-preserving, and low-volatility equities to upgrade the {{initialCapital}} portfolio.\n\n"
             f"Portfolio Constraints & Strategic Directives (MANDATORY):\n"
             f"- Strategic Allocation Bias: {{allocationBiasGuidance}}\n"
@@ -988,6 +993,7 @@ def buildSummariseSysPrompt(
     agentSubrole: Optional[str] = None, 
     promptArgs: Optional[Dict[str, Any]] = None
 ) -> str:
+    # Build prompt instructing copyeditor to reformat raw agent analysis into condensed UI summary
     mergedArgs = buildMergedArgs(promptArgs)
     roleKey = roleKeyMap.get(agentRole, agentRole)
 
@@ -1013,7 +1019,7 @@ def buildSummariseSysPrompt(
             agentSpecificPrompt = (
                 f"Highlight your shortlisted growth stocks with their primary catalysts and sector alignment."
             )
-        elif roleKey == "valueStockHunter":
+        elif roleKey == "defensiveStockHunter":
             agentSpecificPrompt = (
                 f"Highlight your shortlisted value/defensive stocks with their margin of safety and sector alignment."
             )

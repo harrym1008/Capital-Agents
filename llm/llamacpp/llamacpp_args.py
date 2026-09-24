@@ -10,6 +10,7 @@ from llm.server_config_store import loadServerConfig, saveServerConfig
 LLAMACPP_PORT = 9081
 LLAMACPP_EXECUTABLE = "llama-server.exe"
 
+# Reserved system flags managed internally by process initiator
 DISALLOWED_USER_KEYS = {
     "--host", "-h",
     "--port", "-p",
@@ -30,12 +31,14 @@ SAMPLING_FLAGS = {
 
 
 def isDisallowedKey(keyStr: str) -> bool:
+    # Check if CLI argument key conflicts with locked internal options
     if not keyStr:
         return False
     return keyStr.strip().lower() in DISALLOWED_USER_KEYS
 
 
 def cleanUserArgs(rawArgs: Any) -> List[Dict[str, Any]]:
+    # Normalise user CLI flags dictionary or list into clean structured list
     cleaned = []
     if isinstance(rawArgs, list):
         for item in rawArgs:
@@ -56,6 +59,7 @@ def cleanUserArgs(rawArgs: Any) -> List[Dict[str, Any]]:
 
 
 def getDefaultConfig() -> Dict[str, Any]:
+    # Return default llama.cpp configuration dictionary
     return {
         "executablePath": LLAMACPP_EXECUTABLE,
         "lastUsedModelId": "",
@@ -65,6 +69,7 @@ def getDefaultConfig() -> Dict[str, Any]:
 
 
 def loadConfig() -> Dict[str, Any]:
+    # Load and clean llama.cpp configuration from store
     cfg = loadServerConfig().get("llamacpp", {})
     if not isinstance(cfg, dict):
         cfg = getDefaultConfig()
@@ -78,6 +83,7 @@ def loadConfig() -> Dict[str, Any]:
 
 
 def saveConfig(configData: Dict[str, Any]) -> bool:
+    # Save cleaned llama.cpp configuration to disk
     try:
         cleanedData = {
             "executablePath": configData.get("executablePath", LLAMACPP_EXECUTABLE).strip() or LLAMACPP_EXECUTABLE,
@@ -103,10 +109,7 @@ def saveConfig(configData: Dict[str, Any]) -> bool:
 
 
 def findModelConfig(modelIdentifier: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-    """
-    Finds a model config from server_config.json by ID, alias, filename, or fallback.
-    Returns (modelConfig, None) if found, or (None, errorMessage) if not found.
-    """
+    # Locate model config by ID, alias, or filename from server configuration
     if not modelIdentifier:
         return None, "No model identifier provided."
     
@@ -127,7 +130,7 @@ def findModelConfig(modelIdentifier: str) -> Tuple[Optional[Dict[str, Any]], Opt
         if model.get("alias", "").strip().lower() == cleanIdent.lower():
             return model, None
             
-    # 3. Match by filename (with or without .gguf)
+    # 3. Match by filename (with or without .gguf extension)
     for model in models:
         modelPath = model.get("modelPath", "")
         fileName = os.path.basename(modelPath)
@@ -135,7 +138,7 @@ def findModelConfig(modelIdentifier: str) -> Tuple[Optional[Dict[str, Any]], Opt
         if fileName.lower() == cleanIdent.lower() or fileNameWithoutExt.lower() == cleanIdent.lower():
             return model, None
 
-    # 4. Fallback: If only 1 model configured, use it
+    # 4. Fallback: single model configured
     if len(models) == 1:
         return models[0], None
         
@@ -147,6 +150,7 @@ def buildLlamaCppCommandLine(
     allowParallel: bool = True, 
     argOverrides: Optional[Dict[str, Any]] = None
 ) -> Tuple[str, List[str], Dict[str, Any]]:
+    # Assemble complete command-line argument list for launching llama-server process
     modelConfig, error = findModelConfig(modelIdentifier)
     if error:
         raise ValueError(error)
@@ -211,7 +215,7 @@ def buildLlamaCppCommandLine(
         if val != "":
             commandArgs.append(val)
             
-    # 5. Apply any programmatic argOverrides
+    # 5. Apply programmatic argument overrides
     if argOverrides and isinstance(argOverrides, dict):
         for overrideKey, overrideVal in argOverrides.items():
             keyClean = str(overrideKey).strip()
@@ -222,7 +226,7 @@ def buildLlamaCppCommandLine(
             if valStr != "":
                 commandArgs.append(valStr)
                 
-    # 6. If allowParallel is False, ensure single parallel slot
+    # 6. Ensure single execution slot if parallel slots disabled
     if not allowParallel:
         hasParallelArg = any(arg in ("-np", "--parallel") for arg in commandArgs)
         if not hasParallelArg:
@@ -232,32 +236,27 @@ def buildLlamaCppCommandLine(
 
 
 def validateGGUFPath(filePath: str) -> Tuple[bool, Any]:
+    # Validate GGUF file existence
     if not filePath:
         return False, "File path is required."
     cleanPath = filePath.strip().strip('"').strip("'")
     if not os.path.exists(cleanPath):
         return False, f"File not found: {cleanPath}"
-    if not os.path.isfile(cleanPath):
-        return False, f"Path is not a regular file: {cleanPath}"
     if not cleanPath.lower().endswith(".gguf"):
         return False, "File does not have a .gguf extension."
-    try:
-        with open(cleanPath, "rb") as fileHandle:
-            header = fileHandle.read(4)
-            if header != b"GGUF":
-                return False, f"Invalid GGUF header magic. Expected 'GGUF', got '{header}'."
-    except Exception as err:
-        return False, f"Error reading file header: {str(err)}"
-    
+
+    # Looks good at this point, return file info    
     fileSize = os.path.getsize(cleanPath)
     fileName = os.path.basename(cleanPath)
     return True, {"fileName": fileName, "filePath": cleanPath, "fileSizeBytes": fileSize}
 
 
 def getLlamaCppModelsList() -> List[Dict[str, Any]]:
+    # Return list of preconfigured GGUF models with aliases and other stuff
     cfg = loadConfig()
     lastUsedId = cfg.get("lastUsedModelId", "").strip()
     modelsList = []
+
     for modelItem in cfg.get("models", []):
         alias = modelItem.get("alias", "").strip()
         modelPath = modelItem.get("modelPath", "").strip()
@@ -273,10 +272,10 @@ def getLlamaCppModelsList() -> List[Dict[str, Any]]:
             "executablePath": modelItem.get("executablePath", "")
         })
 
-    # Sort models alphabetically by display name / alias (case-insensitive)
+    # Sort models alphabetically by display name (case-insensitive)
     modelsList.sort(key=lambda m: (m["displayName"] or m["alias"] or m["fileName"]).lower())
 
-    # Hoist last used model to index 0 if specified
+    # Elevate last used model to first position
     if lastUsedId:
         matchingIdx = next(
             (i for i, m in enumerate(modelsList) if m["id"] == lastUsedId or m["alias"].lower() == lastUsedId.lower()), 
@@ -289,7 +288,8 @@ def getLlamaCppModelsList() -> List[Dict[str, Any]]:
     return modelsList
 
 
-def openNativeGgufFileDialog() -> str:
+def openNativeGGUFFileDialog() -> str:
+    # Flask cannot do this so instead Python opens a native OS file chooser dialog for GGUF model files
     try:
         import tkinter as tk
         from tkinter import filedialog
@@ -308,6 +308,7 @@ def openNativeGgufFileDialog() -> str:
 
 
 def openNativeExecutableFileDialog() -> str:
+    # Open OS file chooser dialog for llama-server executable (same reason, Flask cannot do this)
     try:
         import tkinter as tk
         from tkinter import filedialog

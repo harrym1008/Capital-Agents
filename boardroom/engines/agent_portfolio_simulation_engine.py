@@ -413,7 +413,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         )
 
         self.valueHunter = FinancialAgent(
-            agentRole="Value/Defensive Stock Hunter",
+            agentRole="Defensive Stock Hunter",
             tools=[
                 toolMap["fetchStocksInSector"],
                 toolMap["fetchBatchStockOverviews"],
@@ -774,7 +774,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         )
         valuePrompt = (
             f"Confirmed Portfolio Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
-            f"Task: As the Value/Defensive Stock Hunter, scout high-conviction defensive and dividend equities within confirmed sectors.\n"
+            f"Task: As the Defensive Stock Hunter, scout high-conviction defensive and dividend equities within confirmed sectors.\n"
             f"Require proven solvency and margin of safety through the cycle, tolerating modest underperformance where the balance sheet endures.\n"
             f"Constraints: Target stock count: {promptArgs['targetStockCount']}. Max stock allocation: {promptArgs['maxStockAllocation']}.\n"
             f"1. Use 'fetchStocksInSector' (style='defensive') for confirmed sectors.\n"
@@ -950,7 +950,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         valuePrompt = (
             f"Target Rebalanced Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
             f"CURRENT HOLDINGS:\n{currentHoldingsStr}\n\n"
-            f"Task: As the Value/Defensive Stock Hunter, evaluate defensive holdings and scout margin-of-safety replacements.\n"
+            f"Task: As the Defensive Stock Hunter, evaluate defensive holdings and scout margin-of-safety replacements.\n"
             f"Think as a defensive steward: retain sound incumbents through soft patches unless overview metrics show the cushion is gone.\n"
             f"PORTFOLIO CONTINUITY MANDATE: Your shortlisted candidate tickers fed into 'fetchBatchStockOverviews' MUST include ALL "
             f"of the companies that exist right now inside CURRENT HOLDINGS above. Extract every ticker dynamically from that list at run time.\n"

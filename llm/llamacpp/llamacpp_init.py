@@ -11,7 +11,6 @@ import shutil
 import psutil
 import time
 
-
 from typing import Optional, Any
 from llm.llamacpp.llamacpp_args import LLAMACPP_EXECUTABLE, LLAMACPP_PORT, buildLlamaCppCommandLine
 from ui.ui_hooks import emitEvent
@@ -25,7 +24,8 @@ class ServerState(Enum):
 
 
 def killRemainingLlamaCppProcesses(executablePath=LLAMACPP_EXECUTABLE):
-    for connection in psutil.net_connections(kind='inet'):      # Find llamacpp processes listening to the ports used by the server
+    # Locate and terminate orphaned llama-server processes bound to default port
+    for connection in psutil.net_connections(kind='inet'):
         if connection.status == psutil.CONN_LISTEN and connection.laddr.port == LLAMACPP_PORT and connection.pid is not None:
             try:
                 process = psutil.Process(connection.pid)
@@ -33,12 +33,12 @@ def killRemainingLlamaCppProcesses(executablePath=LLAMACPP_EXECUTABLE):
                     print(f"Killing remaining PID {process.pid}")
                     process.kill()
                     process.wait(timeout=5)
-                    
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
 
 def rudimentaryVramClear() -> float:
+    # Aggressively clear GPU memory allocations across NVIDIA devices
     freedVram = 0.0
     nvmlInitialised = False
 
@@ -111,7 +111,7 @@ def rudimentaryVramClear() -> float:
 
         gpuActive = [True] * deviceCount
 
-        # Phase 1: Dedicated VRAM Saturation across all GPUs
+        # Phase 1: Dedicated VRAM saturation across active GPUs
         while any(gpuActive) and totalAllocatedGb < totalVram:
             allocatedInLoop = False
             for i in range(deviceCount):
@@ -133,7 +133,7 @@ def rudimentaryVramClear() -> float:
                 break
             time.sleep(0.01)
 
-        # Phase 2: Host System RAM Spillover
+        # Phase 2: Host system RAM spillover allocation
         while totalAllocatedGb < targetAlloc:
             try:
                 cpuTensor = torch.empty(chunkElements, dtype=torch.float32, device="cpu")
@@ -146,7 +146,7 @@ def rudimentaryVramClear() -> float:
         print(f"[VRAM Clear] Allocation complete ({totalAllocatedGb:.2f} GB allocated). Releasing memory buffers...")
         time.sleep(1.5)
 
-        # Phase 3: Cleanup and Synchronised Cache Flushing
+        # Phase 3: Cleanup and synchronised cache flushing
         allocatedTensors.clear()
         del allocatedTensors
         gc.collect()
@@ -163,7 +163,7 @@ def rudimentaryVramClear() -> float:
         gc.collect()
         time.sleep(1.5)
 
-        # Phase 4: Per-GPU Measurement & Verification
+        # Phase 4: Per-GPU measurement and verification
         perGpuFreed = []
         for i in range(deviceCount):
             memInfo = nvmlDeviceGetMemoryInfo(gpuHandles[i])
@@ -190,10 +190,12 @@ def rudimentaryVramClear() -> float:
 
 
 def checkExecutableExists(executablePath=LLAMACPP_EXECUTABLE):
+    # Check if binary file exists locally or on system PATH
     path = Path(executablePath)
     return path.is_file() or shutil.which(executablePath) is not None
 
 
+# Manager overseeing lifecycle of llama-server subprocess and log streams
 class LlamaCppProcessInitiator:
     def __init__(self, 
                 serverName: str, 
@@ -234,22 +236,26 @@ class LlamaCppProcessInitiator:
         self.printLogsToTerminal = printLogsToTerminal
 
     def getCommandLine(self):
+        # Return assembled command arguments list
         return self.command
 
     def setState(self, newState):
+        # Update internal server lifecycle state
         with self.stateLock:
             self.state = newState
 
     def getState(self):
+        # Return current server lifecycle state
         with self.stateLock:
             return self.state
 
     def printToTerminal(self, *args, **kwargs):
+        # Output log messages to terminal if enabled
         if self.printLogsToTerminal:
             print(*args, **kwargs)
-
     
     def readStream(self, stream, tag):
+        # Consume subprocess stdout/stderr stream and emit to UI log listener
         try:
             for line in iter(stream.readline, ''):
                 cleanLine = line.rstrip()
@@ -265,24 +271,25 @@ class LlamaCppProcessInitiator:
             stream.close()
 
     def isProcessAlive(self):
+        # Check if underlying subprocess is currently executing
         return self.process is not None and self.process.poll() is None
 
     def isReady(self):
+        # Query HTTP health endpoint to verify server readiness
         try:
             with urllib.request.urlopen(self.healthUrl, timeout=1) as response:
                 return response.status == 200
         except (urllib.error.URLError, urllib.error.HTTPError):
             return False
-        
-
-
 
     def startOnAnotherThread(self, readyTimeout=90):
+        # Launch startup routine on background thread
         thread = threading.Thread(target=self.start, args=(readyTimeout,), daemon=True)
         thread.start()
         return thread
 
     def start(self, readyTimeout=120):
+        # Spawn subprocess and wait until health check succeeds
         with self.stateLock:
             if self.state in (ServerState.STARTING, ServerState.RUNNING):
                 return
@@ -324,8 +331,8 @@ class LlamaCppProcessInitiator:
         self.stop()
         raise TimeoutError(f"[{self.serverName}] Llama.cpp process did not become ready within {readyTimeout} seconds")
 
-
     def stop(self, gracefulTimeout=10):
+        # Gracefully stop or force-kill running subprocess
         with self.stateLock:
             if self.state in (ServerState.STOPPED, ServerState.STOPPING):
                 return            
@@ -347,5 +354,3 @@ class LlamaCppProcessInitiator:
 
         self.process = None
         self.setState(ServerState.STOPPED)
-
-        

@@ -7,6 +7,7 @@ from llm.llm_client import BaseLLMClient
 from collectors.rate_limiter import RateLimiter
 
 
+# Client wrapper for OpenRouter API with rate-limiting and thinking budget controls
 class OpenRouterClient(BaseLLMClient):
     def __init__(self, apiKey: str, model: str, providerRouter: Optional[str] = None, costTracker: Optional[Any] = None):
         self.apiKey = apiKey
@@ -18,6 +19,7 @@ class OpenRouterClient(BaseLLMClient):
             self.rateLimiter = RateLimiter("openrouter", 10, 1)     # No limit for paid tier (10 a second is safe)
 
     def _createOpenaiClient(self) -> OpenAI:
+        # Initialise OpenAI client configured for OpenRouter base endpoint
         return OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=self.apiKey,
@@ -27,9 +29,11 @@ class OpenRouterClient(BaseLLMClient):
         )
     
     def _getStreamOptions(self):
-        return {"include_usage": True}      # Ask OpenRouter to include usage stats
+        return {"include_usage": True}   # Explicitly request usage stats
+
 
     def _getExtraBody(self, thinkingBudget: Optional[int] = None):
+        # Format reasoning tokens configuration and upstream provider routing preferences
         extraBody = {}
         if thinkingBudget is not None:
             if thinkingBudget <= 0:
@@ -57,6 +61,7 @@ class OpenRouterClient(BaseLLMClient):
                     "thinking_budget": thinkingBudget
                 }
 
+        # Apply specific provider routing constraint
         if self.providerRouter and self.providerRouter.strip() and self.providerRouter.strip().lower() != "auto":
             extraBody["provider"] = {
                 "order": [self.providerRouter.strip()],
@@ -67,6 +72,7 @@ class OpenRouterClient(BaseLLMClient):
     
 
     def _applyRateLimit(self):
+        # Block thread if current call volume exceeds rate limit bucket
         if self.rateLimiter is not None:
             waitTime = self.rateLimiter.getWaitTime()
             if waitTime > 0.05:

@@ -41,6 +41,7 @@ class LLMClientFailureException(Exception):
     pass
 
 
+# Base class managing OpenAI-compatible client connections, streaming token events, and parallel tool executions
 class BaseLLMClient(ABC):
     def __init__(self, defaultModel: str, allowParallel: bool = False, costTracker: Optional[TokenCostTracker] = None):
         self.defaultModel = defaultModel
@@ -71,6 +72,7 @@ class BaseLLMClient(ABC):
             self.activeStreams.discard(responseStream)
 
     def closeActiveStreams(self):
+        # Abruptly close active streams when user cancellation is requested
         with self.streamLock:
             streamsToClose = list(self.activeStreams)
             self.activeStreams.clear()
@@ -95,6 +97,7 @@ class BaseLLMClient(ABC):
         pass
 
     def _createResponseStream(self, **kwargs):
+        # Initialise streaming completion and handle retrying and rate limiting
         if isStopRequested():
             raise SimulationStoppedException("Simulation stopped by user.")
         
@@ -119,7 +122,7 @@ class BaseLLMClient(ABC):
                 httpError = True
                 if errorCode is None:
                     httpError = False
-                    errorCode = type(reqErr).__name__       # For timeouts and other non HTTP errors
+                    errorCode = type(reqErr).__name__
 
                 if retryAttempts > maxAttempts:
                     print(f"Giving up after {retryAttempts - 1} retries due to rate limiting or repeated request errors.")
@@ -163,6 +166,7 @@ class BaseLLMClient(ABC):
                     time.sleep(waitTime)
 
     def newTask(self):
+        # Reset token counter (for openrouter)
         return self.costTracker.newTask()
 
     def _safePrint(self, *args, **kwargs):
@@ -176,7 +180,7 @@ class BaseLLMClient(ABC):
     def handleResponseStream(self, 
             responseStream, 
             responsePrint: ResponsePrintMode = ResponsePrintMode.FULL):
-        
+        # Parse a response stream from the LLM client with reasoning/content/tool call tokens
         fullContent = ""
         fullReasoning = ""
         toolCallsList = []
@@ -192,7 +196,7 @@ class BaseLLMClient(ABC):
                 if isStopRequested():
                     raise SimulationStoppedException("Simulation stopped by user.")
 
-                # Final stream chunks carries usage statistics
+                # Final stream chunk delivers token usage (also for tracking cost through openrouter)
                 usage = getattr(chunk, "usage", None)
                 if usage is not None:
                     lastUsage = usage
@@ -203,9 +207,9 @@ class BaseLLMClient(ABC):
 
                 # 1. Capture reasoning content tokens
                 reasoningChunk = getattr(delta, "reasoning", None) or getattr(delta, "reasoning_content", None) 
-                if reasoningChunk:                              # ^^^^  Support both llamacpp and OpenRouter naming conventions
+                if reasoningChunk:
                     if isinstance(reasoningChunk, dict):
-                        reasoningChunk = reasoningChunk.get("text", "")     # OpenRouter might return reasoning as a dict with a "text" key
+                        reasoningChunk = reasoningChunk.get("text", "")
 
                     fullReasoning += reasoningChunk
 
@@ -223,7 +227,7 @@ class BaseLLMClient(ABC):
                             isThinking = True
                         self._safePrint(f"{Style.DIM}{reasoningChunk}", end="", flush=True)
                     elif responsePrint == ResponsePrintMode.ONE_TOKEN_ONLY:
-                        self._safePrint(f"{re.sub(r'[\x00-\x1F\x7F]', '', reasoningChunk)}                 ", end="\r", flush=True)
+                        self._safePrint(f"{re.sub(r'[\x00-\x1F\x7F]', '', reasoningChunk)}{' '*10}", end="\r", flush=True)
 
                 # 2. Capture regular response text tokens
                 contentChunk = getattr(delta, "content", None)
@@ -288,7 +292,7 @@ class BaseLLMClient(ABC):
                                 })
 
         except SimulationStoppedException:
-            # Tell the OpenAI-compatible API to stop generating tokens by closing the response stream
+            # Terminate streaming on OpenAI client if cancellation is flagged
             if hasattr(responseStream, "close"):
                 try:
                     responseStream.close()
@@ -312,8 +316,7 @@ class BaseLLMClient(ABC):
                 except Exception:
                     pass
 
-            # Close active streaming states at the end of the response stream
-            # Wrap in try/except so cleanup events don't crash during a stop
+            # Close active streaming states
             try:
                 if currentState == "reasoning":
                     emitEvent("reasoningEnd")
@@ -345,6 +348,7 @@ class BaseLLMClient(ABC):
         toolIndex=0,
         permittedTools: Optional[List[Tool]] = None
     ):
+        # Execute single tool action with parameter parsing and logging
         if agentRole:
             setCurrentAgent(agentRole, agentColor)
             setCurrentStage(stageNum)
@@ -390,6 +394,7 @@ class BaseLLMClient(ABC):
                     else:
                         self._safePrint(f" {Style.BRIGHT}{Fore.GREEN}... done.  {Style.RESET_ALL}", flush=True)
 
+                # If the tool is the Python one, print its stdout and variables in terminal neatly
                 if toolCalled.name == "executePythonCalculation":
                     with self.toolCallLock:
                         output = toolCalled.toolLog.pop()
@@ -410,7 +415,6 @@ class BaseLLMClient(ABC):
                                 self._safePrint(f"{Style.DIM}{k}: {Style.RESET_ALL}{v}")
                             self._safePrint()
 
-            
             except SimulationStoppedException:
                 emitEvent("toolCallEnd", {
                     "toolName": funcName,
@@ -463,6 +467,7 @@ class BaseLLMClient(ABC):
             maxIterations: int = 10,
             temperature: float = 0.5
         ):
+        # Manage iterative dialogue loop executing parallel tool calls until final response
         if permittedTools is not None:
             toolSchemas = [tool.getToolSchema() for tool in permittedTools]
         else:
@@ -473,7 +478,6 @@ class BaseLLMClient(ABC):
 
         originalMessageHistory = [msg.copy() for msg in messageHistory]
 
-
         while True:
             messageHistory = [msg.copy() for msg in originalMessageHistory]
             accumulatedContent = ""
@@ -483,9 +487,9 @@ class BaseLLMClient(ABC):
 
                 if currentIteration == 1 and requireInitialTools and toolSchemas:
                     toolChoiceSetting = "required"
-                    # Thinking mode on certain providers (e.g. OpenRouter / Alibaba / Qwen) does not support tool_choice="required"
-                    if thinkingBudget is not None and thinkingBudget > 0:
-                        toolChoiceSetting = "auto"
+                    # Thinking models on certain cloud providers do not permit tool_choice="required"
+                    # if thinkingBudget is not None and thinkingBudget > 0:
+                    #     toolChoiceSetting = "auto"
                 else:
                     toolChoiceSetting = "auto" if toolSchemas else None
 
@@ -516,7 +520,7 @@ class BaseLLMClient(ABC):
                     responseStreamErrorCount += 1
 
                     if responseStreamErrorCount > 3:
-                        raise finalResponseStream
+                        raise responseStream
                     
                     emitEvent("agentErrorMsg", {
                         "waitTime": 0,
@@ -558,7 +562,7 @@ class BaseLLMClient(ABC):
                 agentColor = parentAgent.get("color")
                 currentStageNum = getCurrentStage()
 
-
+                # Execute emitted tool calls concurrently via thread pool
                 resultsByIndex = [None] * len(toolCallsList)
                 with ThreadPoolExecutor(max_workers=len(toolCallsList)) as executor:
                     futureToIndex =  {executor.submit(
@@ -570,7 +574,6 @@ class BaseLLMClient(ABC):
                         try:
                             toolCallId, stringResult, status = future.result()
                         except SimulationStoppedException:
-                            # Cancel remaining futures and propagate the stop
                             for f in futureToIndex:
                                 f.cancel()
                             raise
@@ -586,7 +589,7 @@ class BaseLLMClient(ABC):
                             "content": stringResult
                         })
 
-                    # Check for 'confirm*' or 'transferToAgent' tool call and handle early completion
+                    # Check for confirmation/delegation tool calls, immediately stop upon a successful result
                     for toolCall in toolCallsList:
                         toolName = toolCall["function"]["name"]
                         if toolName.startswith("confirm") or toolName in ["transferToAgent", "decideBalanceNecessity"]:
@@ -628,7 +631,6 @@ class BaseLLMClient(ABC):
             if finalExtraBody is not None:
                 finalResponseKwargs["extra_body"] = finalExtraBody
 
-                
             finalResponseStream = self._createResponseStream(**finalResponseKwargs)
             if isinstance(finalResponseStream, LLMClientFailureException):
                 responseStreamErrorCount += 1

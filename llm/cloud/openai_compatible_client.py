@@ -4,6 +4,7 @@ from openai import OpenAI
 from llm.llm_client import BaseLLMClient
 
 
+# Generic OpenAI-compatible HTTP client connecting to self-hosted or third-party endpoints
 class OpenAICompatibleClient(BaseLLMClient):
     def __init__(self, baseUrl: str, apiKey: Optional[str] = None, model: str = "default", costTracker: Optional[Any] = None):
         self.baseUrl = baseUrl.rstrip("/") if baseUrl else ""
@@ -17,4 +18,5 @@ class OpenAICompatibleClient(BaseLLMClient):
         )
 
     def _applyRateLimit(self):
+        # To be added later
         pass

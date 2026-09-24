@@ -5,15 +5,18 @@ from llm.llm_client import BaseLLMClient
 from llm.llamacpp.llamacpp_init import LlamaCppProcessInitiator
 
 
+# Local LLM client communicating with managed llama-server process
 class LlamaCppClient(BaseLLMClient):
     def __init__(self, processInitiator: LlamaCppProcessInitiator, allowParallel=True, costTracker: Optional[Any] = None):
         self.processInitiator = processInitiator
         super().__init__(defaultModel="model", allowParallel=allowParallel, costTracker=costTracker)
 
     def _createOpenaiClient(self) -> OpenAI:
-        return OpenAI(base_url=self.processInitiator.apiUrl, api_key="xyz")  # API key is unused
+        # Connect to local llama-server HTTP endpoint
+        return OpenAI(base_url=self.processInitiator.apiUrl, api_key="xyz")
     
     def _getExtraBody(self, thinkingBudget: Optional[int] = None):
+        # Configure reasoning token budgets and effort levels for llama-server
         extraBody = {}
         if thinkingBudget is not None:
             if thinkingBudget <= 0:
@@ -42,4 +45,5 @@ class LlamaCppClient(BaseLLMClient):
         return extraBody
     
     def _applyRateLimit(self):
-        pass    # No local rate limiting
+        # No rate limiting required for self-hosted local server
+        pass

@@ -268,7 +268,7 @@ class RebalanceStockAuditStage(BoardroomStage):
             f"Macro Context:\n{macroRaw}\n\n"
             f"CURRENT BASELINE HOLDINGS:\n{promptArgs['currentHoldingsList']}\n\n"
             f"Target Rebalanced Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
-            f"Task: As the Value/Defensive Stock Hunter, evaluate existing defensive/value holdings and "
+            f"Task: As the Defensive Stock Hunter, evaluate existing defensive/value holdings and "
             f"scout high-conviction defensive replacements strictly within the target sectors above.\n"
             f"Think as a defensive steward: retain sound incumbents through soft patches unless overview metrics show the cushion is gone.\n"
             f"Mandatory Constraints:\n"
@@ -444,7 +444,7 @@ class RebalanceFinalDecisionStage(BoardroomStage):
                 f"Target Sector Allocations:\n{confirmedSectorsText}\n\n"
                 f"CURRENT BASELINE HOLDINGS:\n{promptArgs['currentHoldingsList']}\n\n"
                 f"Growth Stock Hunter Scouting:\n{growthRaw}\n\n"
-                f"Value/Defensive Stock Hunter Scouting:\n{valueRaw}\n\n"
+                f"Defensive Stock Hunter Scouting:\n{valueRaw}\n\n"
                 f"Task: As the Impartial Portfolio Manager, construct the definitive rebalanced portfolio for {promptArgs['initialCapital']}.\n"
                 f"Minimise needless turnover: retain incumbents whose overview metrics remain sound, justifying every exit against the Rebalance Mandate.\n"
                 f"You may retain strong existing holdings from the baseline portfolio, adjust their weights, replace underperforming names, "
@@ -599,7 +599,7 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
         )
 
         self.valueHunter = FinancialAgent(
-            agentRole="Value/Defensive Stock Hunter",
+            agentRole="Defensive Stock Hunter",
             tools=[
                 toolMap["fetchStocksInSector"],
                 toolMap["fetchBatchStockOverviews"],
@@ -672,7 +672,7 @@ class PortfolioRebalancingBoardroomEngine(BoardroomEngine):
         elif phaseNumber == 4:
             return [
                 {"role": "Growth Stock Hunter", "color": self.growthHunter.color, "name": "Growth Stock Hunter"},
-                {"role": "Value/Defensive Stock Hunter", "color": self.valueHunter.color, "name": "Defensive Stock Hunter"}
+                {"role": "Defensive Stock Hunter", "color": self.valueHunter.color, "name": "Defensive Stock Hunter"}
             ]
         elif phaseNumber == 5:
             return [

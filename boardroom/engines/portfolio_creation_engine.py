@@ -335,7 +335,7 @@ class CreationStockScoutingStage(BoardroomStage):
             valuePrompt = (
                 f"MANDATED SECTOR ALLOCATIONS (STRICT & BINDING):\n{confirmedSectorsText}\n\n"
                 f"Macro Context:\n{macroRaw}\n\n"
-                f"Task: As the Value/Defensive Stock Hunter, scout high-conviction defensive and value equities STRICTLY within the confirmed sectors above.\n"
+                f"Task: As the Defensive Stock Hunter, scout high-conviction defensive and value equities STRICTLY within the confirmed sectors above.\n"
                 f"Require proven solvency and margin of safety through the cycle, tolerating modest underperformance where the balance sheet endures.\n"
                 f"MANDATORY CONSTRAINTS:\n"
                 f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
@@ -383,7 +383,7 @@ class CreationStockScoutingStage(BoardroomStage):
             valuePrompt = (
                 f"Macro Context:\n{macroRaw}\n\n"
                 f"Confirmed Portfolio Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
-                f"Task: As the Value/Defensive Stock Hunter, scout high-conviction defensive, dividend, and value equities across the confirmed sectors.\n"
+                f"Task: As the Defensive Stock Hunter, scout high-conviction defensive, dividend, and value equities across the confirmed sectors.\n"
                 f"Require proven solvency and margin of safety through the cycle, tolerating modest underperformance where the balance sheet endures.\n"
                 f"Mandatory Constraints:\n"
                 f"- Target Investment Horizon: {promptArgs['timeHorizon']}\n"
@@ -586,7 +586,7 @@ class CreationFinalDecisionStage(BoardroomStage):
                 f"Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n"
                 f"Confirmed Sector Allocations:\n{confirmedSectorsText}\n\n"
                 f"Growth Stock Hunter Scouting:\n{growthRaw}\n\n"
-                f"Value/Defensive Stock Hunter Scouting:\n{valueRaw}\n\n"
+                f"Defensive Stock Hunter Scouting:\n{valueRaw}\n\n"
                 f"Task: As the Impartial Portfolio Manager, make the final executive decision to construct the portfolio for {promptArgs['initialCapital']}.\n"
                 f"Balance conviction with humility: size positions for bull, base and bear paths rather than a single forecast.\n"
                 f"Mandatory Constraints:\n"
@@ -758,7 +758,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         )
 
         self.valueHunter = FinancialAgent(
-            agentRole="Value/Defensive Stock Hunter",
+            agentRole="Defensive Stock Hunter",
             tools=[
                 toolMap["fetchStocksInSector"],
                 toolMap["fetchBatchStockOverviews"],
@@ -832,7 +832,7 @@ class PortfolioCreationBoardroomEngine(BoardroomEngine):
         elif phaseNumber == 4:
             return [
                 {"role": "Growth Stock Hunter", "color": self.growthHunter.color, "name": "Growth Stock Hunter"},
-                {"role": "Value/Defensive Stock Hunter", "color": self.valueHunter.color, "name": "Defensive Stock Hunter"}
+                {"role": "Defensive Stock Hunter", "color": self.valueHunter.color, "name": "Defensive Stock Hunter"}
             ]
         elif phaseNumber == 5:
             return [

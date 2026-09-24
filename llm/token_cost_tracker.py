@@ -2,6 +2,7 @@ import threading
 from ui.ui_hooks import emitEvent
 
 
+# Tracker of token usage specifically use in OpenRouter
 class TokenCostTracker:
     def __init__(self):
         self.lock = threading.Lock()
@@ -12,7 +13,7 @@ class TokenCostTracker:
         self.taskCacheToks = 0
         self.taskCost = 0.0
 
-        # Session level usage (across all runs of that specific server)
+        # Session level usage (accumulates across all runs, while that server is active)
         self.sessionInputToks = 0
         self.sessionOutputToks = 0
         self.sessionCacheToks = 0
@@ -20,6 +21,7 @@ class TokenCostTracker:
 
 
     def recordUsage(self, usage):
+        # Ingest token counts and monetary cost from API usage metadata
         if usage is None:
             return None
 
@@ -58,6 +60,7 @@ class TokenCostTracker:
 
 
     def newTask(self):
+        # Reset task-level token counts, preserving session totals
         with self.lock:
             self.taskInputToks = 0
             self.taskOutputToks = 0
@@ -70,12 +73,14 @@ class TokenCostTracker:
 
 
     def calculateCacheHit(self, cachedTokens, promptTokens):
+        # Calculate percentage ratio of cached tokens to total prompt tokens
         if promptTokens == 0:
             return 0.0
         return round(cachedTokens / promptTokens * 100, 1)
 
 
     def buildPayload(self, promptTokens, completionTokens, cachedTokens, cost):
+        # Build structured payload of token usage and cost metrics for event emission
         return {
             "stream": {
                 "input": promptTokens,
@@ -102,11 +107,13 @@ class TokenCostTracker:
 
 
     def getPayload(self):
+        # Return current cost metrics snapshot
         with self.lock:
             return self.buildPayload(0, 0, 0, 0.0)
 
 
     def reset(self):
+        # Clear both task and session token metrics
         with self.lock:
             self.taskInputToks = 0
             self.taskOutputToks = 0
