@@ -3,12 +3,33 @@ import json
 
 SERVER_CONFIG_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "server_config.json")
 
+DEFAULT_LLAMACPP_GLOBAL_ARGS = [
+    {"key": "--flash-attn", "value": "on", "enabled": True},
+    {"key": "--cache-type-k", "value": "q8_0", "enabled": True},
+    {"key": "--cache-type-v", "value": "q8_0", "enabled": True},
+    {"key": "--jinja", "value": "", "enabled": True},
+    {"key": "--load-mode", "value": "dio", "enabled": True},
+    {"key": "--metrics", "value": "", "enabled": True},
+    {"key": "-np", "value": "2", "enabled": True},
+    {"key": "--ctx-size", "value": "131072", "enabled": True},
+    {"key": "--cache-ram", "value": "4096", "enabled": True},
+    {"key": "-b", "value": "2048", "enabled": True},
+    {"key": "-ub", "value": "512", "enabled": True},
+    {"key": "--reasoning", "value": "on", "enabled": True},
+    {"key": "--split-mode", "value": "none", "enabled": True}
+]
+
+DEFAULT_LLAMACPP_MODEL_ARGS = [
+    {"key": "-fit", "value": "on", "enabled": True},
+    {"key": "-fit-target", "value": "2800", "enabled": True},
+]
+
 DEFAULT_CONFIG = {
     "lastSelectedProvider": "llamacpp",
     "llamacpp": {
         "executablePath": "llama-server.exe",
         "lastUsedModelId": "",
-        "globalArgs": [],
+        "globalArgs": DEFAULT_LLAMACPP_GLOBAL_ARGS,
         "models": []
     },
     "openrouter": {

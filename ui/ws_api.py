@@ -9,7 +9,15 @@ from flask import request, jsonify
 from collectors.sector_dl_client import GICS_SECTORS
 from collectors.constants import NEW_YORK, START_DATE_STR, END_DATE_STR, FIRST_TRAD_DAY_AFTER_START_STR
 
-from llm.llamacpp.llamacpp_args import loadConfig, saveConfig, validateGGUFPath, getLlamaCppModelsList, openNativeGGUFFileDialog, openNativeExecutableFileDialog
+from llm.llamacpp.llamacpp_args import (
+    loadConfig, 
+    saveConfig, 
+    validateGGUFPath, 
+    getLlamaCppModelsList, 
+    openNativeGGUFFileDialog, 
+    openNativeExecutableFileDialog,
+    getDefaultModelArgs
+)
 from llm.server_manager import serverManager
 from llm.server_config_store import loadServerConfig, saveServerConfig
 
@@ -67,7 +75,8 @@ def registerApiRoutes(app):
             "cancelled": False,
             "filePath": selectedPath,
             "fileName": fileName,
-            "defaultAlias": defaultAlias
+            "defaultAlias": defaultAlias,
+            "defaultArgs": getDefaultModelArgs()
         })
 
     @app.route("/api/llamacpp/browse-executable", methods=["POST"])

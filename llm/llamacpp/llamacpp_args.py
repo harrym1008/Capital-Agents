@@ -5,7 +5,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from llm.server_config_store import loadServerConfig, saveServerConfig
+from llm.server_config_store import (
+    loadServerConfig, 
+    saveServerConfig, 
+    DEFAULT_LLAMACPP_GLOBAL_ARGS, 
+    DEFAULT_LLAMACPP_MODEL_ARGS
+)
 
 LLAMACPP_PORT = 9081
 LLAMACPP_EXECUTABLE = "llama-server.exe"
@@ -58,12 +63,17 @@ def cleanUserArgs(rawArgs: Any) -> List[Dict[str, Any]]:
     return cleaned
 
 
+def getDefaultModelArgs() -> List[Dict[str, Any]]:
+    # Return default per-model arguments
+    return [dict(x) for x in DEFAULT_LLAMACPP_MODEL_ARGS]
+
+
 def getDefaultConfig() -> Dict[str, Any]:
     # Return default llama.cpp configuration dictionary
     return {
         "executablePath": LLAMACPP_EXECUTABLE,
         "lastUsedModelId": "",
-        "globalArgs": [],
+        "globalArgs": [dict(x) for x in DEFAULT_LLAMACPP_GLOBAL_ARGS],
         "models": []
     }
 
@@ -93,12 +103,17 @@ def saveConfig(configData: Dict[str, Any]) -> bool:
         }
         for model in configData.get("models", []):
             if isinstance(model, dict):
+                rawModelArgs = model.get("args")
+                if rawModelArgs is None:
+                    cleanedArgs = getDefaultModelArgs()
+                else:
+                    cleanedArgs = cleanUserArgs(rawModelArgs)
                 cleanedData["models"].append({
                     "id": model.get("id", f"model_{int(time.time() * 1000)}"),
                     "alias": model.get("alias", "").strip(),
                     "modelPath": model.get("modelPath", "").strip(),
                     "executablePath": model.get("executablePath", "").strip(),
-                    "args": cleanUserArgs(model.get("args", []))
+                    "args": cleanedArgs
                 })
         fullConfig = loadServerConfig()
         fullConfig["llamacpp"] = cleanedData

@@ -653,7 +653,7 @@
                     alias: data.defaultAlias || "",
                     modelPath: data.filePath,
                     executablePath: "",
-                    args: []
+                    args: (data.defaultArgs && data.defaultArgs.length) ? data.defaultArgs : [{ key: "-ngl", value: "99", enabled: true }]
                 };
 
                 configState.models.push(newModel);
