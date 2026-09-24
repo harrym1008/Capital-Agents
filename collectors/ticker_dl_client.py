@@ -61,9 +61,6 @@ class TickerDataClient:
     def __init__(self, startDate, endDate, rateLimiterDatabase: GlobalRateLimiters = None):
         load_dotenv()
 
-        self.alphaVantageApiKey = os.getenv("ALPHAVANTAGE_API_KEY")
-        self.alpacaApiKey = os.getenv("ALPACA_API_KEY")
-        self.alpacaApiSecret = os.getenv("ALPACA_API_SECRET")
         self.massiveApiKey = os.getenv("MASSIVE_API_KEY")
 
         self.startDate = startDate
