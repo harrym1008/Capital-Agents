@@ -19,9 +19,7 @@
     // Format generation speed in tokens per second
     Utils.formatTokSpeed = function(val) {
         if (val == null || isNaN(val) || val <= 0) return "0.00 tok/s";
-        if (val < 100) {
-            return parseFloat(val).toFixed(2) + " tok/s";
-        } else if (val < 1000) {
+        if (val < 1000) {
             return parseFloat(val).toFixed(1) + " tok/s";
         } else {
             return Math.round(val).toString() + " tok/s";

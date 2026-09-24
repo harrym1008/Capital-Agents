@@ -34,6 +34,7 @@ class SimulationDataProviders:
         self.tickers = TickerDataProvider()
         self.macro = MacroDataProvider(self.cache, self.rateLimiters)
         self.ohlcv = DailyPriceProvider(self.tickers, self.cache, self.rateLimiters, allowOnlineDownloads=False)
+        self.ohlcvWithDownload = DailyPriceProvider(self.tickers, self.cache, self.rateLimiters, allowOnlineDownloads=True)
         self.news = NewsDataProvider(self.cache, self.rateLimiters)
         self.edgar = EdgarDataProvider(self.tickers, self.cache, self.rateLimiters.edgarLimiter)
 
@@ -204,8 +205,33 @@ class SimulationManager:
         return chunks
 
 
+    # Resolve target offset string or numeric amount into target date and display offset
+    def resolveTargetDateOffset(self, offsetVal, simDateTs: pd.Timestamp):
+        offsetStr = str(offsetVal).strip().lower()
+        if offsetStr.endswith("d"):
+            days = int(float(offsetStr[:-1]))
+            return simDateTs + pd.DateOffset(days=days), days
+        elif offsetStr.endswith("w"):
+            weeks = float(offsetStr[:-1])
+            days = int(weeks * 7)
+            return simDateTs + pd.DateOffset(days=days), days
+        elif offsetStr.endswith("mo") or offsetStr.endswith("m"):
+            unitStr = offsetStr[:-2] if offsetStr.endswith("mo") else offsetStr[:-1]
+            months = int(float(unitStr))
+            return simDateTs + pd.DateOffset(months=months), months
+        elif offsetStr.endswith("y"):
+            years = int(float(offsetStr[:-1]))
+            return simDateTs + pd.DateOffset(years=years), years * 12
+        else:
+            try:
+                numVal = float(offsetStr)
+                months = int(numVal)
+                return simDateTs + pd.DateOffset(months=months), months
+            except ValueError:
+                return simDateTs + pd.DateOffset(months=1), 1
+
     # Construct OHLCV chart payload and target projection curves
-    def generateOhlcvChartData(self, ticker, simDateTs, targets=None, horizon="long"):
+    def generateOhlcvChartData(self, ticker, simDateTs, targets=None, horizon="long", onlineDownload: bool = False):
         todayTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
         if targets is None:
             targets = []
@@ -218,10 +244,12 @@ class SimulationManager:
 
         horizonStr = (horizon or "long").lower()
         simDateStr = simDateTs.strftime("%Y-%m-%d")
-        cacheKey = f"{ticker}_{simDateStr}_{horizonStr}"
+        cacheKey = f"{ticker}_{simDateStr}_{horizonStr}_{onlineDownload}"
 
         if not targets and cacheKey in self.ohlcvChartCache:
             return self.ohlcvChartCache[cacheKey]
+
+        priceProvider = self.dataProviders.ohlcvWithDownload if onlineDownload else self.dataProviders.ohlcv
         
         if horizonStr in ["immediate", "1m"]:
             startDateTs = simDateTs - pd.DateOffset(months=1)
@@ -246,10 +274,11 @@ class SimulationManager:
             endDateTs = simDateTs + pd.DateOffset(years=10)
         
         if targets:
-            maxTargetMonths = max([t[0] for t in targets])
-            targetEndTs = simDateTs + pd.DateOffset(months=int(maxTargetMonths))
-            if targetEndTs > endDateTs:
-                endDateTs = targetEndTs
+            targetDates = [self.resolveTargetDateOffset(t[0], simDateTs)[0] for t in targets]
+            if targetDates:
+                maxTargetDate = max(targetDates)
+                if maxTargetDate > endDateTs:
+                    endDateTs = maxTargetDate
         
         profile = self.dataProviders.tickers.getTickerProfile(ticker)
         if profile and profile.ipoDate is not None:
@@ -262,12 +291,12 @@ class SimulationManager:
                 startDateTs = ipoTs
 
         # Retrieve historical split-adjusted OHLCV price series
-        dfHistorical = self.dataProviders.ohlcv.getPeriodDailyTickerData(ticker, startDateTs, simDateTs, referenceDate=simDateTs)
+        dfHistorical = priceProvider.getPeriodDailyTickerData(ticker, startDateTs, simDateTs, referenceDate=simDateTs)
         
         dfFuture = pd.DataFrame()
         if targets and simDateTs < todayTs:
             futureEndTs = min(endDateTs, todayTs)
-            dfFuture = self.dataProviders.ohlcv.getPeriodDailyTickerData(ticker, simDateTs, futureEndTs, referenceDate=simDateTs)
+            dfFuture = priceProvider.getPeriodDailyTickerData(ticker, simDateTs, futureEndTs, referenceDate=simDateTs)
 
         lastHistoricalClose = None
         allPrices = []
@@ -304,8 +333,8 @@ class SimulationManager:
         simAnchorPoint = {"x": simDateStr, "y": round(float(targetY[0]), 2)}
 
         targetPoints = []
-        for monthsOffset, price in targets:
-            targetDateTs = simDateTs + pd.DateOffset(months=int(monthsOffset))
+        for offsetVal, price in targets:
+            targetDateTs, displayOffset = self.resolveTargetDateOffset(offsetVal, simDateTs)
             daysFromStart = (targetDateTs - startDateTs).total_seconds() / 86400.0
             targetX.append(daysFromStart)
             targetY.append(price)
@@ -313,7 +342,8 @@ class SimulationManager:
             targetPoints.append({
                 "x": targetDateTs.strftime("%Y-%m-%d"),
                 "y": round(float(price), 2),
-                "months": int(monthsOffset)
+                "months": displayOffset,
+                "offset": displayOffset
             })
             
         minPrice = min(allPrices) if allPrices else 0.0

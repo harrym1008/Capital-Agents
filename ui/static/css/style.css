@@ -60,12 +60,6 @@ header h1 {
     text-decoration: none;
 }
 
-.header-help-btn {
-    border-radius: 16px;
-    margin-left: 25px;
-    background-color: #0030a2;
-    font-size: 12px;
-}
 
 /* Header metrics and telemetry display */
 .header-right-cluster {
@@ -179,6 +173,17 @@ header h1 {
 
 .btn-primary:hover, .aref-button:hover, button:hover {
     background-color: #1d4ed8;
+}
+
+.header-help-btn {
+    border-radius: 16px;
+    margin-left: 25px;
+    background-color: #0030a2;
+    font-size: 12px;
+}
+
+.header-help-btn:hover {
+    background-color: #002277;
 }
 
 .btn-primary:disabled, .aref-button:disabled, button:disabled, .aref-button.disabled {

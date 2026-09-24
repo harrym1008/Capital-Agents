@@ -213,6 +213,8 @@ def registerApiRoutes(app):
         ticker = request.args.get("ticker").strip()
         simDateStr = request.args.get("simDate")
         horizon = request.args.get("horizon").strip().lower()
+        onlineDownloadStr = request.args.get("onlineDownload", "false").strip().lower()
+        onlineDownload = onlineDownloadStr == "true"
 
         if not simDateStr:
             simDateTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
@@ -228,14 +230,14 @@ def registerApiRoutes(app):
             for item in targetsRaw.split(","):
                 if ":" in item:
                     try:
-                        monthsOffset, price = item.split(":")
-                        targetsList.append((float(monthsOffset), float(price)))
+                        offsetStr, price = item.split(":")
+                        targetsList.append((offsetStr.strip(), float(price)))
                     except ValueError:
                         pass
 
         try:
             from simulation.simulation_api import simulationManager
-            chartData = simulationManager.generateOhlcvChartData(ticker, simDateTs, targets=targetsList, horizon=horizon)
+            chartData = simulationManager.generateOhlcvChartData(ticker, simDateTs, targets=targetsList, horizon=horizon, onlineDownload=onlineDownload)
             return jsonify(chartData)
         except Exception as e:
             return jsonify({"error": str(e)}), 500

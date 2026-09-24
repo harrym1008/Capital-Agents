@@ -296,6 +296,23 @@
     // Custom layout renderer for Decision Upload stage workspace
     BoardroomCore.setCustomStageLayoutHandler(({ stageNum, stageName, agents, workspace }) => {
         if (stageName.includes("Decision Upload")) {
+            const currentHorizon = document.getElementById("horizonSelect")?.value || "long";
+            let defaultLabel1 = "12-Month Price Target:";
+            let defaultLabel2 = "3-Year Price Target:";
+            if (currentHorizon === "immediate") {
+                defaultLabel1 = "3-Day Price Target:";
+                defaultLabel2 = "2-Week Price Target:";
+            } else if (currentHorizon === "short") {
+                defaultLabel1 = "1-Month Price Target:";
+                defaultLabel2 = "3-Month Price Target:";
+            } else if (currentHorizon === "medium") {
+                defaultLabel1 = "3-Month Price Target:";
+                defaultLabel2 = "12-Month Price Target:";
+            } else if (currentHorizon === "distant") {
+                defaultLabel1 = "3-Year Price Target:";
+                defaultLabel2 = "10-Year Price Target:";
+            }
+
             workspace.innerHTML = `
                 <div class="upload-receipt-container single-equity-receipt-card">
                     <h2 class="single-equity-receipt-title">BOARDROOM DECISION REPORT</h2>
@@ -312,10 +329,10 @@
                         <div class="receipt-field-label">Portfolio Weighting:</div>
                         <div id="receipt-weighting" class="receipt-field-value">--</div>
 
-                        <div id="receipt-label-1" class="receipt-field-label">12-Month Price Target:</div>
+                        <div id="receipt-label-1" class="receipt-field-label">${defaultLabel1}</div>
                         <div id="receipt-target-12" class="receipt-field-value">--</div>
 
-                        <div id="receipt-label-2" class="receipt-field-label">3-Year Price Target:</div>
+                        <div id="receipt-label-2" class="receipt-field-label">${defaultLabel2}</div>
                         <div id="receipt-target-36" class="receipt-field-value">--</div>
 
                         <div class="receipt-field-label">Upload Status:</div>
@@ -361,6 +378,7 @@
         const ratingVal = data.rating || "--";
         const weightingVal = data.weighting || "--";
 
+        const selectedHorizon = document.getElementById("horizonSelect")?.value || "long";
         let label1 = "12-Month Price Target:";
         let label2 = "3-Year Price Target:";
         let val1 = "--";
@@ -368,7 +386,32 @@
         let months1 = "12";
         let months2 = "36";
 
-        if (data.oneMonthTarget !== undefined && data.threeMonthTarget !== undefined) {
+        if (selectedHorizon === "immediate") {
+            label1 = "3-Day Price Target:";
+            label2 = "2-Week Price Target:";
+            months1 = "3d";
+            months2 = "14d";
+        } else if (selectedHorizon === "short") {
+            label1 = "1-Month Price Target:";
+            label2 = "3-Month Price Target:";
+            months1 = "1";
+            months2 = "3";
+        } else if (selectedHorizon === "medium") {
+            label1 = "3-Month Price Target:";
+            label2 = "12-Month Price Target:";
+            months1 = "3";
+            months2 = "12";
+        } else if (selectedHorizon === "distant") {
+            label1 = "3-Year Price Target:";
+            label2 = "10-Year Price Target:";
+            months1 = "36";
+            months2 = "120";
+        }
+
+        if (data.threeDayTarget !== undefined && data.twoWeekTarget !== undefined) {
+            label1 = "3-Day Price Target:"; val1 = data.threeDayTarget; months1 = "3d";
+            label2 = "2-Week Price Target:"; val2 = data.twoWeekTarget; months2 = "14d";
+        } else if (data.oneMonthTarget !== undefined && data.threeMonthTarget !== undefined) {
             label1 = "1-Month Price Target:"; val1 = data.oneMonthTarget; months1 = "1";
             label2 = "3-Month Price Target:"; val2 = data.threeMonthTarget; months2 = "3";
         } else if (data.threeMonthTarget !== undefined && data.twelveMonthTarget !== undefined) {
@@ -381,8 +424,8 @@
             label1 = "3-Year Price Target:"; val1 = data.threeYearTarget; months1 = "36";
             label2 = "10-Year Price Target:"; val2 = data.tenYearTarget; months2 = "120";
         } else {
-            val1 = data.twelveMonthTarget || "--";
-            val2 = data.threeYearTarget || "--";
+            val1 = data.threeDayTarget || data.oneMonthTarget || data.threeMonthTarget || data.twelveMonthTarget || "--";
+            val2 = data.twoWeekTarget || data.threeMonthTarget || data.twelveMonthTarget || data.threeYearTarget || data.tenYearTarget || "--";
         }
 
         if (val1 !== "--" && !String(val1).startsWith("$")) val1 = `$${val1}`;
@@ -757,7 +800,7 @@
 
         const horizon = document.getElementById("horizonSelect")?.value || "long";
         try {
-            let url = `/api/ohlcv?ticker=${encodeURIComponent(ticker)}&simDate=${encodeURIComponent(simDateStr)}&horizon=${encodeURIComponent(horizon)}`;
+            let url = `/api/ohlcv?ticker=${encodeURIComponent(ticker)}&simDate=${encodeURIComponent(simDateStr)}&horizon=${encodeURIComponent(horizon)}&onlineDownload=true`;
             if (targets.length > 0) {
                 url += `&targets=${encodeURIComponent(targets.join(","))}`;
             }
