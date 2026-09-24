@@ -73,7 +73,7 @@ const BoardroomExporter = (function () {
         let isSingleEquity = false;
 
         if (tickerInput && isElementVisible(tickerInput)) {
-            target = tickerInput.value.trim().toUpperCase() || "NVDA";
+            target = tickerInput.value.trim().toUpperCase() || "Unknown Ticker";
             isSingleEquity = true;
         } else if (document.getElementById("initialCapitalInput")) {
             target = "Portfolio Creation";

@@ -166,7 +166,7 @@
                                 <label class="small-input-label small-input-label-flush" for="orderTicker">Ticker</label>
                                 <button type="button" class="random-ticker-btn" onclick="fillRandomTicker()" title="Select random ticker from market list">Random</button>
                             </div>
-                            <input type="text" id="orderTicker" class="sim-input order-ticker-input" placeholder="e.g. NVDA" value="NVDA" required oninput="onOrderTickerInput()">
+                            <input type="text" id="orderTicker" class="sim-input order-ticker-input" placeholder="e.g. NVDA" required oninput="onOrderTickerInput()">
                         </div>
 
                         <!-- Row 4: Amount & Unit -->
@@ -263,7 +263,7 @@
                         <circle cx="11" cy="11" r="8"></circle>
                         <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                     </svg>
-                    <input type="text" id="tickerSearchInput" class="search-input" value="NVDA" placeholder="Search ticker..." onkeydown="handleTickerSearchKey(event)">
+                    <input type="text" id="tickerSearchInput" class="search-input" placeholder="Search ticker..." onkeydown="handleTickerSearchKey(event)">
                 </div>
             </div>
 
@@ -391,7 +391,7 @@
         }
 
         function initiateBackgroundInspector(targetDate, tickerOverride = null) {
-            const currentTicker = (tickerOverride || document.getElementById('tickerSearchInput').value || "NVDA").trim().toUpperCase();
+            const currentTicker = (tickerOverride || document.getElementById('tickerSearchInput').value).trim().toUpperCase();
             if (!targetDate) {
                 targetDate = currentState ? currentState.currentDate : "2016-06-01";
             }

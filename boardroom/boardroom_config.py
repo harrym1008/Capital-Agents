@@ -239,7 +239,7 @@ class SingleEquityRatingConfig(BoardroomConfig):
 
     @classmethod
     def fromDict(cls, data: Dict[str, Any]) -> "SingleEquityRatingConfig":
-        ticker = data.get("ticker", "NVDA")
+        ticker = data.get("ticker", "")
         simulatedDateStr = data.get("simulatedDate") or data.get("simulatedDateStr") or None
 
         timeHorizon = SingleEquityTimeHorizon.fromString(data.get("timeHorizon", "long"))

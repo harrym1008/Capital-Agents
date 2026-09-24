@@ -1,5 +1,5 @@
 from enum import Enum
-
+from abc import ABC
 
 class OrderSide(Enum):
     BUY = "BUY"
@@ -12,7 +12,8 @@ class OrderStatus(Enum):
     FAILED = "FAILED"
 
 
-class Order:
+# Abstract base class for all order types (will be subclassed for specific order types)
+class Order(ABC):
     def __init__(self, ticker, side, quantity=None, cashValue=None):
         self.ticker = ticker
         self.quantity = quantity

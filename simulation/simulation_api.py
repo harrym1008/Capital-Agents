@@ -24,10 +24,11 @@ from simulation.market_sim import MarketSimulation
 from simulation.orders import MarketOrder, LimitOrder, StopOrder, StopLimitOrder, OrderSide, OrderStatus
 
 
-
+# Initialise isolated simulation data providers and rate limiters
 class SimulationDataProviders:
     def __init__(self):
-        self.cache = LRUCache(256 * 1024 ** 2, main=False)      # 256 MB max size of cache in RAM
+        # In-memory cache allocated to 256 MB
+        self.cache = LRUCache(256 * 1024 ** 2, main=False)
         self.rateLimiters = GlobalRateLimiters()
 
         self.tickers = TickerDataProvider()
@@ -37,7 +38,7 @@ class SimulationDataProviders:
         self.edgar = EdgarDataProvider(self.tickers, self.cache, self.rateLimiters.edgarLimiter)
 
 
-
+# Sim manager which keeps track of market simulation instances, backtests, and websocket state
 class SimulationManager:
     def __init__(self):
         self.dataProviders = SimulationDataProviders()
@@ -47,7 +48,7 @@ class SimulationManager:
         self.inspectorExecutor = ThreadPoolExecutor(max_workers=4)
         self.activeInspectorJobs = {}
 
-        # Build available tickers index
+        # Build available tickers index from parquet store
         self.availableTickers = []
         self.allTickersCount = 0
         try:
@@ -66,10 +67,14 @@ class SimulationManager:
         except Exception as e:
             raise RuntimeError(f"Failed to load available tickers: {str(e)}")
 
+
+    # Compute rolling centered mean for smoothed series
     def getRollingMean(self, series, window=3):
         s = pd.Series(series)
         return s.rolling(window=window, center=True, min_periods=1).mean().values
 
+
+    # Generate Catmull-Rom spline points through target coordinates
     def computeBezierThroughPoints(self, pointsX, pointsY, numSamples=300):
         n = len(pointsX)
         if n < 2:
@@ -114,6 +119,8 @@ class SimulationManager:
         yAll.append(yPts[-1])
         return np.array(xAll), np.array(yAll)
 
+
+    # Segment future performance into coloured delta chunks
     def getFuturePerformanceChunks(self, futureDates, futureCloses, splineVals):
         numPoints = len(futureCloses)
         if numPoints == 0:
@@ -196,6 +203,8 @@ class SimulationManager:
         extractChunksForMask(refinedDiffsArr <= 0, '#f43f5e')
         return chunks
 
+
+    # Construct OHLCV chart payload and target projection curves
     def generateOhlcvChartData(self, ticker, simDateTs, targets=None, horizon="long"):
         todayTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
         if targets is None:
@@ -232,7 +241,7 @@ class SimulationManager:
         elif horizonStr == "long":
             startDateTs = simDateTs - pd.DateOffset(years=1)
             endDateTs = simDateTs + pd.DateOffset(years=3)
-        else:   # elif horizonStr == "distant":
+        else:    # elif horizonStr == "distant":
             startDateTs = simDateTs - pd.DateOffset(years=2)
             endDateTs = simDateTs + pd.DateOffset(years=10)
         
@@ -252,14 +261,14 @@ class SimulationManager:
             if ipoTs > startDateTs:
                 startDateTs = ipoTs
 
-        # Uses self.dataProviders.ohlcv (which shares self.simCache and priceProvider.adjustPriceDataSplits)
+        # Retrieve historical split-adjusted OHLCV price series
         dfHistorical = self.dataProviders.ohlcv.getPeriodDailyTickerData(ticker, startDateTs, simDateTs, referenceDate=simDateTs)
         
         dfFuture = pd.DataFrame()
         if targets and simDateTs < todayTs:
             futureEndTs = min(endDateTs, todayTs)
             dfFuture = self.dataProviders.ohlcv.getPeriodDailyTickerData(ticker, simDateTs, futureEndTs, referenceDate=simDateTs)
-            
+
         lastHistoricalClose = None
         allPrices = []
         historicalPoints = []
@@ -284,7 +293,8 @@ class SimulationManager:
                 closesRaw = dfCleanFuture["close"].to_numpy(dtype=float)
                 futureClosesSmooth = self.getRollingMean(closesRaw, window=3)
                 allPrices.extend(futureClosesSmooth.tolist())
-                
+
+        # Compute target projection points and spline curve through them
         startTime = startDateTs.timestamp()
         simDateDaysFromStart = (simDateTs - startDateTs).total_seconds() / 86400.0
         targetX = [simDateDaysFromStart]
@@ -322,6 +332,7 @@ class SimulationManager:
             
         yMax = maxPrice + max(priceRange * 0.08, maxPrice * 0.05)
 
+        # Compute Bezier spline curve through target points and segment future performance into coloured chunks
         curvePoints = []
         splineVals = None
         curveX, curveY = None, None
@@ -358,6 +369,7 @@ class SimulationManager:
 
         return res
 
+    # Calculate simulation horizon end timestamp
     def computeHorizonEndDate(self, simDateTs: pd.Timestamp, timeHorizon: str) -> pd.Timestamp:
         if not timeHorizon:
             return simDateTs
@@ -375,6 +387,7 @@ class SimulationManager:
             return simDateTs + pd.DateOffset(years=num)
         return simDateTs
 
+    # Compute portfolio backtest performance metrics and series
     def _calculateBacktestSlice(self, simDateTs: pd.Timestamp, maxDateTs: pd.Timestamp, sp500Df: pd.DataFrame, stockDfs: dict, shares: dict, capital: float, cashDollar: float, cashWeightPct: float, originalShares: dict = None) -> dict:
         normMax = maxDateTs.tz_localize(None) if maxDateTs.tzinfo is not None else maxDateTs
         spSlice = sp500Df[sp500Df["normDate"] <= normMax].copy()
@@ -383,6 +396,7 @@ class SimulationManager:
 
         sp0 = float(spSlice.iloc[0]["close"])
         tradingDates = sorted(list(spSlice["normDate"].unique()))
+
         portfolioPoints = []
         originalPoints = []
         sp500Points = []
@@ -452,7 +466,7 @@ class SimulationManager:
         spDrawdown = (spSeries / spRunningMax) - 1.0
         spMaxDrawdownPct = float(spDrawdown.min()) * 100.0
 
-        # Original portfolio analytics
+        # Compute original portfolio analytics if comparative baseline exists
         origReturnPct = None
         origReturnDollar = None
         origAlphaPct = None
@@ -475,8 +489,9 @@ class SimulationManager:
             else:
                 origSharpe = 0.0
 
+        # Compute Sharpe ratio using 2-year Treasury yield as risk-free rate
         portDfForSharpe = pd.DataFrame({"date": tradingDates, "close": dailyValues})
-        treasDf = self.dataProviders.macro.loadSeries(MacroSeries.TREAS_3MO)
+        treasDf = self.dataProviders.macro.loadSeries(MacroSeries.TREAS_2Y)
         sharpe = 0.0
         if treasDf is not None and not treasDf.empty:
             try:
@@ -554,6 +569,7 @@ class SimulationManager:
             "metrics": metricsDict
         }
 
+    # Generate portfolio backtest analytics against S&P 500 benchmark
     def generatePortfolioBacktestData(self, simDate, initialCapital: float = 100_000.0, positions: list = None, cashPosition: dict = None, timeHorizon: str = None, originalPositions: list = None) -> dict:
         todayTs = pd.Timestamp.now(tz=NEW_YORK).normalize()
         simDateTs = pd.Timestamp(simDate)
@@ -575,7 +591,7 @@ class SimulationManager:
         if cashDollar <= 0.0 and cashWeightPct > 0.0:
             cashDollar = capital * (cashWeightPct / 100.0)
 
-        # 1. Fetch S&P 500 benchmark series up to today
+        # Fetch S&P 500 benchmark series up to current date
         sp500Df = self.dataProviders.macro.getSeries(MacroSeries.SP500, simDateTs, todayTs)
         if sp500Df.empty or "close" not in sp500Df.columns:
             sp500Df = self.dataProviders.macro.loadSeries(MacroSeries.SP500)
@@ -594,7 +610,7 @@ class SimulationManager:
         sp500Df["normDate"] = pd.to_datetime(sp500Df["date"]).dt.tz_localize(None).dt.normalize()
         sp500Df = sp500Df.drop_duplicates(subset=["normDate"]).sort_values("normDate").reset_index(drop=True)
 
-        # 2. Fetch stock data for each holding concurrently
+        # Fetch stock data for each holding concurrently
         stockDfs = {}
         shares = {}
         originalShares = {}
@@ -662,11 +678,11 @@ class SimulationManager:
                 p0 = float(df.iloc[0]["close"])
                 originalShares[otick] = oDollar / p0 if p0 > 0 else 0.0
 
-        # Adjust cash dollar if remaining capital was unallocated
+        # Allocate remaining unallocated capital to cash
         if cashDollar <= 0.0 and capital > totalStockAlloc:
             cashDollar = capital - totalStockAlloc
 
-        # 3. Calculate full slice (simDate to today)
+        # Calculate full backtest slice
         fullSlice = self._calculateBacktestSlice(simDateTs, todayTs, sp500Df, stockDfs, shares, capital, cashDollar, cashWeightPct, originalShares=originalShares)
         if not fullSlice:
             return {
@@ -674,7 +690,7 @@ class SimulationManager:
                 "error": "No trading dates found for the specified period."
             }
 
-        # 4. Calculate horizon slice if applicable
+        # Calculate target horizon slice if applicable
         canToggle = False
         horizonSlice = None
         if timeHorizon:
@@ -698,6 +714,7 @@ class SimulationManager:
             **primarySlice
         }
 
+    # Sanitise NaN and infinite values in nested data structures
     def cleanNans(self, obj):
         if isinstance(obj, dict):
             return {k: self.cleanNans(v) for k, v in obj.items()}
@@ -713,6 +730,7 @@ class SimulationManager:
                 return str(obj)
         return obj
 
+    # Resolve active session identifier from request headers or session store
     def getSessionId(self):
         reqSessionId = request.headers.get("X-Session-ID") or request.args.get("sessionId")
         if reqSessionId:
@@ -721,6 +739,7 @@ class SimulationManager:
             session["sim_session_id"] = f"session_{time.perf_counter_ns()}"
         return session["sim_session_id"]
 
+    # Instantiate and configure new market simulation session
     def createSimulation(self, sessionId, portfolioName, startDate, initialCash):
         activeSim = MarketSimulation(startDate, END_DATE_STR, 
                                      tickerDataProvider=self.dataProviders.tickers, 
@@ -730,11 +749,11 @@ class SimulationManager:
         self.userSimulations[sessionId] = {
             "sim": activeSim,
             "portfolioName": portfolioName,
-            "inspectedTicker": "NVDA",
+            "inspectedTicker": "NVDA",      # Inspect Nvidia stock by default at 3mo timeframe
             "inspectedTimeframe": "3M"
         }
         
-        # Pre-populate 2 preceding days at starting balance so Chart.js always draws a line at start
+        # Pre-populate preceding days at starting balance for baseline rendering
         startTs = pd.Timestamp(startDate)
         dayMinus2 = (startTs - pd.Timedelta(days=2)).strftime("%Y-%m-%d")
         dayMinus1 = (startTs - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
@@ -746,6 +765,7 @@ class SimulationManager:
         self.updateSimulationHistory(sessionId)
         return self.getSimulationState(sessionId)
 
+    # Record portfolio valuation snapshot for current simulation date
     def updateSimulationHistory(self, sessionId):
         simData = self.userSimulations.get(sessionId)
         if not simData:
@@ -777,6 +797,7 @@ class SimulationManager:
             else:
                 self.userHistory[sessionId].append(snapshot)
 
+    # Compile current simulation portfolio state, orders, and valuation
     def getSimulationState(self, sessionId, skipInspector=False):
         simData = self.userSimulations.get(sessionId)
         if not simData:
@@ -816,6 +837,7 @@ class SimulationManager:
         else:
             pfDict["log"] = []
 
+        # Compile list of pending orders with relevant details
         pendingOrdersList = []
         for idx, userOrder in enumerate(activeSim.pendingOrders):
             o = userOrder.order
@@ -843,11 +865,9 @@ class SimulationManager:
         isEnded = activeSim.currentDate >= activeSim.endDate
         historyList = self.userHistory.get(sessionId, [])
 
-        # Always include the lightweight top-half snapshot (name, price, price change,
-        # chart) for the inspected ticker - even during rapid stepping - so the frontend
-        # can update the chart/price live on every advance step.
-        inspectedTicker = simData.get("inspectedTicker", "NVDA")
-        inspectedTimeframe = simData.get("inspectedTimeframe", "3M")
+        # Include top-half ticker snapshot for frontend live updates
+        inspectedTicker = simData.get("inspectedTicker")
+        inspectedTimeframe = simData.get("inspectedTimeframe")
         inspectedSnapshot = self.getTickerSnapshot(sessionId, inspectedTicker, inspectedTimeframe)
 
         rawState = {
@@ -865,6 +885,7 @@ class SimulationManager:
         cleanedState["history"] = historyList
         return cleanedState
 
+    # Validate and queue user order into active simulation
     def submitOrder(self, sessionId, ticker, side, orderType, amountType, amountValue, limitPrice=None, stopPrice=None):
         simData = self.userSimulations.get(sessionId)
         if not simData:
@@ -915,12 +936,13 @@ class SimulationManager:
             stopVal = float(stopPrice) if stopPrice else 0.0
             limitVal = float(limitPrice) if limitPrice else 0.0
             order = StopLimitOrder(ticker, sideEnum, stopPrice=stopVal, limitPrice=limitVal, quantity=amountValue) if amountType == "quantity" else StopLimitOrder(ticker, sideEnum, stopPrice=stopVal, limitPrice=limitVal, cashValue=amountValue)
-        else:  # market
+        else:
             order = MarketOrder(ticker, sideEnum, quantity=amountValue) if amountType == "quantity" else MarketOrder(ticker, sideEnum, cashValue=amountValue)
 
         activeSim.addOrder(order, portfolioName)
         return self.getSimulationState(sessionId)
 
+    # Cancel pending simulation order by index
     def cancelOrder(self, sessionId, orderIndex):
         simData = self.userSimulations.get(sessionId)
         if not simData:
@@ -934,6 +956,7 @@ class SimulationManager:
         else:
             raise ValueError("Order index out of range.")
 
+    # Filter available tickers listed at simulation timestamp
     def getCurrentlyListedTickers(self, sessionId=None):
         simData = self.userSimulations.get(sessionId) if sessionId else None
         if simData and simData["sim"]:
@@ -947,10 +970,12 @@ class SimulationManager:
         ]
         return listedTickers if len(listedTickers) > 0 else self.availableTickers
 
+    # Select random ticker listed at simulation date
     def getRandomListedTicker(self, sessionId=None):
         listed = self.getCurrentlyListedTickers(sessionId)
         return random.choice(listed)
 
+    # Advance simulation clock by specified days or target date
     def advanceSimulation(self, sessionId, days=None, targetDate=None, targetDateCutoff=None):
         simData = self.userSimulations.get(sessionId)
         if not simData:
@@ -959,8 +984,7 @@ class SimulationManager:
         activeSim = simData["sim"]
         portfolioName = simData["portfolioName"]
 
-        # When targetDateCutoff is used, we're in the rapid-stepping loop from the frontend.
-        # Skip expensive inspector data on intermediate steps.
+        # Skip inspector metrics during rapid frontend stepping
         isRapidStep = targetDateCutoff is not None
 
         if targetDateCutoff:
@@ -994,6 +1018,7 @@ class SimulationManager:
             if daysToAdvance <= 0:
                 raise ValueError("Days to advance must be positive.")
 
+        # Continue advancing simulation until target date or specified days are reached
         i = 0
         executedDays = 0
         while True:
@@ -1023,9 +1048,13 @@ class SimulationManager:
                     activeSim.ordersArchive.append(failedUserOrder)
                 break
 
+            except Exception:
+                break
+
         state = self.getSimulationState(sessionId, skipInspector=isRapidStep)
         return executedDays, state
 
+    # Clear simulation session state and valuation history
     def resetSimulation(self, sessionId):
         if sessionId in self.userSimulations:
             del self.userSimulations[sessionId]
@@ -1033,6 +1062,7 @@ class SimulationManager:
             del self.userHistory[sessionId]
         return True
 
+    # Fetch full ticker information, chart data, and company profile
     def getTickerInfo(self, sessionId, ticker, timeframe=None, targetDate=None):
         ticker = ticker.strip().upper()
         simData = self.userSimulations.get(sessionId)
@@ -1045,9 +1075,7 @@ class SimulationManager:
         inspectedTimeframe = simData.get("inspectedTimeframe", "3M") if simData else (timeframe or "3M").upper()
         timeframeStr = inspectedTimeframe.lower()
 
-        # When a targetDate is supplied (e.g. the async inspector job for an advance),
-        # generate the chart/price for that date rather than the sim's current date, so
-        # the pushed chart matches the date the simulation advanced to.
+        # Generate chart aligned to target advance date
         if targetDate is not None:
             simDateTs = pd.Timestamp(targetDate).tz_localize(NEW_YORK)
             activeSim = simData["sim"] if (simData and simData["sim"]) else None
@@ -1094,10 +1122,8 @@ class SimulationManager:
             "profile": profileData
         }
 
+    # Extract lightweight ticker snapshot and price performance
     def getTickerSnapshot(self, sessionId, ticker, timeframe="3M"):
-        # Lightweight top-half data for the ticker inspector: name, current price,
-        # price change over the timeframe, and the chart. No EDGAR, no news - fast.
-        # This is included in every simulation state so the top half updates live.
         ticker = ticker.strip().upper()
         simData = self.userSimulations.get(sessionId)
 
@@ -1127,8 +1153,7 @@ class SimulationManager:
             if simAnchor:
                 currentPrice = simAnchor.get("y")
 
-        # Use the raw close at the sim date (matching the positions table & order form
-        # last price) rather than the split-adjusted chart anchor, so they all agree.
+        # Extract raw closing price matching positions table
         if simData and simData["sim"]:
             activeSim = simData["sim"]
             if hasattr(activeSim, "dailyPriceProvider"):
@@ -1153,9 +1178,8 @@ class SimulationManager:
             }
         }
 
+    # Retrieve single-day closing price for order entry
     def getTickerLastPrice(self, sessionId, ticker):
-        # Lightweight synchronous lookup used by the order form. Avoids the heavy
-        # chart/profile computation that getTickerInfo performs.
         ticker = ticker.strip().upper()
         simData = self.userSimulations.get(sessionId)
 
@@ -1175,8 +1199,7 @@ class SimulationManager:
                 if row is not None and "close" in row and pd.notna(row["close"]):
                     lastPrice = float(row["close"])
 
-        # Fall back to the chart anchor if the single-day close is missing or zero, so the
-        # order form never shows $0.00. generateOhlcvChartData is cached, so this is cheap.
+        # Fall back to chart anchor if close price is absent
         if lastPrice is None or lastPrice == 0:
             try:
                 chartData = self.generateOhlcvChartData(ticker, simDateTs, targets=[], horizon="3m")
@@ -1189,9 +1212,9 @@ class SimulationManager:
 
         return {"ok": True, "exists": tickerExists, "ticker": ticker, "lastPrice": lastPrice}
 
+    # Dispatch asynchronous ticker inspection job to thread pool
     def startAsyncInspectorJob(self, sessionId, ticker, targetDateStr, timeframeStr="3M", jobId=None, websocket=None, eventLoop=None):
-        # Use the jobId supplied by the frontend so both sides stay in sync.
-        # This avoids the previous desync where the server kept its own independent counter.
+        # Synchronise inspector job identifier with frontend client
         if jobId is None:
             jobId = self.activeInspectorJobs.get(sessionId, 0) + 1
         self.activeInspectorJobs[sessionId] = jobId
@@ -1200,7 +1223,7 @@ class SimulationManager:
             if self.activeInspectorJobs.get(sessionId) != jobId:
                 return
 
-            tickerClean = (ticker or "NVDA").strip().upper()
+            tickerClean = ticker.strip().upper()
             try:
                 info = self.getTickerInfo(sessionId, tickerClean, timeframe=timeframeStr, targetDate=targetDateStr)
 
@@ -1227,8 +1250,7 @@ class SimulationManager:
                 }
             except Exception as e:
                 print(f"[INSPECTOR THREAD ERROR] job {jobId}: {e}")
-                # Always send a push (even on failure) so the frontend can unblur
-                # instead of waiting forever for data that will never arrive.
+                # Dispatch error payload to release frontend loading state
                 result = {
                     "action": "sim_ticker_info_push",
                     "sessionId": sessionId,
@@ -1246,6 +1268,7 @@ class SimulationManager:
         self.inspectorExecutor.submit(worker)
         return jobId
 
+    # Return listing counts and available tickers
     def getAvailableTickers(self):
         return {
             "tickers": self.availableTickers,
@@ -1253,14 +1276,14 @@ class SimulationManager:
             "availableCount": len(self.availableTickers)
         }
 
-
+    # Format sector or industry string into title case
     def formatSectorOrIndustry(self, rawStr):
         if not rawStr or pd.isna(rawStr):
             return "N/A"
         cleanStr = str(rawStr).replace("_", " ").strip()
         return cleanStr.title().replace("And", "and") if cleanStr else "N/A"
 
-
+    # Fetch technical indicators, valuation metrics, filings, and news for the inspector
     def fetchFastInspectorMetrics(self, ticker, targetTs, timeframeStr="3M"):
         profile = self.dataProviders.tickers.getTickerProfile(ticker)
         rawExchange = profile.exchange if profile and profile.exchange else "NASDAQ"
@@ -1301,31 +1324,12 @@ class SimulationManager:
                 if not lowSeries.empty:
                     fiftyTwoLow = float(lowSeries.min())
 
-                # Calculate sharpe ratio
-                closeSeries = df["close"].dropna()
-                if len(closeSeries) >= 5:
-                    pctChange = closeSeries.pct_change().dropna()
-                    if len(pctChange) >= 5:
-                        tail30 = pctChange.tail(30)
-                        if len(tail30) > 1 and tail30.std() > 0:
-                            volatility30d = float(tail30.std() * (252 ** 0.5))
-                            sharpeRatio = float((pctChange.mean() / pctChange.std()) * (252 ** 0.5))
-
-                    if len(closeSeries) >= 15:
-                        delta = closeSeries.diff()
-                        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-                        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-                        if not loss.empty and loss.iloc[-1] != 0:
-                            rs = gain.iloc[-1] / loss.iloc[-1]
-                            rsi14 = float(100 - (100 / (1 + rs)))
-                        elif not gain.empty and gain.iloc[-1] > 0:
-                            rsi14 = 100.0
             except Exception:
                 pass
 
         valRes = {}
 
-        # Get market cap, shares outstanding
+        # Extract shares outstanding and market capitalisation
         if df is not None and not df.empty:
             lastShares = df["outstandingShares"].dropna()
             lastMarketCap = df["marketCap"].dropna()
@@ -1337,7 +1341,7 @@ class SimulationManager:
         valRes["beta"] = calculateHistoricalBeta(companyRef, targetTs, self.dataProviders.ohlcv, self.dataProviders.macro)
         valRes["dividendYield"] = calculateDividendYield(companyRef, targetTs, self.dataProviders.ohlcv)
 
-        # Find the latest 10-K and 10-Q filings before the target date
+        # Retrieve latest 10-K and 10-Q filing references
         tenKUrl = None
         tenKDate = None
         tenQUrl = None
@@ -1365,7 +1369,7 @@ class SimulationManager:
         except Exception:
             pass
 
-        # Get news headlines
+        # Fetch recent news headlines for ticker
         newsList = []
         try:
             rawNews = self.dataProviders.news.getRecentNewsForTicker(ticker, before=targetTs, limit=50)
@@ -1376,7 +1380,7 @@ class SimulationManager:
                     rawDate = row.get("date")
                     articleDate = ""
                     try:
-                        articleDate = pd.to_datetime(rawDate).strftime("%d %b %Y")  # 23 Jul 2026 for example
+                        articleDate = pd.to_datetime(rawDate).strftime("%d %b %Y")
                     except Exception:
                         pass
 
@@ -1396,7 +1400,7 @@ class SimulationManager:
         except Exception:
             pass
 
-        # 30-day average volume (from the fetchStockPricePerformance helper)
+        # Calculate 30-day average trading volume
         avgVolume = None
         try:
             df = self.dataProviders.ohlcv.getPeriodDailyTickerData(ticker, targetTs - pd.Timedelta(days=30), targetTs)
@@ -1431,9 +1435,9 @@ class SimulationManager:
             "tenQDate": tenQDate
         }
 
-
+    # Compile full inspector payload for target ticker and timestamp
     def getFastInspectorData(self, ticker, targetDateStr, timeframeStr="3M"):
-        ticker = (ticker or "NVDA").strip().upper()
+        ticker = ticker.strip().upper()
         try:
             targetTs = pd.Timestamp(targetDateStr).tz_localize(NEW_YORK)
         except Exception:
@@ -1441,7 +1445,6 @@ class SimulationManager:
 
         fastData = self.fetchFastInspectorMetrics(ticker, targetTs, timeframeStr)
         chartData = self.generateOhlcvChartData(ticker, targetTs, targets=[], horizon=(timeframeStr or "3m").lower())
-        
 
         def getCompareClass(curr, compareVal):
             if curr is None or compareVal is None:
@@ -1551,6 +1554,7 @@ class SimulationManager:
 simulationManager = SimulationManager()
 
 
+# Resolve session identifier from websocket payload
 def getWsSessionId(data):
     if not isinstance(data, dict):
         return "default_session"
@@ -1558,6 +1562,7 @@ def getWsSessionId(data):
     return reqSessionId if reqSessionId else "default_session"
 
 
+# Register simulation websocket action handlers
 def registerSimulationWsRoutes():
     def handleSimStart(data, websocket, eventLoop):
         sessionId = getWsSessionId(data)
@@ -1574,7 +1579,7 @@ def registerSimulationWsRoutes():
 
         try:
             state = simulationManager.createSimulation(sessionId, portfolioName, startDate, dollarAmount)
-            fastData = simulationManager.getFastInspectorData("NVDA", startDate, "3M")
+            fastData = simulationManager.getFastInspectorData("NVDA", startDate, "3M")      # Inspect Nvidia stock by default at 3mo timeframe
             return {"ok": True, "state": state, "inspector": fastData, "sessionId": sessionId}
         except Exception as e:
             return {"ok": False, "error": str(e)}
@@ -1655,10 +1660,10 @@ def registerSimulationWsRoutes():
 
     def handleSimTickerInfo(data, websocket, eventLoop):
         sessionId = getWsSessionId(data)
-        ticker = data.get("ticker", "NVDA").strip().upper()
+        ticker = data.get("ticker").strip().upper()
         timeframeVal = data.get("timeframe")
         timeframeStr = timeframeVal.strip() if timeframeVal else "3M"
-        # Pass through the frontend-generated jobId so the push can be matched reliably.
+        # Pass through client job identifier for response correlation
         jobId = data.get("jobId")
         
         simData = simulationManager.userSimulations.get(sessionId)
@@ -1673,7 +1678,7 @@ def registerSimulationWsRoutes():
 
     def handleSimTickerPrice(data, websocket, eventLoop):
         sessionId = getWsSessionId(data)
-        ticker = data.get("ticker", "NVDA").strip().upper()
+        ticker = data.get("ticker").strip().upper()
         try:
             return simulationManager.getTickerLastPrice(sessionId, ticker)
         except Exception as e:
@@ -1681,7 +1686,7 @@ def registerSimulationWsRoutes():
 
     def handleSimTickerChart(data, websocket, eventLoop):
         sessionId = getWsSessionId(data)
-        ticker = data.get("ticker", "NVDA").strip().upper()
+        ticker = data.get("ticker").strip().upper()
         timeframeVal = data.get("timeframe")
         timeframeStr = timeframeVal.strip() if timeframeVal else "3M"
 
@@ -1711,8 +1716,6 @@ def registerSimulationWsRoutes():
         sessionId = getWsSessionId(data)
         ticker = simulationManager.getRandomListedTicker(sessionId)
         return {"ok": True, "ticker": ticker}
-
-
 
     registerWsAction("sim_start", handleSimStart)
     registerWsAction("sim_state", handleSimState)

@@ -210,9 +210,9 @@ def registerApiRoutes(app):
     @app.route("/api/ohlcv")
     def getOhlcvChart():
         # Generate chart candlestick and target overlay data for ticker
-        ticker = request.args.get("ticker", "NVDA").strip()
+        ticker = request.args.get("ticker").strip()
         simDateStr = request.args.get("simDate")
-        horizon = request.args.get("horizon", "long").strip().lower()
+        horizon = request.args.get("horizon").strip().lower()
 
         if not simDateStr:
             simDateTs = pd.Timestamp.now(tz=NEW_YORK).normalize()

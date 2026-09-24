@@ -733,7 +733,7 @@
         const canvas = document.getElementById("receiptChartCanvas");
         if (!canvas) return;
 
-        const ticker = currentTicker || document.getElementById("tickerInput").value.trim().toUpperCase() || "NVDA";
+        const ticker = currentTicker || document.getElementById("tickerInput").value.trim().toUpperCase();
         let simDateStr = currentSimulatedDate;
         if (!simDateStr) {
             const simCheckbox = document.getElementById("simulatedDateCheckbox");
