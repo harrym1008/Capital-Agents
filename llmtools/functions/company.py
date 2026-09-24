@@ -110,7 +110,7 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
                 stockResult["marketCap"] = cleanNumber(marketCapNum, NumberType.LARGE_NUMBER)
 
         # Retrieve point-in-time financial metrics from Finnhub store
-        m = data.finnhub.getPointInTimeMetrics(ticker, timestamp, currentPrice=float(price), currentMarketCap=marketCapNum)
+        m = data.finnhub.getPointInTimeMetrics(ticker, timestamp, currentPrice=float(price))
 
         # Compute trailing returns, volatility, volume, and beta from OHLCV series
         priceData = data.ohlcv.getPeriodDailyTickerData(ticker, startDate=oneYearAgo, endDate=timestamp)
@@ -298,6 +298,7 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
     }
     if failures:
         output["failedTickers"] = failures
+        output["error"] = f"Failed to retrieve data for {len(failures)} tickers: {', '.join(failures)}"
 
     return cleanData(output)
 
