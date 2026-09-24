@@ -85,7 +85,7 @@ def setupFinbertEnvironment(installTensorRt: bool = True) -> None:
     if hasGpu:
         print("[Installer] NVIDIA GPU detected. Installing PyTorch cu132...")
         try:
-            runPipInstall(["torch", "torchvision", "torchaudio"], extraArgs=["--index-url", "https://download.pytorch.org/whl/cu132"])
+            runPipInstall(["torch"], extraArgs=["--index-url", "https://download.pytorch.org/whl/cu132"])
             cudaActive = verifyTorchCuda()
             if cudaActive:
                 print("[Installer] PyTorch cu132 installed and CUDA verified successfully!")
@@ -97,13 +97,13 @@ def setupFinbertEnvironment(installTensorRt: bool = True) -> None:
     if cudaActive:
         print("CUDA is available. FinBERT will use GPU acceleration.")
     else:
-        print("CUDA is not avaliable. FinBERT will use CPU fallback.")
+        print("CUDA is not available. FinBERT will use CPU fallback.")
 
 
     # Fallback to CPU if no GPU or CUDA installation failed
     if not cudaActive:
         print("\n[Installer] Configuring CPU environment...")
-        runPipInstall(["torch", "torchvision", "torchaudio"], extraArgs=["--index-url", "https://download.pytorch.org/whl/cpu"])
+        runPipInstall(["torch"], extraArgs=["--index-url", "https://download.pytorch.org/whl/cpu"])
 
     # Configure ONNX Runtime (avoid conflicting CPU and GPU wheels)
     if cudaActive:
