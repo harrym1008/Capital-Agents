@@ -98,7 +98,7 @@ def distributeIntegerPercentages(weights: List[float], totalTarget: int) -> List
 
 
 # Validate and record confirmed sector percentage allocations for portfolio construction
-def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, sectorAllocations: Dict[str, float], rationale: str) -> Dict[str, Any]:
+def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, sectorAllocations: Dict[str, float], rationale: str, **kwargs) -> Dict[str, Any]:
     if not isinstance(sectorAllocations, dict) or not sectorAllocations:
         return {"error": "sectorAllocations must be a non-empty dictionary mapping sector names to percentage numbers."}
 
@@ -171,7 +171,8 @@ def confirmPortfolioAllocation(
     timestamp: pd.Timestamp, 
     sectorAllocations: Union[Dict[str, List[Dict[str, Any]]], str], 
     portfolioRationale: str,
-    initialCapital: float = 100_000.0
+    initialCapital: float = 100_000.0,
+    **kwargs
 ) -> Dict[str, Any]:
     if isinstance(sectorAllocations, str):
         try:
@@ -365,7 +366,8 @@ def decideRebalanceNecessity(
     decision: str,
     reasoning: str,
     macroShiftDetected: bool = False,
-    urgency: str = "none"
+    urgency: str = "none",
+    **kwargs
 ) -> Dict[str, Any]:
     validDecisions = ["noBalanceRequired", "balanceRequired", "extendedBalanceRequired"]
     if decision not in validDecisions:

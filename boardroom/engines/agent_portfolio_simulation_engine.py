@@ -145,7 +145,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         })
 
     # Read and record into the journal (to bring information from one milestone to the next)        
-    def readJournal(self, tool: Tool, data: Any, timestamp: pd.Timestamp, limit: int = 10) -> Dict[str, Any]:
+    # Read and record into the journal (to bring information from one milestone to the next)        
+    def readJournal(self, tool: Tool, data: Any, timestamp: pd.Timestamp, limit: int = 10, **kwargs) -> Dict[str, Any]:
         currentDateStr = timestamp.strftime("%Y-%m-%d")
         entries = [e for e in self.journal if e.get("date", "") <= currentDateStr]
         if limit and limit > 0:
@@ -170,17 +171,20 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             "entries": entries
         }
 
-    def recordJournalEntry(self, tool: Tool, data: Any, timestamp: pd.Timestamp, entryText: str, 
-                           strategicOutlook: str = "", actionTaken: str = "") -> Dict[str, Any]:
+    def recordJournalEntry(self, tool: Tool, data: Any, timestamp: pd.Timestamp, entryText: str = "", 
+                           strategicOutlook: str = "", actionTaken: str = "", **kwargs) -> Dict[str, Any]:
+        entryTextStr = str(entryText or "").strip()
+        if not entryTextStr:
+            return {"error": "Missing required argument 'entryText'. Please provide a concise executive summary for the journal."}
         currentDateStr = timestamp.strftime("%Y-%m-%d")
         entryIndex = len(self.journal) + 1
         entry = {
             "entryIndex": entryIndex,
             "date": currentDateStr,
             "milestone": self.currentMilestoneLabel or f"Milestone {entryIndex}",
-            "summary": str(entryText).strip(),
-            "strategicOutlook": str(strategicOutlook).strip(),
-            "actionTaken": str(actionTaken).strip()
+            "summary": entryTextStr,
+            "strategicOutlook": str(strategicOutlook or "").strip(),
+            "actionTaken": str(actionTaken or "").strip()
         }
         self.journal.append(entry)
         summaryStr = f"Journal entry #{entryIndex} recorded for {currentDateStr}."
@@ -192,10 +196,16 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         }
 
 
-    # Jerry rigged wrappers for the confirmation tools to emit events to the UI when sector or portfolio allocations are confirmed
+    # Wrappers for confirmation tools to emit events to UI and resolve dynamic state
     def _wrappedConfirmSectorAllocation(self, tool: Tool, data: Any, timestamp: pd.Timestamp, 
-                                        sectorAllocations: Dict[str, float], rationale: str) -> Dict[str, Any]:
-        res = confirmSectorAllocation(tool, data, timestamp, sectorAllocations, rationale)
+                                        sectorAllocations: Optional[Dict[str, float]] = None, 
+                                        rationale: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+        if sectorAllocations is None:
+            return {"error": "Missing required argument 'sectorAllocations'. You must provide a dictionary mapping sector names to percentage numbers."}
+        if rationale is None:
+            return {"error": "Missing required argument 'rationale'. Please provide a rationale justifying the sector allocations."}
+
+        res = confirmSectorAllocation(tool, data, timestamp, sectorAllocations, rationale, **kwargs)
         if isinstance(res, dict) and (res.get("status") == "success" or "confirmedAllocation" in res):
             if tool.toolLog:
                 self.confirmedSectorAllocation = tool.toolLog[-1]
@@ -206,9 +216,28 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             })
         return res
 
-    def _wrappedConfirmPortfolioAllocation(self, tool: Tool, data: Any, timestamp: pd.Timestamp, sectorAllocations: Any,
-                                           portfolioRationale: str, initialCapital: float = 100000.0) -> Dict[str, Any]:
-        res = confirmPortfolioAllocation(tool, data, timestamp, sectorAllocations, portfolioRationale, initialCapital)
+    def _wrappedConfirmPortfolioAllocation(self, tool: Tool, data: Any, timestamp: pd.Timestamp, 
+                                           sectorAllocations: Any = None,
+                                           portfolioRationale: Optional[str] = None, 
+                                           initialCapital: Optional[float] = None, **kwargs) -> Dict[str, Any]:
+        if sectorAllocations is None:
+            return {"error": "Missing required argument 'sectorAllocations'. You must provide a dictionary mapping confirmed sectors to lists of stock positions."}
+        if portfolioRationale is None:
+            return {"error": "Missing required argument 'portfolioRationale'. Please provide an executive portfolioRationale detailing portfolio construction."}
+
+        # Resolve portfolio capital dynamically if omitted or 0
+        if not initialCapital or initialCapital <= 0:
+            if self.currentMilestoneId != "milestone_0" and hasattr(self, "marketSim") and self.marketSim:
+                portfolioObj = self.marketSim.getPortfolio("default_user")
+                if portfolioObj:
+                    initialCapital = float(portfolioObj.totalValue)
+            if not initialCapital or initialCapital <= 0:
+                if self.lastConfig and hasattr(self.lastConfig, "initialCapital") and self.lastConfig.initialCapital:
+                    initialCapital = float(self.lastConfig.initialCapital)
+                else:
+                    initialCapital = 100000.0
+
+        res = confirmPortfolioAllocation(tool, data, timestamp, sectorAllocations, portfolioRationale, initialCapital, **kwargs)
         if isinstance(res, dict) and (res.get("status") == "success" or "confirmedPortfolio" in res):
             if tool.toolLog:
                 self.confirmedPortfolioAllocation = tool.toolLog[-1]
@@ -220,9 +249,14 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             })
         return res
 
-    def _wrappedDecideRebalanceNecessity(self, tool: Tool, data: Any, timestamp: pd.Timestamp, decision: str,
-                                         reasoning: str, macroShiftDetected: bool = False, urgency: str = "none") -> Dict[str, Any]:
-        res = decideRebalanceNecessity(tool, data, timestamp, decision, reasoning, macroShiftDetected, urgency)
+    def _wrappedDecideRebalanceNecessity(self, tool: Tool, data: Any, timestamp: pd.Timestamp, 
+                                         decision: Optional[str] = None,
+                                         reasoning: str = "", macroShiftDetected: bool = False, 
+                                         urgency: str = "none", **kwargs) -> Dict[str, Any]:
+        if not decision:
+            return {"error": "Missing required argument 'decision'. Must be one of: 'noBalanceRequired', 'balanceRequired', 'extendedBalanceRequired'."}
+
+        res = decideRebalanceNecessity(tool, data, timestamp, decision, reasoning, macroShiftDetected, urgency, **kwargs)
         if isinstance(res, dict) and (res.get("status") == "success" or "decisionRecord" in res):
             record = res.get("decisionRecord") or (tool.toolLog[-1] if tool.toolLog else {})
             emitEvent("rebalanceDecisionConfirmed", {
@@ -829,8 +863,8 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"Conservative Risk Proposal:\n{consProposalRaw}\n\n"
             f"Task: As the Impartial Portfolio Manager, reconcile proposals to construct the definitive inception portfolio.\n"
             f"Balance conviction with humility: size positions for bull, base and bear paths rather than a single forecast.\n"
-            f"Mandatory: Call 'confirmPortfolioAllocation' with your allocated stock positions across "
-            f"confirmed sectors, 'portfolioRationale', and 'initialCapital'={config.initialCapital}.\n"
+            f"Mandatory Structure: 'sectorAllocations' must be a dictionary with EACH confirmed sector name as its OWN top-level key (e.g. {{'Financials': [{{'ticker': '...', 'perSectorWeight': 50, 'rationale': '...'}}, ...], 'Information Technology': [...]}}). All stocks within each sector must have 'perSectorWeight' summing to 100.\n"
+            f"Call 'confirmPortfolioAllocation' with your 'sectorAllocations' dictionary, 'portfolioRationale', and 'initialCapital'={config.initialCapital}.\n"
             f"You may also call 'recordJournalEntry' with your 30-50 word executive rationale summarizing portfolio inception."
         )
         pmResponse, _ = self.executeMandatedToolStage(
@@ -1010,7 +1044,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"- Max stock allocation: {promptArgs['maxStockAllocation']}\n\n"
             f"{scoutContextForPM}\n\n"
             f"Task: Construct the rebalanced portfolio. Execute 'confirmPortfolioAllocation' with your 'sectorAllocations' "
-            f"dictionary, 'portfolioRationale', and 'initialCapital'={currentPortfolioTotalVal:.2f}.\n"
+            f"dictionary (mapping EACH confirmed sector name as its OWN top-level key to a list of stock objects), 'portfolioRationale', and 'initialCapital'={currentPortfolioTotalVal:.2f}.\n"
             f"Minimise needless turnover: retain incumbents whose overview metrics remain sound, justifying every exit against the mandate.\n"
             f"You may also call 'recordJournalEntry' with your 30-50 word rationale detailing portfolio shifts."
         )

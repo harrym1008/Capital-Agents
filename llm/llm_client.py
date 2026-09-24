@@ -371,15 +371,26 @@ class BaseLLMClient(ABC):
         stdoutOutput = ""
         variablesOutput = {}
 
+        jsonDecodeError = None
         try:
             funcArgsDict = json.loads(funcArgsString)
-        except json.JSONDecodeError:
-            # Failed to parse the tool's arguments 
+            if not isinstance(funcArgsDict, dict):
+                jsonDecodeError = f"Tool '{funcName}' arguments must be a JSON object (dictionary), got {type(funcArgsDict).__name__}."
+                funcArgsDict = {}
+        except json.JSONDecodeError as e:
+            jsonDecodeError = f"Tool '{funcName}' arguments could not be parsed as valid JSON: {str(e)}. Please correct your JSON syntax and retry."
             funcArgsDict = {}
 
         permittedToolNames = {tool.name for tool in permittedTools} if permittedTools is not None else None
 
-        if funcName in toolRegistry.tools and (permittedToolNames is None or funcName in permittedToolNames):
+        if jsonDecodeError:
+            toolResult = {"error": jsonDecodeError}
+            stringResult = json.dumps(toolResult)
+            with self.toolCallLock:
+                self._safePrint(f"{Style.BRIGHT} Executing {funcName} --> {funcArgsString}", end="")
+                self._safePrint(f" {Style.BRIGHT}{Fore.RED}... failed: {jsonDecodeError}  {Style.RESET_ALL}", flush=True)
+                
+        elif funcName in toolRegistry.tools and (permittedToolNames is None or funcName in permittedToolNames):
             toolCalled = toolRegistry.tools[funcName]
             try:
                 toolResult = toolRegistry.executeTool(funcName, timestamp, funcArgsDict, callId=callId)
