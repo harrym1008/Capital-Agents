@@ -1,16 +1,12 @@
-/**
- * boardroom_core.js
- * Universal Boardroom Client Engine for CapitalAgents.
- * Manages WebSocket streaming events, agent feeds, collapsible tool call blocks,
- * markdown parsing, stage navigation, execution timers, and generation settings.
- */
+// Universal Boardroom Client Engine for CapitalAgents
+// Manages WebSocket streaming events, agent feeds, collapsible tool call blocks, markdown parsing, stage navigation, execution timers, and generation settings.
 
 const BoardroomCore = (function () {
     let serverIsLoaded = false;
-    let activeAgentPanes = {}; // Map of "stageNum_agentRole" -> { pane, feed }
-    let activeBlocks = {};     // Map of "stageNum_agentRole" -> { type, element, block, rawText }
-    let promptProcessingBanners = {}; // Map of "stageNum_agentRole" -> bannerElement
-    let streamingArgs = {};    // Map of "stageNum_toolIndex" -> raw string
+    let activeAgentPanes = {};
+    let activeBlocks = {};
+    let promptProcessingBanners = {};
+    let streamingArgs = {};
     let currentStageNumber = 0;
     let highestStageNumber = 0;
     let timerInterval = null;
@@ -31,10 +27,12 @@ const BoardroomCore = (function () {
         "Boardroom Spokesperson": { class: "cyan", initials: "SP", name: "Boardroom Spokesperson" }
     };
 
+    // Register or override styling and metadata configuration for an agent role
     function registerRole(roleName, config) {
         roleConfigs[roleName] = config;
     }
 
+    // Format a date string or object into an ordinal date string
     function formatOrdinalDate(dateInput) {
         if (!dateInput) {
             dateInput = new Date().toISOString().split('T')[0];
@@ -65,6 +63,7 @@ const BoardroomCore = (function () {
         return `${day}${suffix} ${monthName} ${year}`;
     }
 
+    // Extract individual column values from a markdown table row string
     function extractTableColumns(rowStr) {
         if (!rowStr) return [];
         let content = rowStr.trim();
@@ -73,6 +72,7 @@ const BoardroomCore = (function () {
         return content.split('|').map(c => c.trim());
     }
 
+    // Determine whether a table row string represents a markdown column separator
     function isTableSeparatorRow(rowStr) {
         if (!rowStr) return false;
         let content = rowStr.trim();
@@ -81,14 +81,16 @@ const BoardroomCore = (function () {
         return content.length > 0 && /^[\s\-:|]+$/.test(content) && content.includes('-');
     }
 
+    // Replace citation tags in text with clickable interactive citation buttons
     function replaceCitationTags(text) {
         if (!text) return "";
 
+        // Construct HTML markup for a citation button
         function makeCitationButton(citeNumStr, subIndexStr) {
             const citeNum = parseInt(String(citeNumStr).trim(), 10);
             if (isNaN(citeNum)) return "";
 
-            if (subIndexStr !== undefined && subIndexStr !== null && String(subIndexStr).trim() !== "") {
+            if (subIndexStr != null && String(subIndexStr).trim() !== "") {
                 const subIndex = parseInt(String(subIndexStr).trim(), 10);
                 if (!isNaN(subIndex)) {
                     return `<button type="button" class="citation-ref-btn" onclick="BoardroomCore.showSourceCitation(${citeNum}, ${subIndex})" title="View Source Citation [${citeNum}, ${subIndex}]"><sup>[${citeNum}, ${subIndex}]</sup></button>`;
@@ -97,7 +99,7 @@ const BoardroomCore = (function () {
             return `<button type="button" class="citation-ref-btn" onclick="BoardroomCore.showSourceCitation(${citeNum})" title="View Source Citation [${citeNum}]"><sup>[${citeNum}]</sup></button>`;
         }
 
-        // 1. Specific schema: <newsCitation>X:Y</newsCitation> or <newsCitation>X, Y</newsCitation>
+        // Specific schema: <newsCitation>X:Y</newsCitation> or <newsCitation>X, Y</newsCitation>
         text = text.replace(/<newsCitation(?:\s+id=["']?([0-9,\s:]+)["']?)?>([\s\S]*?)<\/newsCitation>/gi, (match, idAttr, innerContent) => {
             const content = (innerContent && innerContent.trim()) ? innerContent.trim() : (idAttr || "");
             const pairMatch = content.match(/^(\d+)\s*[,:]\s*(\d+)$/);
@@ -126,7 +128,7 @@ const BoardroomCore = (function () {
             return "";
         });
 
-        // 2. Specific schema: <toolCitation>X</toolCitation>
+        // Specific schema: <toolCitation>X</toolCitation>
         text = text.replace(/<toolCitation(?:\s+id=["']?(\d+)["']?)?>([\s\S]*?)<\/toolCitation>/gi, (match, idAttr, innerContent) => {
             const content = (innerContent && innerContent.trim()) ? innerContent.trim() : (idAttr || "");
             const numbers = content.match(/\d+/g);
@@ -137,7 +139,7 @@ const BoardroomCore = (function () {
             return makeCitationButton(id);
         });
 
-        // 3. Fallback/legacy: <citation>X</citation> or <citation>X, Y</citation> or <citation>X:Y</citation>
+        // Fallback or legacy citations: <citation>X</citation> or <citation>X, Y</citation>
         text = text.replace(/<citation(?:\s+id=["']?(\d+)["']?)?>([\s\S]*?)<\/citation>/gi, (match, idAttr, innerContent) => {
             const content = (innerContent && innerContent.trim()) ? innerContent : (idAttr || "");
             const pairMatch = content.match(/^(\d+)\s*[,:]\s*(\d+)$/);
@@ -149,7 +151,7 @@ const BoardroomCore = (function () {
             return numbers.map(n => makeCitationButton(n)).join("");
         });
 
-        // 4. Self-closing: <citation id="X" /> or <citation id="X, Y" />
+        // Self-closing: <citation id="X" /> or <citation id="X, Y" />
         text = text.replace(/<citation\s+id=["']?([0-9,\s:]+)["']?\s*\/>/gi, (match, idStr) => {
             const pairMatch = idStr.trim().match(/^(\d+)\s*[,:]\s*(\d+)$/);
             if (pairMatch) {
@@ -160,7 +162,7 @@ const BoardroomCore = (function () {
             return numbers.map(n => makeCitationButton(n)).join("");
         });
 
-        // 5. Short variant: <cite>X, Y</cite> or <cite>X</cite>
+        // Short variant: <cite>X, Y</cite> or <cite>X</cite>
         text = text.replace(/<cite(?:\s+id=["']?(\d+)["']?)?>([\s\S]*?)<\/cite>/gi, (match, idAttr, innerContent) => {
             const content = (innerContent && innerContent.trim()) ? innerContent : (idAttr || "");
             const pairMatch = content.match(/^(\d+)\s*[,:]\s*(\d+)$/);
@@ -181,7 +183,7 @@ const BoardroomCore = (function () {
             return numbers.map(n => makeCitationButton(n)).join("");
         });
 
-        // 6. Bracket variant: [citation: X, Y] or [cite: X, Y] or [citation: X]
+        // Bracket variant: [citation: X, Y] or [cite: X, Y]
         text = text.replace(/\[(?:citation|cite):\s*([0-9,\s:]+)\]/gi, (match, numbersStr) => {
             const pairMatch = numbersStr.trim().match(/^(\d+)\s*[,:]\s*(\d+)$/);
             if (pairMatch) {
@@ -192,7 +194,7 @@ const BoardroomCore = (function () {
             return numbers.map(n => makeCitationButton(n)).join("");
         });
 
-        // 7. Streaming in-progress tags at end of string:
+        // Streaming in-progress tags at end of string
         text = text.replace(/<newsCitation(?:\s+id=["']?([0-9,\s:]+)["']?)?>\s*(\d+)\s*[,:]\s*(\d+)\s*$/i, (match, idAttr, num1, num2) => {
             return makeCitationButton(num1, num2);
         });
@@ -216,7 +218,7 @@ const BoardroomCore = (function () {
         return text;
     }
 
-
+    // Render mathematical formulas via KaTeX for display and inline blocks
     function parseLatex(text) {
         if (typeof katex === "undefined" || !text) {
             return text;
@@ -237,10 +239,7 @@ const BoardroomCore = (function () {
             return katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false });
         });
 
-        // Inline math: $...$
-        // Protect currency amounts: opening $ cannot be followed by a digit or whitespace;
-        // closing $ cannot be preceded by whitespace or backslash and cannot be followed by a digit;
-        // formula cannot span across markdown/HTML tags (** / __ / < / >) or newlines.
+        // Inline math: $...$ protecting currency amounts
         text = text.replace(/(?<!\\)\$(?!\s|\d)([^\$\n]+?)(?<!\s|\\)\$(?!\d)/g, (match, formula) => {
             if (formula.includes('**') || formula.includes('__') || formula.includes('<') || formula.includes('>')) {
                 return match;
@@ -251,6 +250,7 @@ const BoardroomCore = (function () {
         return text;
     }
     
+    // Parse markdown formatted table blocks into structured HTML tables
     function parseTables(text) {
         const lines = text.split('\n');
         let inTable = false;
@@ -274,9 +274,10 @@ const BoardroomCore = (function () {
         if (inTable) {
             resultLines.push(renderHtmlTable(tableRows));
         }
-        return formattedText = resultLines.join('\n');
+        return resultLines.join('\n');
     }
 
+    // Parse raw markdown syntax into formatted HTML elements
     function parseMarkdown(text) {
         if (!text) return "";
 
@@ -288,19 +289,19 @@ const BoardroomCore = (function () {
 
         // 3. Parse code blocks (if for some reason the model wants to show the user what they wrote into the Python tool)
         formattedText = formattedText.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
-        const cleanCode = escapeHtml(code.replace(/^\n+|\n+$/g, ''));
-        const langBadge = lang ? `<span style="position: absolute; top: 4px; right: 8px; font-size: 10px; color: #b8c8de; font-weight: 700; user-select: none;">${lang}</span>` : '';
-        
-        return `<div style="position: relative; display: flex; flex-direction: column;">
-                    ${langBadge}
-                    <pre style="margin: 0; background-color: #0f172a; color: #ffffff; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 12.5px; line-height: 1.45; overflow-x: auto; white-space: pre;"><code>${cleanCode}</code></pre>
-                </div>`;
+            const cleanCode = escapeHtml(code.replace(/^\n+|\n+$/g, ''));
+            const langBadge = lang ? `<span style="position: absolute; top: 4px; right: 8px; font-size: 10px; color: #b8c8de; font-weight: 700; user-select: none;">${lang}</span>` : '';
+            
+            return `<div style="position: relative; display: flex; flex-direction: column;">
+                        ${langBadge}
+                        <pre style="margin: 0; background-color: #0f172a; color: #ffffff; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 12.5px; line-height: 1.45; overflow-x: auto; white-space: pre;"><code>${cleanCode}</code></pre>
+                    </div>`;
         });
 
         // 4. Parse bullet points before parsing bold/italic to avoid conflicts
         formattedText = formattedText.replace(/^[\*\-\•]\s+(.*?)$/gm, '&bull; $1');
 
-        // 5. Parse bold and italic: **text** or __text__
+        // 5. Parse bold: **text** or __text__
         formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         formattedText = formattedText.replace(/__(.*?)__/g, '<strong>$1</strong>');
 
@@ -328,6 +329,7 @@ const BoardroomCore = (function () {
         return formattedText;
     }
 
+    // Construct HTML table structure from parsed rows
     function renderHtmlTable(rows) {
         if (!rows || rows.length === 0) return "";
 
@@ -364,6 +366,7 @@ const BoardroomCore = (function () {
         return html;
     }
 
+    // Update visibility of thinking budget controls based on server provider
     function updateGenerationSettingsUI(provider) {
         currentServerProvider = (provider || "").toLowerCase();
         const thinkingBudgetGroup = document.getElementById("thinkingBudgetGroup");
@@ -380,6 +383,7 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Update connection status, provider controls, and cost information
     function applyServerStatus(data) {
         if (!data) return;
         const isRunning = !!(data.running || data.llamacppRunning || data.openrouterRunning || data.openaiCompatibleRunning);
@@ -400,6 +404,7 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Poll or query current LLM server connectivity status
     function checkServerStatus() {
         if (window.latestServerStatus) {
             applyServerStatus(window.latestServerStatus);
@@ -410,6 +415,7 @@ const BoardroomCore = (function () {
 
     let simulationIsRunning = false;
 
+    // Toggle interactive run button state based on server connection
     function setServerConnectedState(isConnected) {
         serverIsLoaded = isConnected;
         window.serverIsLoaded = isConnected;
@@ -434,6 +440,7 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Enable or disable form controls and buttons based on simulation running status
     function setControlsRunningState(isRunning) {
         simulationIsRunning = isRunning;
         const tickerInp = document.getElementById("tickerInput");
@@ -449,7 +456,7 @@ const BoardroomCore = (function () {
         const openSettingsBtn = document.getElementById("openSettingsBtn");
         if (openSettingsBtn) openSettingsBtn.disabled = isRunning;
 
-        // Portfolio Creation specific inputs if present
+        // Portfolio creation specific controls
         const initCapInp = document.getElementById("initialCapitalInput");
         if (initCapInp) initCapInp.disabled = isRunning;
         const secCountInp = document.getElementById("targetSectorCountInput");
@@ -485,6 +492,7 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Start simulation execution timer in minutes and seconds
     function startSimulationTimer() {
         if (timerInterval) {
             clearInterval(timerInterval);
@@ -506,6 +514,7 @@ const BoardroomCore = (function () {
         }, 10);
     }
 
+    // Stop and hide the simulation execution timer
     function stopSimulationTimer() {
         if (timerInterval) {
             clearInterval(timerInterval);
@@ -517,6 +526,7 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Update enabled state of the sidebar summaries toggle button
     function updateSummariesBtnState() {
         const btn = document.getElementById("sidebarToggleBtn") || document.getElementById("summariesBtn");
         if (!btn) return;
@@ -529,6 +539,7 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Initialise stage navigation bar tabs for the active mode
     function initStagesBar(mode, stagesConfig) {
         if (stagesConfig) {
             defaultStagesConfig = stagesConfig;
@@ -553,10 +564,10 @@ const BoardroomCore = (function () {
             bar.appendChild(div);
         });
 
-        // Trigger custom stages hook if child template registered one
         emit("stagesBarInit", { mode, stages, bar });
     }
 
+    // Reveal target stage workspace container and highlight corresponding tab
     function showStageWorkspace(stageNum) {
         const allWorkspaces = document.querySelectorAll(".stage-workspace");
         allWorkspaces.forEach(ws => ws.style.display = "none");
@@ -577,9 +588,10 @@ const BoardroomCore = (function () {
         emit("stageViewChanged", { stageNum });
     }
 
-    // Sources Manager UI State & Functions
+    
     let capturedSources = [];
 
+    // Escape HTML special characters in string
     function escapeHtml(str) {
         if (!str) return "";
         return String(str)
@@ -590,6 +602,7 @@ const BoardroomCore = (function () {
             .replace(/'/g, "&#039;");
     }
 
+    // Switch between summaries and sources tabs in the sidebar
     function switchSidebarTab(tabName) {
         const summariesTab = document.getElementById("sidebarTab-summaries");
         const sourcesTab = document.getElementById("sidebarTab-sources");
@@ -612,9 +625,10 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Open sidebar panel and optionally switch to a specific tab
     function openSidebar(defaultTab) {
         const sidebar = document.getElementById("summarySidebar");
-        if (sidebar && sidebar.classList.contains("collapsed")) {
+        if (sidebar?.classList.contains("collapsed")) {
             sidebar.classList.remove("collapsed");
         }
         if (defaultTab) {
@@ -622,9 +636,8 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Ensure sources table DOM structure exists inside the sidebar
     function ensureSourcesWorkspace() {
-        // In the sidebar architecture, sourcesTable exists inside #sidebarPane-sources.
-        // If needed for dynamic re-render, verify table body is present
         const tbody = document.getElementById("sourcesTableBody");
         if (!tbody) {
             const container = document.getElementById("sidebarSourcesContent");
@@ -651,6 +664,7 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Clear sources table and reset sources log counter
     function resetSourcesUI() {
         capturedSources = [];
         const sourcesTab = document.getElementById("sidebarTab-sources");
@@ -671,8 +685,9 @@ const BoardroomCore = (function () {
         updateSummariesBtnState();
     }
 
+    // Append or update a source record entry in the sources collection
     function addSourceRecord(source) {
-        if (!source || !source.citationNumber) return;
+        if (!source?.citationNumber) return;
         ensureSourcesWorkspace();
 
         const existingIdx = capturedSources.findIndex(s => s.citationNumber === source.citationNumber);
@@ -691,6 +706,7 @@ const BoardroomCore = (function () {
         updateSummariesBtnState();
     }
 
+    // Render source records into the sources log table
     function renderSourcesTable() {
         const tbody = document.getElementById("sourcesTableBody");
         if (!tbody) return;
@@ -723,6 +739,7 @@ const BoardroomCore = (function () {
         }).join("");
     }
 
+    // Display modal window showing arguments and execution output for a citation
     function openSourceModal(citationNumber) {
         const source = capturedSources.find(s => s.citationNumber === citationNumber);
         if (!source) return;
@@ -771,6 +788,7 @@ const BoardroomCore = (function () {
         modalOverlay.style.display = "flex";
     }
 
+    // Close the citation details modal overlay
     function closeSourceModal() {
         const modalOverlay = document.getElementById("sourceModalOverlay");
         if (modalOverlay) {
@@ -778,40 +796,42 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Retrieve specific news article object referenced by index from tool source result
     function getNewsArticle(source, subIndex) {
-        if (!source || !source.result) return null;
+        if (!source?.result) return null;
         const res = source.result;
         const news = Array.isArray(res.news) ? res.news : (Array.isArray(res) ? res : null);
         if (!news || news.length === 0) return null;
 
-        // 1. Direct match by newsCitationNumber
-        let article = news.find(a => a && a.newsCitationNumber === subIndex);
-        if (article && article.url) return article;
+        // Direct match by newsCitationNumber
+        let article = news.find(a => a?.newsCitationNumber === subIndex);
+        if (article?.url) return article;
 
-        // 2. Direct match by index property
-        article = news.find(a => a && a.index === subIndex);
-        if (article && article.url) return article;
+        // Direct match by index property
+        article = news.find(a => a?.index === subIndex);
+        if (article?.url) return article;
 
-        // 3. If subIndex is 0, definitely the first article
+        // Subindex 0 first article
         if (subIndex === 0) {
             return news[0];
         }
 
-        // 4. 1-based indexing resolving to array position news[subIndex - 1]
-        if (subIndex > 0 && news[subIndex - 1] && news[subIndex - 1].url) {
+        // 1-based indexing
+        if (subIndex > 0 && news[subIndex - 1]?.url) {
             return news[subIndex - 1];
         }
 
-        // 5. 0-based array index news[subIndex]
-        if (news[subIndex] && news[subIndex].url) return news[subIndex];
+        // 0-based array index
+        if (news[subIndex]?.url) return news[subIndex];
 
         return null;
     }
 
+    // Scroll to and highlight a citation record in the sidebar sources list
     function showSourceCitation(citationNumber, subIndex) {
         openSidebar("sources");
         setTimeout(() => {
-            // Remove any existing highlights from all rows
+            // Remove existing highlights
             document.querySelectorAll(".sources-table tr.source-highlight").forEach(r => {
                 r.classList.remove("source-highlight");
             });
@@ -828,11 +848,11 @@ const BoardroomCore = (function () {
                 }, { once: true });
             }
 
-            // If subIndex is specified, check if it references a news article with a URL
-            if (subIndex !== undefined && subIndex !== null) {
+            // Check if referencing news article URL
+            if (subIndex != null) {
                 const source = capturedSources.find(s => s.citationNumber === citationNumber);
                 const article = getNewsArticle(source, subIndex);
-                if (article && article.url) {
+                if (article?.url) {
                     const headline = article.headline || "News Article";
                     setTimeout(() => {
                         const proceed = window.confirm(`Do you want to open this article's page in a new tab?  It is called: '${headline}'`);
@@ -845,10 +865,10 @@ const BoardroomCore = (function () {
         }, 50);
     }
 
-
+    // Setup stage container DOM structure and create required agent panels
     function setupStageLayout(stageNum, stageName, agents) {
         if (stageNum === 0) {
-            // Ignore stage 0 layout setup so we stay on the final Decision Upload page!
+            // Preserve stage 0 layout to stay on final Decision Upload view
             return;
         }
 
@@ -899,6 +919,7 @@ const BoardroomCore = (function () {
         emit("stageLayoutReady", { stageNum, stageName, agents, workspace: stageWorkspace });
     }
 
+    // Attach autoscroll tracking listeners to an element with user detachment detection
     function setupAutoScroll(el, threshold = 30) {
         if (!el || el._autoScrollReady) return;
         el._autoScrollReady = true;
@@ -925,12 +946,12 @@ const BoardroomCore = (function () {
             }
         }, { passive: true });
 
-        // Immediate intent latch on wheel:
         el.addEventListener('wheel', (e) => {
             if (e.deltaY < 0) {
                 // User rolled wheel up: latch detached immediately
                 el._userScrolledAway = true;
             } else if (e.deltaY > 0) {
+                // User rolled wheel down: re-anchor if near bottom
                 const gap = el.scrollHeight - el.clientHeight - el.scrollTop;
                 if (gap <= threshold) {
                     el._userScrolledAway = false;
@@ -946,12 +967,14 @@ const BoardroomCore = (function () {
         }, { passive: true });
     }
 
+    // Scroll element to bottom if not detached by user
     function autoScroll(el) {
         if (!el || el._userScrolledAway) return;
         el.scrollTop = el.scrollHeight;
         el._lastScrollTop = el.scrollTop;
     }
 
+    // Force scroll feed container directly to bottom and re-anchor auto-scroll state
     function scrollFeedToBottom(feed) {
         if (!feed) return;
         feed._userScrolledAway = false;
@@ -959,6 +982,7 @@ const BoardroomCore = (function () {
         feed._lastScrollTop = feed.scrollTop;
     }
 
+    // Trigger autoscroll on agent feed or QA chat window
     function autoScrollFeedOrWorkspace(stageNum, agentRole) {
         if (stageNum === "qa") {
             const chatLog = document.getElementById("qaChatHistory");
@@ -966,12 +990,13 @@ const BoardroomCore = (function () {
         } else {
             const compoundKey = `${stageNum}_${agentRole}`;
             const paneObj = activeAgentPanes[compoundKey];
-            if (paneObj && paneObj.feed) {
+            if (paneObj?.feed) {
                 autoScroll(paneObj.feed);
             }
         }
     }
 
+    // Create an agent dialogue pane within the stage workspace
     function createAgentPane(stageNum, agentRole, agentColor, displayName) {
         const compoundKey = `${stageNum}_${agentRole}`;
         if (activeAgentPanes[compoundKey]) {
@@ -1040,6 +1065,7 @@ const BoardroomCore = (function () {
         return activeAgentPanes[compoundKey];
     }
 
+    // Retrieve existing agent pane or create a new one if missing
     function getOrCreateAgentPane(stageNum, agentRole, agentColor, displayName) {
         const compoundKey = `${stageNum}_${agentRole}`;
         if (!activeAgentPanes[compoundKey]) {
@@ -1048,9 +1074,10 @@ const BoardroomCore = (function () {
         return activeAgentPanes[compoundKey];
     }
 
+    // Append error or rate-limit notice banner into the agent feed
     function appendAgentErrorMsgToAgentFeed(stageNum, agentRole, payload) {
         const paneObj = getOrCreateAgentPane(stageNum, agentRole, payload.agentColor);
-        if (!paneObj || !paneObj.feed) return;
+        if (!paneObj?.feed) return;
 
         const el = document.createElement("div");
         el.className = "rate-limit-feed-item";
@@ -1059,9 +1086,10 @@ const BoardroomCore = (function () {
         autoScroll(paneObj.feed);
     }
 
+    // Render prompt processing spinner banner into agent feed
     function showPromptProcessing(stageNum, agentRole) {
         const paneObj = getOrCreateAgentPane(stageNum, agentRole);
-        if (!paneObj || !paneObj.feed) return;
+        if (!paneObj?.feed) return;
         const compoundKey = `${stageNum}_${agentRole}`;
 
         if (promptProcessingBanners[compoundKey]) return;
@@ -1083,6 +1111,7 @@ const BoardroomCore = (function () {
         autoScrollFeedOrWorkspace(stageNum, agentRole);
     }
 
+    // Remove active prompt processing spinner banner for an agent
     function removePromptProcessing(stageNum, agentRole) {
         const compoundKey = `${stageNum}_${agentRole}`;
         const banner = promptProcessingBanners[compoundKey];
@@ -1094,22 +1123,24 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Clear all prompt processing banners across all stages and agents
     function clearAllPromptProcessing() {
         Object.keys(promptProcessingBanners).forEach(key => {
             const banner = promptProcessingBanners[key];
-            if (banner && banner.parentNode) {
+            if (banner?.parentNode) {
                 banner.parentNode.removeChild(banner);
             }
         });
         promptProcessingBanners = {};
     }
 
+    // Initialise collapsible thinking reasoning block in agent feed
     function startReasoningBlock(stageNum, agentRole) {
         const paneObj = getOrCreateAgentPane(stageNum, agentRole);
-        if (!paneObj || !paneObj.feed) return;
+        if (!paneObj?.feed) return;
         const compoundKey = `${stageNum}_${agentRole}`;
 
-        // Collapse any tool call blocks in this pane's feed
+        // Collapse existing tool call blocks in pane feed
         const toolBlocks = paneObj.feed.querySelectorAll(`.tool-call-block`);
         toolBlocks.forEach(tb => tb.classList.add("collapsed"));
 
@@ -1139,6 +1170,7 @@ const BoardroomCore = (function () {
         };
     }
 
+    // Append streaming reasoning token and re-render formatted markdown in thinking block
     function appendReasoningToken(stageNum, agentRole, token) {
         const compoundKey = `${stageNum}_${agentRole}`;
         let active = activeBlocks[compoundKey];
@@ -1146,7 +1178,7 @@ const BoardroomCore = (function () {
             startReasoningBlock(stageNum, agentRole);
             active = activeBlocks[compoundKey];
         }
-        if (active && active.type === 'thinking') {
+        if (active?.type === 'thinking') {
             active.rawText = (active.rawText || "") + token;
 
             const el = active.element;
@@ -1166,9 +1198,10 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Mount output content or summary container in agent feed
     function startContentBlock(stageNum, agentRole, phase) {
         const paneObj = getOrCreateAgentPane(stageNum, agentRole);
-        if (!paneObj || !paneObj.feed) return;
+        if (!paneObj?.feed) return;
         const compoundKey = `${stageNum}_${agentRole}`;
 
         // Collapse any tool call blocks in this pane's feed
@@ -1203,6 +1236,7 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Append streaming text token to active content or summary block
     function appendContentToken(stageNum, agentRole, token, phase) {
         const compoundKey = `${stageNum}_${agentRole}`;
         let active = activeBlocks[compoundKey];
@@ -1229,6 +1263,7 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Create a companion summary box inside the right summary sidebar
     function createSidebarSummary(stageNum, agentRole, config) {
         const sidebarContent = document.getElementById("sidebarContent");
         if (!sidebarContent) return;
@@ -1257,20 +1292,20 @@ const BoardroomCore = (function () {
         sidebarContent.appendChild(box);
 
         autoScroll(sidebarContent);
-
-        // Automatically open sidebar when summaries start streaming and switch to summaries tab
         openSidebar("summaries");
     }
 
+    // Toggle summary sidebar collapsed state
     function toggleSidebar() {
         const btn = document.getElementById("sidebarToggleBtn") || document.getElementById("summariesBtn");
-        if (btn && btn.disabled) return;
+        if (btn?.disabled) return;
         const sidebar = document.getElementById("summarySidebar");
         if (sidebar) {
             sidebar.classList.toggle("collapsed");
         }
     }
 
+    // Attempt to pretty-print formatted JSON string or return raw text
     function tryFormatJson(str) {
         try {
             const trimmed = String(str).trim();
@@ -1283,6 +1318,7 @@ const BoardroomCore = (function () {
         return str;
     }
 
+    // Extract partial code string from streaming JSON payload
     function extractPartialCode(rawJson) {
         const match = rawJson.match(/"code"\s*:\s*"((?:[^"\\]|\\.)*)/);
         if (match) {
@@ -1291,15 +1327,15 @@ const BoardroomCore = (function () {
         return rawJson;
     }
 
+    // Mount an in-progress streaming tool call block in the agent feed
     function startToolCallStream(stageNum, agentRole, index, toolName) {
         const paneObj = getOrCreateAgentPane(stageNum, agentRole);
-        if (!paneObj || !paneObj.feed) return;
+        if (!paneObj?.feed) return;
         const compoundKey = `${stageNum}_${agentRole}`;
         const streamId = `streamToolCall-${stageNum}-${index}`;
 
         let toolBlock = document.getElementById(streamId);
         if (!toolBlock) {
-            // Collapse any active tool call blocks in this pane's feed
             const toolBlocks = paneObj.feed.querySelectorAll(`.tool-call-block`);
             toolBlocks.forEach(tb => tb.classList.add("collapsed"));
 
@@ -1368,6 +1404,7 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Append streaming tokens to arguments preview inside streaming tool block
     function appendToolCallStreamToken(stageNum, agentRole, index, token) {
         const streamId = `streamToolCall-${stageNum}-${index}`;
         const key = `${stageNum}_${index}`;
@@ -1402,15 +1439,15 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Mount or re-render a tool call block when invocation begins execution
     function startToolBlock(stageNum, agentRole, toolName, args, callId, toolIndex) {
         const paneObj = getOrCreateAgentPane(stageNum, agentRole);
-        if (!paneObj || !paneObj.feed) return;
+        if (!paneObj?.feed) return;
         const compoundKey = `${stageNum}_${agentRole}`;
         const streamId = `streamToolCall-${stageNum}-${toolIndex}`;
 
         let toolBlock = document.getElementById(streamId);
         if (!toolBlock) {
-            // Collapse any active tool call blocks
             const toolBlocks = paneObj.feed.querySelectorAll(`.tool-call-block`);
             toolBlocks.forEach(tb => tb.classList.add("collapsed"));
 
@@ -1419,10 +1456,7 @@ const BoardroomCore = (function () {
             paneObj.feed.appendChild(toolBlock);
         }
 
-        // Bind the actual callId to the block ID
         toolBlock.id = `toolCall-${stageNum}-${callId}`;
-
-        // Re-render header and content with final pretty-formatted json/code
         toolBlock.innerHTML = "";
 
         const header = document.createElement("div");
@@ -1482,11 +1516,9 @@ const BoardroomCore = (function () {
         activeBlocks[compoundKey] = { type: 'tool', element: content, block: toolBlock };
     }
 
+    // Update status badge on tool block to show ongoing progress stage
     function updateToolBlockProgress(stageNum, callId, progress) {
-        let toolBlock = document.getElementById(`toolCall-${stageNum}-${callId}`);
-        if (!toolBlock) {
-            toolBlock = document.querySelector(`[id$="-${callId}"]`);
-        }
+        let toolBlock = document.getElementById(`toolCall-${stageNum}-${callId}`) || document.querySelector(`[id$="-${callId}"]`);
         if (toolBlock) {
             const badge = toolBlock.querySelector(".tool-status-badge");
             if (badge) {
@@ -1496,11 +1528,9 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Conclude tool execution block and render stdout, result, and output variables
     function endToolBlock(stageNum, agentRole, toolName, callId, status, result, stdout, variables, toolIndex) {
-        let toolBlock = document.getElementById(`toolCall-${stageNum}-${callId}`);
-        if (!toolBlock) {
-            toolBlock = document.querySelector(`[id$="-${callId}"]`);
-        }
+        let toolBlock = document.getElementById(`toolCall-${stageNum}-${callId}`) || document.querySelector(`[id$="-${callId}"]`);
         if (toolBlock) {
             const badge = toolBlock.querySelector(".tool-status-badge");
             if (badge) {
@@ -1543,7 +1573,6 @@ const BoardroomCore = (function () {
                 }
             }
 
-            // Collapse the tool call block automatically after it finishes running
             toolBlock.classList.add("collapsed");
 
             const key = `${stageNum}_${toolIndex}`;
@@ -1553,6 +1582,7 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Terminate and collapse active thinking or reasoning block for an agent
     function endCurrentBlock(stageNum, agentRole) {
         const compoundKey = `${stageNum}_${agentRole}`;
         const active = activeBlocks[compoundKey];
@@ -1564,26 +1594,28 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Open/close generation settings configuration modal overlay
     function openSettingsModal() {
         const overlay = document.getElementById("settingsOverlay");
         if (overlay) overlay.style.display = "flex";
     }
-
     function closeSettingsModal() {
         const overlay = document.getElementById("settingsOverlay");
         if (overlay) overlay.style.display = "none";
     }
 
+    // Close settings modal if backdrop overlay is clicked
     function handleSettingsOverlayMouseDown(event) {
-        if (event.target && event.target.id === "settingsOverlay") {
+        if (event.target?.id === "settingsOverlay") {
             closeSettingsModal();
         }
     }
 
+    // Extract current model generation parameters from settings modal inputs
     function getGenerationSettings() {
-        const maxIters = parseInt(document.getElementById("maxItersInput").value || 6, 10);
-        const thinkingBudget = parseInt(document.getElementById("thinkingBudgetInput").value || 2048, 10);
-        const temp = parseFloat(document.getElementById("temperatureInput").value || 0.5);
+        const maxIters = parseInt(document.getElementById("maxItersInput")?.value || 6, 10);
+        const thinkingBudget = parseInt(document.getElementById("thinkingBudgetInput")?.value || 2048, 10);
+        const temp = parseFloat(document.getElementById("temperatureInput")?.value || 0.5);
         const generateSummaries = document.getElementById("generateSummariesCheckbox") ? document.getElementById("generateSummariesCheckbox").checked : true;
 
         return {
@@ -1594,16 +1626,19 @@ const BoardroomCore = (function () {
         };
     }
 
+    // Show modal alerting user to active background boardroom simulation
     function showActiveBoardroomModal() {
         const overlay = document.getElementById("activeBoardroomOverlay");
         if (overlay) overlay.style.display = "flex";
     }
 
+    // Hide active background boardroom simulation alert modal
     function hideActiveBoardroomModal() {
         const overlay = document.getElementById("activeBoardroomOverlay");
         if (overlay) overlay.style.display = "none";
     }
 
+    // Check backend boardroom running status via REST endpoint
     async function checkBoardroomStatus() {
         try {
             const res = await fetch('/api/boardroom/status');
@@ -1622,6 +1657,7 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Force stop running boardroom simulation via REST endpoint
     async function killActiveBoardroom() {
         const killBtn = document.getElementById("killBoardroomBtn");
         if (killBtn) killBtn.disabled = true;
@@ -1666,6 +1702,7 @@ const BoardroomCore = (function () {
         }, 300);
     }
 
+    // Request simulation termination via WebSocket and REST endpoint
     function stopSimulation() {
         const stopBtn = document.getElementById("stopBtn");
         if (stopBtn) {
@@ -1677,6 +1714,7 @@ const BoardroomCore = (function () {
         fetch('/api/boardroom/stop', { method: 'POST' }).catch(() => {});
     }
 
+    // Validate inputs, initialise stage layout, and dispatch simulation start command
     function startSimulation() {
         if (!serverIsLoaded && !window.serverIsLoaded) {
             alert("Server not connect. Please load and connect to a server first.");
@@ -1689,7 +1727,7 @@ const BoardroomCore = (function () {
         }
 
         const payload = getPayloadFn();
-        if (!payload) return; // Validation failed inside child handler
+        if (!payload) return;
 
         setControlsRunningState(true);
 
@@ -1702,11 +1740,10 @@ const BoardroomCore = (function () {
         }
 
         startSimulationTimer();
-        if (window.BoardroomExporter && window.BoardroomExporter.handleSimStart) {
+        if (window.BoardroomExporter?.handleSimStart) {
             window.BoardroomExporter.handleSimStart();
         }
 
-        // Clear existing state
         activeAgentPanes = {};
         activeBlocks = {};
         streamingArgs = {};
@@ -1716,7 +1753,7 @@ const BoardroomCore = (function () {
         updateSummariesBtnState();
         resetSourcesUI();
 
-        // Immediately mount Stage 1 so the UI responds without delay
+        // Immediately mount Stage 1 so UI renders without delay
         const initialMode = modeSelect ? modeSelect.value : "fast";
         if (initialMode === "one_shot") {
             setupStageLayout(1, "One-Shot Analysis", [
@@ -1740,6 +1777,7 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Register event callback listener
     function on(eventType, callback) {
         if (!customEventListeners[eventType]) {
             customEventListeners[eventType] = [];
@@ -1747,6 +1785,7 @@ const BoardroomCore = (function () {
         customEventListeners[eventType].push(callback);
     }
 
+    // Emit event and notify registered callbacks
     function emit(eventType, data) {
         if (customEventListeners[eventType]) {
             customEventListeners[eventType].forEach(cb => {
@@ -1755,14 +1794,15 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Dispatch incoming simulation streaming events to corresponding UI handlers
     function handleSimulationEvent(payload) {
-        if (!payload || !payload.type) return;
+        if (!payload?.type) return;
 
         const rawRole = payload.agentRole || payload.role;
         const agentRole = (typeof rawRole === "object" && rawRole !== null) ? (rawRole.role || "") : (rawRole || "");
         const agentColor = (typeof rawRole === "object" && rawRole !== null) ? (rawRole.color || payload.agentColor || payload.color) : (payload.agentColor || payload.color);
         const { type, phase, stageNum } = payload;
-        const activeStage = (stageNum !== undefined && stageNum !== null) ? stageNum : currentStageNumber;
+        const activeStage = stageNum != null ? stageNum : currentStageNumber;
 
         switch (type) {
             case "metricsUpdate":
@@ -1920,13 +1960,11 @@ const BoardroomCore = (function () {
                     }
                 }
 
-                if (window.BoardroomExporter && window.BoardroomExporter.handleSimComplete) {
+                if (window.BoardroomExporter?.handleSimComplete) {
                     window.BoardroomExporter.handleSimComplete(payload);
                 }
 
-                // Mark all stages as completed in the stages bar
-                const items = document.querySelectorAll(".stage-item");
-                items.forEach(item => {
+                document.querySelectorAll(".stage-item").forEach(item => {
                     item.classList.remove("active");
                     item.classList.add("completed");
                 });
@@ -1954,10 +1992,10 @@ const BoardroomCore = (function () {
                 break;
         }
 
-        // Emit to custom listeners
         emit(payload.type, payload);
     }
 
+    // Initialise boardroom frontend engine, binds event listeners, and connects WebSocket
     function init({ defaultStages, getPayload, initialMode }) {
         defaultStagesConfig = defaultStages || {};
         getPayloadFn = getPayload;
@@ -1983,7 +2021,9 @@ const BoardroomCore = (function () {
         checkBoardroomStatus();
     }
 
+    // Monitor horizontal scroll container overflow and toggle padding classes
     function initScrollbarAutoPadding() {
+        // Evaluate horizontal container overflow
         const checkScrollbars = () => {
             const containers = [
                 document.getElementById("configInputsContainer"),
@@ -2019,6 +2059,7 @@ const BoardroomCore = (function () {
         setTimeout(checkScrollbars, 300);
     }
 
+    // Initialise simulated evaluation date picker constraints and toggle listeners
     function initSimulatedDateControl() {
         const dateInput = document.getElementById("simulatedDateInput");
         const checkbox = document.getElementById("simulatedDateCheckbox");
@@ -2030,7 +2071,7 @@ const BoardroomCore = (function () {
                 fetch("/api/constants")
                     .then(res => res.json())
                     .then(data => {
-                        if (data && data.endDate) {
+                        if (data?.endDate) {
                             dateInput.setAttribute("max", data.endDate);
                         }
                     })
@@ -2054,10 +2095,11 @@ const BoardroomCore = (function () {
         }
     }
 
+    // Retrieve validated simulated evaluation date from input controls
     function getSimulatedDate() {
         const checkbox = document.getElementById("simulatedDateCheckbox");
         const dateInput = document.getElementById("simulatedDateInput");
-        if (checkbox && checkbox.checked) {
+        if (checkbox?.checked) {
             const val = dateInput ? dateInput.value : null;
             if (!val) {
                 alert("Please select a valid simulated evaluation date.");
@@ -2132,4 +2174,3 @@ window.closeSourceModal = BoardroomCore.closeSourceModal;
 window.showSourceCitation = BoardroomCore.showSourceCitation;
 window.initSimulatedDateControl = BoardroomCore.initSimulatedDateControl;
 window.getSimulatedDate = BoardroomCore.getSimulatedDate;
-

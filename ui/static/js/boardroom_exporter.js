@@ -1,20 +1,17 @@
-/**
- * boardroom_exporter.js
- * Standalone Boardroom HTML Report Exporter for CapitalAgents.
- * Captures the current DOM state of a completed boardroom simulation,
- * sanitises live dependencies, inlines stylesheets & assets, sets tool/thinking
- * blocks to collapsed by default, and downloads a 100% self-contained HTML file.
- */
+// Boardroom Exporter
+// Standalone boardroom HTML report exporter for CapitalAgents.
 
 const BoardroomExporter = (function () {
     let lastSimTotalTime = "";
 
+    // Parse and normalise initial capital input value
     function getCleanInitialCapital() {
         const val = document.getElementById("initialCapitalInput")?.value;
         const num = parseFloat(String(val).replace(/[^0-9.]/g, ""));
         return isNaN(num) || num <= 0 ? 100000 : num;
     }
 
+    // Format a date string or object into an ordinal date string
     function formatOrdinalDate(dateInput) {
         if (!dateInput) {
             dateInput = new Date();
@@ -50,6 +47,7 @@ const BoardroomExporter = (function () {
         return `${day}${suffix} ${monthName} ${year}`;
     }
 
+    // Format a date object into an ordinal date and time string
     function formatOrdinalDateTime(dateObj) {
         const d = dateObj || new Date();
         const datePart = formatOrdinalDate(d);
@@ -58,14 +56,15 @@ const BoardroomExporter = (function () {
         return `${datePart}, ${hours}:${minutes}`;
     }
 
+    // Check whether a DOM element is currently visible
     function isElementVisible(el) {
         if (!el) return false;
-        if (el.style && el.style.display === "none") return false;
-        if (el.hasAttribute("hidden")) return false;
+        if (el.style?.display === "none" || el.hasAttribute("hidden")) return false;
         const computed = window.getComputedStyle(el);
         return computed.display !== "none" && computed.visibility !== "hidden";
     }
 
+    // Extract report configuration parameters and target metadata from active DOM
     function extractReportMetadata() {
         // Determine target ticker or scenario title
         const tickerInput = document.getElementById("tickerInput");
@@ -88,29 +87,29 @@ const BoardroomExporter = (function () {
         // Extract visible form parameters
         const params = [];
 
-        // 1. Date Produced with time
+        // Date produced with timestamp
         params.push({ key: "Date Produced", value: formatOrdinalDateTime(new Date()) });
 
-        // 2. Sim Date or Date of Analysis
+        // Simulation date or date of analysis
         const simCheckbox = document.getElementById("simulatedDateCheckbox");
         const simDateInput = document.getElementById("simulatedDateInput");
-        if (simCheckbox && simCheckbox.checked && simDateInput && simDateInput.value) {
+        if (simCheckbox?.checked && simDateInput?.value) {
             params.push({ key: "Sim Date", value: formatOrdinalDate(simDateInput.value) });
         } else {
             params.push({ key: "Date of Analysis", value: formatOrdinalDate(new Date()) });
         }
 
-        // 3. Extract other visible form controls
+        // Extract remaining visible form controls
         const configGroups = document.querySelectorAll(".config-bar .config-group");
         configGroups.forEach(group => {
             if (!isElementVisible(group)) return;
 
-            // Skip groups that contain only action buttons (like sector modal button)
+            // Skip groups that contain only action buttons
             if (group.querySelector("button") && !group.querySelector("input, select")) {
                 return;
             }
 
-            // Skip simulated date checkbox group (already extracted above)
+            // Skip simulated date checkbox group
             if (group.querySelector("#simulatedDateCheckbox") || group.querySelector("#simulatedDateInput")) {
                 return;
             }
@@ -168,6 +167,7 @@ const BoardroomExporter = (function () {
         return { target, title, filename, params, isSingleEquity };
     }
 
+    // Collect external stylesheets and inline CSS into a single style text
     async function collectAllStylesheets() {
         let fullCss = "";
 
@@ -190,7 +190,7 @@ const BoardroomExporter = (function () {
             }
         }
 
-        // Add report specific classes & overrides
+        // Add report specific classes and overrides
         fullCss += `
             /* Standalone Report Styling Overrides */
             body {
@@ -283,16 +283,14 @@ const BoardroomExporter = (function () {
         return fullCss;
     }
 
+    // Replace live canvas charts in the clone with static Base64 image tags
     function freezeCanvases(targetClone, originalRoot) {
         const origCanvases = Array.from(originalRoot.querySelectorAll("canvas"));
         const targetCanvases = Array.from(targetClone.querySelectorAll("canvas"));
 
         origCanvases.forEach((origCanvas, idx) => {
             try {
-                let targetCanvas = null;
-                if (origCanvas.id) {
-                    targetCanvas = targetClone.querySelector(`#${origCanvas.id}`);
-                }
+                let targetCanvas = origCanvas.id ? targetClone.querySelector(`#${origCanvas.id}`) : null;
                 if (!targetCanvas && targetCanvases[idx]) {
                     targetCanvas = targetCanvases[idx];
                 }
@@ -334,12 +332,14 @@ const BoardroomExporter = (function () {
         });
     }
 
+    // Build the standalone interactive JavaScript logic for exported boardroom reports
     function buildOfflineScript(sources) {
         const serializedSources = JSON.stringify(sources || []);
         return `
         <script>
             var capturedSources = ${serializedSources};
 
+            // Escape HTML characters for safe modal rendering
             function escapeHtml(str) {
                 if (str === null || str === undefined) return "";
                 return String(str)
@@ -350,6 +350,7 @@ const BoardroomExporter = (function () {
                     .replace(/'/g, "&#039;");
             }
 
+            // Display selected stage workspace and update tab styles
             function showStageWorkspace(stageNum) {
                 document.querySelectorAll('.stage-item').forEach(function(item) {
                     item.classList.remove('viewing');
@@ -366,11 +367,13 @@ const BoardroomExporter = (function () {
                 }
             }
 
+            // Toggle sidebar open and collapsed state
             function toggleSidebar() {
                 var sidebar = document.getElementById('summarySidebar');
                 if (sidebar) sidebar.classList.toggle('collapsed');
             }
 
+            // Switch between summaries and sources tabs in the sidebar
             function switchSidebarTab(tabName) {
                 document.querySelectorAll('.sidebar-tab-item').forEach(function(tab) {
                     tab.classList.remove('viewing');
@@ -384,6 +387,7 @@ const BoardroomExporter = (function () {
                 if (selectedPane) selectedPane.style.display = 'flex';
             }
 
+            // Open the sidebar and optionally focus a specific tab
             function openSidebar(tabName) {
                 var sidebar = document.getElementById('summarySidebar');
                 if (sidebar && sidebar.classList.contains('collapsed')) {
@@ -394,6 +398,7 @@ const BoardroomExporter = (function () {
                 }
             }
 
+            // Open citation modal with tool call arguments and output
             function openSourceModal(citationNumber) {
                 var source = capturedSources.find(function(s) { return s.citationNumber === citationNumber; });
                 if (!source) return;
@@ -441,6 +446,7 @@ const BoardroomExporter = (function () {
                 modalOverlay.style.display = 'flex';
             }
 
+            // Close the source citation modal window
             function closeSourceModal() {
                 var modalOverlay = document.getElementById('sourceModalOverlay');
                 if (modalOverlay) {
@@ -448,6 +454,7 @@ const BoardroomExporter = (function () {
                 }
             }
 
+            // Scroll to and highlight a citation entry in the sources table
             function showSourceCitation(citationNumber, subIndex) {
                 openSidebar('sources');
                 setTimeout(function() {
@@ -501,13 +508,12 @@ const BoardroomExporter = (function () {
         `;
     }
 
+    // Assemble and return the complete self-contained boardroom HTML document
     async function generateSelfContainedHtml() {
         const meta = extractReportMetadata();
         const inlinedCss = await collectAllStylesheets();
 
-        const sources = (window.BoardroomCore && window.BoardroomCore.getSources)
-            ? window.BoardroomCore.getSources()
-            : [];
+        const sources = window.BoardroomCore?.getSources ? window.BoardroomCore.getSources() : [];
 
         // Retrieve server details and simulation runtime
         let serverName = "Unknown";
@@ -516,13 +522,13 @@ const BoardroomExporter = (function () {
 
         if (!timeTaken) {
             const finalTimeVal = document.getElementById("finalTimeReportValue");
-            if (finalTimeVal && finalTimeVal.innerText) {
+            if (finalTimeVal?.innerText) {
                 timeTaken = finalTimeVal.innerText.replace(/^Time Taken:\s*/i, "").trim();
             }
         }
         if (!timeTaken) {
             const timerEl = document.getElementById("simulationTimer");
-            if (timerEl && timerEl.innerText && timerEl.innerText !== "0 mins 0.00 secs") {
+            if (timerEl?.innerText && timerEl.innerText !== "0 mins 0.00 secs") {
                 timeTaken = timerEl.innerText.trim();
             }
         }
@@ -545,7 +551,7 @@ const BoardroomExporter = (function () {
 
         if (serverName === "Unknown") {
             const sLabel = document.getElementById("serverStatusLabel");
-            if (sLabel && sLabel.innerText) {
+            if (sLabel?.innerText) {
                 serverName = sLabel.innerText.replace(/:$/, "").trim();
             }
         }
@@ -555,7 +561,7 @@ const BoardroomExporter = (function () {
             modelHtml = `<div><span class="report-meta-label">Model:</span><span class="report-meta-value" title="${modelName}">${modelName}</span></div>`;
         }
 
-        // 1. Build Clean Top Header
+        // Build top header
         let paramsHtml = meta.params.map(p => `
             <span class="report-param-item">
                 <strong>${p.key}:</strong> ${p.value}
@@ -583,7 +589,7 @@ const BoardroomExporter = (function () {
         </header>
         `;
 
-        // 2. Clone & Prepare Stages Bar
+        // Clone and prepare stages bar
         const origStagesBar = document.getElementById("stagesBar");
         let stagesBarHtml = "";
         if (origStagesBar) {
@@ -593,7 +599,7 @@ const BoardroomExporter = (function () {
             const qaTab = stagesClone.querySelector("#stageStep-qa");
             if (qaTab) qaTab.remove();
 
-            // Clear timer & download button, keep only Sidebar Toggle
+            // Clear timer and download button, preserve sidebar toggle
             const stagesActions = stagesClone.querySelector("#stagesActions");
             if (stagesActions) {
                 stagesActions.innerHTML = `
@@ -623,7 +629,7 @@ const BoardroomExporter = (function () {
             stagesBarHtml = stagesClone.outerHTML;
         }
 
-        // 3. Clone & Prepare Workspaces Layout
+        // Clone and prepare workspaces layout
         const origLayout = document.querySelector(".main-layout");
         let mainLayoutHtml = "";
         if (origLayout) {
@@ -633,13 +639,13 @@ const BoardroomExporter = (function () {
             const qaWorkspace = layoutClone.querySelector("#stageWorkspace-qa");
             if (qaWorkspace) qaWorkspace.remove();
 
-            // Remove any action buttons inside panes (like Q&A delete turn buttons, interactive toggle buttons)
+            // Remove action buttons inside panes
             layoutClone.querySelectorAll(".qa-delete-btn, .qa-user-pane, .modal-close-btn, #portfolioPieToggleContainer, #portfolioBacktestToggleContainer, .pie-toggle-btn").forEach(btn => btn.remove());
 
             // Freeze all canvases in the clone
             freezeCanvases(layoutClone, origLayout);
 
-            // Collapse all thinking & tool call blocks by default
+            // Collapse thinking and tool call blocks by default
             layoutClone.querySelectorAll(".collapsible-block").forEach(block => {
                 block.classList.add("collapsed");
             });
@@ -663,7 +669,7 @@ const BoardroomExporter = (function () {
             mainLayoutHtml = layoutClone.outerHTML;
         }
 
-        // 4. Assemble Complete Standalone HTML Document
+        // Assemble complete standalone HTML document
         const fullHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -685,6 +691,7 @@ const BoardroomExporter = (function () {
         return { fullHtml, filename: meta.filename };
     }
 
+    // Trigger report compilation and initiate download of standalone report HTML
     async function downloadHtmlReport() {
         try {
             const btn = document.getElementById("downloadReportBtn");
@@ -723,6 +730,7 @@ const BoardroomExporter = (function () {
         }
     }
 
+    // Hide download button and start the timer when simulation starts
     function handleSimStart() {
         const downloadBtn = document.getElementById("downloadReportBtn");
         const timerEl = document.getElementById("simulationTimer");
@@ -735,8 +743,9 @@ const BoardroomExporter = (function () {
         }
     }
 
+    // Store completion runtime and reveal download button
     function handleSimComplete(payload) {
-        if (payload && payload.totalTime) {
+        if (payload?.totalTime) {
             lastSimTotalTime = payload.totalTime;
         }
 

@@ -1,20 +1,17 @@
-/**
- * agent_sim_exporter.js
- * Standalone Self-Contained HTML Report Exporter for Agent-Driven Portfolio Simulation.
- * Captures all simulation parameters, all historical sessions & milestones,
- * post-session metrics, active holdings, activity logs, dialogue feeds,
- * and live interactive Chart.js charts with automatic Base64 image fallback.
- */
+// Agent Simulation Exporter
+// Standalone self-contained HTML report exporter for agent-driven portfolio simulation.
 
 const AgentSimExporter = (function () {
     let lastSimTotalTime = "";
 
+    // Parse and normalise initial capital input value
     function getCleanInitialCapital() {
         const val = document.getElementById("initialCapitalInput")?.value;
         const num = parseFloat(String(val).replace(/[^0-9.]/g, ""));
         return isNaN(num) || num <= 0 ? 100000 : num;
     }
 
+    // Format a date string or object into an ordinal date string
     function formatOrdinalDate(dateInput) {
         if (!dateInput) dateInput = new Date().toISOString().split('T')[0];
         const months = [
@@ -47,6 +44,7 @@ const AgentSimExporter = (function () {
         return `${day}${suffix} ${months[monthIdx] || ""} ${year}`;
     }
 
+    // Format a date object into an ordinal date and time string
     function formatOrdinalDateTime(dateObj) {
         const d = dateObj || new Date();
         const datePart = formatOrdinalDate(d);
@@ -55,6 +53,7 @@ const AgentSimExporter = (function () {
         return `${datePart}, ${hours}:${minutes}`;
     }
 
+    // Extract simulation parameters and report metadata from DOM controls
     function extractSimulationMetadata() {
         const startDateInput = document.getElementById("setupStartDate");
         const endDateInput = document.getElementById("setupEndDate");
@@ -91,7 +90,7 @@ const AgentSimExporter = (function () {
         }
 
         const biasCb = document.getElementById("allocationBiasCheckbox");
-        if (biasCb && biasCb.checked) {
+        if (biasCb?.checked) {
             const slider = document.getElementById("allocationBiasSlider");
             const biasLabels = {
                 1: "Maximum Growth Bias",
@@ -117,6 +116,7 @@ const AgentSimExporter = (function () {
         return { title, filename, params, startDate, endDate };
     }
 
+    // Collect and concatenate all stylesheets and report-specific CSS rules
     async function collectAllStylesheets() {
         let fullCss = "";
         const styleNodes = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'));
@@ -137,7 +137,7 @@ const AgentSimExporter = (function () {
             }
         }
 
-        // Add report specific classes & overrides (Copied exactly from boardroom_exporter.js)
+        // Add report specific styling overrides
         fullCss += `
             /* Standalone Report Styling Overrides */
             body {
@@ -237,6 +237,7 @@ const AgentSimExporter = (function () {
         return fullCss;
     }
 
+    // Convert live canvas elements into static Base64 image snapshots for offline fallback
     function freezeCanvases(originalRoot, targetClone) {
         const snapshots = {};
         const origCanvases = Array.from(originalRoot.querySelectorAll("canvas"));
@@ -249,7 +250,7 @@ const AgentSimExporter = (function () {
                     snapshots[origCanvas.id] = dataUrl;
 
                     const cloneCanvas = targetClone.querySelector(`#${origCanvas.id}`);
-                    if (cloneCanvas && cloneCanvas.parentNode) {
+                    if (cloneCanvas?.parentNode) {
                         const fallbackImg = document.createElement("img");
                         fallbackImg.id = `${origCanvas.id}_fallback`;
                         fallbackImg.src = dataUrl;
@@ -267,11 +268,12 @@ const AgentSimExporter = (function () {
         return snapshots;
     }
 
+    // Serialise simulation history, milestones, and benchmark chart points
     function serializeSimulationState() {
         const exportedSessions = {};
         if (typeof sessionMgr !== "undefined" && sessionMgr.sessions) {
             Object.values(sessionMgr.sessions).forEach(sess => {
-                if (!sess || !sess.id) return;
+                if (!sess?.id) return;
                 exportedSessions[sess.id] = {
                     id: sess.id,
                     label: sess.label,
@@ -304,6 +306,7 @@ const AgentSimExporter = (function () {
         };
     }
 
+    // Build the inline client-side JavaScript engine for the standalone export
     function buildOfflineScript(serializedData, snapshots) {
         return `
         <script>
@@ -315,6 +318,7 @@ const AgentSimExporter = (function () {
             var perfChartInstance = null;
             var doughnutChartInstances = {};
 
+            // Escape HTML special characters in strings
             function escapeHtml(str) {
                 if (!str) return "";
                 return String(str)
@@ -325,6 +329,7 @@ const AgentSimExporter = (function () {
                     .replace(/'/g, "&#039;");
             }
 
+            // Format date string into human-friendly short format
             function formatFriendlyDate(dateInput) {
                 if (!dateInput) return "--";
                 if (typeof dateInput === 'string') {
@@ -341,11 +346,12 @@ const AgentSimExporter = (function () {
                 return days[d.getUTCDay()] + ' ' + dayStr + ' ' + months[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
             }
 
+            // Switch the active session workspace and update associated charts and metrics
             function switchSession(mId) {
                 if (!mId || !simulationData.sessions[mId]) return;
                 activeSessionId = mId;
 
-                // 1. Hide all session workspaces and reveal target
+                // Hide all session workspaces and reveal target
                 document.querySelectorAll('.milestone-workspace').forEach(function(ws) {
                     ws.style.display = 'none';
                 });
@@ -355,7 +361,7 @@ const AgentSimExporter = (function () {
                 var session = simulationData.sessions[mId];
                 var isLastSession = (mId === simulationData.liveSessionId);
 
-                // 2. Highlight selector and labels in red if viewing a past historical session
+                // Highlight selector and labels in red if viewing a past historical session
                 var select = document.getElementById('milestoneSelect');
                 if (select) {
                     select.value = mId;
@@ -372,26 +378,27 @@ const AgentSimExporter = (function () {
                     }
                 }
 
-                // 3. Update Left Sidebar Metrics
+                // Update left sidebar metrics
                 var metrics = session.sessionMetrics || (isLastSession ? simulationData.lastLiveSimulationState : null);
                 if (metrics) {
                     renderSidebarMetrics(metrics, !isLastSession);
                 }
 
-                // 4. Render Stage Tabs for this session
+                // Render stage tabs for this session
                 renderStagesBar(session.stages || [], mId);
 
-                // 5. Select first stage in this session
+                // Select first stage in this session
                 var firstStage = (session.stages && session.stages.length > 0) ? session.stages[0].num : 1;
                 switchStage(firstStage, mId);
 
-                // 6. Refresh Performance Chart slice
+                // Refresh performance chart slice
                 refreshPerformanceChart(session.date);
 
-                // 7. Ensure doughnut charts for this session are rendered or fallback shown
+                // Ensure doughnut charts for this session are rendered or fallback shown
                 renderSessionDoughnuts(session);
             }
 
+            // Switch the visible stage within the current session workspace
             function switchStage(stageNum, mId) {
                 if (!mId) mId = activeSessionId;
                 activeStageNum = stageNum;
@@ -413,7 +420,7 @@ const AgentSimExporter = (function () {
                     }
                 });
 
-                // Ensure doughnut charts resize or initialize if switching to Stage 3 or Stage 6
+                // Ensure doughnut charts resize or initialise if switching to Stage 3 or Stage 6
                 if (stageNum === 3 || stageNum === 6) {
                     var session = simulationData.sessions[mId];
                     if (session) {
@@ -428,6 +435,7 @@ const AgentSimExporter = (function () {
                 }
             }
 
+            // Render navigation tabs for stages within the active milestone
             function renderStagesBar(stages, mId) {
                 var bar = document.getElementById('stagesScrollContainer');
                 if (!bar) return;
@@ -446,6 +454,7 @@ const AgentSimExporter = (function () {
                 });
             }
 
+            // Render portfolio value, returns, and alpha metrics into the sidebar
             function renderSidebarMetrics(data, isPast) {
                 if (!data) return;
 
@@ -508,7 +517,7 @@ const AgentSimExporter = (function () {
                     var sharpeEl = document.getElementById("metricSharpe");
                     if (sharpeEl) {
                         var sr = Number(data.sharpeRatio).toFixed(2);
-                        var spSr = (data.sp500SharpeRatio !== undefined && data.sp500SharpeRatio !== null) ? Number(data.sp500SharpeRatio).toFixed(2) : null;
+                        var spSr = (data.sp500SharpeRatio != null) ? Number(data.sp500SharpeRatio).toFixed(2) : null;
                         if (spSr !== null) {
                             sharpeEl.innerHTML = '<span style="font-weight: 800;">' + sr + '</span> <span style="font-size: 11px; font-weight: 500; color: #64748b;">(vs ' + spSr + ' for S&P 500)</span>';
                         } else {
@@ -521,7 +530,7 @@ const AgentSimExporter = (function () {
                     var ddEl = document.getElementById("metricDrawdown");
                     if (ddEl) {
                         var dd = Number(data.maxDrawdownPct);
-                        var spDd = (data.sp500MaxDrawdownPct !== undefined && data.sp500MaxDrawdownPct !== null) ? Number(data.sp500MaxDrawdownPct) : null;
+                        var spDd = (data.sp500MaxDrawdownPct != null) ? Number(data.sp500MaxDrawdownPct) : null;
                         if (spDd !== null) {
                             ddEl.innerHTML = '<span style="font-weight: 800; color: ' + (dd <= spDd ? '#10b981' : '#dc2626') + ';">' + dd.toFixed(2) + '%</span> <span style="font-size: 11px; font-weight: 500; color: #64748b;">(vs ' + spDd.toFixed(2) + '% for S&P 500)</span>';
                         } else {
@@ -540,6 +549,7 @@ const AgentSimExporter = (function () {
                 }
             }
 
+            // Render current holdings and performance breakdown into table rows
             function renderHoldingsTable(positions) {
                 var tbody = document.getElementById("holdingsTableBody");
                 var countBadge = document.getElementById("holdingsCountBadge");
@@ -578,6 +588,7 @@ const AgentSimExporter = (function () {
                 }).join('');
             }
 
+            // Render chronological rebalance and system execution events
             function renderActivityFeed(history, systemLogs) {
                 var container = document.getElementById("rebalanceTimelineList");
                 if (!container) return;
@@ -643,6 +654,7 @@ const AgentSimExporter = (function () {
                 }).join('');
             }
 
+            // Set active timeframe filter for the performance comparison chart
             function setChartTimeframe(tf, btn) {
                 currentChartTf = tf.toLowerCase();
                 document.querySelectorAll('.tf-btn').forEach(function(b) { b.classList.remove('active'); });
@@ -650,6 +662,7 @@ const AgentSimExporter = (function () {
                 refreshPerformanceChart();
             }
 
+            // Refresh or mount the portfolio performance comparison line chart
             function refreshPerformanceChart(upToDate) {
                 var canvas = document.getElementById('agentSimChartCanvas');
                 var fallbackImg = document.getElementById('agentSimChartCanvas_fallback');
@@ -751,6 +764,7 @@ const AgentSimExporter = (function () {
                 }
             }
 
+            // Render sector and portfolio allocation doughnut charts
             function renderSessionDoughnuts(session) {
                 var mId = session.id;
                 var secCanvas = document.getElementById('sectorChartCanvas-' + mId);
@@ -768,7 +782,7 @@ const AgentSimExporter = (function () {
 
                 var colors = ["#2563eb", "#10b981", "#f59e0b", "#8b5cf6", "#06b6d4", "#ec4899", "#64748b", "#14b8a6", "#f97316", "#a855f7", "#3b82f6", "#e11d48"];
 
-                // Sector Doughnut
+                // Sector doughnut
                 if (secCanvas && session.confirmedSector) {
                     if (!doughnutChartInstances['sec_' + mId]) {
                         try {
@@ -814,7 +828,7 @@ const AgentSimExporter = (function () {
                     }
                 }
 
-                // Portfolio Doughnut
+                // Portfolio doughnut
                 if (portCanvas && session.confirmedPortfolio) {
                     if (!doughnutChartInstances['port_' + mId]) {
                         try {
@@ -898,6 +912,7 @@ const AgentSimExporter = (function () {
         `;
     }
 
+    // Generate the complete self-contained HTML document markup
     async function generateSelfContainedHtml() {
         const meta = extractSimulationMetadata();
         const inlinedCss = await collectAllStylesheets();
@@ -908,7 +923,7 @@ const AgentSimExporter = (function () {
 
         if (!timeTaken) {
             const timerEl = document.getElementById("simulationTimer");
-            if (timerEl && timerEl.innerText && timerEl.innerText !== "0 mins 0.00 secs") {
+            if (timerEl?.innerText && timerEl.innerText !== "0 mins 0.00 secs") {
                 timeTaken = timerEl.innerText.trim();
             }
         }
@@ -928,7 +943,7 @@ const AgentSimExporter = (function () {
         }
         if (serverName === "Unknown") {
             const sLabel = document.getElementById("serverStatusLabel");
-            if (sLabel && sLabel.innerText) {
+            if (sLabel?.innerText) {
                 serverName = sLabel.innerText.replace(/:$/, "").trim();
             }
         }
@@ -938,7 +953,7 @@ const AgentSimExporter = (function () {
             modelHtml = `<div><span class="report-meta-label">Model:</span><span class="report-meta-value" title="${escapeHtml(modelName)}">${escapeHtml(modelName)}</span></div>`;
         }
 
-        // Top Header
+        // Top header
         const paramsHtml = meta.params.map(p => `
             <span class="report-param-item">
                 <strong>${escapeHtml(p.key)}:</strong> ${escapeHtml(p.value)}
@@ -964,19 +979,19 @@ const AgentSimExporter = (function () {
         </header>
         `;
 
-        // Stages Bar Clone
+        // Stages bar clone
         const origStagesBar = document.getElementById("stagesBar");
         let stagesBarHtml = "";
         if (origStagesBar) {
             const stagesClone = origStagesBar.cloneNode(true);
             const stagesActions = stagesClone.querySelector("#stagesActions");
             if (stagesActions) {
-                stagesActions.innerHTML = ""; // Clean actions in export
+                stagesActions.innerHTML = "";
             }
             stagesBarHtml = stagesClone.outerHTML;
         }
 
-        // Main Layout Clone with Left Sidebar and Workspaces
+        // Main layout clone with sidebar and workspaces
         const origLayout = document.querySelector(".main-layout");
         let mainLayoutHtml = "";
         let snapshots = {};
@@ -984,10 +999,10 @@ const AgentSimExporter = (function () {
         if (origLayout) {
             const layoutClone = origLayout.cloneNode(true);
 
-            // Remove settings overlays, QA elements if any
+            // Remove settings overlays and QA controls
             layoutClone.querySelectorAll("#settingsOverlay, .qa-delete-btn, .qa-user-pane, .modal-close-btn").forEach(el => el.remove());
 
-            // Collapse all thinking blocks by default
+            // Collapse thinking blocks by default
             layoutClone.querySelectorAll(".collapsible-block").forEach(block => {
                 block.classList.add("collapsed");
             });
@@ -1028,6 +1043,7 @@ const AgentSimExporter = (function () {
         return { fullHtml, filename: meta.filename };
     }
 
+    // Trigger report compilation and prompt file download in browser
     async function downloadHtmlReport() {
         try {
             const btn = document.getElementById("downloadReportBtn");
@@ -1066,6 +1082,7 @@ const AgentSimExporter = (function () {
         }
     }
 
+    // Reset UI controls and timer on simulation initiation
     function handleSimStart() {
         const downloadBtn = document.getElementById("downloadReportBtn");
         const timerEl = document.getElementById("simulationTimer");
@@ -1078,12 +1095,13 @@ const AgentSimExporter = (function () {
         }
     }
 
+    // Cache simulation completion runtime and display download button
     function handleSimComplete(payload) {
-        if (payload && payload.totalTime) {
+        if (payload?.totalTime) {
             lastSimTotalTime = payload.totalTime;
         } else {
             const timerEl = document.getElementById("simulationTimer");
-            if (timerEl && timerEl.innerText && timerEl.innerText !== "0 mins 0.00 secs") {
+            if (timerEl?.innerText && timerEl.innerText !== "0 mins 0.00 secs") {
                 lastSimTotalTime = timerEl.innerText.trim();
             }
         }

@@ -1,16 +1,13 @@
-/**
- * CapitalAgents - Shared Frontend Utilities
- */
+// CapitalAgents - Shared Frontend Utilities
 
 (function(window) {
     'use strict';
 
     const Utils = {};
 
-    // --- Formatting Helpers ---
-
+    // Format raw token count into human-readable shorthand (K, mn, bn, tn)
     Utils.formatTokenCount = function(val) {
-        if (val === undefined || val === null || isNaN(val) || val <= 0) return "0";
+        if (val == null || isNaN(val) || val <= 0) return "0";
         const num = Math.abs(parseFloat(val));
         if (num >= 1e12) return Number((num / 1e12).toPrecision(3)) + "tn";
         if (num >= 1e9) return Number((num / 1e9).toPrecision(3)) + "bn";
@@ -19,27 +16,33 @@
         return Number(num.toPrecision(3)).toString();
     };
 
+    // Format generation speed in tokens per second
     Utils.formatTokSpeed = function(val) {
-        if (val === undefined || val === null || isNaN(val) || val <= 0) return "0.0 tok/s";
-        if (val < 1000) {
+        if (val == null || isNaN(val) || val <= 0) return "0.00 tok/s";
+        if (val < 100) {
+            return parseFloat(val).toFixed(2) + " tok/s";
+        } else if (val < 1000) {
             return parseFloat(val).toFixed(1) + " tok/s";
         } else {
             return Math.round(val).toString() + " tok/s";
         }
     };
 
+    // Format cache hit percentage to one decimal place
     Utils.formatCacheHitRate = function(val) {
-        if (val === undefined || val === null || isNaN(val)) return "0.0%";
+        if (val == null || isNaN(val)) return "0.0%";
         return parseFloat(val).toFixed(1) + "%";
     };
 
+    // Format money cost values with dynamic precision
     Utils.formatCost = function(val) {
-        if (val === undefined || val === null || isNaN(val)) return "$0.0000";
+        if (val == null || isNaN(val)) return "$0.0000";
         const num = parseFloat(val);
         if (num < 10) return "$" + num.toFixed(4);
         return "$" + num.toFixed(2);
     };
 
+    // Format numeric dollar input with thousand separators and decimal restriction
     Utils.formatDollarInput = function(input, decimalPlaces = 2) {
         if (!input) return;
         let val = input.value.replace(/[^0-9.]/g, '');
@@ -55,8 +58,7 @@
         input.value = wholeParts.join('.');
     };
 
-    // --- Large Number Helpers (global K / mn / bn / tn standard) ---
-
+    // Calculate the number of decimal places in a numeric value
     Utils.countDecimalPlaces = function(num) {
         if (!num || Math.floor(num) === num) return 0;
         const str = num.toString();
@@ -69,6 +71,7 @@
         return 0;
     };
 
+    // Format large currency amounts using standard magnitude suffixes
     Utils.formatLargeCurrency = function(val, stepSize) {
         if (val === 0) return '$0';
         const absVal = Math.abs(val);
@@ -103,16 +106,14 @@
         return '$' + formattedStr + unit;
     };
 
-    // --- Date Helpers ---
-
+    // Retrieve yesterday's date formatted as YYYY-MM-DD
     Utils.getYesterdayDateString = function() {
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
         return yesterday.toISOString().split('T')[0];
     };
 
-    // --- Terminal Log Autoscroll Helper ---
-
+    // Append log line to terminal element with autoscroll support
     Utils.appendTerminalLog = function(elementOrId, line, threshold = 40) {
         const logsEl = typeof elementOrId === 'string' ? document.getElementById(elementOrId) : elementOrId;
         if (!logsEl) return;
@@ -126,7 +127,7 @@
     // Export to global window object
     window.AppUtils = Utils;
 
-    // Direct global convenience bindings for backward compatibility
+    // Direct global convenience bindings for backwards compatibility
     window.formatTokenCount = Utils.formatTokenCount;
     window.formatTokSpeed = Utils.formatTokSpeed;
     window.formatCacheHitRate = Utils.formatCacheHitRate;
