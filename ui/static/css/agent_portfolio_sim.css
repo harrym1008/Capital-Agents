@@ -1,6 +1,4 @@
-/* Agent-Driven Portfolio Simulation Stylesheet */
-
-/* Main Container Layout Split */
+/* Main simulation container and layout */
 .main-layout {
     display: flex !important;
     flex: 1;
@@ -11,7 +9,7 @@
     background-color: #f8fafc;
 }
 
-/* Left Sidebar (23% Width) */
+/* Left simulation sidebar and telemetry panel */
 .agent-sim-sidebar {
     flex: 0 0 23%;
     width: 23%;
@@ -28,7 +26,7 @@
     box-sizing: border-box;
 }
 
-/* Right Main Workspace */
+/* Right agent workspace container */
 .workspace {
     flex: 1;
     min-width: 0;
@@ -88,7 +86,7 @@
     box-sizing: border-box;
 }
 
-/* Report Section Styling (Cohesive Company Report Structure, Not Floating Bubbles) */
+/* Sidebar report sections and typography */
 .report-section {
     display: flex;
     flex-direction: column;
@@ -119,7 +117,7 @@
     margin: 0;
 }
 
-/* Header Date & Metrics Summary (Identical to market_sim.html) */
+/* Financial performance metrics and date display */
 .sim-metrics-summary {
     display: flex;
     flex-direction: column;
@@ -151,6 +149,16 @@
     color: #0f172a;
 }
 
+.metric-value-strong {
+    font-weight: 800;
+}
+
+.metric-benchmark-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: #64748b;
+}
+
 .date-highlight {
     font-size: 1.25rem;
     font-weight: 800;
@@ -180,7 +188,7 @@
     color: #dc2626 !important;
 }
 
-/* Timeframe Selector Buttons (Horizontal Row) */
+/* Timeframe controls and chart canvas */
 .chart-timeframe-controls {
     display: flex;
     flex-direction: row;
@@ -214,7 +222,6 @@
     border-color: #2563eb;
 }
 
-/* Chart Canvas Wrapper (Taller) */
 .sim-chart-wrapper {
     width: 100%;
     height: 25vh;
@@ -222,7 +229,7 @@
     margin-top: 2px;
 }
 
-/* Key Performance Metrics Grid (Transparent Background, No Card Border) */
+/* Backtest statistical metrics grid */
 .backtest-metrics-container {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -256,7 +263,21 @@
     overflow: hidden;
 }
 
-/* Active Holdings Table */
+/* Holdings table components */
+.holdings-count-badge {
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+}
+
+.holdings-scroll-box {
+    overflow-y: auto;
+    overflow-x: hidden;
+    max-height: 240px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+}
+
 .sim-positions-table {
     width: 100%;
     border-collapse: collapse;
@@ -276,6 +297,16 @@
     white-space: nowrap;
 }
 
+.sim-positions-table th.holdings-table-head-left {
+    text-align: left;
+    padding: 4px 2px;
+}
+
+.sim-positions-table th.holdings-table-head-right {
+    text-align: right;
+    padding: 4px 2px;
+}
+
 .sim-positions-table td {
     padding: 5px 3px;
     border-bottom: 1px solid #f1f5f9;
@@ -284,6 +315,13 @@
 
 .sim-positions-table tbody tr:hover {
     background-color: #f1f5f9;
+}
+
+.sim-positions-table td.empty-holdings-message {
+    text-align: center;
+    color: #94a3b8;
+    padding: 16px 0;
+    font-size: 12px;
 }
 
 .pos-ticker {
@@ -303,7 +341,72 @@
     text-overflow: ellipsis;
 }
 
-/* Rebalance History & System Logs Feed */
+.holdings-grid-row {
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.holdings-grid-cell-left {
+    padding: 5px 3px;
+    text-align: left;
+}
+
+.holdings-grid-cell {
+    padding: 5px 3px;
+    text-align: right;
+    font-weight: 600;
+    font-size: 0.52vw;
+    color: #334155;
+    white-space: nowrap;
+}
+
+.holdings-grid-price-cell {
+    padding: 5px 3px;
+    text-align: right;
+    font-size: 0.52vw;
+    color: #475569;
+    white-space: nowrap;
+}
+
+.holdings-grid-current-price-cell {
+    padding: 5px 3px;
+    text-align: right;
+    font-weight: 600;
+    font-size: 0.52vw;
+    color: #0f172a;
+    white-space: nowrap;
+}
+
+.holdings-grid-value-cell {
+    padding: 5px 3px;
+    text-align: right;
+    font-weight: 700;
+    font-size: 0.52vw;
+    color: #0f172a;
+    white-space: nowrap;
+}
+
+.holdings-grid-weight-cell {
+    padding: 5px 3px;
+    text-align: right;
+    font-weight: 600;
+    font-size: 0.52vw;
+    color: #2563eb;
+    white-space: nowrap;
+}
+
+.holdings-grid-profit-percent {
+    font-weight: 700;
+    font-size: 0.48vw;
+    line-height: 1.15;
+}
+
+.holdings-grid-profit-amount {
+    font-weight: 600;
+    font-size: 0.4vw;
+    line-height: 1.1;
+}
+
+/* Timeline rebalancing history feed */
 .timeline-list {
     display: flex;
     flex-direction: column;
@@ -349,7 +452,7 @@
     line-height: 1.35;
 }
 
-/* System Log Pills (Matching market_sim.css) */
+/* Execution logs and action pills */
 .log-pill {
     padding: 6px 9px;
     display: flex;
@@ -410,7 +513,14 @@
     font-size: 11px;
 }
 
-/* Milestone Selector Dropdown in Stages Bar (Left Aligned) */
+.empty-logs-message {
+    text-align: center;
+    color: #94a3b8;
+    padding: 12px 0;
+    font-size: 11px;
+}
+
+/* Milestone selection controls */
 .milestone-selector-container {
     display: flex;
     align-items: center;
@@ -418,6 +528,13 @@
     padding: 0 16px 0 0;
     border-right: 1px solid #e2e8f0;
     flex-shrink: 0;
+}
+
+.milestone-select-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #475569;
+    white-space: nowrap;
 }
 
 .milestone-select {
@@ -438,6 +555,7 @@
     width: 125px;
 }
 
+/* Bias parameter sliders and labels */
 .slider-row {
     display: flex;
     align-items: center;
@@ -478,69 +596,8 @@
     accent-color: #2563eb;
 }
 
-.milestone-select-label {
-    font-size: 12px;
-    font-weight: 700;
-    color: #475569;
-    white-space: nowrap;
-}
-
-.holdings-count-badge {
-    font-size: 11px;
-    font-weight: 600;
-    color: #64748b;
-}
-
-.holdings-scroll-box {
-    overflow-y: auto;
-    overflow-x: hidden;
-    max-height: 240px;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-}
-
-.sim-positions-table th.holdings-table-head-left {
-    text-align: left;
-    padding: 4px 2px;
-}
-
-.sim-positions-table th.holdings-table-head-right {
-    text-align: right;
-    padding: 4px 2px;
-}
-
-.sim-positions-table td.empty-holdings-message {
-    text-align: center;
-    color: #94a3b8;
-    padding: 16px 0;
-    font-size: 12px;
-}
-
-.empty-logs-message {
-    text-align: center;
-    color: #94a3b8;
-    padding: 12px 0;
-    font-size: 11px;
-}
-
-.metric-benchmark-label {
-    font-size: 11px;
-    font-weight: 500;
-    color: #64748b;
-}
-
-.metric-value-strong {
-    font-weight: 800;
-}
-
-.tool-section-label {
-    font-weight: bold;
-    font-size: 12px;
-    color: #475569;
-    margin-bottom: 4px;
-}
-
-.tool-section-title {
+/* Agent tool output streams */
+.tool-section-label, .tool-section-title {
     font-weight: bold;
     font-size: 12px;
     color: #475569;
@@ -627,6 +684,7 @@
     white-space: pre-wrap;
 }
 
+/* Dynamic markdown generation tables */
 .generated-table {
     width: 100%;
     border-collapse: collapse;
@@ -775,71 +833,7 @@
     font-weight: 700;
 }
 
-.holdings-grid-row {
-    border-bottom: 1px solid #f1f5f9;
-}
-
-.holdings-grid-cell-left {
-    padding: 5px 3px;
-    text-align: left;
-}
-
-.holdings-grid-cell {
-    padding: 5px 3px;
-    text-align: right;
-    font-weight: 600;
-    font-size: 0.52vw;
-    color: #334155;
-    white-space: nowrap;
-}
-
-.holdings-grid-price-cell {
-    padding: 5px 3px;
-    text-align: right;
-    font-size: 0.52vw;
-    color: #475569;
-    white-space: nowrap;
-}
-
-.holdings-grid-current-price-cell {
-    padding: 5px 3px;
-    text-align: right;
-    font-weight: 600;
-    font-size: 0.52vw;
-    color: #0f172a;
-    white-space: nowrap;
-}
-
-.holdings-grid-value-cell {
-    padding: 5px 3px;
-    text-align: right;
-    font-weight: 700;
-    font-size: 0.52vw;
-    color: #0f172a;
-    white-space: nowrap;
-}
-
-.holdings-grid-weight-cell {
-    padding: 5px 3px;
-    text-align: right;
-    font-weight: 600;
-    font-size: 0.52vw;
-    color: #2563eb;
-    white-space: nowrap;
-}
-
-.holdings-grid-profit-percent {
-    font-weight: 700;
-    font-size: 0.48vw;
-    line-height: 1.15;
-}
-
-.holdings-grid-profit-amount {
-    font-weight: 600;
-    font-size: 0.4vw;
-    line-height: 1.1;
-}
-
+/* Stage receipts and portfolio synthesis panels */
 .stage-workspace .receipt-card-narrow {
     flex: 0 0 460px;
     max-width: 480px;
@@ -918,6 +912,7 @@
     text-align: center;
 }
 
+/* Markdown render styling */
 .markdown-code-block {
     margin: 0;
     background-color: #0f172a;
@@ -1024,6 +1019,7 @@
     font-size: 13px;
 }
 
+/* Empty simulation placeholder */
 .empty-simulation-placeholder {
     padding: 10px 0;
 }

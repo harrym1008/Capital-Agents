@@ -1,9 +1,23 @@
-/* Page-specific layout overrides */
+/* Page layout overrides and modal container */
 .splash-load-model-window {
     margin-bottom: 6vh;
 }
 
+.server-main-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
 
+.server-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2px;
+}
+
+/* Llama.cpp console and loading logs window */
 .llama-loading-log-window {
     display: flex;
     background-color: #111;
@@ -41,7 +55,7 @@
     background: #888;
 }
 
-/* OpenRouter Autocomplete Dropdown & Pricing Card */
+/* OpenRouter model autocomplete dropdown */
 .openrouter-autocomplete-wrapper {
     position: relative;
     width: 100%;
@@ -72,19 +86,6 @@
     z-index: 1000;
     font-size: 15px;
 }
-
-/* .openrouter-dropdown::-webkit-scrollbar {
-    width: 6px;
-}
-
-.openrouter-dropdown::-webkit-scrollbar-track {
-    background: #f8fafc;
-}
-
-.openrouter-dropdown::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 3px;
-} */
 
 .openrouter-dropdown-item {
     padding: 8px 12px;
@@ -126,22 +127,7 @@
     white-space: nowrap;
 }
 
-/* Simple Right-Side Pricing Info Text */
-.openrouter-simple-info {
-    font-size: 13px;
-    color: #334155;
-    line-height: 1.6;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.openrouter-simple-info strong {
-    color: #1e293b;
-    font-weight: 600;
-}
-
-/* Custom Provider Router Dropdown (Matches standard select styling) */
+/* OpenRouter provider routing select */
 .openrouter-router-wrapper {
     position: relative;
     width: 100%;
@@ -190,13 +176,57 @@
     text-align: center;
 }
 
-.server-main-layout {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-    position: relative;
+.router-pricing-row {
+    gap: 20px;
+    align-items: flex-start;
+    margin-top: 10px;
 }
 
+.router-caret {
+    font-size: 10px;
+    color: #64748b;
+}
+
+/* Model pricing info panel */
+.openrouter-simple-info {
+    font-size: 13px;
+    color: #334155;
+    line-height: 1.6;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.openrouter-simple-info strong {
+    color: #1e293b;
+    font-weight: 600;
+}
+
+.pricing-info-panel {
+    flex: 1;
+    min-width: 0;
+    padding: 12px 0px 0px 12px;
+}
+
+.pricing-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0px 6px;
+    font-size: 13px;
+    align-items: center;
+}
+
+.pricing-grid-label {
+    font-weight: 400;
+    color: #64748b;
+}
+
+.pricing-grid-value {
+    font-weight: 600;
+    color: #0f172a;
+}
+
+/* Form layout groups and columns */
 .server-form-label {
     margin-bottom: 6px;
     display: block;
@@ -211,41 +241,9 @@
     min-width: 0;
 }
 
-.router-pricing-row {
-    gap: 20px;
-    align-items: flex-start;
-    margin-top: 10px;
-}
-
-.router-caret {
-    font-size: 10px;
-    color: #64748b;
-}
-
-.pricing-info-panel {
-    flex: 1;
-    min-width: 0;
-    padding: 12px 0px 0px 12px;
-}
-
 .openai-config-column {
     flex-direction: column;
     gap: 14px;
-}
-
-.server-header-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 2px;
-}
-
-.no-models-notice {
-    justify-content: space-between;
-    flex-direction: column;
-    color: #ef4444;
-    gap: 4px;
-    padding-bottom: 10px;
 }
 
 .llamacpp-options-column {
@@ -254,6 +252,7 @@
     gap: 12px;
 }
 
+/* Action buttons and triggers */
 .server-start-button {
     width: 50%;
     margin: 10px 0 0 25%;
@@ -264,23 +263,6 @@
     width: 50%;
     margin: 0 0 0 25%;
     font-size: 120%;
-}
-
-.server-status-column {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.server-status-detail {
-    font-size: 14px;
-    line-height: 1.6;
-    color: #334155;
-}
-
-.server-status-line {
-    font-size: 15px;
-    font-weight: 600;
 }
 
 .server-action-row {
@@ -301,14 +283,40 @@
     transform: translateY(-6px);
 }
 
-.success-banner-spread {
-    align-items: center;
-    justify-content: space-between;
-}
-
 .view-logs-row {
     justify-content: flex-end;
     width: 100%;
+}
+
+/* Status reports and feedback alerts */
+.server-status-column {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.server-status-detail {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #334155;
+}
+
+.server-status-line {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.no-models-notice {
+    justify-content: space-between;
+    flex-direction: column;
+    color: #ef4444;
+    gap: 4px;
+    padding-bottom: 10px;
+}
+
+.success-banner-spread {
+    align-items: center;
+    justify-content: space-between;
 }
 
 .context-warning-banner {
@@ -337,24 +345,7 @@
     color: #64748b;
 }
 
-.pricing-grid {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0px 6px;
-    font-size: 13px;
-    align-items: center;
-}
-
-.pricing-grid-label {
-    font-weight: 400;
-    color: #64748b;
-}
-
-.pricing-grid-value {
-    font-weight: 600;
-    color: #0f172a;
-}
-
+/* Modal logs dialog */
 .logs-modal-window {
     width: min(92vw, 850px);
     max-width: 850px;

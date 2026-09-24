@@ -1,9 +1,11 @@
+/* Landing page typography and headings */
 h3 {
     font-size: 18px;
     font-weight: 600;
     margin-bottom: 20px;
 }
 
+/* Primary landing page container */
 .landing-container {
     display: flex;
     flex-direction: column;
@@ -14,6 +16,16 @@ h3 {
     padding: 40px;
 }
 
+.landing-welcome-title {
+    margin-bottom: 30px;
+}
+
+.landing-logo {
+    width: 120px;
+    height: 120px;
+}
+
+/* Navigation button group and split layout */
 .landing-btn-split {
     display: flex;
     flex-direction: row;
@@ -34,6 +46,11 @@ h3 {
     text-align: center;
 }
 
+.landing-button-spacer {
+    margin: 10px 0;
+}
+
+/* Model initialisation splash modal */
 .splash-load-model-window {
     width: unset;
     max-width: 90vw;
@@ -42,11 +59,7 @@ h3 {
     margin-bottom: -2vh;
 }
 
-.landing-logo {
-    width: 120px;
-    height: 120px;
-}
-
+/* Status and error message displays */
 .landing-error-msg {
     color: #ef4444;
     font-size: 14px;
@@ -55,18 +68,11 @@ h3 {
     text-align: center;
 }
 
-.landing-welcome-title {
-    margin-bottom: 30px;
-}
-
 .landing-error-spaced {
     margin-bottom: 18px;
 }
 
-.landing-button-spacer {
-    margin: 10px 0;
-}
-
+/* Footer layout and typography */
 .landing-footer {
     padding: 20px;
     text-align: center;

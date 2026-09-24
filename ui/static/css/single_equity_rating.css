@@ -1,8 +1,10 @@
+/* Equity ticker input field */
 .ticker-input-narrow {
     width: 80px;
     text-transform: uppercase;
 }
 
+/* Q&A dialogue history scroll container */
 .question-answer-history {
     flex: 1;
     min-height: 0;
@@ -16,6 +18,7 @@
     padding-right: 10px;
 }
 
+/* Message feed stream typography */
 .question-answer-feed {
     font-size: 15px;
     overflow-y: visible;
@@ -23,6 +26,7 @@
     color: #1e293b;
 }
 
+/* Q&A query input control bar */
 .question-answer-input-row {
     flex: none;
     width: 100%;
@@ -34,6 +38,7 @@
     padding-right: 6px;
 }
 
+/* Question prompt textarea */
 .question-answer-textarea {
     flex: 1;
     padding: 12px 16px;
@@ -52,6 +57,7 @@
     font-family: inherit;
 }
 
+/* Target agent selector dropdown */
 .question-answer-target-select {
     flex: none;
     height: 48px;
@@ -67,6 +73,7 @@
     box-sizing: border-box;
 }
 
+/* Query submission action button */
 .question-answer-send-button {
     flex: none;
     height: 48px;
@@ -77,6 +84,7 @@
     box-sizing: border-box;
 }
 
+/* Equity rating summary receipt panel */
 .single-equity-receipt-card {
     flex: 1;
     max-width: 440px;
@@ -101,28 +109,13 @@
     text-align: center;
 }
 
+/* Receipt key-value metrics grid */
 .single-equity-receipt-grid {
     display: grid;
     grid-template-columns: 160px 1fr;
     gap: 14px;
     font-size: 14px;
     line-height: 1.2;
-}
-
-.single-equity-receipt-chart-container {
-    margin-top: 16px;
-    width: 100%;
-    position: relative;
-    border: none;
-    padding: 0;
-    background-color: #ffffff;
-    text-align: center;
-}
-
-.single-equity-receipt-chart {
-    width: 100%;
-    height: 210px;
-    display: block;
 }
 
 .receipt-field-label {
@@ -140,6 +133,24 @@
     font-weight: bold;
 }
 
+/* Historical price chart container */
+.single-equity-receipt-chart-container {
+    margin-top: 16px;
+    width: 100%;
+    position: relative;
+    border: none;
+    padding: 0;
+    background-color: #ffffff;
+    text-align: center;
+}
+
+.single-equity-receipt-chart {
+    width: 100%;
+    height: 210px;
+    display: block;
+}
+
+/* Execution runtime and completion summary */
 .single-equity-time-row {
     margin-top: 15px;
     padding-top: 15px;

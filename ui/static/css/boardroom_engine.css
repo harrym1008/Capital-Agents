@@ -1,6 +1,4 @@
-/* Boardroom Engine Stylesheet */
-
-/* Configuration Bar & Controls */
+/* Configuration bar and controls */
 .config-bar {
     background-color: #fff;
     border-bottom: 1px solid #e2e8f0;
@@ -100,7 +98,6 @@
     padding: 4px 8px;
 }
 
-/* Stop Button */
 .stop-btn {
     background-color: #ef4444;
 }
@@ -114,7 +111,7 @@
     cursor: not-allowed;
 }
 
-/* Stages Navigation Bar */
+/* Stage workflow navigation bar */
 .stages-bar {
     background-color: #fff;
     border-bottom: 1px solid #e2e8f0;
@@ -184,7 +181,7 @@
 }
 
 .stage-item.active {
-    color: #d97706; /* executing stage indicator color */
+    color: #d97706;
 }
 
 .stage-item.viewing {
@@ -237,7 +234,7 @@
     pointer-events: none;
 }
 
-/* Boardroom Workspace & Layout */
+/* Boardroom layout and stage workspace */
 .main-layout {
     display: flex;
     flex: 1;
@@ -277,7 +274,7 @@
     flex: 1;
     min-height: 0;
     min-width: 0;
-    display: none; /* toggled to flex via JS */
+    display: none;
     gap: 20px;
     align-items: stretch;
     justify-content: center;
@@ -285,7 +282,7 @@
     box-sizing: border-box;
 }
 
-/* Agent Panes & Chat Interface */
+/* Agent dialogue pane and feed */
 .agent-pane {
     flex: 1;
     min-width: 0;
@@ -300,7 +297,7 @@
     flex-direction: column;
     gap: 15px;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-    overflow: hidden; /* Scroll isolated inside agent-feed */
+    overflow: hidden;
     max-width: 64%;
     box-sizing: border-box;
 }
@@ -411,7 +408,7 @@
     padding-right: 4px;
 }
 
-/* Collapsible elements for Thinking and Tool Calls */
+/* Collapsible blocks and reasoning indicators */
 .collapsible-block {
     border: 2px solid #334155;
     border-radius: 6px;
@@ -422,7 +419,6 @@
     flex-shrink: 0;
 }
 
-/* Prompt Processing Banner */
 .prompt-processing-banner {
     border: 2px solid #334155;
     border-radius: 6px;
@@ -546,8 +542,7 @@
     color: #dc2626;
 }
 
-/* Agent Theme Variants */
-
+/* Agent colour variants */
 .agent-cyan {
     border-color: #06b6d4;
     color: #06b6d4;
@@ -578,7 +573,7 @@
     color: #d946ef;
 }
 
-/* Collapsible Summary Sidebar styling */
+/* Summary sidebar and tabbed navigation */
 .summary-sidebar {
     width: 380px;
     height: 100%;
@@ -599,7 +594,6 @@
     margin-right: -380px;
 }
 
-/* Sidebar Tabs Navigation Bar matching Stage items */
 .sidebar-tabs-bar {
     background-color: #ffffff;
     border-bottom: 2px solid #e2e8f0;
@@ -668,7 +662,7 @@
     background-color: #ffffff;
 }
 
-/* Collapsible Individual Tool Call Block styling */
+/* Tool execution blocks */
 .tool-call-block {
     border: 2.5px solid #0f172a;
     border-radius: 6px;
@@ -727,7 +721,7 @@
     flex-shrink: 0;
 }
 
-/* Sources Tab Workspace & Table */
+/* Sources table and citations */
 .sources-table {
     width: 100%;
     border-collapse: collapse;
@@ -761,6 +755,16 @@
     background-color: #f8fafc;
 }
 
+.sources-table-index-column {
+    width: 40px;
+    text-align: center;
+}
+
+.sources-table-action-column {
+    width: 80px;
+    text-align: right;
+}
+
 .source-view-btn {
     background-color: #f1f5f9;
     color: #0f172a;
@@ -789,7 +793,6 @@
     100% { background-color: transparent; }
 }
 
-/* Inline Citation Reference Button in Agent Output */
 .citation-ref-btn {
     display: inline-block;
     background: transparent;
@@ -860,7 +863,7 @@
     text-align: center;
 }
 
-/* Modal overlay for Viewing Source JSON Output */
+/* Source viewer modal dialog */
 .source-modal-overlay {
     position: fixed;
     top: 0;
@@ -976,6 +979,7 @@
     min-height: 200px;
 }
 
+/* Numeric input spinner suppressions */
 .no-spinner-input::-webkit-inner-spin-button {
     -webkit-appearance: none;
     margin: 0;
@@ -991,6 +995,7 @@
     appearance: textfield;
 }
 
+/* Form parameters and warnings */
 .thinking-budget-warning {
     display: none;
     color: #dc2626;
@@ -1028,22 +1033,17 @@
     line-height: 2.0;
 }
 
-.sources-table-index-column {
-    width: 40px;
-    text-align: center;
-}
-
-.sources-table-action-column {
-    width: 80px;
-    text-align: right;
-}
-
 .portfolio-num-input {
     width: 50px !important;
     text-align: center;
     padding: 5px 6px !important;
 }
 
+.capital-input-narrow {
+    width: 85px;
+}
+
+/* Sector allocation modal and interactive donut chart */
 .pie-toggle-btn {
     font-size: 11px;
     font-weight: 600;
@@ -1066,72 +1066,6 @@
     background-color: #2563eb;
     color: #ffffff;
     border-color: #2563eb;
-}
-
-.backtest-metrics-container {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    padding: 4px 0 6px 0;
-    background: transparent;
-    border: none;
-    box-sizing: border-box;
-}
-
-.backtest-metric-item {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.backtest-metric-label {
-    font-size: 10.5px;
-    font-weight: 700;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.backtest-metric-value {
-    font-size: 14px;
-    font-weight: 800;
-    color: #0f172a;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    overflow: hidden;
-}
-
-.metric-value-strong {
-    font-weight: 800;
-}
-
-.metric-value-bold {
-    font-weight: 700;
-}
-
-.metric-benchmark-label {
-    font-size: 11px;
-    font-weight: 500;
-    color: #64748b;
-}
-
-.capital-input-narrow {
-    width: 85px;
-}
-
-.company-name-suffix {
-    font-size: 10.5px;
-    color: #64748b;
-    margin-left: 5px;
-    font-weight: 400;
-}
-
-.rationale-label {
-    font-weight: 700;
-    color: #1e293b;
-    text-transform: uppercase;
-    font-size: 9.5px;
-    letter-spacing: 0.5px;
 }
 
 .allocation-slider-row {
@@ -1269,6 +1203,7 @@
     white-space: nowrap;
 }
 
+/* Synthesis report cards */
 .report-card {
     flex: 1;
     max-width: 460px;
@@ -1425,12 +1360,71 @@
     border-radius: 6px;
 }
 
+.backtest-metrics-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 4px 0 6px 0;
+    background: transparent;
+    border: none;
+    box-sizing: border-box;
+}
+
+.backtest-metric-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.backtest-metric-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.backtest-metric-value {
+    font-size: 14px;
+    font-weight: 800;
+    color: #0f172a;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.metric-value-bold {
+    font-weight: 700;
+}
+
+.metric-benchmark-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: #64748b;
+}
+
+.company-name-suffix {
+    font-size: 10.5px;
+    color: #64748b;
+    margin-left: 5px;
+    font-weight: 400;
+}
+
+.rationale-label {
+    font-weight: 700;
+    color: #1e293b;
+    text-transform: uppercase;
+    font-size: 9.5px;
+    letter-spacing: 0.5px;
+}
+
 .report-canvas-fill {
     display: block;
     width: 100%;
     height: 100%;
 }
 
+/* Sector allocation table */
 .sector-table {
     width: 100%;
     border-collapse: collapse;
@@ -1481,6 +1475,29 @@
     color: #64748b;
 }
 
+/* Portfolio holdings tables and asset allocations */
+.holdings-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 12px;
+}
+
+.holdings-table-head-row {
+    border-bottom: 2px solid #cbd5e1;
+    background: #f8fafc;
+}
+
+.holdings-table-head-left {
+    text-align: left;
+    padding: 5px 6px;
+}
+
+.holdings-table-head-right {
+    text-align: right;
+    padding: 5px 6px;
+}
+
 .holdings-ticker-cell {
     font-weight: 700;
     color: #0f172a;
@@ -1525,28 +1542,6 @@
     text-align: right;
     font-weight: 700;
     font-size: 11.5px;
-}
-
-.holdings-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
-    margin-bottom: 12px;
-}
-
-.holdings-table-head-row {
-    border-bottom: 2px solid #cbd5e1;
-    background: #f8fafc;
-}
-
-.holdings-table-head-left {
-    text-align: left;
-    padding: 5px 6px;
-}
-
-.holdings-table-head-right {
-    text-align: right;
-    padding: 5px 6px;
 }
 
 .holdings-table-rationale-row {
@@ -1606,6 +1601,3 @@
     color: #059669;
     font-weight: 600;
 }
-
-
-

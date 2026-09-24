@@ -1,3 +1,4 @@
+/* Portfolio rebalancing modal window */
 .current-portfolio-modal-window {
     position: relative;
     width: min(94vw, 880px);
@@ -11,6 +12,7 @@
     font-size: 1.5rem;
 }
 
+/* Positions data table and scroll wrapper */
 .positions-scroll-box {
     overflow-x: auto;
     max-height: 380px;
@@ -48,6 +50,7 @@
     background-color: #f8fafc;
 }
 
+/* Table column widths and alignment */
 .positions-entry-table th.positions-table-ticker-head {
     width: 80px;
 }
@@ -75,6 +78,7 @@
     text-align: center;
 }
 
+/* Row input controls */
 .position-ticker-input {
     text-transform: uppercase;
     font-weight: 700;
@@ -95,6 +99,7 @@
     box-sizing: border-box;
 }
 
+/* Row deletion and insertion controls */
 .row-delete-btn {
     background: transparent !important;
     border: none !important;
@@ -123,6 +128,7 @@
     font-weight: 600;
 }
 
+/* Validation warnings and error messaging */
 .modal-warning-banner {
     background-color: #fef2f2;
     border: 1px solid #fecaca;
@@ -133,41 +139,6 @@
     font-weight: 600;
     margin-bottom: 14px;
     text-align: center;
-}
-
-.modal-footer-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-    border-top: 1px solid #e2e8f0;
-    padding-top: 14px;
-}
-
-.modal-total-bar {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-}
-
-.modal-total-label {
-    font-size: 14px;
-    font-weight: 700;
-    color: #0f172a;
-}
-
-.modal-total-value {
-    color: #2563eb;
-    font-weight: 800;
-}
-
-.confirm-portfolio-button {
-    padding: 8px 24px;
-    font-size: 14px;
-    font-weight: 700;
-    background-color: #2563eb;
-    color: #ffffff;
 }
 
 .entry-tooltip-wrapper {
@@ -189,6 +160,7 @@
     margin-top: 2px;
 }
 
+/* Table cell formats and typography */
 .entry-ticker-cell {
     font-weight: 600;
     color: #1e293b;
@@ -228,4 +200,40 @@
     text-align: right;
     font-weight: 700;
     color: #2563eb;
+}
+
+/* Footer summary bar and confirmation button */
+.modal-footer-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 14px;
+}
+
+.modal-total-bar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.modal-total-label {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.modal-total-value {
+    color: #2563eb;
+    font-weight: 800;
+}
+
+.confirm-portfolio-button {
+    padding: 8px 24px;
+    font-size: 14px;
+    font-weight: 700;
+    background-color: #2563eb;
+    color: #ffffff;
 }

@@ -1,7 +1,9 @@
+/* Sector weighting modal title */
 .sector-modal-title {
     margin-bottom: 24px;
 }
 
+/* Slider row layout for sector allocation */
 .sector-slider-row {
     display: flex;
     align-items: center;
@@ -9,12 +11,14 @@
     gap: 12px;
 }
 
+/* Range input control for sector percentage */
 .sector-slider {
     flex: 1;
     accent-color: #2563eb;
     cursor: pointer;
 }
 
+/* Percentage value display box */
 .sector-pct-box {
     width: 68px;
     text-align: center;

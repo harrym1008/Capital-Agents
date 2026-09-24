@@ -105,10 +105,10 @@
 {% endblock %}
 
 {% block custom_workspace_widgets %}
-<!-- LEFT SIDEBAR: 23% Width (Reparented to .main-layout on initialization) -->
+<!-- Left sidebar reparented to .main-layout on initialisation -->
 <aside class="agent-sim-sidebar" id="agentSimSidebar">
     
-    <!-- Section 1: Status, Date & Balances Header -->
+    <!-- Section 1: Status, Date and Balances Header -->
     <div class="report-section">
         <div class="sim-metrics-summary">
             <div class="metric-group">
@@ -215,7 +215,7 @@
         </div>
     </div>
 
-    <!-- Section 5: Rebalance History & System Logs -->
+    <!-- Section 5: Rebalance History and System Logs -->
     <div class="report-section">
         <div class="report-section-header">
             <span class="report-section-title">Rebalance History &amp; Decisions</span>
@@ -231,11 +231,7 @@
 {% block page_scripts %}
 <script src="/static/js/agent_sim_exporter.js"></script>
 <script>
-    // =========================================================================
-    // STANDALONE MULTI-SESSION CLIENT ENGINE FOR AGENT PORTFOLIO SIMULATION
-    // =========================================================================
-
-    // --- State Storage ---
+    // Multi-session client engine for agent-driven portfolio simulation
     let chartInstance = null;
     let fullPortfolioPoints = [];
     let fullSp500Points = [];
@@ -245,7 +241,7 @@
     let simStartTime = 0;
     let isSimRunning = false;
 
-    const chartInstances = {}; // canvasId -> ChartInstance
+    const chartInstances = {};    // canvasId -> ChartInstance
 
     const roleConfigs = {
         "Macro Analyst": { class: "cyan", initials: "MS", name: "Macro Strategist" },
@@ -283,12 +279,14 @@
         { num: 6, name: "Final Executive Decision" }
     ];
 
+    // Parse and normalise initial capital input value
     function getCleanInitialCapital() {
-        const val = document.getElementById("initialCapitalInput").value;
+        const val = document.getElementById("initialCapitalInput")?.value;
         const num = parseFloat(String(val).replace(/[^0-9.]/g, ""));
         return isNaN(num) || num <= 0 ? 100000 : num;
     }
 
+    // Format date string into human-friendly representation
     function formatFriendlyDate(dateInput) {
         if (!dateInput) return "--";
         if (typeof dateInput === 'string') {
@@ -309,6 +307,7 @@
         return `${days[d.getUTCDay()]} ${dayStr} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
     }
 
+    // Format milestone dropdown display label with date and session tag
     function formatMilestoneLabel(dateInput, type = "review") {
         const friendly = formatFriendlyDate(dateInput);
         const lowerType = String(type).toLowerCase();
@@ -318,6 +317,7 @@
         return `${friendly} ${tag}`;
     }
 
+    // Format a date string or object into an ordinal date string
     function formatOrdinalDate(dateInput) {
         if (!dateInput) dateInput = new Date().toISOString().split('T')[0];
         const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -359,7 +359,7 @@
         return String(dateInput);
     }
 
-    // --- Identical Markdown & LaTeX Parser Matching Boardroom Base ---
+    // Escape HTML special characters for safe markup insertion
     function escapeHtml(str) {
         if (!str) return "";
         return String(str)
@@ -370,6 +370,7 @@
             .replace(/'/g, "&#039;");
     }
 
+    // Render mathematical formulas via KaTeX for display and inline blocks
     function parseLatex(text) {
         if (typeof katex === "undefined" || !text) return text;
         text = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
@@ -388,6 +389,7 @@
         return text;
     }
 
+    // Extract individual column values from a markdown table row string
     function extractTableColumns(rowStr) {
         if (!rowStr) return [];
         let content = rowStr.trim();
@@ -396,6 +398,7 @@
         return content.split('|').map(c => c.trim());
     }
 
+    // Determine whether a table row string represents a markdown column separator
     function isTableSeparatorRow(rowStr) {
         if (!rowStr) return false;
         let content = rowStr.trim();
@@ -404,6 +407,7 @@
         return content.length > 0 && /^[\s\-:|]+$/.test(content) && content.includes('-');
     }
 
+    // Construct HTML table structure from parsed rows
     function renderHtmlTable(rows) {
         if (!rows || rows.length === 0) return "";
         const firstRowCols = extractTableColumns(rows[0]);
@@ -433,6 +437,7 @@
         return html;
     }
 
+    // Parse markdown formatted table blocks into structured HTML tables
     function parseTables(text) {
         const lines = text.split('\n');
         let inTable = false;
@@ -458,6 +463,7 @@
         return resultLines.join('\n');
     }
 
+    // Parse raw markdown syntax into formatted HTML elements
     function parseMarkdown(text) {
         if (!text) return "";
         let formattedText = parseLatex(text);
@@ -492,6 +498,7 @@
         return formattedText;
     }
 
+    // Attempt to pretty-print formatted JSON string or return raw text
     function tryFormatJson(str) {
         try {
             const trimmed = String(str).trim();
@@ -504,6 +511,7 @@
         return str;
     }
 
+    // Extract partial code string from streaming JSON payload
     function extractPartialCode(rawJson) {
         const match = rawJson.match(/"code"\s*:\s*"((?:[^"\\]|\\.)*)/);
         if (match) {
@@ -512,11 +520,10 @@
         return rawJson;
     }
 
-    // =========================================================================
-    // OBJECT-ORIENTED SESSION & WORKSPACE ISOLATION ARCHITECTURE
-    // =========================================================================
 
+    // Session class encapsulates state, DOM nodes, and rendered receipts for a single simulation session
     class Session {
+        // Initialise session instance with metadata and workspace container
         constructor({ id, label, date, dateFormatted, type, pace, stages }) {
             this.id = id;
             const isInc = (id === "milestone_0" || type === "inception");
@@ -532,18 +539,19 @@
             this.baselinePositions = [];
 
             this.workspaceEl = null;
-            this.stagesMap = {}; // stageNum -> { stageNum, stageName, stageEl, agentPanes: {} }
-            this.activeBlocks = {}; // `${stageNum}_${agentRole}` -> { type, element, block, rawText }
-            this.streamingArgs = {}; // `${stageNum}_${toolIndex}` -> raw string
+            this.stagesMap = {};
+            this.activeBlocks = {};
+            this.streamingArgs = {};
 
             this.confirmedSector = null;
             this.confirmedPortfolio = null;
             this.sessionMetrics = null;
-            this.promptProcessingBanners = {}; // `${stageNum}_${agentRole}` -> bannerElement
+            this.promptProcessingBanners = {};
 
             this._initWorkspaceDOM();
         }
 
+        // Update receipt header displays with analysis date and capital values
         updateReceiptDatesAndCapital(dateStr = null, capital = null) {
             const effectiveDate = dateStr || this.date || this.dateFormatted;
             if (effectiveDate) {
@@ -557,7 +565,7 @@
                 if (el3) el3.innerText = ordDate;
                 if (el6) el6.innerText = ordDate;
             }
-            if (capital !== null && capital !== undefined) {
+            if (capital != null) {
                 const cleanCap = parseFloat(capital) || getCleanInitialCapital();
                 const capStr = `$${cleanCap.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
                 const capEl3 = document.getElementById(`receipt-cap-${this.id}-3`);
@@ -567,6 +575,7 @@
             }
         }
 
+        // Mount session workspace container in the panes DOM container
         _initWorkspaceDOM() {
             const container = document.getElementById("panesContainer");
             if (!container) return;
@@ -582,6 +591,7 @@
             this.workspaceEl = el;
         }
 
+        // Attach scroll listener to track user detachment on feed elements
         setupAutoScroll(el, threshold = 30) {
             if (!el || el._autoScrollReady) return;
             el._autoScrollReady = true;
@@ -604,20 +614,22 @@
             });
         }
 
+        // Scroll element to bottom if not detached by user
         autoScroll(el) {
             if (!el || el._userScrolledAway) return;
             el.scrollTop = el.scrollHeight;
             el._lastScrollTop = el.scrollTop;
         }
 
+        // Scroll agent feed element within this session
         autoScrollFeed(stageNum, agentRole) {
-            const compoundKey = `${stageNum}_${agentRole}`;
             const sData = this.stagesMap[stageNum];
-            if (sData && sData.agentPanes[agentRole]) {
+            if (sData?.agentPanes[agentRole]) {
                 this.autoScroll(sData.agentPanes[agentRole].feedEl);
             }
         }
 
+        // Retrieve existing stage workspace or create required stage cards and receipt containers
         getOrCreateStageWorkspace(stageNum, stageName = "", agents = []) {
             if (!this.workspaceEl) this._initWorkspaceDOM();
             if (this.stagesMap[stageNum]) return this.stagesMap[stageNum].stageEl;
@@ -642,7 +654,7 @@
             this.stagesMap[stageNum] = stageData;
 
             if (stageNum === 3) {
-                // Stage 3 Visual Report + PM Agent Pane
+                // Stage 3 visual report and PM agent pane
                 const receiptHtml = `
                     <div class="upload-receipt-container receipt-card-narrow" id="receipt-${this.id}-stage-3">
                         <h2 class="receipt-title-small">${isMilestone0 ? 'CONFIRMED SECTOR ALLOCATION' : 'SECTOR REBALANCING REPORT'}</h2>
@@ -665,7 +677,7 @@
                 sWs.innerHTML = receiptHtml;
                 this.getOrCreateAgentPane(stageNum, "Impartial Portfolio Manager", "magenta", "Portfolio Manager");
             } else if (stageNum === 6) {
-                // Stage 6 Visual Report + PM Agent Pane
+                // Stage 6 visual report and PM agent pane
                 const receiptHtml = `
                     <div class="upload-receipt-container receipt-card-wide" id="receipt-${this.id}-stage-6">
                         <h2 class="receipt-title-small">${isMilestone0 ? 'PORTFOLIO CONSTRUCTION REPORT' : 'PORTFOLIO REBALANCING REPORT'}</h2>
@@ -700,6 +712,7 @@
             return sWs;
         }
 
+        // Retrieve existing agent pane or mount a new one inside the stage container
         getOrCreateAgentPane(stageNum, agentRole, colorClass = "cyan", displayName = "") {
             const stageData = this.stagesMap[stageNum];
             if (!stageData) {
@@ -753,9 +766,10 @@
             return paneObj;
         }
 
+        // Render prompt processing spinner banner in agent feed
         showPromptProcessing(stageNum, agentRole) {
             const paneObj = this.getOrCreateAgentPane(stageNum, agentRole);
-            if (!paneObj || !paneObj.feedEl) return;
+            if (!paneObj?.feedEl) return;
             const compoundKey = `${stageNum}_${agentRole}`;
 
             if (this.promptProcessingBanners[compoundKey]) return;
@@ -777,6 +791,7 @@
             this.autoScrollFeed(stageNum, agentRole);
         }
 
+        // Remove active prompt processing spinner banner for an agent
         removePromptProcessing(stageNum, agentRole) {
             const compoundKey = `${stageNum}_${agentRole}`;
             const banner = this.promptProcessingBanners[compoundKey];
@@ -788,22 +803,24 @@
             }
         }
 
+        // Clear all prompt processing spinner banners in this session
         clearAllPromptProcessing() {
             Object.keys(this.promptProcessingBanners).forEach(key => {
                 const banner = this.promptProcessingBanners[key];
-                if (banner && banner.parentNode) {
+                if (banner?.parentNode) {
                     banner.parentNode.removeChild(banner);
                 }
             });
             this.promptProcessingBanners = {};
         }
 
+        // Initialize collapsible thinking reasoning block in agent feed
         startReasoningBlock(stageNum, agentRole) {
             const paneObj = this.getOrCreateAgentPane(stageNum, agentRole);
-            if (!paneObj || !paneObj.feedEl) return;
+            if (!paneObj?.feedEl) return;
             const compoundKey = `${stageNum}_${agentRole}`;
 
-            // Collapse any active tool call blocks
+            // Collapse active tool call blocks
             const toolBlocks = paneObj.feedEl.querySelectorAll(`.tool-call-block`);
             toolBlocks.forEach(tb => tb.classList.add("collapsed"));
 
@@ -832,6 +849,7 @@
             };
         }
 
+        // Append streaming reasoning token and update parsed markdown in thinking block
         appendReasoningToken(stageNum, agentRole, token) {
             const compoundKey = `${stageNum}_${agentRole}`;
             let active = this.activeBlocks[compoundKey];
@@ -839,7 +857,7 @@
                 this.startReasoningBlock(stageNum, agentRole);
                 active = this.activeBlocks[compoundKey];
             }
-            if (active && active.type === 'thinking') {
+            if (active?.type === 'thinking') {
                 active.rawText = (active.rawText || "") + token;
 
                 const el = active.element;
@@ -859,23 +877,25 @@
             }
         }
 
+        // Terminate and collapse active thinking reasoning block
         endReasoningBlock(stageNum, agentRole) {
             const compoundKey = `${stageNum}_${agentRole}`;
             const active = this.activeBlocks[compoundKey];
-            if (active && active.type === 'thinking' && active.block) {
+            if (active?.type === 'thinking' && active.block) {
                 active.block.classList.add("collapsed");
                 delete this.activeBlocks[compoundKey];
             }
         }
 
+        // Mount raw content output area in agent feed
         startContentBlock(stageNum, agentRole, phase) {
             const paneObj = this.getOrCreateAgentPane(stageNum, agentRole);
-            if (!paneObj || !paneObj.feedEl) return;
+            if (!paneObj?.feedEl) return;
             const compoundKey = `${stageNum}_${agentRole}`;
 
             // Collapse previous thinking block if open
             const active = this.activeBlocks[compoundKey];
-            if (active && active.type === 'thinking' && active.block) {
+            if (active?.type === 'thinking' && active.block) {
                 active.block.classList.add("collapsed");
             }
 
@@ -896,6 +916,7 @@
             };
         }
 
+        // Append streaming text token to active content block
         appendContentToken(stageNum, agentRole, token, phase) {
             const compoundKey = `${stageNum}_${agentRole}`;
             let active = this.activeBlocks[compoundKey];
@@ -903,28 +924,30 @@
                 this.startContentBlock(stageNum, agentRole, phase);
                 active = this.activeBlocks[compoundKey];
             }
-            if (active && active.type === 'content') {
+            if (active?.type === 'content') {
                 active.rawText = (active.rawText || "") + token;
                 active.element.innerHTML = parseMarkdown(active.rawText);
                 this.autoScrollFeed(stageNum, agentRole);
             }
         }
 
+        // Conclude content block streaming
         endContentBlock(stageNum, agentRole) {
             const compoundKey = `${stageNum}_${agentRole}`;
             const active = this.activeBlocks[compoundKey];
-            if (active && active.type === 'content') {
+            if (active?.type === 'content') {
                 delete this.activeBlocks[compoundKey];
             }
         }
 
+        // Mount in-progress streaming tool call block in agent feed
         startToolCallStream(stageNum, agentRole, index, toolName) {
             const paneObj = this.getOrCreateAgentPane(stageNum, agentRole);
-            if (!paneObj || !paneObj.feedEl) return;
+            if (!paneObj?.feedEl) return;
             const compoundKey = `${stageNum}_${agentRole}`;
             const streamId = `streamToolCall-${this.id}-${stageNum}-${index}`;
 
-            // Only match an existing ACTIVE streaming block
+            // Only match an existing active streaming block
             let toolBlock = paneObj.feedEl.querySelector(`.tool-call-block.is-streaming#${CSS.escape(streamId)}`);
             if (!toolBlock) {
                 const el = document.getElementById(streamId);
@@ -934,9 +957,9 @@
             }
 
             if (!toolBlock) {
-                // Collapse any active thinking block for this agent
+                // Collapse active thinking block for this agent
                 const active = this.activeBlocks[compoundKey];
-                if (active && active.type === 'thinking' && active.block) {
+                if (active?.type === 'thinking' && active.block) {
                     active.block.classList.add("collapsed");
                 }
 
@@ -999,9 +1022,10 @@
             }
         }
 
+        // Append streaming argument tokens to in-progress tool stream preview
         appendToolCallStreamToken(stageNum, agentRole, index, token) {
             const paneObj = this.getOrCreateAgentPane(stageNum, agentRole);
-            if (!paneObj || !paneObj.feedEl) return;
+            if (!paneObj?.feedEl) return;
 
             const streamId = `streamToolCall-${this.id}-${stageNum}-${index}`;
             const key = `${stageNum}_${index}`;
@@ -1041,9 +1065,10 @@
             }
         }
 
+        // Render tool call invocation block when tool starts executing
         startToolCall(stageNum, agentRole, toolName, args, callId, toolIndex) {
             const paneObj = this.getOrCreateAgentPane(stageNum, agentRole);
-            if (!paneObj || !paneObj.feedEl) return;
+            if (!paneObj?.feedEl) return;
             const compoundKey = `${stageNum}_${agentRole}`;
             const streamId = (toolIndex !== undefined && toolIndex !== null) ? `streamToolCall-${this.id}-${stageNum}-${toolIndex}` : null;
             const callBlockId = callId ? `toolCall-${this.id}-${stageNum}-${callId}` : null;
@@ -1128,14 +1153,14 @@
                 }
                 const codeDiv = document.createElement("div");
                 codeDiv.style.marginBottom = "10px";
-            codeDiv.innerHTML = `<div class="tool-section-label">Python Code:</div>
-                <pre class="tool-output-dark">${escapeHtml(codeVal)}</pre>`;
+                codeDiv.innerHTML = `<div class="tool-section-label">Python Code:</div>
+                    <pre class="tool-output-dark">${escapeHtml(codeVal)}</pre>`;
                 content.appendChild(codeDiv);
             } else {
                 const argsDiv = document.createElement("div");
                 argsDiv.style.marginBottom = "10px";
-            argsDiv.innerHTML = `<div class="tool-section-label">Arguments:</div>
-                <pre class="tool-arguments-light">${escapeHtml(prettyArgs)}</pre>`;
+                argsDiv.innerHTML = `<div class="tool-section-label">Arguments:</div>
+                    <pre class="tool-arguments-light">${escapeHtml(prettyArgs)}</pre>`;
                 content.appendChild(argsDiv);
             }
 
@@ -1146,9 +1171,10 @@
             this.activeBlocks[compoundKey] = { type: 'tool', element: content, block: toolBlock };
         }
 
+        // Update progress badge text on executing tool block
         updateToolCallProgress(stageNum, agentRole, callId, progress) {
             const paneObj = this.getOrCreateAgentPane(stageNum, agentRole);
-            if (!paneObj || !paneObj.feedEl) return;
+            if (!paneObj?.feedEl) return;
 
             let toolBlock = null;
             if (callId) {
@@ -1168,9 +1194,10 @@
             }
         }
 
+        // Conclude tool execution block and render result, stdout, and returned variables
         endToolCall(stageNum, agentRole, toolName, callId, status, result, stdout, variables, toolIndex, isError) {
             const paneObj = this.getOrCreateAgentPane(stageNum, agentRole);
-            if (!paneObj || !paneObj.feedEl) return;
+            if (!paneObj?.feedEl) return;
             const compoundKey = `${stageNum}_${agentRole}`;
 
             let toolBlock = null;
@@ -1194,7 +1221,7 @@
 
             if (!toolBlock) {
                 const active = this.activeBlocks[compoundKey];
-                if (active && active.type === 'tool' && active.block && paneObj.feedEl.contains(active.block)) {
+                if (active?.type === 'tool' && active.block && paneObj.feedEl.contains(active.block)) {
                     toolBlock = active.block;
                 }
             }
@@ -1228,16 +1255,16 @@
 
                     const resDiv = document.createElement("div");
                     resDiv.style.marginTop = "10px";
-            resDiv.innerHTML = `<div class="tool-section-label">Result:</div>
-                <pre class="tool-result-light">${escapeHtml(prettyResult)}</pre>`;
+                    resDiv.innerHTML = `<div class="tool-section-label">Result:</div>
+                        <pre class="tool-result-light">${escapeHtml(prettyResult)}</pre>`;
                     content.appendChild(resDiv);
 
                     if (stdout && String(stdout).trim()) {
                         const trimmedStdout = String(stdout).trim();
                         const stdoutDiv = document.createElement("div");
                         stdoutDiv.style.marginTop = "10px";
-            stdoutDiv.innerHTML = `<div class="tool-section-label">STDOUT:</div>
-                <pre class="tool-output-dark">${escapeHtml(trimmedStdout)}</pre>`;
+                        stdoutDiv.innerHTML = `<div class="tool-section-label">STDOUT:</div>
+                            <pre class="tool-output-dark">${escapeHtml(trimmedStdout)}</pre>`;
                         content.appendChild(stdoutDiv);
                     }
 
@@ -1249,8 +1276,8 @@
                             const prettyVal = tryFormatJson(typeof v === 'object' ? JSON.stringify(v) : String(v));
                             varRows += `<tr><td class="variables-cell">${escapeHtml(k)}</td><td class="variables-cell-wrapped">${escapeHtml(prettyVal)}</td></tr>`;
                         }
-            varDiv.innerHTML = `<div class="tool-section-label">Variables:</div>
-                <table class="variables-table">${varRows}</table>`;
+                        varDiv.innerHTML = `<div class="tool-section-label">Variables:</div>
+                            <table class="variables-table">${varRows}</table>`;
                         content.appendChild(varDiv);
                     }
                 }
@@ -1268,9 +1295,10 @@
             }
         }
 
+        // Append rate limit or execution error message into feed
         appendErrorMsg(stageNum, agentRole, payload) {
             const paneObj = this.getOrCreateAgentPane(stageNum, agentRole, payload.agentColor);
-            if (!paneObj || !paneObj.feedEl) return;
+            if (!paneObj?.feedEl) return;
 
             const el = document.createElement("div");
             el.className = "rate-limit-feed-item";
@@ -1279,16 +1307,17 @@
             this.autoScroll(paneObj.feedEl);
         }
 
+        // Render Stage 3 confirmed sector allocations table and doughnut chart
         renderSectorReceipt(allocationData) {
             this.confirmedSector = allocationData;
             const isMilestone0 = (this.id === "milestone_0");
 
             let payloadRecord = allocationData;
-            if (allocationData && allocationData.confirmedAllocation) {
+            if (allocationData?.confirmedAllocation) {
                 payloadRecord = allocationData.confirmedAllocation;
             }
 
-            const cleanCapital = (payloadRecord && payloadRecord.initialCapital) ? parseFloat(payloadRecord.initialCapital) : getCleanInitialCapital();
+            const cleanCapital = payloadRecord?.initialCapital ? parseFloat(payloadRecord.initialCapital) : getCleanInitialCapital();
             this.updateReceiptDatesAndCapital(this.date, cleanCapital);
 
             const capitalEl = document.getElementById(`receipt-cap-${this.id}-3`);
@@ -1303,7 +1332,7 @@
             let values = [];
             const targetSectorMap = {};
 
-            if (payloadRecord && payloadRecord.sectorAllocations) {
+            if (payloadRecord?.sectorAllocations) {
                 const secDict = payloadRecord.sectorAllocations;
                 for (const [secKey, secObj] of Object.entries(secDict)) {
                     const name = (typeof secObj === "object" && secObj.sector) ? secObj.sector : secKey;
@@ -1350,7 +1379,7 @@
                     tableHtml += `</tbody></table>`;
                     tableContainer.innerHTML = tableHtml;
                 } else {
-                    // Review Milestone: Comparative Sector Baseline vs Target with Delta %
+                    // Review milestone comparative sector baseline vs target
                     const baseSectorAgg = {};
                     (this.baselinePositions || []).forEach(p => {
                         const sec = p.sector || "General";
@@ -1432,15 +1461,16 @@
             });
         }
 
+        // Render Stage 6 confirmed portfolio holdings receipt and industry doughnut chart
         renderPortfolioReceipt(portfolioData, baselinePositions = null) {
             this.confirmedPortfolio = portfolioData;
             if (baselinePositions && baselinePositions.length > 0) {
                 this.baselinePositions = baselinePositions;
             } else if (!this.baselinePositions || this.baselinePositions.length === 0) {
                 const prevSession = sessionMgr ? sessionMgr.getPreviousSession(this.id) : null;
-                if (prevSession && prevSession.confirmedPortfolio) {
+                if (prevSession?.confirmedPortfolio) {
                     const prevPort = prevSession.confirmedPortfolio.confirmedPortfolio || prevSession.confirmedPortfolio;
-                    if (prevPort && prevPort.positions) {
+                    if (prevPort?.positions) {
                         this.baselinePositions = prevPort.positions;
                     }
                 }
@@ -1449,11 +1479,11 @@
             const isMilestone0 = (this.id === "milestone_0");
 
             let confirmedPort = portfolioData;
-            if (portfolioData && portfolioData.confirmedPortfolio) {
+            if (portfolioData?.confirmedPortfolio) {
                 confirmedPort = portfolioData.confirmedPortfolio;
             }
 
-            const cleanCapital = (confirmedPort && confirmedPort.initialCapital) ? parseFloat(confirmedPort.initialCapital) : getCleanInitialCapital();
+            const cleanCapital = confirmedPort?.initialCapital ? parseFloat(confirmedPort.initialCapital) : getCleanInitialCapital();
             this.updateReceiptDatesAndCapital(this.date, cleanCapital);
 
             const capitalEl = document.getElementById(`receipt-cap-${this.id}-6`);
@@ -1501,7 +1531,7 @@
                     tableHtml += `</tbody></table>`;
                     holdingsContainer.innerHTML = tableHtml;
                 } else {
-                    // Review Milestone: Rebalanced Holdings Table with Changes Column
+                    // Review milestone rebalanced holdings comparison
                     const baseMap = {};
                     (this.baselinePositions || []).forEach(bp => {
                         if (bp.ticker) baseMap[bp.ticker] = bp;
@@ -1523,7 +1553,7 @@
                             </thead>
                             <tbody>
                     `;
-                    // 1. Active / newly rebalanced positions
+                    // Active and newly rebalanced positions
                     positions.forEach(p => {
                         const ticker = p.ticker;
                         const basePos = baseMap[ticker];
@@ -1556,7 +1586,7 @@
                         `;
                     });
 
-                    // 2. Previously held positions that got removed (liquidated to 0%)
+                    // Liquidated positions removed to 0%
                     (this.baselinePositions || []).forEach(bp => {
                         if (!bp.ticker || activeTickers.has(bp.ticker)) return;
                         const oldWeight = parseFloat(bp.weightPct) || (bp.dollarAllocation ? (parseFloat(bp.dollarAllocation) / cleanCapital * 100) : 0);
@@ -1630,7 +1660,10 @@
         }
     }
 
+
+    // Coordinates multi-milestone isolation, dropdown switching, and stage routing
     class SessionManager {
+        // Initialise session manager tracking state
         constructor() {
             this.sessions = {};
             this.liveSessionId = null;
@@ -1638,6 +1671,7 @@
             this.activeViewingStageNum = 1;
         }
 
+        // Reset all milestone sessions and restore empty state placeholder
         reset() {
             const container = document.getElementById("panesContainer");
             if (container) {
@@ -1669,6 +1703,7 @@
             if (stagesContainer) stagesContainer.innerHTML = "";
         }
 
+        // Retrieve existing session instance or construct a new isolated session
         getOrCreateSession(id, initialData = {}) {
             if (!id) return null;
             if (!this.sessions[id]) {
@@ -1690,11 +1725,13 @@
             return this.sessions[id];
         }
 
+        // Retrieve currently active live session object
         getLiveSession() {
             if (!this.liveSessionId) return null;
             return this.getOrCreateSession(this.liveSessionId);
         }
 
+        // Retrieve currently displayed session object
         getActiveViewingSession() {
             if (this.activeViewingSessionId === "none") return null;
             const targetId = (this.activeViewingSessionId === "current") ? this.liveSessionId : this.activeViewingSessionId;
@@ -1702,6 +1739,7 @@
             return this.getOrCreateSession(targetId);
         }
 
+        // Retrieve chronologically previous session instance
         getPreviousSession(currentId) {
             const sortedKeys = Object.keys(this.sessions).sort((a, b) => {
                 const numA = parseInt(a.replace(/\D/g, "") || "0", 10);
@@ -1715,6 +1753,7 @@
             return null;
         }
 
+        // Register new live session milestone ID and update dropdown options
         setLiveSessionId(mId, label = null, extraData = {}) {
             if (!mId) return;
             const placeholder = document.getElementById("emptySimPlaceholder");
@@ -1754,7 +1793,7 @@
                 }
             }
 
-            // Refresh / add option in milestone dropdown
+            // Refresh option in milestone dropdown
             const select = document.getElementById("milestoneSelect");
             if (select) {
                 let liveOpt = select.querySelector('option[value="current"]');
@@ -1773,6 +1812,7 @@
             return session;
         }
 
+        // Switch visible session workspace and update navigation tabs and metrics
         switchSession(selectedId) {
             if (!selectedId || selectedId === "none") return;
             this.activeViewingSessionId = selectedId;
@@ -1781,21 +1821,21 @@
             const session = this.getOrCreateSession(targetId);
             if (!session) return;
 
-            // 1. Hide ALL session workspaces
+            // Hide all session workspaces
             document.querySelectorAll(".milestone-workspace").forEach(ws => {
                 ws.style.display = "none";
             });
 
-            // 2. Show ONLY target session workspace
+            // Show target session workspace
             if (session.workspaceEl) {
                 session.workspaceEl.style.display = "flex";
             }
 
-            // 3. Highlight session selector in red if viewing a past historical session
+            // Highlight session selector in red if viewing a past session
             const isPast = (selectedId !== "current" && selectedId !== this.liveSessionId);
             this._updateSessionSelectorHighlight(isPast);
 
-            // 4. Render Stage Tabs for this session
+            // Render stage tabs for this session
             const stages = (session.stages && session.stages.length > 0) 
                 ? session.stages 
                 : ((targetId === "milestone_0" || session.type === "inception") 
@@ -1807,19 +1847,20 @@
                             : ((session.pace === "complete") ? completeRebalanceStages : fastRebalanceStages))));
             renderStagesBarTabs(stages, targetId);
 
-            // 5. Switch to target stage
+            // Switch to target stage
             const stageNumToView = (selectedId === "current" && this.activeViewingStageNum) ? this.activeViewingStageNum : (stages[0]?.num || 1);
             this.switchStage(stageNumToView, targetId);
             this.updateStageTabsState(targetId);
 
-            // 6. Update sidebar metrics: if viewing a past/specific session with post-session metrics, render them and turn Cash/Stock/Assets labels red
-            if (session && session.sessionMetrics) {
+            // Update sidebar metrics
+            if (session?.sessionMetrics) {
                 renderSidebarMetrics(session.sessionMetrics, isPast);
             } else if (selectedId === "current" && lastLiveSimulationState) {
                 renderSidebarMetrics(lastLiveSimulationState, false);
             }
         }
 
+        // Switch visible stage within the target milestone session
         switchStage(stageNum, sessionId = null) {
             const targetId = sessionId || ((this.activeViewingSessionId === "current") ? this.liveSessionId : this.activeViewingSessionId);
             if (!targetId) return;
@@ -1829,7 +1870,7 @@
             const isPastOrDone = session.isCompleted || (targetId !== this.liveSessionId);
             const currentStage = session.currentStageNum || 1;
             if (!isPastOrDone && stageNum > currentStage) {
-                return; // Disallow moving forward to stages that have not yet started
+                return;
             }
 
             this.activeViewingStageNum = stageNum;
@@ -1848,6 +1889,7 @@
             this.updateStageTabsState(targetId);
         }
 
+        // Update active, completed, viewing, and disabled CSS classes on stage tabs
         updateStageTabsState(sessionId = null) {
             const targetId = sessionId || ((this.activeViewingSessionId === "current") ? this.liveSessionId : this.activeViewingSessionId);
             if (!targetId) return;
@@ -1878,6 +1920,7 @@
             });
         }
 
+        // Highlight session dropdown border and background when inspecting historical session
         _updateSessionSelectorHighlight(isPast) {
             const select = document.getElementById("milestoneSelect");
             if (select) {
@@ -1895,6 +1938,7 @@
             }
         }
 
+        // Re-populate options in the milestone selector dropdown
         updateDropdownOptions(milestones) {
             const select = document.getElementById("milestoneSelect");
             if (!select || !milestones) return;
@@ -1908,14 +1952,14 @@
             const currentVal = select.value;
             select.innerHTML = "";
 
-            // 1. Current Live Option
+            // Current live option
             const liveSession = this.getLiveSession();
             const liveOpt = document.createElement("option");
             liveOpt.value = "current";
             liveOpt.textContent = `Current: ${liveSession?.label || this.liveSessionId}`;
             select.appendChild(liveOpt);
 
-            // 2. Sort past milestones consistently in chronological order (Milestone 0, 1, 2...)
+            // Chronological past milestones
             const sortedMilestones = [...milestones].sort((a, b) => {
                 const idA = String(a.milestoneId || a.id || "");
                 const idB = String(b.milestoneId || b.id || "");
@@ -1929,7 +1973,7 @@
                 return timeA - timeB;
             });
 
-            // 3. Add ONLY past milestones (excluding the active live session)
+            // Add past milestones
             sortedMilestones.forEach((m) => {
                 const mId = m.milestoneId || m.id;
                 if (mId && mId !== this.liveSessionId) {
@@ -1956,14 +2000,17 @@
         }
     }
 
+    // Define the constant session manager instance:
     const sessionMgr = new SessionManager();
+    
 
+    // Render stage navigation bar tabs for the active milestone session
     function renderStagesBarTabs(stages, milestoneId) {
         const bar = document.getElementById("stagesScrollContainer");
         if (!bar) return;
         bar.innerHTML = "";
 
-        stages.forEach((stage, idx) => {
+        stages.forEach((stage) => {
             const div = document.createElement("div");
             div.className = "stage-item";
             div.setAttribute("data-stage-num", stage.num);
@@ -1975,7 +2022,7 @@
                 const isPastOrDone = currentSession?.isCompleted || (milestoneId !== sessionMgr.liveSessionId);
                 const currentStage = currentSession?.currentStageNum || 1;
                 if (!isPastOrDone && stage.num > currentStage) {
-                    return; // Disallow moving forward to stages that have not started yet
+                    return;
                 }
                 sessionMgr.switchStage(stage.num, milestoneId);
             };
@@ -1985,6 +2032,7 @@
         sessionMgr.updateStageTabsState(milestoneId);
     }
 
+    // Inject milestone selector dropdown into the stages bar container
     function injectMilestoneDropdown() {
         const stagesBar = document.getElementById("stagesBar");
         if (!stagesBar) return;
@@ -2009,10 +2057,7 @@
         }
     }
 
-    // =========================================================================
-    // PERFORMANCE CHART & SIDEBAR UPDATES
-    // =========================================================================
-
+    // Initialize Chart.js portfolio performance line chart instance
     function initPerformanceChart() {
         const ctx = document.getElementById('agentSimChartCanvas');
         if (!ctx || typeof Chart === 'undefined') return;
@@ -2085,6 +2130,7 @@
         });
     }
 
+    // Set active timeframe filter for the performance comparison line chart
     function setChartTimeframe(tf, btn) {
         currentChartTf = tf.toLowerCase();
         document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
@@ -2092,6 +2138,7 @@
         refreshChartData();
     }
 
+    // Filter points and update performance comparison line chart datasets
     function refreshChartData() {
         if (!chartInstance || fullPortfolioPoints.length === 0) return;
 
@@ -2119,10 +2166,11 @@
 
     let lastLiveSimulationState = null;
 
+    // Render portfolio valuation, alpha, Sharpe, and drawdown metrics into the sidebar
     function renderSidebarMetrics(data, isPast = false) {
         if (!data) return;
 
-        // Color Date, Cash, Stock, Assets labels red when viewing a historical past session
+        // Highlight labels in red when viewing historical past session
         const dateLabel = document.getElementById("metricDateLabel");
         const cashLabel = document.getElementById("metricCashLabel");
         const stockLabel = document.getElementById("metricStockLabel");
@@ -2152,7 +2200,7 @@
             }
         }
 
-        // Cash, Stock, Assets Balances
+        // Cash, Stock, and Assets Balances
         if (data.cashValue !== undefined) {
             document.getElementById("metricCashVal").textContent = `$${Number(data.cashValue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         }
@@ -2193,7 +2241,7 @@
             const sharpeEl = document.getElementById("metricSharpe");
             if (sharpeEl) {
                 const sr = Number(data.sharpeRatio).toFixed(2);
-                const spSr = (data.sp500SharpeRatio !== undefined && data.sp500SharpeRatio !== null) ? Number(data.sp500SharpeRatio).toFixed(2) : null;
+                const spSr = (data.sp500SharpeRatio != null) ? Number(data.sp500SharpeRatio).toFixed(2) : null;
                 if (spSr !== null) {
                     sharpeEl.innerHTML = `<span class="metric-value-strong">${sr}</span> <span class="metric-benchmark-label">(vs ${spSr} for S&P 500)</span>`;
                 } else {
@@ -2206,7 +2254,7 @@
             const ddEl = document.getElementById("metricDrawdown");
             if (ddEl) {
                 const dd = Number(data.maxDrawdownPct);
-                const spDd = (data.sp500MaxDrawdownPct !== undefined && data.sp500MaxDrawdownPct !== null) ? Number(data.sp500MaxDrawdownPct) : null;
+                const spDd = (data.sp500MaxDrawdownPct != null) ? Number(data.sp500MaxDrawdownPct) : null;
                 if (spDd !== null) {
                     ddEl.innerHTML = `<span class="metric-value-strong" style="color: ${dd <= spDd ? '#10b981' : '#dc2626'};">${dd.toFixed(2)}%</span> <span class="metric-benchmark-label">(vs ${spDd.toFixed(2)}% for S&P 500)</span>`;
                 } else {
@@ -2228,10 +2276,11 @@
             renderHoldingsTable(data.positions);
         }
 
-        // Timeline & System Activity Logs
+        // Timeline and system activity logs
         renderActivityFeed(data.rebalanceHistory, data.systemLogs);
     }
 
+    // Process incoming simulation state update and refresh UI controls
     function updateSimulationUI(data) {
         if (!data) return;
         lastLiveSimulationState = data;
@@ -2245,7 +2294,7 @@
         // Sync sessionMetrics, stages, and pace into session objects if milestones array is present
         if (data.milestones && Array.isArray(data.milestones)) {
             data.milestones.forEach(m => {
-                if (m && m.milestoneId) {
+                if (m?.milestoneId) {
                     const sess = sessionMgr.getOrCreateSession(m.milestoneId, {
                         stages: m.stages,
                         pace: m.pace,
@@ -2300,7 +2349,7 @@
         const isPastViewing = (sessionMgr.activeViewingSessionId !== "current" && sessionMgr.activeViewingSessionId !== sessionMgr.liveSessionId);
         if (!isPastViewing) {
             const liveSess = sessionMgr.getLiveSession();
-            if (liveSess && liveSess.sessionMetrics) {
+            if (liveSess?.sessionMetrics) {
                 renderSidebarMetrics(liveSess.sessionMetrics, false);
             } else {
                 renderSidebarMetrics(data, false);
@@ -2308,6 +2357,7 @@
         }
     }
 
+    // Render active stock positions and performance metrics into table rows
     function renderHoldingsTable(positions) {
         const tbody = document.getElementById("holdingsTableBody");
         const countBadge = document.getElementById("holdingsCountBadge");
@@ -2348,6 +2398,7 @@
         }).join('');
     }
 
+    // Render chronological rebalance and execution activity feed items
     function renderActivityFeed(history, systemLogs) {
         const container = document.getElementById("rebalanceTimelineList");
         if (!container) return;
@@ -2424,7 +2475,7 @@
         }).join('');
     }
 
-    // --- Helpers for Configuration Sliders ---
+    // Update tooltip text on rebalance amount slider
     function updateRebalanceAmountTooltip() {
         const slider = document.getElementById("rebalanceAmountSlider");
         if (!slider) return;
@@ -2439,12 +2490,14 @@
         slider.title = labels[slider.value] || "Level 3: Moderate Rebalance";
     }
 
+    // Toggle visibility of the allocation bias slider container
     function toggleAllocationBias() {
         const cb = document.getElementById("allocationBiasCheckbox");
         const container = document.getElementById("allocationBiasSliderContainer");
-        if (container) container.style.display = cb && cb.checked ? "flex" : "none";
+        if (container) container.style.display = cb?.checked ? "flex" : "none";
     }
 
+    // Update tooltip text on allocation bias strategy slider
     function updateAllocationBiasTooltip() {
         const slider = document.getElementById("allocationBiasSlider");
         if (!slider) return;
@@ -2459,7 +2512,7 @@
         slider.title = labels[slider.value] || "Balanced Strategy";
     }
 
-    // --- Execution Timer ---
+    // Start simulation timer in minutes and seconds
     function startSimTimer() {
         simStartTime = Date.now();
         const timerEl = document.getElementById("simulationTimer");
@@ -2479,6 +2532,7 @@
         }, 10);
     }
 
+    // Stop and hide the simulation execution timer
     function stopSimTimer() {
         if (simTimerInterval) {
             clearInterval(simTimerInterval);
@@ -2490,10 +2544,7 @@
         }
     }
 
-    // =========================================================================
-    // RUN / STOP CONTROLS & STATE SYNCHRONIZATION
-    // =========================================================================
-
+    // Enable or disable form controls and buttons based on running state
     function setControlsRunningState(isRunning) {
         isSimRunning = isRunning;
         const runBtn = document.getElementById("runBtn");
@@ -2532,6 +2583,7 @@
         });
     }
 
+    // Toggle interactive run button state based on server connection
     function setServerConnectedState(isConnected) {
         if (!isSimRunning) {
             const runBtn = document.getElementById("runBtn");
@@ -2547,10 +2599,7 @@
         }
     }
 
-    // =========================================================================
-    // START / STOP SIMULATION ACTIONS
-    // =========================================================================
-
+    // Validate parameters, initialise Milestone 0 session, and dispatch start message
     function startSimulation() {
         if (!window.serverIsLoaded && (typeof serverIsLoaded !== 'undefined' && !serverIsLoaded)) {
             alert("Server not connected. Please load and connect to a server first.");
@@ -2573,11 +2622,11 @@
 
         let bias = null;
         const biasCb = document.getElementById("allocationBiasCheckbox");
-        if (biasCb && biasCb.checked) {
+        if (biasCb?.checked) {
             bias = parseInt(document.getElementById("allocationBiasSlider")?.value || "4");
         }
 
-        // Immediately populate Left Sidebar values
+        // Populate left sidebar initial values
         const statusDisplay = document.getElementById("currentSimStatusDisplay");
         if (statusDisplay) statusDisplay.textContent = `${formatFriendlyDate(startDate)}: Stage 1`;
         const dateDisplay = document.getElementById("currentSimDateDisplay");
@@ -2601,7 +2650,7 @@
         });
         sessionMgr.switchSession("current");
 
-        // Immediately mount Stage 1 (Macro Strategist) so the UI responds without delay
+        // Mount Stage 1 (Macro Strategist)
         if (m0Session) {
             m0Session.getOrCreateStageWorkspace(1, "Macro Environment Analysis", [
                 { role: "Macro Analyst", color: "cyan", name: "Macro Strategist" }
@@ -2641,6 +2690,7 @@
         }
     }
 
+    // Request simulation stop via WebSocket and REST endpoint
     function stopSimulation() {
         const stopBtn = document.getElementById("stopBtn");
         if (stopBtn) stopBtn.disabled = true;
@@ -2651,13 +2701,14 @@
         onSimulationCompleted();
     }
 
+    // Clean up timers and finalize exporter state on simulation completion
     function onSimulationCompleted() {
         setControlsRunningState(false);
         const timerEl = document.getElementById("simulationTimer");
         const elapsedText = timerEl ? timerEl.innerText.trim() : "";
         stopSimTimer();
         Object.values(sessionMgr.sessions || {}).forEach(s => {
-            if (s && typeof s.clearAllPromptProcessing === "function") {
+            if (typeof s?.clearAllPromptProcessing === "function") {
                 s.clearAllPromptProcessing();
             }
         });
@@ -2666,12 +2717,9 @@
         }
     }
 
-    // =========================================================================
-    // WEBSOCKET EVENT HANDLER & ROUTER
-    // =========================================================================
-
+    // Dispatch incoming WebSocket streaming simulation events
     function handleWebSocketEvent(payload) {
-        if (!payload || !payload.type) return;
+        if (!payload?.type) return;
 
         const mId = payload.milestoneId || sessionMgr.liveSessionId;
         const stageNum = (payload.stageNum !== undefined && payload.stageNum !== null) ? payload.stageNum : (sessionMgr.activeViewingStageNum || 1);
@@ -2745,7 +2793,7 @@
                 const session = sessionMgr.getOrCreateSession(mId);
                 session.currentStageNum = payload.stageNum;
 
-                // Auto-upgrade to 6 complete stages if extended stage (e.g. 2 or 5) starts
+                // Auto-upgrade to 6 complete stages if extended stage begins
                 if (session.stages && !session.stages.some(s => s.num === payload.stageNum)) {
                     session.stages = (mId === "milestone_0") ? defaultInceptionStages : completeRebalanceStages;
                     session.pace = "complete";
@@ -2965,23 +3013,26 @@
         }
     }
 
+    // Open model generation settings modal overlay
     function openSettingsModal() {
         const modal = document.getElementById("settingsOverlay");
         if (modal) modal.style.display = "flex";
     }
 
+    // Close model generation settings modal overlay
     function closeSettingsModal() {
         const modal = document.getElementById("settingsOverlay");
         if (modal) modal.style.display = "none";
     }
 
+    // Handle backdrop click to close settings modal
     function handleSettingsOverlayMouseDown(e) {
-        if (e.target && e.target.id === "settingsOverlay") {
+        if (e.target?.id === "settingsOverlay") {
             closeSettingsModal();
         }
     }
 
-    // Overwrite global simulation handlers so boardroom_core.js does not interfere
+    // Overwrite global simulation handlers for boardroom integration
     window.handleSimulationEvent = handleWebSocketEvent;
     window.setControlsRunningState = setControlsRunningState;
     window.setServerConnectedState = setServerConnectedState;
@@ -2995,10 +3046,7 @@
     window.BoardroomCore.startSimulation = startSimulation;
     window.BoardroomCore.stopSimulation = stopSimulation;
 
-    // =========================================================================
-    // INITIALIZATION & EVENT BINDINGS
-    // =========================================================================
-
+    // Attach change listener to clamp numeric input within boundaries
     function clampInput(el, min, max, allowEmpty = true) {
         if (!el) return;
         el.addEventListener("change", () => {
@@ -3012,7 +3060,7 @@
     }
 
     document.addEventListener("DOMContentLoaded", () => {
-        // Mount Left Sidebar to the left of .workspace
+        // Mount left sidebar to the left of .workspace
         const sidebar = document.getElementById("agentSimSidebar");
         const mainLayout = document.querySelector(".main-layout");
         const workspace = document.querySelector(".workspace");
@@ -3053,25 +3101,25 @@
 
         const startDateInput = document.getElementById("setupStartDate");
         const capitalInput = document.getElementById("initialCapitalInput");
-        if (startDateInput && startDateInput.value) {
+        if (startDateInput?.value) {
             document.getElementById("currentSimDateDisplay").textContent = formatFriendlyDate(startDateInput.value);
         }
-        if (capitalInput && capitalInput.value) {
+        if (capitalInput?.value) {
             const capVal = parseFloat(capitalInput.value) || 100000;
             document.getElementById("metricCashVal").textContent = `$${capVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             document.getElementById("metricTotalVal").textContent = `$${capVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         }
 
-        // Fetch collectors constants to dynamically set maximum Sim/End Date bounds
+        // Fetch constants to dynamically set maximum Sim/End Date bounds
         fetch("/api/constants")
             .then(res => res.json())
             .then(data => {
-                if (data && data.endDate) {
+                if (data?.endDate) {
                     if (startDateInput) startDateInput.setAttribute("max", data.endDate);
                     const endDateInput = document.getElementById("setupEndDate");
                     if (endDateInput) endDateInput.setAttribute("max", data.endDate);
                 }
-                if (data && data.startDate) {
+                if (data?.startDate) {
                     if (startDateInput) startDateInput.setAttribute("min", data.startDate);
                     const endDateInput = document.getElementById("setupEndDate");
                     if (endDateInput) endDateInput.setAttribute("min", data.startDate);
@@ -3079,10 +3127,10 @@
             })
             .catch(() => {});
 
-        // Initialise Idle Session State ('None yet')
+        // Initialise idle session state
         sessionMgr.reset();
 
-        // Re-bind Universal Run / Stop Buttons directly
+        // Re-bind universal Run and Stop buttons
         const runBtn = document.getElementById("runBtn");
         const stopBtn = document.getElementById("stopBtn");
         if (runBtn) {
@@ -3098,7 +3146,7 @@
             };
         }
 
-        // Wire Download Report Button directly to AgentSimExporter
+        // Wire download report button directly to AgentSimExporter
         const downloadBtn = document.getElementById("downloadReportBtn");
         if (downloadBtn) {
             downloadBtn.onclick = (e) => {
@@ -3114,4 +3162,3 @@
     });
 </script>
 {% endblock %}
-

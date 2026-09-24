@@ -1,8 +1,8 @@
-/* Marketsim Main Container */
+/* Main market simulation layout container */
 .marketsim-container {
     display: flex;
     width: 100%;
-    height: calc(100vh - 63px); /* Exact remaining height under header */
+    height: calc(100vh - 63px);
     overflow: hidden;
     background-color: #f8fafc;
     color: #1e293b;
@@ -10,7 +10,7 @@
     gap: 20px;
 }
 
-/* Left Main Area: 75% Width */
+/* Primary workspace area (75% width) */
 .marketsim-main {
     flex: 0 0 calc(75% - 10px);
     width: calc(75% - 10px);
@@ -21,7 +21,7 @@
     overflow: hidden;
 }
 
-/* Right Sidebar: Card with Rounded Edges matching other cards */
+/* Sidebar equity inspector panel (25% width) */
 .marketsim-sidebar {
     flex: 0 0 calc(25% - 10px);
     width: calc(25% - 10px);
@@ -37,7 +37,7 @@
     overflow-y: auto;
 }
 
-/* Common Card Styling */
+/* Card components and typography */
 .sim-card {
     background: #ffffff;
     border: 1px solid #e2e8f0;
@@ -55,13 +55,12 @@
     margin-bottom: 0;
 }
 
-/* Grid Layout Rows */
+/* Grid layout rows */
 .grid-row {
     display: flex;
     gap: 20px;
 }
 
-/* TOP ROW: Exactly 440px min-height */
 .top-row {
     flex: 0 0 auto;
     min-height: 440px;
@@ -69,14 +68,13 @@
     align-items: stretch;
 }
 
-/* BOTTOM ROW: Expands to fill ALL remaining bottom space */
 .bottom-row {
     flex: 1;
     min-height: 0;
     align-items: stretch;
 }
 
-/* TOP LEFT: Portfolio Overview + Embedded Chart */
+/* Portfolio summary card (top left) */
 .sim-info-card {
     flex: 1.6;
     min-width: 0;
@@ -104,6 +102,10 @@
     font-size: 1.05rem;
 }
 
+.sim-info-header-spread {
+    justify-content: space-between;
+}
+
 .info-label {
     font-weight: 700;
     color: #475569;
@@ -115,7 +117,7 @@
     color: #0f172a;
 }
 
-/* Larger Cash / Stock / Assets Values */
+/* Portfolio financial metrics */
 .sim-metrics-summary {
     display: flex;
     flex-direction: column;
@@ -160,7 +162,12 @@
     color: #dc2626;
 }
 
-/* Advance Controls */
+.metric-external-link {
+    color: #2563eb;
+    text-decoration: underline;
+}
+
+/* Simulation timeline progression controls */
 .sim-advance-section {
     display: flex;
     flex-direction: column;
@@ -240,7 +247,7 @@
     padding: 2px 4px;
 }
 
-/* Portfolio Chart embedded inside top left card white space */
+/* Portfolio historical chart wrapper */
 .sim-info-chart-wrapper {
     flex: 1;
     min-width: 0;
@@ -250,7 +257,21 @@
     align-items: center;
 }
 
-/* Form Controls & Labels */
+/* Order entry form and controls */
+.order-card {
+    flex: 0 0 310px;
+    gap: 8px;
+    display: flex;
+    flex-direction: column;
+}
+
+.order-form-vertical {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+}
+
 .form-row-2col {
     display: flex;
     gap: 8px;
@@ -279,6 +300,22 @@
     color: #475569;
     margin-bottom: 3px;
     display: block;
+}
+
+.small-input-label-flush {
+    margin-bottom: 0;
+}
+
+.order-ticker-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 3px;
+}
+
+.order-ticker-input {
+    text-transform: uppercase;
+    font-weight: 700;
 }
 
 .random-ticker-btn {
@@ -315,19 +352,13 @@
     border-color: #2563eb;
 }
 
-/* TOP RIGHT: Queue New Order Card */
-.order-card {
-    flex: 0 0 310px;
-    gap: 8px;
+.currency-input-row {
     display: flex;
-    flex-direction: column;
+    align-items: center;
 }
 
-.order-form-vertical {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    flex: 1;
+.currency-symbol {
+    padding-right: 8px;
 }
 
 .submit-order-btn-full {
@@ -352,7 +383,6 @@
     background-color: #1d4ed8;
 }
 
-/* Order Summary Box in Queue New Order Card (Attached to bottom) */
 .order-summary-box {
     padding: 4px 8px;
     display: flex;
@@ -378,7 +408,7 @@
     font-weight: 700;
 }
 
-/* BOTTOM SECTION: Positions Table & System Logs */
+/* Positions data table and container */
 .positions-card {
     flex: 1.5;
     height: 100%;
@@ -386,14 +416,6 @@
     overflow: hidden;
 }
 
-.logs-card {
-    flex: 1;
-    height: 100%;
-    min-width: 0;
-    overflow: hidden;
-}
-
-/* Tables */
 .table-container {
     flex: 1;
     overflow-y: auto;
@@ -458,7 +480,7 @@
     font-size: 0.85rem;
 }
 
-/* Order Badges */
+/* Order badges and action triggers */
 .badge-action-buy {
     background-color: #dcfce7;
     color: #15803d;
@@ -508,6 +530,11 @@
     border-color: #ef4444;
 }
 
+.cancel-order-btn-muted {
+    color: #64748b;
+    border-color: #cbd5e1;
+}
+
 .empty-queue-msg {
     text-align: center;
     padding: 24px;
@@ -516,7 +543,14 @@
     font-size: 0.9rem;
 }
 
-/* System Logs */
+/* System simulation event logs */
+.logs-card {
+    flex: 1;
+    height: 100%;
+    min-width: 0;
+    overflow: hidden;
+}
+
 .logs-container {
     flex: 1;
     display: flex;
@@ -537,6 +571,11 @@
     color: #0f172a;
     font-size: 0.85rem;
     transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.log-pill-empty {
+    text-align: center;
+    color: #94a3b8;
 }
 
 .log-date-tag {
@@ -573,7 +612,7 @@
     font-size: 0.78rem;
 }
 
-/* Queued Order Pill inside System Logs */
+/* Queued order pills inside logs */
 .queued-order-pill {
     padding: 6px 9px;
     display: flex;
@@ -618,11 +657,37 @@
     font-size: 0.85rem;
 }
 
-/* Right Sidebar (25% Width, Card Style) */
+/* Equity inspector search and header */
 .sidebar-title {
     font-size: 1.1rem;
     font-weight: 800;
     color: #0f172a;
+}
+
+.sidebar-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+}
+
+.sidebar-header-row .sidebar-title {
+    flex: 0 0 calc(50% - 4px);
+    max-width: calc(50% - 4px);
+    margin-bottom: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.sidebar-header-row .search-box {
+    flex: 0 0 calc(50% - 4px);
+    max-width: calc(50% - 4px);
+    margin-bottom: 0;
 }
 
 .search-box {
@@ -673,6 +738,23 @@
     object-fit: contain;
 }
 
+.stock-price-summary {
+    text-align: right;
+}
+
+.stock-current-price {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.stock-period-return {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #10b981;
+}
+
+/* Equity inspector chart canvas */
 .chart-section {
     display: flex;
     gap: 8px;
@@ -712,32 +794,7 @@
     border-color: #2563eb;
 }
 
-.sidebar-header-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    width: 100%;
-}
-
-.sidebar-header-row .sidebar-title {
-    flex: 0 0 calc(50% - 4px);
-    max-width: calc(50% - 4px);
-    margin-bottom: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: 1.05rem;
-    font-weight: 700;
-    color: #0f172a;
-}
-
-.sidebar-header-row .search-box {
-    flex: 0 0 calc(50% - 4px);
-    max-width: calc(50% - 4px);
-    margin-bottom: 0;
-}
-
+/* Fundamental data points */
 .inspector-container {
     position: relative;
     display: flex;
@@ -793,6 +850,7 @@
     min-width: 0;
 }
 
+/* Equity news feed */
 .news-feed-wrapper {
     flex: 1;
     min-height: 140px;
@@ -809,6 +867,12 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+
+.news-article-count {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #94a3b8;
 }
 
 .news-feed-scroll {
@@ -856,6 +920,14 @@
     justify-content: space-between;
 }
 
+.empty-news-message {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    text-align: center;
+    padding: 12px 0;
+}
+
+/* Loading spinners and overlays */
 .inspector-blur-overlay {
     filter: blur(4px);
     opacity: 0.65;
@@ -878,81 +950,9 @@
     border: 4px solid rgba(0, 0, 0, 0);
     border-top-color: rgba(0, 0, 0, 255);
     border-radius: 50%;
-    animation: inspectorSpin 0.8s linear infinite;}
+    animation: inspectorSpin 0.8s linear infinite;
+}
 
 @keyframes inspectorSpin {
     to { transform: rotate(360deg); }
-}
-
-.currency-input-row {
-    display: flex;
-    align-items: center;
-}
-
-.currency-symbol {
-    padding-right: 8px;
-}
-
-.sim-info-header-spread {
-    justify-content: space-between;
-}
-
-.cancel-order-btn-muted {
-    color: #64748b;
-    border-color: #cbd5e1;
-}
-
-.order-ticker-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 3px;
-}
-
-.small-input-label-flush {
-    margin-bottom: 0;
-}
-
-.order-ticker-input {
-    text-transform: uppercase;
-    font-weight: 700;
-}
-
-.log-pill-empty {
-    text-align: center;
-    color: #94a3b8;
-}
-
-.stock-price-summary {
-    text-align: right;
-}
-
-.stock-current-price {
-    font-size: 1.1rem;
-    font-weight: 800;
-    color: #0f172a;
-}
-
-.stock-period-return {
-    font-size: 0.78rem;
-    font-weight: 700;
-    color: #10b981;
-}
-
-.news-article-count {
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: #94a3b8;
-}
-
-.empty-news-message {
-    font-size: 0.78rem;
-    color: #94a3b8;
-    text-align: center;
-    padding: 12px 0;
-}
-
-.metric-external-link {
-    color: #2563eb;
-    text-decoration: underline;
 }
