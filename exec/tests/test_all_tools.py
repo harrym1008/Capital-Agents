@@ -25,7 +25,10 @@ defaultInputsBySchema: Dict[str, Dict[str, Any]] = {
     },
     "confirmSectorAllocation": {
         "sectorAllocations": {
-            "information_technology": 100.0,
+            "information_technology": 40.0,
+            "financial_services": 30.0,
+            "industrials": 20.0,
+            "Health_Care": 10.0
         },
         "rationale": "High-conviction allocation focusing on information technology leadership.",
     },
@@ -36,6 +39,27 @@ defaultInputsBySchema: Dict[str, Dict[str, Any]] = {
                     "ticker": "AAPL",
                     "perSectorWeight": 100.0,
                     "rationale": "Market leader with resilient services growth and robust balance sheet.",
+                }
+            ],
+            "financial_services": [
+                {
+                    "ticker": "JPM",
+                    "perSectorWeight": 100.0,
+                    "rationale": "Strong capital position and diversified revenue streams.",
+                }
+            ],
+            "industrials": [
+                {
+                    "ticker": "BA",
+                    "perSectorWeight": 100.0,
+                    "rationale": "Leading aerospace manufacturer with strong defense contracts.",
+                }
+            ],
+            "Health_Care": [
+                {
+                    "ticker": "JNJ",
+                    "perSectorWeight": 100.0,
+                    "rationale": "Diversified healthcare leader with strong R&D pipeline.",
                 }
             ]
         },
@@ -181,7 +205,7 @@ def runAllToolTests():
     print("=" * 80)
     for timestampLabel, res in overallResults.items():
         totalCount = len(res["passed"]) + len(res["failed"])
-        print(f"\nTimestamp '{timestampLabel}': {len(res['passed'])}/{totalCount} PASSED")
+        print(f"\nTimestamp {timestampLabel}': {len(res['passed'])}/{totalCount} PASSED")
         if res["failed"]:
             print(f"  Failed tools ({len(res['failed'])}):")
             for failedTool, errMsg in res["failed"]:

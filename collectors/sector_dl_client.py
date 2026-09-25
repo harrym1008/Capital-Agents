@@ -89,6 +89,7 @@ GICS_SECTORS: Dict[str, SectorInfo] = {
 # Direct mapping for tickers.parquet underscored lowercase sector strings
 DB_SECTOR_TO_TICKER = {
     "financials": "XLF",
+    "financial_services": "XLF",    # Flexibility for LLMs that arent following the rules!
     "industrials": "XLI",
     "health_care": "XLV",
     "consumer_staples": "XLP",

@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 
 from llmtools.tool_registry import DataProviders, Tool
-from llmtools.functions.helpers import cleanData, cleanNumber, NumberType
+from llmtools.functions.helpers import cleanData, cleanNumber, NumberType, normaliseSectorInput, attachSectorWarning
 from collectors.sector_dl_client import GICS_SECTORS
 
 
@@ -99,8 +99,9 @@ def distributeIntegerPercentages(weights: List[float], totalTarget: int) -> List
 
 # Validate and record confirmed sector percentage allocations for portfolio construction
 def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, sectorAllocations: Dict[str, float], rationale: str, **kwargs) -> Dict[str, Any]:
+    sectorAllocations, wasUpdated = normaliseSectorInput(sectorAllocations)
     if not isinstance(sectorAllocations, dict) or not sectorAllocations:
-        return {"error": "sectorAllocations must be a non-empty dictionary mapping sector names to percentage numbers."}
+        return attachSectorWarning({"error": "sectorAllocations must be a non-empty dictionary mapping sector names to percentage numbers."}, wasUpdated)
 
     cleanedAllocations = {}
     totalAllocated = 0.0
@@ -109,18 +110,18 @@ def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Times
         try:
             pctVal = round(float(rawPct), 2)
         except (ValueError, TypeError):
-            return {"error": f"Allocation value for '{rawSector}' must be a valid number, got '{rawPct}'."}
+            return attachSectorWarning({"error": f"Allocation value for '{rawSector}' must be a valid number, got '{rawPct}'."}, wasUpdated)
 
         if pctVal <= 0:
             continue
 
         rawLower = str(rawSector).strip().lower()
         if rawLower in ["cash", "usd"]:
-            return {"error": f"Sector '{rawSector}' could not be resolved to a valid GICS sector."}
+            return attachSectorWarning({"error": f"Sector '{rawSector}' could not be resolved to a valid GICS sector."}, wasUpdated)
 
         ticker, resolvedName, note = data.sectors.resolveSector(rawSector)
         if resolvedName == "Unknown" or not ticker:
-            return {"error": f"Sector '{rawSector}' could not be resolved to a valid GICS sector. Provided note: {note}"}
+            return attachSectorWarning({"error": f"Sector '{rawSector}' could not be resolved to a valid GICS sector. Provided note: {note}"}, wasUpdated)
 
         cleanedAllocations[ticker] = {
             "sector": resolvedName,
@@ -132,11 +133,11 @@ def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Times
     # Validate total sector allocation sum near 100%
     totalAllocated = round(totalAllocated, 2)
     if totalAllocated < 88.0 or totalAllocated > 112.0:
-        return {
+        return attachSectorWarning({
             "error": f"Total sector allocations must sum to approximately 100.0%. Current sum: {totalAllocated}%. Please rebalance and retry.",
             "currentSum": totalAllocated,
             "currentAllocations": cleanedAllocations
-        }
+        }, wasUpdated)
 
     # Normalise all sector allocations to exact integer percentages totaling 100%
     keys = list(cleanedAllocations.keys())
@@ -157,11 +158,11 @@ def confirmSectorAllocation(tool: Tool, data: DataProviders, timestamp: pd.Times
                                  f"It has been redistributed to fit 100% accordingly."
 
     tool.toolLog.append(decisionRecord)
-    return cleanData({
+    return attachSectorWarning(cleanData({
         "status": "success",
         "message": f"Sector allocation confirmed with {len(cleanedAllocations)} sectors totaling 100%.",
         "confirmedAllocation": decisionRecord
-    })
+    }), wasUpdated)
 
 
 # Validate and record confirmed portfolio equity holdings and capital allocations
@@ -174,18 +175,21 @@ def confirmPortfolioAllocation(
     initialCapital: float = 100_000.0,
     **kwargs
 ) -> Dict[str, Any]:
+    wasUpdated = False
     if isinstance(sectorAllocations, str):
         try:
             sectorAllocations = json.loads(sectorAllocations)
         except Exception:
             return {"error": "sectorAllocations could not be parsed as valid JSON. Provide a dictionary mapping sector names to lists of stock objects."}
 
+    sectorAllocations, wasUpdated = normaliseSectorInput(sectorAllocations)
+
     if not isinstance(sectorAllocations, dict) or len(sectorAllocations) == 0:
-        return {"error": "sectorAllocations must be a non-empty dictionary mapping confirmed sector names to lists of stock positions."}
+        return attachSectorWarning({"error": "sectorAllocations must be a non-empty dictionary mapping confirmed sector names to lists of stock positions."}, wasUpdated)
 
     confirmedSectorTool = tool.registry.getTool("confirmSectorAllocation") if getattr(tool, "registry", None) else None
     if not confirmedSectorTool or not confirmedSectorTool.toolLog:
-        return {"error": "No confirmed sector allocation was found in the boardroom session. Sector allocation must be confirmed before finalising individual stock positions."}
+        return attachSectorWarning({"error": "No confirmed sector allocation was found in the boardroom session. Sector allocation must be confirmed before finalising individual stock positions."}, wasUpdated)
 
     lastSectorDecision = confirmedSectorTool.toolLog[-1]
     confirmedSectorMap = lastSectorDecision.get("sectorAllocations", {})
@@ -213,31 +217,31 @@ def confirmPortfolioAllocation(
 
     for rawSecKey, stockList in sectorAllocations.items():
         if not isinstance(stockList, list):
-            return {"error": f"Allocation for sector '{rawSecKey}' must be a list of stock objects, got {type(stockList).__name__}."}
+            return attachSectorWarning({"error": f"Allocation for sector '{rawSecKey}' must be a list of stock objects, got {type(stockList).__name__}."}, wasUpdated)
 
         rawLower = str(rawSecKey).strip().lower()
         if rawLower in ["cash", "usd"]:
-            return {"error": f"Sector key '{rawSecKey}' is not a recognised GICS sector."}
+            return attachSectorWarning({"error": f"Sector key '{rawSecKey}' is not a recognised GICS sector."}, wasUpdated)
 
         secTicker, resolvedName, note = data.sectors.resolveSector(str(rawSecKey).strip())
         if secTicker == "Unknown" or not secTicker:
-            return {"error": f"Sector key '{rawSecKey}' could not be resolved to a recognised GICS sector. {note}"}
+            return attachSectorWarning({"error": f"Sector key '{rawSecKey}' could not be resolved to a recognised GICS sector. {note}"}, wasUpdated)
 
         secTicker = secTicker.upper()
         if secTicker not in expectedSectors:
             expectedNames = [f"{v['sector']} ({v['ticker']})" for v in expectedSectors.values()]
-            return {"error": f"Sector '{rawSecKey}' ({secTicker}) is not in the confirmed sector allocations. Confirmed sectors are: {', '.join(expectedNames)}."}
+            return attachSectorWarning({"error": f"Sector '{rawSecKey}' ({secTicker}) is not in the confirmed sector allocations. Confirmed sectors are: {', '.join(expectedNames)}."}, wasUpdated)
 
         providedSectors[secTicker] = stockList
 
     missingSectors = [f"{v['sector']} ({v['ticker']})" for k, v in expectedSectors.items() if k not in providedSectors]
     if missingSectors:
-        return {"error": f"Missing stock allocations for confirmed sector(s): {', '.join(missingSectors)}. You must provide stock holdings for all confirmed sectors."}
+        return attachSectorWarning({"error": f"Missing stock allocations for confirmed sector(s): {', '.join(missingSectors)}. You must provide stock holdings for all confirmed sectors."}, wasUpdated)
 
     portfolioRationaleStr = str(portfolioRationale or "").strip()
     portfolioWordCount = len(portfolioRationaleStr.split())
     if portfolioWordCount < 25:
-        return {"error": f"Portfolio rationale is too brief ({portfolioWordCount} words). Please provide an executive rationale of approximately 100 words explaining portfolio construction and risk management."}
+        return attachSectorWarning({"error": f"Portfolio rationale is too brief ({portfolioWordCount} words). Please provide an executive rationale of approximately 100 words explaining portfolio construction and risk management."}, wasUpdated)
 
     cleanedPositions = []
     sectorSubtotals: Dict[str, float] = {}
@@ -248,37 +252,37 @@ def confirmPortfolioAllocation(
         sectorTargetPct = secInfo["allocationPct"]
 
         if len(stockList) == 0:
-            return {"error": f"Sector '{sectorName}' ({secTicker}) has an empty stock list. Please provide at least one stock holding for this sector."}
+            return attachSectorWarning({"error": f"Sector '{sectorName}' ({secTicker}) has an empty stock list. Please provide at least one stock holding for this sector."}, wasUpdated)
 
         sectorSumWeight = 0.0
         sectorPositions = []
 
         for i, pos in enumerate(stockList):
             if not isinstance(pos, dict):
-                return {"error": f"Item {i} in sector '{sectorName}' must be a dictionary object."}
+                return attachSectorWarning({"error": f"Item {i} in sector '{sectorName}' must be a dictionary object."}, wasUpdated)
 
             rawTicker = str(pos.get("ticker", "")).strip().upper()
             if not rawTicker:
-                return {"error": f"Stock at index {i} in sector '{sectorName}' is missing a valid 'ticker'."}
+                return attachSectorWarning({"error": f"Stock at index {i} in sector '{sectorName}' is missing a valid 'ticker'."}, wasUpdated)
 
             rawPerSecWeight = pos.get("perSectorWeight") if "perSectorWeight" in pos else (pos.get("weightPct") or pos.get("weight"))
             try:
                 perSecVal = round(float(rawPerSecWeight), 2)
             except (ValueError, TypeError):
-                return {"error": f"Stock '{rawTicker}' in sector '{sectorName}' has an invalid perSectorWeight: '{rawPerSecWeight}'."}
+                return attachSectorWarning({"error": f"Stock '{rawTicker}' in sector '{sectorName}' has an invalid perSectorWeight: '{rawPerSecWeight}'."}, wasUpdated)
 
             if perSecVal <= 0:
                 continue
 
             profile = data.tickers.getTickerProfile(rawTicker)
             if profile is None:
-                return {"error": f"Ticker '{rawTicker}' in sector '{sectorName}' does not exist in the stock universe. Please replace it with a valid traded ticker."}
+                return attachSectorWarning({"error": f"Ticker '{rawTicker}' in sector '{sectorName}' does not exist in the stock universe. Please replace it with a valid traded ticker."}, wasUpdated)
 
             stockSecTicker, stockResolvedSector, _ = data.sectors.resolveSector(profile.sector or "")
             if stockSecTicker and stockSecTicker != "Unknown" and stockSecTicker.upper() != secTicker:
-                return {
+                return attachSectorWarning({
                     "error": f"Ticker '{rawTicker}' belongs to sector '{stockResolvedSector}' ({stockSecTicker}), not '{sectorName}' ({secTicker}). All stocks must be placed in their correct GICS sector."
-                }
+                }, wasUpdated)
 
             companyName = profile.name or rawTicker
             industryName = profile.industry.replace("_", " ").title() if profile.industry else "General Equities"
@@ -298,9 +302,9 @@ def confirmPortfolioAllocation(
 
         sectorSumWeight = round(sectorSumWeight, 2)
         if sectorSumWeight < 88.0 or sectorSumWeight > 112.0:
-            return {
+            return attachSectorWarning({
                 "error": f"The perSectorWeight values for sector '{sectorName}' sum to {sectorSumWeight}%, but must sum to 100.0%. Please rebalance the stocks within '{sectorName}' to total 100%."
-            }
+            }, wasUpdated)
 
         sectorIntTarget = int(round(sectorTargetPct))
         stockPerSecWeights = [p["perSectorWeight"] for p in sectorPositions]
@@ -351,11 +355,11 @@ def confirmPortfolioAllocation(
     }
 
     tool.toolLog.append(portfolioRecord)
-    return cleanData({
+    return attachSectorWarning(cleanData({
         "status": "success",
         "message": f"Portfolio creation confirmed: {len(cleanedPositions)} stocks across {len(expectedSectors)} sectors totaling {totalAllocated}%.",
         "confirmedPortfolio": portfolioRecord
-    })
+    }), wasUpdated)
 
 
 # Evaluate and log macroeconomic rebalance determination for simulation timeline

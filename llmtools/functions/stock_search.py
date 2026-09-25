@@ -8,7 +8,7 @@ import pandas as pd
 from collectors.constants import UTC, NEW_YORK, END_DATE
 from collectors.sector_dl_client import GICS_SECTORS, DB_SECTOR_TO_TICKER
 from llmtools.tool_registry import Tool, DataProviders
-from llmtools.functions.helpers import cleanData
+from llmtools.functions.helpers import cleanData, normaliseSectorInput, attachSectorWarning
 
 
 # Parse market capitalisation string into raw float value
@@ -93,6 +93,7 @@ def calculateDefensiveScore(downsideVol: float, maxDd1y: float, vol1y: float,
 # Screen and rank candidates within specific GICS sector based on style profile
 def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, sector: str, 
                        style: str = "all", limit: int = 25) -> Dict[str, Any]:
+    sector, wasUpdated = normaliseSectorInput(sector)
     limit = max(8, min(int(limit) if limit else 25, 40))
 
     style = str(style).strip().lower() if style else "all"
@@ -101,11 +102,11 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
 
     ticker, resolvedName, note = data.sectors.resolveSector(sector)
     if resolvedName == "Unknown" or not ticker or ticker not in GICS_SECTORS:
-        return cleanData({"error": note or f"Sector '{sector}' not recognised among the 11 GICS sectors."})
+        return attachSectorWarning(cleanData({"error": note or f"Sector '{sector}' not recognised among the 11 GICS sectors."}), wasUpdated)
 
     dbKey = next((k for k, v in DB_SECTOR_TO_TICKER.items() if v == ticker), None)
     if not dbKey:
-        return cleanData({"error": f"Could not map sector ETF '{ticker}' to internal database category."})
+        return attachSectorWarning(cleanData({"error": f"Could not map sector ETF '{ticker}' to internal database category."}), wasUpdated)
 
     tsNy = timestamp.tz_convert(NEW_YORK) if timestamp.tzinfo else timestamp.tz_localize(NEW_YORK)
     effectiveTs = min(tsNy, END_DATE)
@@ -113,12 +114,12 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
     cacheKey = f"stocksearch|sector_{ticker}_{style}_{limit}_{effectiveTs.strftime('%Y-%m-%dH%H')}"
     cached = data.cache.get(cacheKey)
     if cached is not None:
-        return cached
+        return attachSectorWarning(cached, wasUpdated)
 
     with data.sectors.keyedLocks.lockKey(cacheKey):
         cached = data.cache.get(cacheKey)
         if cached is not None:
-            return cached
+            return attachSectorWarning(cached, wasUpdated)
 
         # Find all valid candidate tickers
         candidateProfiles = [
@@ -131,11 +132,11 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
         ]
 
         if not candidateProfiles:
-            return cleanData({
+            return attachSectorWarning(cleanData({
                 "status": "no_candidates",
                 "sector": resolvedName,
                 "message": f"No listed equities with known industries found for sector '{resolvedName}' as of {effectiveTs.strftime('%Y-%m-%d')}."
-            })
+            }), wasUpdated)
 
         # Filter candidates by market cap threshold (>= 36bn)... fallback to >= 18bn if too few, then as low as 9bn
         minCapThreshold = 36e9
@@ -177,11 +178,11 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
                 qualifyingProfiles = filterQualifying(minCapThreshold)
 
         if not qualifyingProfiles:
-            return cleanData({
+            return attachSectorWarning(cleanData({
                 "status": "no_large_cap_candidates",
                 "sector": resolvedName,
                 "message": f"No equities (>5bn mkt cap) found in sector '{resolvedName}'."
-            })
+            }), wasUpdated)
 
         normTs = effectiveTs.tz_localize(None) if effectiveTs.tzinfo is not None else effectiveTs
         tsUtc = normTs.tz_localize(UTC)
@@ -288,7 +289,7 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
                     evaluatedList.append(res)
 
         if not evaluatedList:
-            return cleanData({"error": f"Unable to retrieve validated price metrics for sector '{resolvedName}'."})
+            return attachSectorWarning(cleanData({"error": f"Unable to retrieve validated price metrics for sector '{resolvedName}'."}), wasUpdated)
 
         # Group by sub-industry and select top candidates per industry
         industryBuckets: Dict[str, List[Dict[str, Any]]] = {}
@@ -335,4 +336,4 @@ def fetchStocksInSector(tool: Tool, data: DataProviders, timestamp: pd.Timestamp
 
         cleaned = cleanData(result)
         data.cache.put(cacheKey, cleaned)
-        return cleaned
+        return attachSectorWarning(cleaned, wasUpdated)

@@ -1,11 +1,71 @@
 from enum import Enum
 import math
+from typing import Any, Dict, Tuple
 
 import numpy as np
 import pandas as pd
 from bs4 import BeautifulSoup
 
 from collectors.constants import END_DATE
+
+FINANCIAL_SERVICES_WARNING = "`financial_services` is the incorrect key for that sector, you must, from now onwards, use `financials`."
+
+
+# Recursively scans and normalises sector identifiers from 'financial_services' to 'financials'
+def normaliseSectorInput(val: Any) -> Tuple[Any, bool]:
+    wasUpdated = False
+
+    if isinstance(val, str):
+        cleaned = val.strip()
+        lower = cleaned.lower()
+        if lower in ["financial_services", "financial services"]:
+            return "financials", True
+        return val, False
+
+    elif isinstance(val, dict):
+        newDict = {}
+        for k, v in val.items():
+            newKey = k
+            if isinstance(k, str):
+                cleanedK = k.strip().lower()
+                if cleanedK in ["financial_services", "financial services"]:
+                    newKey = "financials" if k == k.lower() else "Financials"
+                    wasUpdated = True
+
+            newV, valUpdated = normaliseSectorInput(v)
+            if valUpdated:
+                wasUpdated = True
+            newDict[newKey] = newV
+        return newDict, wasUpdated
+
+    elif isinstance(val, list):
+        newList = []
+        for item in val:
+            newItem, itemUpdated = normaliseSectorInput(item)
+            if itemUpdated:
+                wasUpdated = True
+            newList.append(newItem)
+        return newList, wasUpdated
+
+    elif isinstance(val, tuple):
+        items = []
+        for item in val:
+            newItem, itemUpdated = normaliseSectorInput(item)
+            if itemUpdated:
+                wasUpdated = True
+            items.append(newItem)
+        return tuple(items), wasUpdated
+
+    return val, False
+
+
+# Attaches top-level 'important' warning if 'financial_services' was used as input
+def attachSectorWarning(output: Dict[str, Any], wasUpdated: bool) -> Dict[str, Any]:
+    if wasUpdated and isinstance(output, dict):
+        reordered = {"important": FINANCIAL_SERVICES_WARNING}
+        reordered.update(output)
+        return reordered
+    return output
 
 
 # Format dictionary key as date string or stripped text

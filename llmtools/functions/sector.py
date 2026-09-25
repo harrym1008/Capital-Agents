@@ -9,7 +9,14 @@ from collectors.sector_dl_client import GICS_SECTORS, DB_SECTOR_TO_TICKER
 from collectors.constants import UTC, NEW_YORK, END_DATE
 from dataquery.macro_provider import MacroSeries
 from llmtools.tool_registry import DataProviders, Tool
-from llmtools.functions.helpers import cleanData, formatArticleAge, cleanHtmlContent
+from llmtools.functions.helpers import (
+    cleanData, 
+    formatArticleAge, 
+    cleanHtmlContent, 
+    normaliseSectorInput, 
+    attachSectorWarning, 
+    FINANCIAL_SERVICES_WARNING
+)
 from llmtools.functions.stock_search import parseMarketCapValue
 from llmtools.functions.sentiment_main import scoreTextsWithCache, deriveSentimentRating, getSentimentEngine, aggregateSentiment
 from finbert.finbert_engines import TrtCudaInferenceEngine, OnnxCudaInferenceEngine, PytorchCudaInferenceEngine
@@ -117,22 +124,23 @@ def calculateAnnualisedVolatility(df: pd.DataFrame, window: int = 90) -> float:
 
 # Retrieve trailing returns, relative alpha, technicals, and volatility for single GICS sector ETF
 def fetchSectorPerformance(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, sectorOrTicker: str) -> Dict[str, Any]:
+    sectorOrTicker, wasUpdated = normaliseSectorInput(sectorOrTicker)
     tsNy = timestamp.tz_convert(NEW_YORK) if timestamp.tzinfo is not None else timestamp.tz_localize(NEW_YORK)
     effectiveTs = min(tsNy, END_DATE)
     cacheKey = f"sector|perf_{sectorOrTicker}_{effectiveTs.strftime('%Y-%m-%dH%H')}"
     cached = data.cache.get(cacheKey)
     if cached is not None:
-        return cached
+        return attachSectorWarning(cached, wasUpdated)
 
     ticker, resolvedName, note = data.sectors.resolveSector(sectorOrTicker)
     if resolvedName == "Unknown":
-        return cleanData({
+        return attachSectorWarning(cleanData({
             "status": "unknown_sector",
             "query": sectorOrTicker,
             "message": note or "Sector is listed as 'unknown' in the dataset. No GICS sector ETF applies."
-        })
+        }), wasUpdated)
     if not ticker:
-        return cleanData({"error": note or f"Sector or ticker '{sectorOrTicker}' not recognised among the 11 GICS sectors."})
+        return attachSectorWarning(cleanData({"error": note or f"Sector or ticker '{sectorOrTicker}' not recognised among the 11 GICS sectors."}), wasUpdated)
 
     info = GICS_SECTORS.get(ticker)
     sectorName = info.name if info else ticker
@@ -206,7 +214,7 @@ def fetchSectorPerformance(tool: Tool, data: DataProviders, timestamp: pd.Timest
 
     cleanedResult = cleanData(output)
     data.cache.put(cacheKey, cleanedResult)
-    return cleanedResult
+    return attachSectorWarning(cleanedResult, wasUpdated)
 
 
 # Rank all 11 GICS sector ETFs by trailing performance over specified lookback window
@@ -309,15 +317,16 @@ def fetchAllSectorRankings(tool: Tool, data: DataProviders, timestamp: pd.Timest
 
 # Return descriptive profile and category for single sector ETF
 def fetchSectorProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp, sectorOrTicker: str) -> Dict[str, Any]:
+    sectorOrTicker, wasUpdated = normaliseSectorInput(sectorOrTicker)
     ticker, resolvedName, note = data.sectors.resolveSector(sectorOrTicker)
     if resolvedName == "Unknown":
-        return cleanData({
+        return attachSectorWarning(cleanData({
             "status": "unknown_sector",
             "query": sectorOrTicker,
             "message": note or "Sector is marked as 'unknown' in the dataset. No GICS sector ETF applies."
-        })
+        }), wasUpdated)
     if not ticker or ticker not in GICS_SECTORS:
-        return cleanData({"error": note or f"Sector or ticker '{sectorOrTicker}' not recognised among the 11 GICS sectors."})
+        return attachSectorWarning(cleanData({"error": note or f"Sector or ticker '{sectorOrTicker}' not recognised among the 11 GICS sectors."}), wasUpdated)
 
     info = GICS_SECTORS[ticker]
     result = {
@@ -328,7 +337,7 @@ def fetchSectorProfile(tool: Tool, data: DataProviders, timestamp: pd.Timestamp,
     }
     if note:
         result["resolutionNote"] = note
-    return cleanData(result)
+    return attachSectorWarning(cleanData(result), wasUpdated)
 
 
 # Retrieve performance metrics and technicals across all 11 GICS sectors in parallel
