@@ -91,6 +91,10 @@ class Portfolio:
         self.stringLog: list[str] = []
         self.mainLog: list[LogEntry] = []
 
+    @property
+    def totalValue(self) -> float:
+        # Fallback book value if accessed directly: cash + sum(position.quantity * position.averagePrice)
+        return float(self.cash + sum(pos.quantity * pos.averagePrice for pos in self.positions.values()))
 
     def addToLog(self, date, ticker, title, message):
         logEntry = LogEntry(pd.Timestamp(date).strftime('%d %b %Y'), ticker, title, message)

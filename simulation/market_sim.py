@@ -579,6 +579,18 @@ class MarketSimulation:
 
 
 
+    def getPortfolio(self, username="AgentPortfolio"):
+        return self.userPortfolios.get(username, None)
+
+    def getCurrentPortfolioValue(self, username="AgentPortfolio") -> float:
+        pfDict = self.getPortfolioValueAtCurrentDate(username)
+        if pfDict and "totalValue" in pfDict:
+            return float(pfDict["totalValue"])
+        portfolio = self.userPortfolios.get(username)
+        if portfolio:
+            return float(portfolio.cash)
+        return 0.0
+
     def getPortfolioValueAtCurrentDate(self, username):
         portfolio = self.userPortfolios.get(username, None)
         if portfolio is None:

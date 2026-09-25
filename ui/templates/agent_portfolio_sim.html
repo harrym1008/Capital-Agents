@@ -1808,6 +1808,7 @@
                 select.value = "current";
             }
 
+            this.updateDropdownOptions(lastLiveSimulationState?.milestones);
             this.switchSession("current");
             return session;
         }
@@ -1939,9 +1940,9 @@
         }
 
         // Re-populate options in the milestone selector dropdown
-        updateDropdownOptions(milestones) {
+        updateDropdownOptions(milestones = null) {
             const select = document.getElementById("milestoneSelect");
-            if (!select || !milestones) return;
+            if (!select) return;
 
             if (!this.liveSessionId) {
                 select.innerHTML = '<option value="none">None yet</option>';
@@ -1959,8 +1960,20 @@
             liveOpt.textContent = `Current: ${liveSession?.label || this.liveSessionId}`;
             select.appendChild(liveOpt);
 
-            // Chronological past milestones
-            const sortedMilestones = [...milestones].sort((a, b) => {
+            // Determine milestone list from passed data or existing sessions
+            const sourceList = (milestones && Array.isArray(milestones) && milestones.length > 0)
+                ? milestones
+                : Object.values(this.sessions).map(s => ({
+                    milestoneId: s.id,
+                    label: s.label,
+                    date: s.date,
+                    dateFormatted: s.dateFormatted,
+                    type: s.type,
+                    sessionMetrics: s.sessionMetrics
+                }));
+
+            // Chronological past/completed milestones
+            const sortedMilestones = [...sourceList].sort((a, b) => {
                 const idA = String(a.milestoneId || a.id || "");
                 const idB = String(b.milestoneId || b.id || "");
                 const numA = parseInt(idA.replace(/\D/g, ""), 10);
@@ -1973,10 +1986,12 @@
                 return timeA - timeB;
             });
 
-            // Add past milestones
+            // Add completed milestones (past sessions and completed current sessions)
             sortedMilestones.forEach((m) => {
                 const mId = m.milestoneId || m.id;
-                if (mId && mId !== this.liveSessionId) {
+                const sess = this.sessions[mId];
+                const isCompleted = sess?.isCompleted || Boolean(m.sessionMetrics) || (mId !== this.liveSessionId);
+                if (mId && isCompleted) {
                     const opt = document.createElement("option");
                     opt.value = mId;
                     const isInc = (mId === "milestone_0" || m.type === "inception");
@@ -2766,6 +2781,7 @@
                     sessionMgr.switchStage(1, mId);
                     sessionMgr.updateStageTabsState(mId);
                 }
+                sessionMgr.updateDropdownOptions(lastLiveSimulationState?.milestones);
                 break;
             }
 
@@ -2980,6 +2996,7 @@
                         renderStagesBarTabs(session.stages, mId);
                     }
                 }
+                sessionMgr.updateDropdownOptions(lastLiveSimulationState?.milestones);
                 sessionMgr.updateStageTabsState(mId);
                 break;
             }

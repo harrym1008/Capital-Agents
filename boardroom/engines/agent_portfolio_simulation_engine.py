@@ -92,6 +92,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
     def __init__(self, toolRegistry: ToolRegistry, timestamp: pd.Timestamp):
         super().__init__(toolRegistry, timestamp)
         self.marketSim: Optional[MarketSimulation] = None
+        self.simUsername: str = "AgentPortfolio"
         self.confirmedSectorAllocation: Optional[Dict[str, Any]] = None
         self.confirmedPortfolioAllocation: Optional[Dict[str, Any]] = None
         self.lastConfig: Optional[AgentPortfolioSimulationConfig] = None
@@ -145,7 +146,6 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         })
 
     # Read and record into the journal (to bring information from one milestone to the next)        
-    # Read and record into the journal (to bring information from one milestone to the next)        
     def readJournal(self, tool: Tool, data: Any, timestamp: pd.Timestamp, limit: int = 10, **kwargs) -> Dict[str, Any]:
         currentDateStr = timestamp.strftime("%Y-%m-%d")
         entries = [e for e in self.journal if e.get("date", "") <= currentDateStr]
@@ -196,15 +196,19 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
         }
 
 
+    def getCurrentPortfolioValue(self) -> float:
+        if self.marketSim:
+            val = self.marketSim.getCurrentPortfolioValue(self.simUsername)
+            if val > 0:
+                return val
+        if self.lastConfig and self.lastConfig.initialCapital:
+            return float(self.lastConfig.initialCapital)
+        return 100_000.0    # It should never reach this point
+
     # Wrappers for confirmation tools to emit events to UI and resolve dynamic state
     def _wrappedConfirmSectorAllocation(self, tool: Tool, data: Any, timestamp: pd.Timestamp, 
                                         sectorAllocations: Optional[Dict[str, float]] = None, 
                                         rationale: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        if sectorAllocations is None:
-            return {"error": "Missing required argument 'sectorAllocations'. You must provide a dictionary mapping sector names to percentage numbers."}
-        if rationale is None:
-            return {"error": "Missing required argument 'rationale'. Please provide a rationale justifying the sector allocations."}
-
         res = confirmSectorAllocation(tool, data, timestamp, sectorAllocations, rationale, **kwargs)
         if isinstance(res, dict) and (res.get("status") == "success" or "confirmedAllocation" in res):
             if tool.toolLog:
@@ -220,22 +224,9 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                                            sectorAllocations: Any = None,
                                            portfolioRationale: Optional[str] = None, 
                                            initialCapital: Optional[float] = None, **kwargs) -> Dict[str, Any]:
-        if sectorAllocations is None:
-            return {"error": "Missing required argument 'sectorAllocations'. You must provide a dictionary mapping confirmed sectors to lists of stock positions."}
-        if portfolioRationale is None:
-            return {"error": "Missing required argument 'portfolioRationale'. Please provide an executive portfolioRationale detailing portfolio construction."}
-
-        # Resolve portfolio capital dynamically if omitted or 0
+        # Resolve portfolio capital dynamically from simulation engine if omitted or 0
         if not initialCapital or initialCapital <= 0:
-            if self.currentMilestoneId != "milestone_0" and hasattr(self, "marketSim") and self.marketSim:
-                portfolioObj = self.marketSim.getPortfolio("default_user")
-                if portfolioObj:
-                    initialCapital = float(portfolioObj.totalValue)
-            if not initialCapital or initialCapital <= 0:
-                if self.lastConfig and hasattr(self.lastConfig, "initialCapital") and self.lastConfig.initialCapital:
-                    initialCapital = float(self.lastConfig.initialCapital)
-                else:
-                    initialCapital = 100000.0
+            initialCapital = self.getCurrentPortfolioValue()
 
         res = confirmPortfolioAllocation(tool, data, timestamp, sectorAllocations, portfolioRationale, initialCapital, **kwargs)
         if isinstance(res, dict) and (res.get("status") == "success" or "confirmedPortfolio" in res):
@@ -253,9 +244,6 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                                          decision: Optional[str] = None,
                                          reasoning: str = "", macroShiftDetected: bool = False, 
                                          urgency: str = "none", **kwargs) -> Dict[str, Any]:
-        if not decision:
-            return {"error": "Missing required argument 'decision'. Must be one of: 'noBalanceRequired', 'balanceRequired', 'extendedBalanceRequired'."}
-
         res = decideRebalanceNecessity(tool, data, timestamp, decision, reasoning, macroShiftDetected, urgency, **kwargs)
         if isinstance(res, dict) and (res.get("status") == "success" or "decisionRecord" in res):
             record = res.get("decisionRecord") or (tool.toolLog[-1] if tool.toolLog else {})
@@ -1216,6 +1204,31 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             "summary": f"Initial portfolio deployed across confirmed sectors with {len(positions)} equities.",
             "stockCount": len(positions)
         })
+
+        # Record inception milestone completion immediately upon boardroom conclusion
+        inceptionMetrics = self.capturePostSessionMetrics(config, sp500Df)
+        for m in self.milestonesList:
+            if m.get("milestoneId") == "milestone_0":
+                m["sessionMetrics"] = inceptionMetrics
+                break
+
+        emitEvent("milestoneCompleted", {
+            "milestoneId": "milestone_0",
+            "label": self.currentMilestoneLabel,
+            "date": config.startDateStr,
+            "type": "inception",
+            "pace": "complete",
+            "stages": [
+                {"num": 1, "name": "Macro Environment Analysis"},
+                {"num": 2, "name": "Sector Allocation Analysis"},
+                {"num": 3, "name": "Sector Allocation Decision"},
+                {"num": 4, "name": "Stock Scouting"},
+                {"num": 5, "name": "Stock Allocation Proposals"},
+                {"num": 6, "name": "Final Executive Decision"}
+            ],
+            "sessionMetrics": inceptionMetrics
+        })
+        self.emitSimulationState(config, sp500Df)
 
         # MAIN SIMULATION LOOP - per milestone review and rebalance
         milestoneIndex = 1
