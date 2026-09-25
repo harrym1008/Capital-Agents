@@ -202,7 +202,7 @@ class RebalanceSectorDecisionStage(BoardroomStage):
             mandatedToolName="confirmSectorAllocation",
             config=config,
             subrole="sector",
-            maxRetries=10,
+            maxRetries=(8, 4),
             requireInitialTools=True,
             confirmationPrompt=pmSectorConfirmationPrompt
         )
@@ -504,7 +504,7 @@ class RebalanceFinalDecisionStage(BoardroomStage):
             mandatedToolName="confirmPortfolioAllocation",
             config=config,
             subrole="decision",
-            maxRetries=10,
+            maxRetries=(8, 4),
             requireInitialTools=True,
             confirmationPrompt=pmFinalConfirmationPrompt
         )

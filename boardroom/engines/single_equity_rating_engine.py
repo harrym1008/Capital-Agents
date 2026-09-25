@@ -104,7 +104,7 @@ class SingleEquityOneShotUploadStage(BoardroomStage):
             mandatedToolName=finalSubmitToolName,
             config=config,
             subrole="upload",
-            maxRetries=10,
+            maxRetries=(8, 4),
             summarisationOverride=False,
             requireInitialTools=True
         )
@@ -437,7 +437,7 @@ class SingleEquityDecisionUploadStage(BoardroomStage):
             mandatedToolName=finalSubmitToolName,
             config=config,
             subrole="upload",
-            maxRetries=10,
+            maxRetries=(8, 4),
             summarisationOverride=False,
             requireInitialTools=True
         )

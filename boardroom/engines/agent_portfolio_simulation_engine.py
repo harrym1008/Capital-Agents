@@ -774,7 +774,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             mandatedToolName="confirmSectorAllocation",
             config=config,
             subrole="sector",
-            maxRetries=10,
+            maxRetries=(8, 4),
             requireInitialTools=True,
             modeOverride="PortfolioCreation"
         )
@@ -873,7 +873,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             mandatedToolName="confirmPortfolioAllocation",
             config=config,
             subrole="decision",
-            maxRetries=10,
+            maxRetries=(8, 4),
             requireInitialTools=True,
             modeOverride="PortfolioCreation"
         )
@@ -948,7 +948,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             mandatedToolName="confirmSectorAllocation",
             config=config,
             subrole="sector",
-            maxRetries=10,
+            maxRetries=(8, 4),
             requireInitialTools=True,
             modeOverride="PortfolioRebalancing"
         )
@@ -1054,7 +1054,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             mandatedToolName="confirmPortfolioAllocation",
             config=config,
             subrole="decision",
-            maxRetries=10,
+            maxRetries=(8, 4),
             requireInitialTools=True,
             modeOverride="PortfolioRebalancing"
         )
@@ -1394,7 +1394,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                     mandatedToolName="decideRebalanceNecessity",
                     config=config,
                     subrole="decision",
-                    maxRetries=10,
+                    maxRetries=(8, 4),
                     requireInitialTools=True,
                     modeOverride="PortfolioRebalancing"
                 )

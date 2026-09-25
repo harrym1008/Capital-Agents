@@ -35,7 +35,7 @@ class BoardroomContext:
         initialPrompt: str,
         mandatedToolName: str,
         subrole: Optional[str] = None,
-        maxRetries: int = 8,
+        maxRetries: Union[Tuple[int, int], int] = (8, 4),
         summarisationOverride: Optional[bool] = None,
         requireInitialTools: bool = True,
         confirmationPrompt: Optional[str] = None,
@@ -85,7 +85,7 @@ class MandatedToolStage(BoardroomStage, ABC):
         agentName: str,
         mandatedToolName: str,
         subrole: Optional[str] = None,
-        maxRetries: int = 8,
+        maxRetries: Union[Tuple[int, int], int] = (8, 4),
         requireInitialTools: bool = True,
         customAgents: Optional[List[Dict[str, str]]] = None
     ):
