@@ -14,6 +14,10 @@ def runMassDownloadTool():
     print("=" * 60)
     print("  Mass Download Tool")
     print("=" * 60, "\n")
+    print("\nMake sure that you have updated the following constant in collectors/constants.py:\n")
+    print(f" - END_DATE_STR: {END_DATE_STR}  (this is the date it will download up to, inclusive)")
+    print(f"Exit the program now if you need to change it.\n\n")
+
 
     dateStartStr = pd.Timestamp(START_DATE_STR, tz=NEW_YORK).strftime("%d %b %Y")
     dateEndStr = pd.Timestamp(END_DATE_STR, tz=NEW_YORK).strftime("%d %b %Y")
