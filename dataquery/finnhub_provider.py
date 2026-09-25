@@ -70,6 +70,7 @@ class FinnhubDataProvider:
             return {}
 
         asOfNorm = asOfDate.tz_localize(None) if asOfDate.tzinfo is not None else asOfDate
+        asOfNormStr = asOfNorm.strftime("%Y-%m-%d")
         series = raw.get("series", {})
         quarterly = series.get("quarterly", {})
         annual = series.get("annual", {})
@@ -87,14 +88,8 @@ class FinnhubDataProvider:
                 pStr = item.get("period")
                 if not pStr:
                     continue
-                try:
-                    pDate = pd.to_datetime(pStr)
-                    if pDate.tzinfo is not None:
-                        pDate = pDate.tz_localize(None)
-                    if pDate < asOfNorm:     # MUST be strictly prior to asOfDate to avoid lookahead bias
-                        validItems.append((pDate, item.get("v")))
-                except Exception:
-                    continue
+                if pStr < asOfNormStr:     # MUST be strictly prior to asOfDate to avoid lookahead bias
+                    validItems.append((pStr, item.get("v")))
 
             validItems.sort(key=lambda x: x[0])
             return validItems
@@ -135,14 +130,15 @@ class FinnhubDataProvider:
             items = getValidItems(metricKey, preferQuarterly)
             if len(items) < 2:
                 return None
-            latestDate = items[-1][0]
+            latestDateStr = items[-1][0]
             latestVal = items[-1][1]
 
             # Locate observation closest to 1 year prior (at least 10 months back)
-            targetDate = latestDate - pd.DateOffset(months=10)
+            targetDate = pd.to_datetime(latestDateStr) - pd.DateOffset(months=10)
+            targetDateStr = targetDate.strftime("%Y-%m-%d")
             priorVal = None
-            for date, val in reversed(items[:-1]):
-                if date <= targetDate:
+            for pDateStr, val in reversed(items[:-1]):
+                if pDateStr <= targetDateStr:
                     priorVal = val
                     break
 

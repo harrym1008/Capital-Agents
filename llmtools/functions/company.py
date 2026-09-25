@@ -222,16 +222,16 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
                     dividendYield = divPerShare / float(price)
                     stockResult["dividendYield"] = cleanNumber(dividendYield, NumberType.UNSCALED_PERCENTAGE)
 
-        # Collect recent headlines and compute FinBERT news sentiment
+        # Collect recent headlines
+        headlines = []
+        headlineDates = []
         try:
             newsDf = data.news.getRecentNewsForTicker(
-                ticker, before=timestamp, limit=50,
+                ticker, before=timestamp, limit=12,
                 mustHaveContent=False, maxReferencedTickers=5, summaryMaxChars=500
             )
 
             if newsDf is not None and not newsDf.empty:
-                headlines = []
-                headlineDates = []
                 for _, row in newsDf.iterrows():
                     hl = row.get("headline", "")
                     if isinstance(hl, str) and hl.strip():
@@ -239,21 +239,11 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
                         headlineDates.append(row.get("date"))
 
                 displayHeadlines = []
-                for i, (hl, dt) in enumerate(zip(headlines[:10], headlineDates[:10])):
+                for hl, dt in zip(headlines[:10], headlineDates[:10]):
                     age = formatArticleAge(dt, timestamp)
                     displayHeadlines.append({"headline": hl, "age": age})
                 if displayHeadlines:
                     stockResult["recentHeadlines"] = displayHeadlines
-
-                if headlines:
-                    sentimentScores = scoreTextsWithCache(headlines[:50], data)
-                    if sentimentScores:
-                        finalSentiment, rating = aggregateSentiment(
-                            sentimentScores, headlineDates[:50], tsNorm
-                        )
-                        if finalSentiment is not None:
-                            stockResult["newsSentimentScore"] = cleanNumber(finalSentiment, NumberType.DECIMAL)
-                            stockResult["newsSentimentRating"] = rating
         except Exception:
             pass
 
@@ -269,27 +259,74 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
         except Exception:
             pass
 
-        with progressLock:
-            completedCount[0] += 1
-            pct = completedCount[0] / totalTickers * 100
-            tool.updateProgress(pct)
+        return stockResult, headlines, headlineDates
 
-        return stockResult
+    def workerWrapper(ticker):
+        try:
+            return processStock(ticker)
+        finally:
+            with progressLock:
+                completedCount[0] += 1
+                pct = (completedCount[0] / totalTickers) * 100.0
+                tool.updateProgress(f"Stage 1/2: {pct:.1f}%")
 
-    # Execute concurrent stock overview batch processing
-    with ThreadPoolExecutor(max_workers=min(totalTickers, 4)) as executor:
-        futureToTicker = {executor.submit(processStock, t): t for t in cleanTickers}
+    # Stage 1/2: Concurrent stock data retrieval
+    tool.updateProgress("Stage 1/2: 0.0%")
+    stockEntries = []
+    allHeadlinesToScore = []
+    stockHeadlineMeta = []
+
+    with ThreadPoolExecutor(max_workers=min(totalTickers, 8)) as executor:
+        futureToTicker = {executor.submit(workerWrapper, t): t for t in cleanTickers}
         for future in as_completed(futureToTicker):
             ticker = futureToTicker[future]
             try:
-                result = future.result()
-                if result and len(result) > 1:
-                    results.append(result)
+                stockData = future.result()
+                if stockData and stockData[0] and len(stockData[0]) > 1:
+                    stockResult, headlines, headlineDates = stockData
+                    stockEntries.append(stockResult)
+                    stockHeadlineMeta.append((stockResult, headlineDates, len(headlines)))
+                    allHeadlinesToScore.extend(headlines)
                 else:
                     failures.append(ticker)
             except Exception:
                 failures.append(ticker)
-            tool.updateProgress((len(results) + len(failures)) / totalTickers * 100)
+
+    tool.updateProgress("Stage 1/2: 100.0%")
+
+    # Stage 2/2: Single-pass batch sentiment scoring across all gathered headlines
+    totalTexts = len(allHeadlinesToScore)
+    tool.updateProgress("Stage 2/2: 0.0%")
+    if totalTexts > 0:
+        completedTexts = [0]
+        sentProgressLock = threading.Lock()
+
+        def onSentimentProgress(completedDelta: int = 1):
+            with sentProgressLock:
+                completedTexts[0] += completedDelta
+                pct = min(100.0, (completedTexts[0] / totalTexts) * 100.0)
+                tool.updateProgress(f"Stage 2/2: {pct:.1f}%")
+
+        allScores = scoreTextsWithCache(allHeadlinesToScore, data=data, onProgressCallback=onSentimentProgress)
+        tool.updateProgress("Stage 2/2: 100.0%")
+
+        # Distribute sentiment scores back to respective stocks
+        scoreOffset = 0
+        for stockResult, headlineDates, count in stockHeadlineMeta:
+            stockScores = allScores[scoreOffset:scoreOffset + count] if allScores else []
+            scoreOffset += count
+            if stockScores:
+                try:
+                    finalSentiment, rating = aggregateSentiment(stockScores, headlineDates[:len(stockScores)], tsNorm)
+                    if finalSentiment is not None:
+                        stockResult["newsSentimentScore"] = cleanNumber(finalSentiment, NumberType.DECIMAL)
+                        stockResult["newsSentimentRating"] = rating
+                except Exception:
+                    pass
+    else:
+        tool.updateProgress("Stage 2/2: 100.0%")
+
+    results = stockEntries
 
     output = {
         "asOfDate": timestamp.strftime("%Y-%m-%d"),
