@@ -203,7 +203,7 @@ class BoardroomEngine(ABC):
                             f"Consider different approaches or options to ENSURE that your next tool call IS VALID and successfully executed."
                         )
 
-                    print(f"\n{Fore.YELLOW}[Boardroom] Mandatory tool '{mandatedToolName}' not submitted or invalid. Retrying ({attempt + 1}/{toolRetries})...{Style.RESET_ALL}")
+                    print(f"\n{Fore.YELLOW}{Style.BRIGHT}[Boardroom] Mandatory tool '{mandatedToolName}' not submitted or invalid. Retrying ({attempt + 1}/{toolRetries})...{Style.RESET_ALL}")
 
             historyResetCount += 1
 
@@ -220,7 +220,7 @@ class BoardroomEngine(ABC):
                 "waitTime": 0,
                 "message": f"Errors continually being received. Will remove the recent message chain and try again."
             })
-            print(f"\n{Fore.YELLOW}[Boardroom] Repeated tool failures for '{mandatedToolName}'. Clearing recent message history ({historyResetCount}/{maxResets}) and retrying stage...{Style.RESET_ALL}")
+            print(f"\n{Fore.RED}{Style.BRIGHT}[Boardroom] Repeated tool failures for '{mandatedToolName}'. Clearing recent message history ({historyResetCount}/{maxResets}) and retrying stage...{Style.RESET_ALL}")
             agent.messageHistory = [msg.copy() for msg in originalMessageHistory]
             if tool:
                 tool.toolLog.clear()
