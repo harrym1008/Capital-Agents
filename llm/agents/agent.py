@@ -76,9 +76,10 @@ class FinancialAgent:
         if systemPrompt:
             if len(self.messageHistory) == 0:
                 self.messageHistory.append(None)
+            oldPrompt = self.messageHistory[0].get("content") if isinstance(self.messageHistory[0], dict) else None
             self.messageHistory[0] = {"role": "system", "content": systemPrompt}
 
-            if len(self.messageHistory) > 1:
+            if len(self.messageHistory) > 1 and oldPrompt is not None and oldPrompt != systemPrompt:
                 self.messageHistory.append(
                     {
                         "role": "user", 

@@ -724,7 +724,7 @@ def buildToolRegistry(initMacroThread=False):
     toolReg.registerTool(Tool(
         toolFunction=confirmPortfolioAllocation,
         toolName="confirmPortfolioAllocation",
-        toolDescription="Confirms and records the executive portfolio creation verdict with individual stock positions, % weightings, and dollar amounts.",
+        toolDescription="Confirms and records the executive portfolio creation/rebalancing verdict with individual stock positions, per-sector percentage weightings, and portfolio construction rationale.",
         parameterSchema=SCHEMAS["confirmPortfolioAllocation"],
         storeIntoSources=False
     ))

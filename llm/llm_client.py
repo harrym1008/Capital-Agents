@@ -487,6 +487,7 @@ class BaseLLMClient(ABC):
         currentIteration = 0
         responseStreamErrorCount = 0
 
+        callerMessageHistory = messageHistory
         originalMessageHistory = [msg.copy() for msg in messageHistory]
 
         while True:
@@ -547,6 +548,7 @@ class BaseLLMClient(ABC):
                     accumulatedContent += content + "\n"
 
                 if not toolCallsList:
+                    callerMessageHistory[:] = messageHistory
                     return accumulatedContent.strip()
                 
                 for idx, call in enumerate(toolCallsList):
@@ -611,6 +613,7 @@ class BaseLLMClient(ABC):
                                         try:
                                             resultData = json.loads(msg["content"])
                                             if isinstance(resultData, dict) and (resultData.get("status") in ["success", "transferred"]):
+                                                callerMessageHistory[:] = messageHistory
                                                 return accumulatedContent.strip()
                                         except json.JSONDecodeError:
                                             pass
@@ -663,4 +666,5 @@ class BaseLLMClient(ABC):
             if finalContent and finalContent.strip():
                 accumulatedContent += finalContent
 
+            callerMessageHistory[:] = messageHistory
             return accumulatedContent.strip()

@@ -459,7 +459,7 @@ class RebalanceFinalDecisionStage(BoardroomStage):
                 f"- Stock Justifications: Provide a 25-35 word rationale for each equity holding.\n"
                 f"- Portfolio Rationale: Provide an executive portfolioRationale of approximately 100-150 words detailing the rebalancing strategy, "
                 f"explicitly comparing the rebalanced portfolio to the original baseline holdings and explaining the differences.\n\n"
-                f"Execute the 'confirmPortfolioAllocation' tool with your 'sectorAllocations' dictionary, 'portfolioRationale', and 'initialCapital'={config.initialCapital}."
+                f"Execute the 'confirmPortfolioAllocation' tool with your 'sectorAllocations' dictionary and 'portfolioRationale'."
             )
         else:
             aggProposalRaw = context.get("aggProposalRaw", "")
@@ -487,7 +487,7 @@ class RebalanceFinalDecisionStage(BoardroomStage):
                 f"- Stock Justifications: Provide a 25-35 word rationale for each equity holding.\n"
                 f"- Portfolio Rationale: Provide an executive portfolioRationale of approximately 100-150 words detailing the rebalancing strategy, "
                 f"explicitly comparing the rebalanced portfolio to the original baseline holdings and explaining the differences.\n\n"
-                f"Execute the 'confirmPortfolioAllocation' tool with your 'sectorAllocations' dictionary, 'portfolioRationale', and 'initialCapital'={config.initialCapital}."
+                f"Execute the 'confirmPortfolioAllocation' tool with your 'sectorAllocations' dictionary and 'portfolioRationale'."
             )
 
         pmFinalConfirmationPrompt = (

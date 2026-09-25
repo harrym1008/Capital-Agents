@@ -852,7 +852,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"Task: As the Impartial Portfolio Manager, reconcile proposals to construct the definitive inception portfolio.\n"
             f"Balance conviction with humility: size positions for bull, base and bear paths rather than a single forecast.\n"
             f"Mandatory Structure: 'sectorAllocations' must be a dictionary with EACH confirmed sector name as its OWN top-level key (e.g. {{'Financials': [{{'ticker': '...', 'perSectorWeight': 50, 'rationale': '...'}}, ...], 'Information Technology': [...]}}). All stocks within each sector must have 'perSectorWeight' summing to 100.\n"
-            f"Call 'confirmPortfolioAllocation' with your 'sectorAllocations' dictionary, 'portfolioRationale', and 'initialCapital'={config.initialCapital}.\n"
+            f"Call 'confirmPortfolioAllocation' with your 'sectorAllocations' dictionary and 'portfolioRationale'.\n"
             f"You may also call 'recordJournalEntry' with your 30-50 word executive rationale summarizing portfolio inception."
         )
         pmResponse, _ = self.executeMandatedToolStage(
@@ -928,7 +928,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"- Strategic Allocation Bias: {promptArgs['allocationBiasGuidance']}\n"
             f"- {promptArgs['sectorDiversityRule']}\n"
             f"- Max single sector allocation: {promptArgs['maxSectorAllocation']}\n\n"
-            f"Mandatory: Call 'confirmSectorAllocation' with your target sector allocation dictionary."
+            f"Mandatory: Call 'confirmSectorAllocation' with your 'sectorAllocations' dictionary and executive 'rationale'."
         )
         _, _ = self.executeMandatedToolStage(
             agent=self.portManager,
@@ -1032,7 +1032,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"- Max stock allocation: {promptArgs['maxStockAllocation']}\n\n"
             f"{scoutContextForPM}\n\n"
             f"Task: Construct the rebalanced portfolio. Execute 'confirmPortfolioAllocation' with your 'sectorAllocations' "
-            f"dictionary (mapping EACH confirmed sector name as its OWN top-level key to a list of stock objects), 'portfolioRationale', and 'initialCapital'={currentPortfolioTotalVal:.2f}.\n"
+            f"dictionary (mapping EACH confirmed sector name as its OWN top-level key to a list of stock objects) and 'portfolioRationale'.\n"
             f"Minimise needless turnover: retain incumbents whose overview metrics remain sound, justifying every exit against the mandate.\n"
             f"You may also call 'recordJournalEntry' with your 30-50 word rationale detailing portfolio shifts."
         )
@@ -1394,7 +1394,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
                 decideTool = self.toolRegistry.getTool("decideRebalanceNecessity")
                 decidePrompt = (
                     f"Macro Context & Audit:\n{macroRaw}\n\n"
-                    f"Task: Execute the 'decideRebalanceNecessity' tool to formally determine whether the portfolio should rebalance at this milestone.\n"
+                    f"Task: Execute the 'decideRebalanceNecessity' tool with your 'decision', 'reasoning', 'macroShiftDetected' (boolean), and 'urgency' ('none', 'low', 'medium', or 'high') to formally determine whether the portfolio should rebalance at this milestone.\n"
                     f"Valid decision options:\n"
                     f"- 'noBalanceRequired': Existing holdings are performing soundly, macro regime remains stable, "
                     f"and no rebalancing is needed (advances directly to next timestep).\n"
