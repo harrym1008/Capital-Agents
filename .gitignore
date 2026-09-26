@@ -203,5 +203,5 @@ newtooltest.py
 
 llm/server_config.json
 _cache/persist_lru_cache.bin
-_projectFileMap.map.md
+*.map.md
 _makeFileMap.py

@@ -4,6 +4,9 @@ sys.path.append(ROOT)
 
 import json
 import time
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from boardroom.boardroom_config import TIME_HORIZON_INFO, SingleEquityRatingConfig, BoardroomPace, SingleEquityTimeHorizon
 from boardroom.boardroom_mgr import executeBoardroomConfig
@@ -11,7 +14,9 @@ from boardroom.boardroom_mgr import executeBoardroomConfig
 from llm.server_manager import serverManager
 
 
-MODEL = "Gemma-4-12B"
+MODEL_IDENTIFIER = "Gemma 4 12B Q4_K_XL"
+MODEL_NAME = "GEMMA_4_12B"
+MODEL = MODEL_IDENTIFIER
 SIM_TIME_STR = "2025-01-31"
 
 TICKERS = ["MSFT", "KO", "MCD", "NFLX", "LLY", "NVDA", "MU", "JPM", "TSLA", "IBM"]
@@ -27,7 +32,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "gemma12b_medium_variance.json")
 
 
-def runSingleEvaluation(model: str, ticker: str, runIndex: int):
+def runSingleEvaluation(model: str, ticker: str, runIndex: int, toolRegistry=None):
     try:
         config = SingleEquityRatingConfig(
             generateSummaries=False,
@@ -38,14 +43,21 @@ def runSingleEvaluation(model: str, ticker: str, runIndex: int):
             timeHorizon=TIME_HORIZON,
             boardroomPace=MODE
         )
+        activeRegistry = toolRegistry if toolRegistry is not None else serverManager.getToolRegistry()
         llmClient = serverManager.getClient()
 
         elapsedSeconds = executeBoardroomConfig(
             config=config,
             llmClient=llmClient,
-            toolRegistry=serverManager.getToolRegistry()
+            toolRegistry=activeRegistry
         )
-        decisionToolOutput = serverManager.getToolRegistry().getTool(SUBMIT_TOOL).toolLog[-2]
+        submitTool = activeRegistry.getTool(SUBMIT_TOOL)
+        if submitTool and len(submitTool.toolLog) >= 2:
+            decisionToolOutput = submitTool.toolLog[-2]
+        elif submitTool and len(submitTool.toolLog) == 1:
+            decisionToolOutput = submitTool.toolLog[-1]
+        else:
+            decisionToolOutput = None
 
         return {
             "model": model,
@@ -77,22 +89,23 @@ def exportResults(results: list):
 
 def runAll():
     results = []
+    sharedToolRegistry = serverManager.getToolRegistry()
 
     success, message = serverManager.startServer(
         provider="llamacpp",
-        modelName=MODEL.name,
+        modelName=MODEL,
         allowParallel=True
     )
     if not success:
-        print(f"Failed to start server for model {MODEL.name}: {message}")
+        print(f"Failed to start server for model {MODEL_NAME}: {message}")
     else:
         for ticker in TICKERS:
             for runIndex in range(1, RUNS_PER_TICKER + 1):
-                print(f"Running evaluation for model={MODEL.name}, ticker={ticker}, run={runIndex}/{RUNS_PER_TICKER}")
+                print(f"Running evaluation for model={MODEL_NAME}, ticker={ticker}, run={runIndex}/{RUNS_PER_TICKER}")
 
-                result = runSingleEvaluation(MODEL.name, ticker, runIndex)
+                result = runSingleEvaluation(MODEL_NAME, ticker, runIndex, sharedToolRegistry)
                 results.append(result)
-                print(f"Completed evaluation for model={MODEL.name}, ticker={ticker}, run={runIndex}: {result}")
+                print(f"Completed evaluation for model={MODEL_NAME}, ticker={ticker}, run={runIndex}: {result}")
                 exportResults(results)          # Save progress after each evaluation
 
     serverManager.stopServer()
