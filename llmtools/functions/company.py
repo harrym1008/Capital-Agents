@@ -50,7 +50,9 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
     if not isinstance(tickers, list) or not tickers:
         return {"error": "tickers must be a non-empty list of ticker symbols."}
 
-    cleanTickers = [str(t).strip().upper() for t in tickers[:30]]
+    maxAllowedTickers = 40
+    wasTruncated = len(tickers) > maxAllowedTickers
+    cleanTickers = [str(t).strip().upper() for t in tickers[:maxAllowedTickers]]
     totalTickers = len(cleanTickers)
 
     # Normalise timestamp for date comparisons
@@ -333,6 +335,8 @@ def fetchBatchStockOverviews(tool: Tool, data: DataProviders, timestamp: pd.Time
         "stockCount": len(results),
         "stocks": results
     }
+    if wasTruncated:
+        output["warning"] = f"Input ticker count exceeded maximum limit of {maxAllowedTickers}. Only the first {maxAllowedTickers} tickers were processed."
     if failures:
         output["failedTickers"] = failures
         output["error"] = f"Failed to retrieve data for {len(failures)} tickers: {', '.join(failures)}"

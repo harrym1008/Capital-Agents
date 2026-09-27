@@ -219,7 +219,8 @@ SCHEMAS = {
             "tickers": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "List of stock ticker symbols to query (e.g. ['TCKR', 'COMP']). Maximum 30 tickers."
+                "maxItems": 40,
+                "description": "List of stock ticker symbols to query (e.g. ['TCKR', 'COMP']). Recommended ~20 tickers, maximum 40 tickers."
             }
         },
         "required": ["tickers"]
@@ -518,6 +519,7 @@ def buildToolRegistry(initMacroThread=False):
             "Each stock returns both a 'growthScore' and a 'defensiveScore' where HIGHER growthScore is BETTER for growth, and LOWER defensiveScore is BETTER for defensive."
             "MANDATORY WORKFLOW RULE: This tool only provides preliminary screening indicators without deep financial metrics. "
             "Immediately after conducting 'fetchStocksInSector', you MUST ALWAYS run 'fetchBatchStockOverviews' on your shortlisted candidate stocks "
+            "(recommend ~20 tickers, maximum 40 tickers) "
             "to retrieve real financial metrics (valuation multiples, profitability margins, revenue/EPS growth, leverage, news sentiment, and company summary) "
             "before presenting your candidate table or making any selection decisions. "
         ),
@@ -565,6 +567,7 @@ def buildToolRegistry(initMacroThread=False):
             "Comprehensive point-in-time fundamental and financial overview for multiple candidates in a single batch call. "
             "Returns company summary, valuation multiples (P/E, P/B, P/S, EV/EBITDA), profitability margins, growth rates (EPS/revenue QoQ and YoY), "
             "leverage ratios, price returns (1mo/3mo/6mo/1y), beta, 30-day volatility, recent news headlines with sentiment scoring, and short interest data. "
+            "Accepts up to 40 tickers maximum (recommend ~20 tickers for optimal analysis depth)."
         ),
         parameterSchema=SCHEMAS["batchTickers"],
         storeIntoSources=True

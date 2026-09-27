@@ -792,7 +792,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"Favour forward earnings power and catalyst runway over a single soft quarter, weighing recovery and acceleration scenarios.\n"
             f"Constraints: Target stock count: {promptArgs['targetStockCount']}. Max stock allocation: {promptArgs['maxStockAllocation']}.\n"
             f"1. Use 'fetchStocksInSector' (style='growth') for confirmed sectors.\n"
-            f"2. Use 'fetchBatchStockOverviews' on top conviction candidates."
+            f"2. Use 'fetchBatchStockOverviews' on top conviction candidates (recommend ~20 tickers, maximum 40 tickers)."
         )
         valuePrompt = (
             f"Confirmed Portfolio Sector Allocations (LOCKED):\n{confirmedSectorsText}\n\n"
@@ -800,7 +800,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"Require proven solvency and margin of safety through the cycle, tolerating modest underperformance where the balance sheet endures.\n"
             f"Constraints: Target stock count: {promptArgs['targetStockCount']}. Max stock allocation: {promptArgs['maxStockAllocation']}.\n"
             f"1. Use 'fetchStocksInSector' (style='defensive') for confirmed sectors.\n"
-            f"2. Use 'fetchBatchStockOverviews' on top conviction candidates."
+            f"2. Use 'fetchBatchStockOverviews' on top conviction candidates (recommend ~20 tickers, maximum 40 tickers)."
         )
         (growthRaw, _), (valueRaw, _) = self.runAgentsConcurrently(
             lambda: self.growthHunter.analyseAndReply(growthPrompt, self.toolRegistry, self.timestamp, config, requireInitialTools=True, modeOverride="PortfolioCreation"),
@@ -966,7 +966,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"Task: As the Growth Stock Hunter, evaluate existing growth holdings and scout high-conviction momentum/growth replacements.\n"
             f"Think as a growth owner: do not recommend replacing an incumbent on a modest dip alone; require a clearly superior forward path.\n"
             f"PORTFOLIO CONTINUITY MANDATE: Your shortlisted candidate tickers fed into 'fetchBatchStockOverviews' MUST include ALL "
-            f"of the companies that exist right now inside CURRENT HOLDINGS above. Extract every ticker dynamically from that list at run time.\n"
+            f"of the companies that exist right now inside CURRENT HOLDINGS above (combine incumbents and new candidates up to 40 tickers maximum, ~20 recommended). Extract every ticker dynamically from that list at run time.\n"
             f"Constraints: Target stock count: {promptArgs['targetStockCount']}. Max stock allocation: {promptArgs['maxStockAllocation']}."
         )
         valuePrompt = (
@@ -975,7 +975,7 @@ class AgentPortfolioSimulationEngine(BoardroomEngine):
             f"Task: As the Defensive Stock Hunter, evaluate defensive holdings and scout margin-of-safety replacements.\n"
             f"Think as a defensive steward: retain sound incumbents through soft patches unless overview metrics show the cushion is gone.\n"
             f"PORTFOLIO CONTINUITY MANDATE: Your shortlisted candidate tickers fed into 'fetchBatchStockOverviews' MUST include ALL "
-            f"of the companies that exist right now inside CURRENT HOLDINGS above. Extract every ticker dynamically from that list at run time.\n"
+            f"of the companies that exist right now inside CURRENT HOLDINGS above (combine incumbents and new candidates up to 40 tickers maximum, ~20 recommended). Extract every ticker dynamically from that list at run time.\n"
             f"Constraints: Target stock count: {promptArgs['targetStockCount']}. Max stock allocation: {promptArgs['maxStockAllocation']}."
         )
         (growthRaw, _), (valueRaw, _) = self.runAgentsConcurrently(
